@@ -2,7 +2,20 @@
 
 Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node tools/scubagear-rules.mjs report --write`. Do not edit by hand: a test fails when this file and the generator differ.
 
-**109 rules** across 7 products. For each rule this lists what ScubaGear reads to check it and whether Keel reads the same data. The Entra ID and Exchange Online rules run unchanged on Keel's backups as Compliance page checks (engine/benchmarks/scubagear/controls.mjs); a rule that also names a field Keel's read does not keep shows there as could not check, even when this table lists its inputs as read.
+**109 rules** across 7 products. For each rule this lists what ScubaGear reads to check it and whether Keel reads the same data. Every rule runs unchanged on Keel's backups as a Compliance page check (engine/benchmarks/scubagear/controls.mjs); a rule that also names a field Keel's read does not keep shows there as could not check, even when this table lists its inputs as read.
+
+## On Keel's backups
+
+| Product | Rules | Run | Could not check |
+|---|---:|---:|---:|
+| Entra ID | 34 | 28 | 6 |
+| Exchange Online | 12 | 2 | 10 |
+| Security Suite (Defender and Purview) | 24 | 11 | 13 |
+| SharePoint and OneDrive | 8 | 2 | 6 |
+| Teams | 14 | 11 | 3 |
+| Power Platform | 9 | 2 | 7 |
+| Power BI | 8 | 8 | 0 |
+| **All** | **109** | **64** | **45** |
 
 ## Summary
 
@@ -10,12 +23,12 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Entra ID | 34 | 23 | 11 | 30 | 0 | 1 | 3 |
 | Exchange Online | 12 | 10 | 2 | 3 | 0 | 9 | 0 |
-| Security Suite (Defender and Purview) | 24 | 9 | 15 | 18 | 0 | 3 | 3 |
+| Security Suite (Defender and Purview) | 24 | 9 | 15 | 19 | 0 | 2 | 3 |
 | SharePoint and OneDrive | 8 | 8 | 0 | 0 | 8 | 0 | 0 |
 | Teams | 14 | 4 | 10 | 11 | 0 | 3 | 0 |
 | Power Platform | 9 | 5 | 4 | 2 | 0 | 5 | 2 |
 | Power BI | 8 | 0 | 8 | 8 | 0 | 0 | 0 |
-| **All** | **109** | **59** | **50** | **72** | **8** | **21** | **8** |
+| **All** | **109** | **59** | **50** | **73** | **8** | **20** | **8** |
 
 - 🟢 Ready: Keel reads everything it needs.
 - 🟡 Partly read: Keel reads it through another API, some fields may be missing.
@@ -36,7 +49,6 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | `admin_audit_log_config` | Get-AdminAuditLogConfig | 1: MS.SECURITYSUITE.5.1v1 | Keel does not run Get-AdminAuditLogConfig. |
 | `built_in_protection_rules` | Get-ATPBuiltInProtectionRule | 1: MS.SECURITYSUITE.1.3v1 | Keel does not run Get-ATPBuiltInProtectionRule. |
 | `dkim_records` | DNS TXT lookup (DKIM selectors) | 1: MS.EXO.3.1v1 | Public DNS. Keel does not do DNS lookups. |
-| `protection_alerts` | Get-ProtectionAlert | 1: MS.SECURITYSUITE.4.1v1 | Keel blocks this cmdlet on purpose today (engine/collect/workloads/purviewRetentionDlp.mjs RETENTION_DLP_EXCLUDED_CMDLETS). |
 | `risky_delegated_permission_classifications` | Get-ServicePrincipalsWithRiskyDelegatedPermissionClassifications | 1: MS.AAD.5.2v1 | Needs each service principal's delegated permission classifications, which Keel does not read. |
 | `tenant_isolation` | Get-PowerPlatformTenantIsolationRest | 1: MS.POWERPLATFORM.3.1v1 | Keel does not read Power Platform tenant isolation. |
 | `transport_config` | Get-TransportConfig | 1: MS.EXO.5.1v1 | Keel does not run Get-TransportConfig. |
@@ -114,7 +126,7 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | MS.SECURITYSUITE.3.3v1 | SHOULD | 🟢 Ready | The action for the DLP policy SHOULD be set to block sharing sensitive information with everyone. | `dlp_compliance_policies`, `dlp_compliance_rules` |
 | MS.SECURITYSUITE.3.4v1 | SHOULD | 🟢 Ready | Notifications to inform users and help educate them on the proper use of sensitive information SHOULD be enabled in the DLP policy. | `dlp_compliance_policies`, `dlp_compliance_rules` |
 | MS.SECURITYSUITE.3.5v1 | SHOULD | ⚪ Check by hand | The DLP policy SHOULD include an action to block access to sensitive information by restricted applications and unwanted Bluetooth applications. | none |
-| MS.SECURITYSUITE.4.1v1 | SHALL | 🔴 Could not check | At a minimum, the following alerts SHALL be enabled: | `protection_alerts` (not read) |
+| MS.SECURITYSUITE.4.1v1 | SHALL | 🟢 Ready | At a minimum, the following alerts SHALL be enabled: | `protection_alerts` |
 | MS.SECURITYSUITE.4.2v1 | SHOULD | ⚪ Check by hand | The alerts SHOULD be sent to a monitored address or incorporated into a Security Information and Event Management (SIEM). | none |
 | MS.SECURITYSUITE.5.1v1 | SHALL | 🔴 Could not check | Unified audit logging SHALL be enabled. | `admin_audit_log_config` (not read) |
 | MS.SECURITYSUITE.5.2v1 | SHALL | ⚪ Check by hand | Audit logs SHALL be retained and searchable for a minimum of 3 months and retrievable for a minimum of 12 months. | none |
@@ -184,6 +196,58 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | MS.POWERBI.5.1v1 | SHOULD | 🟢 Ready | ResourceKey-based authentication SHOULD be blocked unless a specific use case (e.g., streaming and/or "push" datasets) merits its use. | `powerbi_tenant_settings` |
 | MS.POWERBI.6.1v1 | SHOULD | 🟢 Ready | Python and R interactions SHOULD be disabled. | `powerbi_tenant_settings` |
 | MS.POWERBI.7.1v1 | SHOULD | 🟢 Ready | Sensitivity labels SHOULD be enabled for Power BI and employed for sensitive data per enterprise data protection policies. | `powerbi_tenant_settings` |
+
+## Could not check on Keel's backups
+
+Each of these rules shows on the Compliance page as "could not check", with its reason. None is ever counted as a pass.
+
+| Rule | Why |
+|---|---|
+| MS.AAD.2.2v1 | CISA marks it as a check to do by hand. |
+| MS.AAD.4.1v1 | CISA marks it as a check to do by hand. |
+| MS.AAD.5.2v1 | Keel does not read `risky_delegated_permission_classifications`. |
+| MS.AAD.7.5v1 | Keel's read of `privileged_roles` does not keep `StartDateTime`. |
+| MS.AAD.8.3v1 | CISA marks it as a check to do by hand. |
+| MS.AAD.9.1v1 | Keel's read of `conditional_access_policies` does not keep `AgentIdRiskLevels`, `ExcludeAgentIdServicePrincipals`, `IncludeAgentIdServicePrincipals`. |
+| MS.EXO.2.2v3 | Keel does not read `spf_records`. |
+| MS.EXO.3.1v1 | Keel does not read `dkim_records`. |
+| MS.EXO.4.1v1 | Keel does not read `dmarc_records`. |
+| MS.EXO.4.2v1 | Keel does not read `dmarc_records`. |
+| MS.EXO.4.3v1 | Keel does not read `dmarc_records`. |
+| MS.EXO.4.4v1 | Keel does not read `dmarc_records`. |
+| MS.EXO.5.1v1 | Keel does not read `transport_config`. |
+| MS.EXO.6.1v1 | Keel does not read `sharing_policy`. |
+| MS.EXO.6.2v1 | Keel does not read `sharing_policy`. |
+| MS.EXO.13.1v1 | Keel's read of `org_config` does not keep `AuditDisabled`, `Name`. |
+| MS.POWERPLATFORM.1.1v1 | Keel does not read `environment_creation`. |
+| MS.POWERPLATFORM.1.2v1 | Keel does not read `environment_creation`. |
+| MS.POWERPLATFORM.3.1v1 | Keel does not read `tenant_isolation`. |
+| MS.POWERPLATFORM.3.2v1 | CISA marks it as a check to do by hand. |
+| MS.POWERPLATFORM.4.1v1 | CISA marks it as a check to do by hand. |
+| MS.POWERPLATFORM.5.1v1 | Keel does not read `environment_creation`. |
+| MS.POWERPLATFORM.6.1v1 | Keel does not read `environment_creation`. |
+| MS.SECURITYSUITE.1.3v1 | Keel does not read `built_in_protection_rules`. |
+| MS.SECURITYSUITE.2.1v1 | It needs a list the tenant gives in ScubaGear's config (sensitive users or partner domains), which Keel has no place for yet. |
+| MS.SECURITYSUITE.2.3v1 | It needs a list the tenant gives in ScubaGear's config (sensitive users or partner domains), which Keel has no place for yet. |
+| MS.SECURITYSUITE.3.1v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
+| MS.SECURITYSUITE.3.2v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
+| MS.SECURITYSUITE.3.3v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
+| MS.SECURITYSUITE.3.4v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
+| MS.SECURITYSUITE.3.5v1 | CISA marks it as a check to do by hand. |
+| MS.SECURITYSUITE.4.2v1 | CISA marks it as a check to do by hand. |
+| MS.SECURITYSUITE.5.1v1 | Keel does not read `admin_audit_log_config`. |
+| MS.SECURITYSUITE.5.2v1 | CISA marks it as a check to do by hand. |
+| MS.SECURITYSUITE.6.1v1 | Keel's read of `hosted_content_filter_policies` does not keep `RecommendedPolicyType`. |
+| MS.SECURITYSUITE.6.2v1 | Keel's read of `hosted_content_filter_policies` does not keep `RecommendedPolicyType`. |
+| MS.SHAREPOINT.1.2v1 | Keel's read of `SPO_tenant` does not keep `ODBSharingCapability`. |
+| MS.SHAREPOINT.2.1v1 | Keel's read of `SPO_tenant` does not keep `DefaultSharingLinkType`. |
+| MS.SHAREPOINT.2.2v1 | Keel's read of `SPO_tenant` does not keep `DefaultLinkPermission`. |
+| MS.SHAREPOINT.3.1v1 | Keel's read of `SPO_tenant` does not keep `RequireAnonymousLinksExpireInDays`. |
+| MS.SHAREPOINT.3.2v1 | Keel's read of `SPO_tenant` does not keep `FileAnonymousLinkType`, `FolderAnonymousLinkType`. |
+| MS.SHAREPOINT.3.3v2 | Keel's read of `SPO_tenant` does not keep `EmailAttestationReAuthDays`, `EmailAttestationRequired`. |
+| MS.TEAMS.5.1v2 | Keel does not read `tenant_app_settings`. |
+| MS.TEAMS.5.2v2 | Keel does not read `tenant_app_settings`. |
+| MS.TEAMS.5.3v2 | Keel does not read `tenant_app_settings`. |
 
 ## Technical details
 

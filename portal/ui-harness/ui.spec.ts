@@ -4850,7 +4850,7 @@ test("Compliance · measure against a known standard, write your own check, remo
   const known = page.locator(".cp-known");
   const rows = known.locator(".cp-known-table tbody tr");
   await expect(known.locator("h2")).toHaveText("Measure against a known standard");
-  await expect(known).toContainText("Keel checks 46 of 46 CISA SCuBA policies: 1 passes, 1 does not, 44 could not be checked.");
+  await expect(known).toContainText("Keel checks 109 of 109 CISA SCuBA policies: 1 passes, 1 does not, 107 could not be checked.");
   await expect(known).toContainText("ScubaGear v2.0.0");
   await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
   await expect(known.locator(".cp-known-table thead")).not.toContainText("How much");
@@ -4860,7 +4860,7 @@ test("Compliance · measure against a known standard, write your own check, remo
   await expect(rows.nth(1)).toContainText("MS.AAD.2.1v1");
   await expect(rows.nth(1)).toContainText("It runs after the next backup.");
   await expect(rows.filter({ hasText: "MS.AAD.2.2v1" })).toContainText("CISA lists this as a check to do by hand.");
-  await expect(known.locator(".list-pager").getByRole("status")).toHaveText("Showing 1–25 of 46 policies");
+  await expect(known.locator(".list-pager").getByRole("status")).toHaveText("Showing 1–25 of 109 policies");
   // The result chips add up: Fails and Passes together show both.
   const chips = known.getByRole("group", { name: "Show results" });
   await chips.getByRole("button", { name: /Fails/ }).click();

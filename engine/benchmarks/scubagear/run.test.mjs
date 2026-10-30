@@ -1,5 +1,5 @@
 /** CISA ScubaGear's own Rego rules, run unchanged on Keel backups: the compiled rules
- * give OPA's own answers, every Entra and Exchange rule gets an answer, and a rule Keel
+ * give OPA's own answers, every rule of every product gets an answer, and a rule Keel
  * cannot check is never a pass. */
 import { strict as assert } from 'node:assert';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -9,11 +9,11 @@ import { test } from 'node:test';
 
 import { evaluateControl } from '../evaluate.mjs';
 import { CONTROL_VERDICTS, listControls, maskedFacts, SENSITIVE_MASK } from '../registry.mjs';
-import { ADAPTERS } from './adapters.mjs';
-import { plainDetails, SCUBA_FRAMEWORK, staticReason, verdictOf } from './controls.mjs';
+import { ADAPTERS, allowedDomains, CouldNotBuild } from './adapters.mjs';
+import { plainDetails, REGO_BUILT_NAMES, SCUBA_FRAMEWORK, staticReason, verdictOf } from './controls.mjs';
 import { FIXTURE_BACKUPS, FIXTURE_EXPECTED, fixtureDocument } from './fixtureTenant.mjs';
 import { openPinnedScubaGear } from './import.mjs';
-import { BUILD_DIR, BUILD_MANIFEST, goSprintf, indexOfN, loadRules, readBuild, scubaRules, timeFormat } from './opa.mjs';
+import { BUILD_DIR, BUILD_MANIFEST, goSprintf, indexOfN, loadRules, readBuild, regexFindN, scubaRules, timeFormat } from './opa.mjs';
 
 const HOUR = 3_600_000;
 // Fixed, so nothing here depends on the wall clock: backups ended an hour before it.
@@ -49,6 +49,10 @@ test('the host built-ins give the same text as OPA\'s Go versions', () => {
   assert.equal(timeFormat(1_700_000_000_123_456_000), '2023-11-14T22:13:20.123456Z');
   assert.equal(timeFormat([1_700_000_000_000_000_000, 'UTC']), '2023-11-14T22:13:20Z');
   assert.throws(() => timeFormat([0, 'Europe/Paris']), /only UTC/);
+  assert.deepEqual(regexFindN('(SSN)|(ITIN)', 'SSN, ITIN and SSN', -1), ['SSN', 'ITIN', 'SSN']);
+  assert.deepEqual(regexFindN('(SSN)|(ITIN)', 'SSN, ITIN and SSN', 2), ['SSN', 'ITIN']);
+  assert.deepEqual(regexFindN('a*', 'baaab', -1), ['', 'aaa', '']);
+  assert.deepEqual(regexFindN('x', 'abc', -1), []);
 });
 
 test('the compiled rules are refused when they or their Rego differ from the pinned release', (t) => {
@@ -76,13 +80,15 @@ test('the compiled rules are refused when they or their Rego differ from the pin
   assert.throws(() => readBuild({ manifestPath: manifest }), /another ScubaGear release/);
 });
 
+const PRODUCTS = ['aad', 'exo', 'powerbi', 'powerplatform', 'securitysuite', 'sharepoint', 'teams'];
+
 test('the compiled rules give native OPA\'s answers on the fixture tenant', () => {
   const rules = scubaRules();
-  assert.deepEqual([...rules.entrypoints].sort(), ['aad/tests', 'exo/tests']);
-  for (const product of ['aad', 'exo']) {
+  assert.deepEqual([...rules.entrypoints].sort(), PRODUCTS.map((product) => `${product}/tests`));
+  for (const product of PRODUCTS) {
     const got = rules.evaluate(`${product}/tests`, fixtureDocument(product, { version: pin.version }))
       .map(({ PolicyId, Criticality, RequirementMet }) => ({ PolicyId, Criticality, RequirementMet }))
-      .sort((a, b) => a.PolicyId.localeCompare(b.PolicyId) || a.Criticality.localeCompare(b.Criticality));
+      .sort((a, b) => a.PolicyId.localeCompare(b.PolicyId, 'en', { numeric: true }) || a.Criticality.localeCompare(b.Criticality));
     assert.deepEqual(got, golden[product], `${product} differs from opa eval`);
   }
   // A second load is a fresh instance with the same answers.
@@ -90,10 +96,10 @@ test('the compiled rules give native OPA\'s answers on the fixture tenant', () =
   assert.equal(again.length, golden.exo.length);
 });
 
-test('every Entra and Exchange rule is a control, and each gets an answer on the fixture tenant', () => {
+test('every rule of every product is a control, and each gets an answer on the fixture tenant', () => {
   const controls = scuba();
-  assert.equal(controls.length, 46);
-  assert.deepEqual([...new Set(controls.map((control) => control.profile))].sort(), ['aad', 'exo']);
+  assert.equal(controls.length, 109);
+  assert.deepEqual([...new Set(controls.map((control) => control.profile))].sort(), PRODUCTS);
   const verdicts = {};
   for (const control of controls) {
     const result = run(control.controlId);
@@ -104,7 +110,7 @@ test('every Entra and Exchange rule is a control, and each gets an answer on the
   // Every rule Keel can check has a worked-out answer, and gets exactly it.
   const checked = Object.fromEntries(Object.entries(verdicts).filter(([, verdict]) => verdict !== 'unknown'));
   assert.deepEqual(checked, { ...FIXTURE_EXPECTED });
-  assert.equal(Object.keys(checked).length + 16, 46);
+  assert.equal(Object.keys(checked).length, 64);
 });
 
 test('a rule Keel cannot check says why, and is never a pass', () => {
@@ -115,8 +121,15 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.match(reason('MS.AAD.9.1v1'), /^scubagear:field-not-read:conditional_access_policies\.AgentIdRiskLevels,/);
   assert.equal(reason('MS.EXO.2.2v3'), 'scubagear:not-read:spf_records');
   assert.equal(reason('MS.EXO.13.1v1'), 'scubagear:field-not-read:org_config.AuditDisabled,Name');
+  assert.equal(reason('MS.SECURITYSUITE.1.3v1'), 'scubagear:not-read:built_in_protection_rules');
+  assert.equal(reason('MS.SECURITYSUITE.2.1v1'), 'scubagear:needs-setting:SecuritySuite,Defender');
+  assert.equal(reason('MS.SECURITYSUITE.3.1v1'), 'scubagear:field-not-read:dlp_compliance_policies.Enabled');
+  assert.equal(reason('MS.SECURITYSUITE.6.1v1'), 'scubagear:field-not-read:hosted_content_filter_policies.RecommendedPolicyType');
+  assert.equal(reason('MS.SHAREPOINT.1.2v1'), 'scubagear:field-not-read:SPO_tenant.ODBSharingCapability');
+  assert.equal(reason('MS.TEAMS.5.1v2'), 'scubagear:not-read:tenant_app_settings');
+  assert.equal(reason('MS.POWERPLATFORM.1.1v1'), 'scubagear:not-read:environment_creation');
   const unchecked = scuba().filter((control) => control.unchecked);
-  assert.equal(unchecked.length, 16);
+  assert.equal(unchecked.length, 45);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 
@@ -246,4 +259,96 @@ test('ScubaGear\'s report text and verdicts map the way its own report does', ()
   );
   assert.equal(plainDetails('x'.repeat(500)).length, 400);
   assert.equal(plainDetails(undefined), null);
+});
+
+test('each name the rules build themselves is a string in that product\'s pinned Rego', () => {
+  const pinned = openPinnedScubaGear();
+  for (const [product, names] of Object.entries(REGO_BUILT_NAMES)) {
+    const source = [pin.products[product].rego, ...pin.regoUtils].map((file) => pinned.read(file)).join('\n');
+    for (const name of names) assert.ok(source.includes(`"${name}"`), `${product}: ${name}`);
+  }
+});
+
+test('Teams external access domains are read as a list, and an unknown shape is never guessed at', () => {
+  assert.deepEqual(allowedDomains({ AllowedDomain: [{ Domain: 'a.example' }, { Domain: 'b.example' }] }), ['a.example', 'b.example']);
+  assert.deepEqual(allowedDomains({ AllowedDomain: { Domain: 'a.example' } }), ['a.example']);
+  assert.deepEqual(allowedDomains({ AllowAllKnownDomains: {} }), []);
+  assert.deepEqual(allowedDomains(['a.example']), ['a.example']);
+  // An empty list blocks every domain in Teams but means every domain to the rules.
+  assert.throws(() => allowedDomains({}), CouldNotBuild);
+  assert.throws(() => allowedDomains({ AllowedDomain: [] }), CouldNotBuild);
+  assert.throws(() => allowedDomains([]), CouldNotBuild);
+  assert.throws(() => allowedDomains(null), CouldNotBuild);
+  assert.throws(() => allowedDomains('Domain=a.example'), CouldNotBuild);
+  assert.throws(() => allowedDomains({ AllowedDomain: [{ Name: 'a.example' }] }), CouldNotBuild);
+
+  // Every domain allowed fails 2.1; an unreadable list is could not check.
+  const federation = (AllowedDomains) => ({
+    ...FIXTURE_BACKUPS,
+    'teams-org-policies': FIXTURE_BACKUPS['teams-org-policies'].map((fact) => (fact.kind === 'federationConfiguration' ? { ...fact, AllowedDomains } : fact)),
+  });
+  assert.equal(run(id('MS.TEAMS.2.1v2'), federation({ AllowAllKnownDomains: {} })).verdict, 'fail');
+  assert.equal(run(id('MS.TEAMS.2.1v2'), federation({})).verdict, 'unknown');
+  const unreadable = run(id('MS.TEAMS.2.1v2'), federation('everything'));
+  assert.equal(unreadable.verdict, 'unknown');
+  assert.equal(unreadable.reason, 'scubagear:incomplete:federation_configuration');
+});
+
+test('Teams rules are could not check without the Global policy, or with a setting of another type', () => {
+  const teams = (change) => ({ ...FIXTURE_BACKUPS, 'teams-org-policies': FIXTURE_BACKUPS['teams-org-policies'].flatMap(change) });
+  // An empty read of meeting policies would otherwise pass: no policy lets anyone in.
+  const noMeetings = teams((fact) => (fact.kind === 'meetingPolicy' ? [] : [fact]));
+  for (const rule of ['MS.TEAMS.1.1v1', 'MS.TEAMS.1.2v2', 'MS.TEAMS.1.3v1']) {
+    const result = run(id(rule), noMeetings);
+    assert.equal(result.verdict, 'unknown', rule);
+    assert.equal(result.reason, 'scubagear:incomplete:meeting_policies', rule);
+  }
+  const noFederation = teams((fact) => (fact.kind === 'federationConfiguration' ? [] : [fact]));
+  assert.equal(run(id('MS.TEAMS.2.2v2'), noFederation).verdict, 'unknown');
+  const noClient = teams((fact) => (fact.kind === 'clientConfiguration' ? [] : [fact]));
+  assert.equal(run(id('MS.TEAMS.4.1v1'), noClient).verdict, 'unknown');
+  const noBroadcast = { ...FIXTURE_BACKUPS, 'teams-voice-policies': [] };
+  assert.equal(run(id('MS.TEAMS.1.7v2'), noBroadcast).verdict, 'unknown');
+
+  // An enum handed over as a number is not read as "not Everyone".
+  const numbered = teams((fact) => [fact.kind === 'meetingPolicy' ? { ...fact, AutoAdmittedUsers: 0 } : fact]);
+  const result = run(id('MS.TEAMS.1.3v1'), numbered);
+  assert.equal(result.verdict, 'unknown');
+  assert.equal(result.reason, 'scubagear:incomplete:meeting_policies');
+  const unset = teams((fact) => [fact.kind === 'clientConfiguration' ? { ...fact, AllowEmailIntoChannel: null } : fact]);
+  assert.equal(run(id('MS.TEAMS.4.1v1'), unset).verdict, 'unknown');
+});
+
+test('Power Platform rules are could not check when no default environment is listed', () => {
+  const backups = {
+    ...FIXTURE_BACKUPS,
+    'power-platform-settings': FIXTURE_BACKUPS['power-platform-settings'].filter((fact) => fact.kind !== 'environment' || !fact.isDefault),
+  };
+  const result = run(id('MS.POWERPLATFORM.2.2v1'), backups);
+  assert.equal(result.verdict, 'unknown');
+  assert.equal(result.reason, 'scubagear:incomplete:environment_list');
+});
+
+test('SharePoint sharing settings become the admin API\'s numbers, and a setting not read is could not check', () => {
+  const tenant = (fields) => ({ ...FIXTURE_BACKUPS, 'sharepoint-site-settings': [{ ...FIXTURE_BACKUPS['sharepoint-site-settings'][0], ...fields }] });
+  assert.equal(run(id('MS.SHAREPOINT.1.1v1'), tenant({ sharingCapability: 'externalUserAndGuestSharing' })).verdict, 'fail');
+  assert.equal(run(id('MS.SHAREPOINT.1.1v1'), tenant({ sharingCapability: 'disabled' })).verdict, 'pass');
+  assert.equal(run(id('MS.SHAREPOINT.1.3v1'), tenant({ sharingDomainRestrictionMode: 'allowList', sharingAllowedDomainList: ['KEEL-RT-partner.example'] })).verdict, 'pass');
+  const unread = run(id('MS.SHAREPOINT.1.1v1'), tenant({ sharingCapability: null }));
+  assert.equal(unread.verdict, 'unknown');
+  assert.equal(unread.reason, 'scubagear:incomplete:SPO_tenant');
+});
+
+test('a rule that needs another product\'s backup is could not check without it', () => {
+  // The default Power Platform environment is found by the tenant id, from the organization backup.
+  const withoutOrganization = { ...FIXTURE_BACKUPS };
+  delete withoutOrganization.organization;
+  const result = run(id('MS.POWERPLATFORM.2.1v1'), withoutOrganization);
+  assert.equal(result.verdict, 'unknown');
+  assert.match(result.reason, /^organization:/);
+  // A tenant without Defender for Office 365 gets ScubaGear's own answer: the rule is not met.
+  const withoutDefender = { ...FIXTURE_BACKUPS, 'exchange-extended': FIXTURE_BACKUPS['exchange-extended'].filter((fact) => fact.kind !== 'defenderForOffice') };
+  const unlicensed = run(id('MS.SECURITYSUITE.1.4v1'), withoutDefender);
+  assert.equal(unlicensed.verdict, 'fail');
+  assert.match(unlicensed.details[0].value, /license for Microsoft Defender/);
 });

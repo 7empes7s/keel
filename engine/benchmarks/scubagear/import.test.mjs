@@ -19,6 +19,7 @@ import {
 import { INPUT_STATES, SCUBA_INPUT_SOURCES } from './inputs.mjs';
 import { parseRegoFile, regoRuleInputs } from './rego.mjs';
 import { renderCoverageMarkdown } from './report.mjs';
+import { scubaRuleOutcomes } from './controls.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(HERE, '..', '..', '..');
@@ -237,13 +238,14 @@ test('every Keel read named in the source table exists', () => {
 test('coverage gives every rule one state and the states add up', () => {
   assert.equal(coverage.total, 109);
   assert.equal(RULE_STATES.reduce((sum, state) => sum + coverage.summary[state], 0), 109);
-  assert.deepEqual(coverage.summary, { ready: 72, partial: 8, 'missing-input': 21, manual: 8 });
+  assert.deepEqual(coverage.summary, { ready: 73, partial: 8, 'missing-input': 20, manual: 8 });
   for (const product of PRODUCT_ORDER) {
     assert.equal(RULE_STATES.reduce((sum, state) => sum + coverage.perProduct[product][state], 0), imported.counts[product].rules);
   }
   const state = (id) => coverage.rules.find((rule) => rule.id === id).state;
   assert.equal(state('MS.AAD.1.1v1'), 'ready');
   assert.equal(state('MS.EXO.4.1v1'), 'missing-input');
+  assert.equal(state('MS.SECURITYSUITE.4.1v1'), 'ready'); // the alert policies are read
   assert.equal(state('MS.SHAREPOINT.1.1v1'), 'partial');
   assert.equal(state('MS.AAD.4.1v1'), 'manual');
   // Run settings never block a rule: 1.1 reads scuba_config and is still ready.
@@ -260,7 +262,7 @@ test('the missing-input list names each input Keel lacks with the rules it block
 // ------------------------------------------------------------------ the report and the CLI
 test('the checked-in coverage report matches the generator', () => {
   const path = join(ROOT, 'docs', 'roadmap', 'benchmark-content', 'scubagear-coverage.md');
-  assert.equal(readFileSync(path, 'utf8'), renderCoverageMarkdown(imported, coverage),
+  assert.equal(readFileSync(path, 'utf8'), renderCoverageMarkdown(imported, coverage, scubaRuleOutcomes({ imported })),
     'regenerate with: node tools/scubagear-rules.mjs report --write');
 });
 

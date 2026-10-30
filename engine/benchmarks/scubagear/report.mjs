@@ -16,7 +16,25 @@ const SHORT = Object.freeze({ ready: '🟢 Ready', partial: '🟡 Partly read', 
 const byId = (left, right) => left.id.localeCompare(right.id, 'en', { numeric: true });
 const cell = (text) => String(text).replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 
-export function renderCoverageMarkdown(imported, coverage) {
+// Why a rule does not run on Keel's backups, from its reason code (controls.mjs staticReason).
+export function outcomeWords(reason) {
+  const code = reason.replace(/^scubagear:/, '');
+  const [kind, rest = ''] = [code.slice(0, code.indexOf(':') === -1 ? code.length : code.indexOf(':')), code.slice(code.indexOf(':') + 1)];
+  if (kind === 'check-by-hand') return 'CISA marks it as a check to do by hand.';
+  if (kind === 'not-read') return `Keel does not read \`${rest}\`.`;
+  if (kind === 'field-not-read') {
+    const [key, fields] = [rest.slice(0, rest.lastIndexOf('.')), rest.slice(rest.lastIndexOf('.') + 1)];
+    return `Keel's read of \`${key}\` does not keep ${fields.split(',').map((field) => `\`${field}\``).join(', ')}.`;
+  }
+  if (kind === 'needs-setting') return 'It needs a list the tenant gives in ScubaGear\'s config (sensitive users or partner domains), which Keel has no place for yet.';
+  return code;
+}
+
+/**
+ * `outcomes` (controls.mjs scubaRuleOutcomes) adds what happens to each rule on Keel's
+ * backups: it runs, or it is "could not check" and why.
+ */
+export function renderCoverageMarkdown(imported, coverage, outcomes = null) {
   const lines = [];
   const push = (...items) => lines.push(...items);
   push(
@@ -24,8 +42,9 @@ export function renderCoverageMarkdown(imported, coverage) {
     '',
     `Generated from CISA ScubaGear ${imported.version} (commit \`${imported.commitSha.slice(0, 7)}\`, public domain) by \`node tools/scubagear-rules.mjs report --write\`. Do not edit by hand: a test fails when this file and the generator differ.`,
     '',
-    `**${imported.total} rules** across ${PRODUCT_ORDER.length} products. For each rule this lists what ScubaGear reads to check it and whether Keel reads the same data. The Entra ID and Exchange Online rules run unchanged on Keel's backups as Compliance page checks (engine/benchmarks/scubagear/controls.mjs); a rule that also names a field Keel's read does not keep shows there as could not check, even when this table lists its inputs as read.`,
+    `**${imported.total} rules** across ${PRODUCT_ORDER.length} products. For each rule this lists what ScubaGear reads to check it and whether Keel reads the same data. Every rule runs unchanged on Keel's backups as a Compliance page check (engine/benchmarks/scubagear/controls.mjs); a rule that also names a field Keel's read does not keep shows there as could not check, even when this table lists its inputs as read.`,
     '',
+    ...(outcomes ? outcomeSummary(imported, outcomes) : []),
     '## Summary',
     '',
     `| Product | Rules | SHALL | SHOULD | ${RULE_STATES.map((state) => SHORT[state]).join(' | ')} |`,
@@ -61,6 +80,13 @@ export function renderCoverageMarkdown(imported, coverage) {
       push(`| ${rule.id} | ${rule.criticality} | ${SHORT[rule.state]} | ${cell(rule.title)} | ${inputs.join(', ') || 'none'} |`);
     }
   }
+  if (outcomes) {
+    push('', '## Could not check on Keel\'s backups', '', 'Each of these rules shows on the Compliance page as "could not check", with its reason. None is ever counted as a pass.', '',
+      '| Rule | Why |', '|---|---|');
+    for (const { rule, reason } of outcomes.filter((outcome) => outcome.reason).sort((left, right) => byId(left.rule, right.rule))) {
+      push(`| ${rule.id} | ${cell(outcomeWords(reason))} |`);
+    }
+  }
   push(
     '',
     '## Technical details',
@@ -73,4 +99,16 @@ export function renderCoverageMarkdown(imported, coverage) {
     '',
   );
   return lines.join('\n');
+}
+
+function outcomeSummary(imported, outcomes) {
+  const lines = ['## On Keel\'s backups', '', '| Product | Rules | Run | Could not check |', '|---|---:|---:|---:|'];
+  for (const product of PRODUCT_ORDER) {
+    const own = outcomes.filter((outcome) => outcome.rule.product === product);
+    const blocked = own.filter((outcome) => outcome.reason).length;
+    lines.push(`| ${imported.counts[product].name} | ${own.length} | ${own.length - blocked} | ${blocked} |`);
+  }
+  const blocked = outcomes.filter((outcome) => outcome.reason).length;
+  lines.push(`| **All** | **${outcomes.length}** | **${outcomes.length - blocked}** | **${blocked}** |`, '');
+  return lines;
 }

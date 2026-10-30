@@ -60,8 +60,9 @@ const USABLE_RUNS = ['complete', 'complete-empty', 'partial'];
  * Whether one service-read run read every kind in `parts` in full. A complete run read
  * everything. A partial run counts for a kind it read with no missing field, or found
  * not licensed (Safe Links without Defender for Office 365: there is nothing to read,
- * so the kind is empty, not unknown). A run that hit its object cap, or got objects it
- * could not identify, may be missing objects of any kind, so it counts for none.
+ * so the kind is empty, not unknown), unless that kind is one that is never empty and
+ * came back empty. A run that hit its object cap, got objects it could not identify, got
+ * two answers for one object or children without their parent counts for none.
  */
 function readsInFull(run, parts) {
   if (run.outcome === 'complete' || run.outcome === 'complete-empty') return true;
@@ -69,7 +70,14 @@ function readsInFull(run, parts) {
   const digest = run.digest ?? {};
   const discovery = digest.discovery ?? {};
   if (discovery.capped || discovery.unidentified) return false;
-  return parts.every((part) => ['read', 'not-licensed'].includes(discovery.families?.[part]?.status)
+  // Two answers under one identity, or children whose parent was not read, leave the
+  // stored objects in doubt for any kind, so the run counts for none.
+  const conflicts = Array.isArray(discovery.conflicts) ? discovery.conflicts.length : Number(discovery.conflicts) || 0;
+  if (conflicts > 0 || Number(discovery.unparented) > 0) return false;
+  // A kind that is never empty in a working tenant but came back empty was not read.
+  const empty = Array.isArray(discovery.empty) ? discovery.empty : [];
+  return parts.every((part) => !empty.includes(part)
+    && ['read', 'not-licensed'].includes(discovery.families?.[part]?.status)
     && Object.keys(digest.unknownFields?.[part] ?? {}).length === 0);
 }
 

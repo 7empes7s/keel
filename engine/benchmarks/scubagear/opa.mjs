@@ -9,9 +9,10 @@
  * module against its own hash, so a module built from any other Rego is refused.
  *
  * This file is a small host for OPA's documented WebAssembly ABI (version 1.2): it
- * writes the input as JSON, calls opa_eval, and reads the JSON answer. Four built-in
+ * writes the input as JSON, calls opa_eval, and reads the JSON answer. Five built-in
  * functions are not compiled into the module and are supplied here, written to give the
- * same answers as OPA's Go versions: sprintf, indexof_n, time.format and regex.split.
+ * same answers as OPA's Go versions: sprintf, indexof_n, time.format, regex.split and
+ * regex.find_n.
  *
  * Read-only: it evaluates an input document and returns ScubaGear's results.
  */
@@ -102,11 +103,29 @@ export function timeFormat(value) {
   return `${iso.slice(0, 19)}${fraction}Z`;
 }
 
+/**
+ * regex.find_n: Go's Regexp.FindAllString. Matches do not overlap; an empty match right
+ * where the previous match ended is skipped, as Go does. n < 0 means every match.
+ */
+export function regexFindN(pattern, text, n) {
+  const found = [];
+  if (n === 0) return found;
+  let previousEnd = -1;
+  for (const match of text.matchAll(new RegExp(pattern, 'gu'))) {
+    if (match[0] === '' && match.index === previousEnd) continue;
+    found.push(match[0]);
+    previousEnd = match.index + match[0].length;
+    if (n > 0 && found.length === n) break;
+  }
+  return found;
+}
+
 export const HOST_BUILTINS = Object.freeze({
   sprintf: goSprintf,
   indexof_n: indexOfN,
   'time.format': timeFormat,
   'regex.split': (pattern, text) => text.split(new RegExp(pattern)),
+  'regex.find_n': regexFindN,
 });
 
 // --- The module ----------------------------------------------------------------------

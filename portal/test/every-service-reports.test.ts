@@ -5,7 +5,7 @@ import { computeFreshness } from "../../engine/coverage/recoveryMetrics.mjs";
 import { contentDependency, workloadDependency } from "../../engine/coverage/serviceBackups.mjs";
 import { serviceBackupsForIncident } from "../../engine/govern/incidents.mjs";
 import { recordSentence, recordTitle, type AnswerRecord } from "@/lib/ask-view";
-import { orderServiceBackups, serviceBackupLine, serviceBackupStatus } from "@/lib/incidents-view";
+import { OTHER_SERVICES, incidentServiceGroups, orderServiceBackups, serviceBackupLine, serviceBackupStatus, serviceGroupWords } from "@/lib/incidents-view";
 import type { IncidentServiceBackup } from "@/lib/portal-data";
 import { dependencyName, freshnessSentence, serviceBackupSentence, servicesSentence, type RecoveryMetrics, type ServiceBackup } from "@/lib/resilience-view";
 import { backupView } from "@/lib/value-report-view";
@@ -140,4 +140,30 @@ test("Incidents show each other service's backup as a status badge, problems fir
     ["Teams", "Use the one from before", "soon"],
     ["Mail flow", "Outside the attack", "fine"],
   ]);
+});
+
+test("Incidents list every other service in the portal's order, none left out", () => {
+  const good = { at: "2026-10-01T00:00:00.000Z", from: null, id: "g", inCompromiseWindow: false };
+  const base = { assessed: false as const, beforeWindow: null, newestGood: good };
+  const entries: IncidentServiceBackup[] = [
+    { ...base, kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange" },
+    { ...base, kind: "service-settings", workload: "exchange-mail-flow", name: "Mail flow", service: "Exchange" },
+    { ...base, kind: "service-settings", workload: "exchange-recipients", name: "Recipients", service: "Exchange" },
+    { ...base, kind: "service-settings", workload: "purview-labels", name: "Sensitivity labels", service: "Purview", newestGood: null },
+    { ...base, kind: "content", workload: "planner", name: "Planner", service: "Planner" },
+  ];
+  const groups = incidentServiceGroups(entries);
+  // Entra ID and Intune are the checked rows, so they are not repeated here.
+  assert.deepEqual(groups.map((group) => group.service?.name ?? "Other services"), [
+    "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview", "Defender", "Other services",
+  ]);
+  assert.equal(OTHER_SERVICES.length, 6);
+  // Inside a service: settings in the portal's order (people before policies), then content.
+  assert.deepEqual(groups[0].entries.map((entry) => entry.name), ["Recipients", "Mail flow", "Mail, calendars and contacts"]);
+  assert.deepEqual(serviceGroupWords(groups[0].entries), { count: "3 kinds", about: "Backed up outside the attack · check by hand" });
+  assert.deepEqual(serviceGroupWords(groups[4].entries), { count: "1 kind", about: "1 with no good backup" });
+  assert.deepEqual(serviceGroupWords([]), { count: "No backup yet", about: "Nothing to restore from" });
+  // A find keeps only services with something that matches, by kind or service name.
+  assert.deepEqual(incidentServiceGroups(entries, "label").map((group) => group.service?.name), ["Purview"]);
+  assert.deepEqual(incidentServiceGroups(entries, "exchange online").map((group) => group.entries.length), [3]);
 });

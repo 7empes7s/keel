@@ -2177,7 +2177,7 @@ const incidentPosts = async (page: Page) => (await page.evaluate(() => (window a
 test("Incidents · verdict, tiles and rows name the cleared backup, people by name", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   page.on("dialog", () => { throw new Error("window.prompt or confirm must not be used"); });
-  await open(page, "/incidents");
+  await open(page, "/incidents?group=state");
   await expect(page.locator(".status-pill")).toHaveText("Incident open, backup cleared");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Restore from the backup of 30 Sept 2026, 06:00 UTC, the newest one cleared for “Admin consent phishing”.");
   await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("It leaves out 1 harmful item: Mail Sync Helper (enterprise app).");
@@ -2212,6 +2212,41 @@ test("Incidents · verdict, tiles and rows name the cleared backup, people by na
   await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(3);
   await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(5);
+});
+
+test("Incidents · every service shows in the one list, each with its backups' status", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/incidents");
+  // No separate section further down: every service is a group of the one list.
+  await expect(page.locator("#ir-services-heading")).toHaveCount(0);
+  const names = page.locator(".sel-group .sel-group-name b");
+  await expect(names).toHaveText(["Entra ID and Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview", "Defender"]);
+  const group = (name: string) => page.locator(".sel-group").filter({ has: page.locator(".sel-group-name b", { hasText: new RegExp(`^${name}$`) }) });
+  // The checked tenant backups are the rows, recommended first.
+  await expect(group("Entra ID and Intune").locator(".sel-row")).toHaveCount(5);
+  await expect(group("Entra ID and Intune").locator(".sel-row").nth(0)).toContainText("Recommended");
+  // Exchange: settings in the portal's order (recipients before mail flow), then content.
+  const exchange = group("Exchange Online");
+  await expect(exchange.locator(".sel-group-head .sel-check")).toHaveCount(0);
+  await expect(exchange.locator(".sel-group-count")).toHaveText("3 kinds");
+  await expect(exchange.locator(".sel-group-name small")).toHaveText("1 to restore from before the attack");
+  await expect(exchange.locator(".ir-service-name")).toHaveText([/^Exchange recipients/, /^Mail flow/, /^Mail, calendars and contacts/]);
+  await expect(exchange.locator(".ir-service-row", { hasText: "Mail flow" }).locator(".badge")).toHaveText("Use the one from before");
+  // A problem is named in the header, and a service with nothing backed up still shows.
+  await expect(group("Teams").locator(".sel-group-name small")).toHaveText("1 with no good backup");
+  await expect(group("Teams").locator(".ir-service-row")).toHaveAttribute("data-tone", "urgent");
+  await expect(group("Defender").locator(".sel-group-count")).toHaveText("No backup yet");
+  await expect(group("Defender")).toContainText("KEEL has no backup of Defender yet.");
+  // No stored code on the screen.
+  await expect(page.locator(".ir-service-list").first()).not.toContainText("exchange-mail-flow");
+  // The find narrows the services too.
+  await page.getByPlaceholder(/^Find/).fill("sensitivity");
+  await expect(names).toHaveText(["Purview"]);
+  await page.getByPlaceholder(/^Find/).fill("");
+  // A state tile narrows the checked backups; the other services step aside.
+  await page.locator(".ir-tile", { hasText: "Not checked yet" }).click();
+  await expect(names).toHaveText(["Entra ID and Intune"]);
+  await expect(page.locator(".sel-row")).toHaveCount(3);
 });
 
 test("Incidents · a backup opens its panel; keep, allow and check ask first, then post", async ({ page }) => {

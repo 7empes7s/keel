@@ -13532,7 +13532,7 @@ item that needs it stays untouched.
 - **Report:** the JSON; anything left in the tenant (expected: nothing, reads only). The builder thread then removes `liveGate`
   from `conditionalAccessPolicyAgentConditions` in a small PR, which turns the read and MS.AAD.9.1 on together.
 
-### Q285: Check the 8 ScubaGear SharePoint rules against the live tenant (read-only, after Q276 and PR #824), about 10 minutes
+### Q290: Check the 8 ScubaGear SharePoint rules against the live tenant (read-only, after Q276 and PR #824), about 10 minutes
 - Drafted by the "Read SharePoint admin settings beyond Graph" thread (2026-10-30). Code: PR #824 (stacked on #816 and #804,
   merges in #797). The ScubaGear SharePoint rules (MS.SHAREPOINT.1.1 to 3.3) now read the `sharepoint-tenant` Get-PnPTenant
   backup (kind `tenantSettings`). No new reader and no new permission: they use the read Q276 switches on.

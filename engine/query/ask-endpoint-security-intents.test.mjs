@@ -16,6 +16,7 @@ import { after, before, test } from 'node:test';
 import { compareSnapshots } from '../govern/compare.mjs';
 import { loadChangeFeed } from '../insights/feed.mjs';
 import { settingArea, settingKind, typeInfo } from '../insights/taxonomy.mjs';
+import { loadTemplateAreas } from '../insights/templateAreas.mjs';
 import { listLatestOpenDrift } from '../store/governance.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -163,4 +164,11 @@ test('nothing is written onto the stored policy', async () => {
     `SELECT payload FROM resource_version WHERE resource_type = 'deviceManagementIntent' AND snapshot_id = $1`, [latest],
   );
   assert.ok(rows.every((row) => !('templateSubtype' in row.payload) && !('templateReference' in row.payload)));
+});
+
+test('rows read live take the area from the same stored templates', async () => {
+  const areas = await loadTemplateAreas(client, TENANT);
+  assert.equal(areas.get(FIREWALL_TEMPLATE), 'firewall');
+  assert.equal(areas.get(BASELINE_TEMPLATE), 'none');
+  assert.equal(areas.has(UNREAD_TEMPLATE), false, "another tenant's copy is not used");
 });

@@ -39,7 +39,7 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
 import { templateFamilyOf } from '../insights/taxonomy.mjs';
-import { templateFamilySql } from '../insights/templateAreas.mjs';
+import { INTENT_TYPE, loadTemplateAreas, templateFamilySql } from '../insights/templateAreas.mjs';
 
 export const COMPARE_VERSION = 1;
 export const COMPARE_SECTIONS = Object.freeze(['settings', 'workloads', 'content']);
@@ -645,6 +645,13 @@ export async function compareWithLive(client, {
   }
   const leftRows = wanted.has('settings') ? await loadSnapshotRows(client, snapshot.id, { references: false }) : [];
   const live = wanted.has('settings') ? await collectLive(client, { reader, tenantId, tenantRef }) : { rows: [], coverage: null };
+  // A live older endpoint security policy takes its area from the stored templates too.
+  if (live.rows.some((row) => row.resource_type === INTENT_TYPE)) {
+    const areas = await loadTemplateAreas(client, tenantRef);
+    for (const row of live.rows) {
+      if (row.resource_type === INTENT_TYPE && areas.has(row.payload?.templateId)) row.template_family = areas.get(row.payload.templateId);
+    }
+  }
   const left = describeSnapshot(snapshot);
   const right = { kind: 'live', tenantRef, snapshotId: null, at: iso(now), latestStored: ['workloads', 'content'].filter((s) => wanted.has(s)) };
   return assemble(client, {

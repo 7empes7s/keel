@@ -46,3 +46,19 @@ export function templateFamilySql({ typeExpr, payloads, tenantExpr }) {
 
 /** templateFamilySql for a drift row aliased `d`, from either copy it holds. */
 export const DRIFT_TEMPLATE_FAMILY_SQL = templateFamilySql({ typeExpr: 'd.resource_type', payloads: ['d.after_payload', 'd.before_payload'], tenantExpr: 'd.tenant_ref' });
+
+/**
+ * Each stored template's subtype for a tenant, by template id, from its newest stored
+ * copy: for rows read live, which no SQL row lookup reaches.
+ * @returns {Promise<Map<string, string>>}
+ */
+export async function loadTemplateAreas(client, tenantRef) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT ON (tpl.natural_key) tpl.payload->>'id' AS id, tpl.payload->>'templateSubtype' AS subtype
+       FROM resource_version tpl JOIN snapshot tpls ON tpls.id = tpl.snapshot_id
+      WHERE tpls.tenant_ref = $1 AND tpl.resource_type = '${TEMPLATE_TYPE}'
+      ORDER BY tpl.natural_key, tpls.started_at DESC, tpls.id DESC`,
+    [tenantRef],
+  );
+  return new Map(rows.filter((row) => row.id && row.subtype).map((row) => [row.id, row.subtype]));
+}

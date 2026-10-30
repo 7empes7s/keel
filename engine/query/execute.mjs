@@ -145,8 +145,8 @@ const TEMPLATES = Object.freeze({
        SELECT DISTINCT ON (d.resource_type, d.natural_key)
               d.id, d.tenant_ref, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
               d.detected_at, d.observed_snapshot, ${SEEN_AT} AS seen_at,
-              -- An endpoint security policy made in Intune is listed under Defender
-              -- (taxonomy settingKind); only settings catalog policies carry one.
+              -- An endpoint security policy made in Intune, in either format, is listed
+              -- under Defender (taxonomy settingKind).
               ${TEMPLATE_FAMILY_SQL} AS template_family
          FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref

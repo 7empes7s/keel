@@ -43,6 +43,8 @@ const PAGES = [
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
   { name: "benchmarks", hash: "/benchmarks" },
+  { name: "intune-baselines", hash: "/benchmarks/intune-baselines" },
+  { name: "intune-baselines-never", hash: "/benchmarks/intune-baselines/never" },
   { name: "principals", hash: "/principals" },
   { name: "notifications", hash: "/notifications" },
   { name: "integrations", hash: "/integrations" },
@@ -3375,6 +3377,57 @@ for (const width of [390, 1440]) {
     });
   }
 }
+
+test("Intune security baselines · every setting matched, tiles add up, baseline filter, values highlighted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/intune-baselines");
+  await expect(page.locator("main#main-content h1")).toHaveText("Intune security baselines");
+  await expect(page.locator(".status-pill")).toHaveText("4 differ");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 settings differ from Microsoft's security baselines.");
+  // A baseline that could not be read is said first, in amber.
+  await expect(page.locator('.ib-alert[data-tone="soon"]')).toContainText("Microsoft 365 Apps for Enterprise baseline");
+  await expect(page.locator(".cp-context")).toContainText("Checked against 14 settings catalog policies");
+  // Current versions only, by default: two cards.
+  await expect(page.locator(".ib-card b")).toHaveText(["Security Baseline for Microsoft Edge", "Security Baseline for Windows 10 and later"]);
+  const tiles = page.locator(".cp-tile");
+  await expect(tiles.locator(".cp-tile-label")).toHaveText(["Conflict", "Different", "Not configured", "Matches"]);
+  await expect(tiles.locator(".cp-tile-count")).toHaveText(["1", "3", "7", "29"]);
+  // Grouped by baseline, then by Intune's category.
+  await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Security Baseline for Microsoft Edge (Version 128)");
+
+  // Tiles add up: Conflict plus Different.
+  await tiles.filter({ hasText: "Conflict" }).click();
+  await expect(page).toHaveURL(/result=conflict/);
+  await tiles.filter({ has: page.locator(".cp-tile-label", { hasText: /^Different/ }) }).click();
+  await expect(page).toHaveURL(/result=conflict%2Cdifferent|result=conflict,different/);
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.locator(".filter-count")).toHaveText("Showing 4 of 40 settings");
+  const conflict = page.locator(".sel-row", { hasText: "Allow cloud protection" });
+  await expect(conflict).toContainText("2 policies disagree");
+  await expect(conflict.locator(".ib-setby li")).toHaveText(["KEEL-RT-AntivirusEnabled", "KEEL-RT-Pilot devicesDisabled"]);
+  await expect(conflict.locator(".ib-setby .cp-miss-now")).toHaveText("Disabled");
+  const different = page.locator(".sel-row", { hasText: "Block all Office applications" });
+  await expect(different).toContainText("Yours: Audit mode (KEEL-RT-ASR rules)");
+  await expect(different.locator(".cp-miss-want")).toHaveText("Block");
+  // The setting's id is only in the technical details.
+  await expect(different.locator(".ib-values")).not.toContainText("device_vendor_msft");
+
+  // A baseline card narrows to that baseline (AND with the tiles).
+  await page.locator(".ib-card", { hasText: "Microsoft Edge" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".active-filter, .filter-chip").first()).toBeVisible();
+  // All versions brings the older Windows version back.
+  await page.getByRole("radio", { name: "All versions" }).click();
+  await expect(page.locator(".ib-card")).toHaveCount(3);
+  await expect(page.locator(".ib-card", { hasText: "Version 23H2" })).toContainText("older version");
+});
+
+test("Intune security baselines · nothing read yet says what happens next", async ({ page }) => {
+  await open(page, "/benchmarks/intune-baselines/never");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Microsoft's security baselines have not been read yet.");
+  await expect(page.locator(".cp-empty")).toContainText("No baseline has been read from the tenant yet.");
+  await expect(page.locator(".cp-tile")).toHaveCount(0);
+});
 
 test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });

@@ -39,7 +39,7 @@ test("the scan finds every page with filter tiles", () => {
   const found = filterTilePages.map(({ path }) => path).sort();
   for (const page of [
     "activity/activity-page.tsx", "alerts/alerts-page.tsx", "approval-inbox.tsx", "baselines/change-list.tsx",
-    "compliance/compliance-page.tsx", "incidents/incidents-page.tsx", "notifications/notifications-page.tsx",
+    "compliance/compliance-page.tsx", "compliance/intune-baselines-page.tsx", "incidents/incidents-page.tsx", "notifications/notifications-page.tsx",
     "people/people-page.tsx", "policies/policies-page.tsx", "protect-coverage.tsx", "schedules/schedules-page.tsx",
     "value-report/value-report-page.tsx",
   ]) assert.ok(found.includes(page), `${page} has filter tiles`);

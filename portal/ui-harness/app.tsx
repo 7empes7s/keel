@@ -55,6 +55,8 @@ import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices } from "@/lib/types";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
+import { IntuneBaselinesPage } from "@/components/compliance/intune-baselines-page";
+import { baselinesStatus, shapeBaselines, type EngineBaselineResults } from "@/lib/intune-baselines-view";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type EngineRef, type RowReferences } from "@/lib/sentences";
@@ -1064,6 +1066,45 @@ const liveCompliance = (legacy: ComplianceFinding["details"]): ComplianceData =>
       mailLines(MAIL_POLICIES.slice(0, 5), [["EnableFileFilter", true, false], ["ZapEnabled", true, false]], () => false), { detailCounts: { checked: 10, failing: 0 } }),
   ],
 });
+// Intune security baselines: two current baselines, an older Windows version, and every
+// result: matches, a different value, a conflict between two policies, not configured.
+const ibCounts = (settings: EngineBaselineResults["baselines"][number]["settings"]) => {
+  const totals = { conflict: 0, different: 0, "not-configured": 0, unknown: 0, match: 0 };
+  for (const setting of settings) totals[setting.result] += 1;
+  return totals;
+};
+const IB_WIN = "device_vendor_msft_policy_config";
+const ibSetting = (id: string, name: string, category: string | null, expected: string | null, result: EngineBaselineResults["baselines"][number]["settings"][number]["result"], setBy: [string, string][] = []) => ({
+  id: `${IB_WIN}_${id}`, name, category, expected: expected === null ? null : [expected], labels: { "1": "Enabled", "0": "Disabled", block: "Block", audit: "Audit mode" },
+  result, setBy: setBy.map(([policyName, value]) => ({ policyName, values: [value] })),
+});
+const IB_WINDOWS_SETTINGS = [
+  ibSetting("defender_allowrealtimemonitoring", "Allow realtime monitoring", "Defender", "1", "match", [["KEEL-RT-Antivirus", "1"]]),
+  ibSetting("defender_allowcloudprotection", "Allow cloud protection", "Defender", "1", "conflict", [["KEEL-RT-Antivirus", "1"], ["KEEL-RT-Pilot devices", "0"]]),
+  ibSetting("defender_puaprotection", "PUA protection", "Defender", "1", "different", [["KEEL-RT-Antivirus", "0"]]),
+  ibSetting("asr_blockofficechildprocess", "Block all Office applications from creating child processes", "Attack Surface Reduction", "block", "different", [["KEEL-RT-ASR rules", "audit"]]),
+  ibSetting("asr_blockcredentialstealing", "Block credential stealing from the Windows local security authority", "Attack Surface Reduction", "block", "match", [["KEEL-RT-ASR rules", "block"]]),
+  ibSetting("lanman_insecureguest", "Enable insecure guest logons", "Lanman Workstation", "0", "not-configured"),
+  ibSetting("smartscreen_enable", "Configure Windows Defender SmartScreen", "SmartScreen", "1", "match", [["KEEL-RT-Browser", "1"]]),
+  ibSetting("bitlocker_encryptionmethod", "Choose drive encryption method and cipher strength", "BitLocker", null, "match", [["KEEL-RT-BitLocker", "XTS-AES 256"]]),
+  ...Array.from({ length: 30 }, (_, index) => ibSetting(`admx_setting_${index}`, `Administrative template setting ${String(index + 1).padStart(2, "0")}`, index % 2 ? "Administrative Templates" : "Local Policies Security Options", "1", index % 5 === 0 ? "not-configured" : "match", index % 5 === 0 ? [] : [["KEEL-RT-Security options", "1"]])),
+];
+const IB_EDGE_SETTINGS = [
+  ibSetting("edge_sslerroroverride", "Allow users to proceed from the HTTPS warning page", "Microsoft Edge", "0", "different", [["KEEL-RT-Browser", "1"]]),
+  ibSetting("edge_smartscreen", "Configure Microsoft Defender SmartScreen", "Microsoft Edge", "1", "match", [["KEEL-RT-Browser", "1"]]),
+];
+const INTUNE_BASELINES = shapeBaselines({
+  templates: { readAt: "2026-10-02T06:00:00.000Z", outcome: "partial", error: null, failures: [{ templateId: "tmpl-m365", name: "Microsoft 365 Apps for Enterprise baseline", error: "Graph 500" }] },
+  lastFailure: null,
+  policies: { snapshotId: "412", readAt: "2026-10-02T08:10:00.000Z", count: 14 },
+  baselines: [
+    { templateId: "tmpl-win-24h2", name: "Security Baseline for Windows 10 and later", version: "Version 24H2", state: "active", platforms: "windows10", counts: ibCounts(IB_WINDOWS_SETTINGS), settings: IB_WINDOWS_SETTINGS },
+    { templateId: "tmpl-win-23h2", name: "Security Baseline for Windows 10 and later", version: "Version 23H2", state: "superseded", platforms: "windows10", counts: ibCounts(IB_WINDOWS_SETTINGS.slice(0, 4)), settings: IB_WINDOWS_SETTINGS.slice(0, 4) },
+    { templateId: "tmpl-edge-128", name: "Security Baseline for Microsoft Edge", version: "Version 128", state: "active", platforms: "windows10", counts: ibCounts(IB_EDGE_SETTINGS), settings: IB_EDGE_SETTINGS },
+  ],
+}, now);
+const INTUNE_BASELINES_NEVER = shapeBaselines({ templates: null, lastFailure: null, policies: null, baselines: [] }, now);
+
 const LIVE_COMPLIANCE = liveCompliance(legacyLines("Block legacy sign-in (report-only pilot)", "KEEL-RT-20260908 Block Legacy Authentication"));
 // Two sign-in rules with the same name (#588): each keeps its own lines, numbered.
 const SAME_NAME_COMPLIANCE = liveCompliance(legacyLines("KEEL-RT-Block legacy sign-in (1 of 2)", "KEEL-RT-Block legacy sign-in (2 of 2)"));
@@ -2694,6 +2735,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
       {ANONYMOUS_NOTE}
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
+    case "/benchmarks/intune-baselines": case "/benchmarks/intune-baselines/never": {
+      const data = path.endsWith("/never") ? INTUNE_BASELINES_NEVER : INTUNE_BASELINES;
+      return <>{header("Baselines", "Intune security baselines", "Every setting of Microsoft's Intune security baselines, checked against all your settings catalog policies.", undefined, baselinesStatus(data), [{ href: "/benchmarks", label: "Compliance" }])}
+      <IntuneBaselinesPage data={data} /></>;
     }
     case "/benchmarks": case "/benchmarks/viewer": {
       // The viewer variant holds read only: no exception controls and no Check now.

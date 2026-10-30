@@ -1,29 +1,29 @@
 {
-  "restoreRef": "4a284813-5dea-88e8-a150-f8046e666506",
+  "restoreRef": "b545f22e-9151-88a7-ac14-a511c563932c",
   "entry": {
-    "naturalKey": "homeRealmDiscoveryPolicy:fcf56864-574e-8ee3-a999-d18346b4bb1f",
+    "naturalKey": "homeRealmDiscoveryPolicy:8cfb5922-69e8-8227-a2ad-f678596ae667",
     "resourceType": "homeRealmDiscoveryPolicy",
     "operation": "create",
-    "targetId": "07a3d045-c4b0-8f42-a2ac-dce91e4059ce",
+    "targetId": "60de2f36-5bc9-8afa-afd8-a975b9e5d92b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-15T10:36:36.610Z",
+    "recordedAt": "2026-10-30T10:51:27.654Z",
     "priorState": null,
     "intendedState": {
-      "id": "fcf56864-574e-8ee3-a999-d18346b4bb1f",
+      "id": "8cfb5922-69e8-8227-a2ad-f678596ae667",
       "definition": [
-        "{\"HomeRealmDiscoveryPolicy\":{\"AccelerateToFederatedDomain\":true,\"PreferredDomain\":\"federated.example.edu\",\"AlternateIdLogin\":{\"Enabled\":true}}}"
+        "{\"HomeRealmDiscoveryPolicy\":{\"AccelerateToFederatedDomain\":false}}"
       ],
-      "displayName": "KEEL-RT-W2-homeRealmDiscoveryPolicy",
+      "displayName": "KEEL-RT-248-hrd",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "07a3d045-c4b0-8f42-a2ac-dce91e4059ce",
+      "id": "60de2f36-5bc9-8afa-afd8-a975b9e5d92b",
       "definition": [
-        "{\"HomeRealmDiscoveryPolicy\":{\"AccelerateToFederatedDomain\":true,\"PreferredDomain\":\"federated.example.edu\",\"AlternateIdLogin\":{\"Enabled\":true}}}"
+        "{\"HomeRealmDiscoveryPolicy\":{\"AccelerateToFederatedDomain\":false}}"
       ],
-      "displayName": "KEEL-RT-W2-homeRealmDiscoveryPolicy",
+      "displayName": "KEEL-RT-248-hrd",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/homeRealmDiscoveryPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

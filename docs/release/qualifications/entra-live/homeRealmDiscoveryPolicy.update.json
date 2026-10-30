@@ -7,23 +7,23 @@
   "resourceType": "homeRealmDiscoveryPolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "c3b5f6c84ae90c2d800e17bed1277a92eab8d360",
+  "build": "ad608b360c42e83dbf1289d616b8da0a4b7c24e4",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-15T10:40:32.603Z",
-  "restoreRef": "0ea3d25c-18d1-812d-839f-4466a9efe940",
-  "naturalKey": "homeRealmDiscoveryPolicy:07a3d045-c4b0-8f42-a2ac-dce91e4059ce",
+  "observedAt": "2026-10-30T10:55:04.185Z",
+  "restoreRef": "867ad6e0-2784-80a8-88db-73e2fe83a401",
+  "naturalKey": "homeRealmDiscoveryPolicy:8cfb5922-69e8-8227-a2ad-f678596ae667",
   "fixtureKind": "named-object",
-  "captureSha256": "b962e7807a3090cb28f40ff219e85a6294e39dca5a786f3e1f27f52213cd446c",
+  "captureSha256": "a64e4e8cf0fa4ad39ec79e22bb95e943168bec198079e3fb8ef78dd110fee812",
   "proofRef": "docs/release/qualifications/entra-live/homeRealmDiscoveryPolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "663846d43775c2813a6a334d98cb452acdee506eab930c6e53632cd5f1607153"
+      "signature": "5f93d11d6839bc7b1173de75496a3698edc9650733e464264081d44c93043280"
     }
   }
 }

@@ -1,27 +1,27 @@
 {
-  "restoreRef": "af3ac17a-a446-8df1-9c27-1592db50ff97",
+  "restoreRef": "0f031511-81c3-80c4-abac-a3da62a4cb00",
   "entry": {
-    "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-u3f32611d4ab3@t42987720ee3.example@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+    "naturalKey": "roleAssignment:roleDefinition:8fe792ad-0b48-8d53-877a-3ac0f7ae29dd@user:keel-rt-u3f32611d4ab3@t42987720ee3.example@/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
     "resourceType": "roleAssignment",
     "operation": "create",
-    "targetId": "PC7q4JST0oay4FOjH_x6ffiy_KDDsIiKm5QxkWWRPUDVrWpDrOHgj4JS23K0PxoF-2",
+    "targetId": "rZLnj0gLU42HejrA964p3fiy_KDDsIiKm5QxkWWRPUB5D2Cfja4BgoQOZhbRrWLJ-2",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T19:23:26.852Z",
+    "recordedAt": "2026-10-30T10:05:13.718Z",
     "priorState": null,
     "intendedState": {
-      "id": "PC7q4JST0oay4FOjH_x6ffiy_KDDsIiKm5QxkWWRPUDVrWpDrOHgj4JS23K0PxoF-2",
+      "id": "rZLnj0gLU42HejrA964p3fiy_KDDsIiKm5QxkWWRPUB5D2Cfja4BgoQOZhbRrWLJ-2",
       "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
-      "directoryScopeId": "/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
-      "roleDefinitionId": "e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d",
+      "directoryScopeId": "/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
+      "roleDefinitionId": "8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
       "principalOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8"
     },
     "postState": {
-      "id": "PC7q4JST0oay4FOjH_x6ffiy_KDDsIiKm5QxkWWRPUDVrWpDrOHgj4JS23K0PxoF-2",
+      "id": "rZLnj0gLU42HejrA964p3fiy_KDDsIiKm5QxkWWRPUB5D2Cfja4BgoQOZhbRrWLJ-2",
       "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleAssignments/$entity",
-      "directoryScopeId": "/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
-      "roleDefinitionId": "e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d",
+      "directoryScopeId": "/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
+      "roleDefinitionId": "8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
       "principalOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8"
     }
   }

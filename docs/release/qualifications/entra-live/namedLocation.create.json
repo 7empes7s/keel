@@ -7,23 +7,23 @@
   "resourceType": "namedLocation",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "build": "1d8bd1025c27e4ebaf0c8389a0199ae3a81c2d64",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-13T21:26:34.640Z",
-  "restoreRef": "e14d38a3-e1be-8093-8960-3f6c473dfd6e",
-  "naturalKey": "namedLocation:KEEL-RT-148-location",
+  "observedAt": "2026-10-30T09:58:32.631Z",
+  "restoreRef": "e376cf7c-b162-86d4-a218-8183bc92ff3d",
+  "naturalKey": "namedLocation:KEEL-RT-247-location",
   "fixtureKind": "named-object",
-  "captureSha256": "f54ce906df53033e136a90a5a7c835d5ff4b89f6d1fa30f86a0d0e6c5c60111a",
+  "captureSha256": "3bcc3458a159d5a149ba32f3bcc01135119bec3687e83bb2ddbaf2ec011205fa",
   "proofRef": "docs/release/qualifications/entra-live/namedLocation.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "f698f7e8dd6202b4d0656668040afd118798a8572166a10abf048b4750e8b092"
+      "signature": "97179fbd9364c95d27a003a5367221beac58a0d8c5debaa5b870b6bc59563161"
     }
   }
 }

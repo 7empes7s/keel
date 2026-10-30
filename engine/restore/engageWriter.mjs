@@ -71,6 +71,28 @@ export function readEngageWriterConfig({ path = engageWriterConfigPath(), readFi
 }
 
 /**
+ * The Engage writer's app id, for the list of KEEL's own apps that a restore never
+ * deletes or turns off. Read on every restore, not only Viva Engage ones.
+ *   { appId }                      the file names the app;
+ *   { appId: null }                no Engage writer is set up (no file);
+ *   { appId: null, unreadable }    the file is there but cannot be read, so the
+ *                                  caller holds what needs the full list.
+ */
+export function engageWriterAppId({ path = engageWriterConfigPath(), readFile }) {
+  let config;
+  try {
+    config = readConfigFile(path, { readFile, what: 'Engage writer settings' });
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return { appId: null };
+    return { appId: null, unreadable: `the Engage writer settings file (${path}) could not be read` };
+  }
+  if (typeof config.clientId !== 'string' || config.clientId.length === 0) {
+    return { appId: null, unreadable: `the Engage writer settings file (${path}) names no clientId` };
+  }
+  return { appId: config.clientId };
+}
+
+/**
  * The token function a restore's GraphWriter signs in with. Every request uses the
  * Restorer's token, except Viva Engage requests when an Engage writer is set up:
  * those use the Engage writer's. Both tokens are fetched before any write, so a

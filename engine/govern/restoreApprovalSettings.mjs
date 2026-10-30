@@ -109,6 +109,8 @@ export const WORKLOAD_RESTORE_SERVICES = Object.freeze({
   'sharepoint-site-grants': 'SharePoint',
   'sharepoint-site-permissions': 'SharePoint',
   'sharepoint-structure': 'SharePoint',
+  // OneDrive is listed under SharePoint everywhere in Keel (insights/taxonomy.mjs).
+  'onedrive-site-settings': 'SharePoint',
   'exchange-mailbox-settings': 'Exchange',
   'exchange-mail-flow': 'Exchange',
   'exchange-extended': 'Exchange',

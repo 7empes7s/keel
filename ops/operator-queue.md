@@ -11355,8 +11355,34 @@ item that needs it stays untouched.
   (Q120/Q156), `deviceManagementReusablePolicySetting` c+u (Q135/Q138), `policySet` c+u (Q116/Q140), `intuneBrandingProfile` c+u
   (Q123/Q148), `windowsManagedAppProtection` u (Q127). The create rounds also capture creates for the update-only kinds; commit those too.
 - Needs: nothing. Run it at the deployed commit B, after Q235.
-- Status: todo
-- Result:
+- Status: done (22 promoted)
+- Result: done (2026-10-30 01:15 UTC, keel-operator). **All 19 records recaptured, plus 3 new creates** for the update-only kinds (deviceShellScript, deviceComplianceScript, windowsManagedAppProtection): **22 promoted**, with new observedAt 2026-10-30, so they lapse 2026-11-29.
+  - B = **05a930b5**.
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted. **Nothing assigned**, no tenant-wide setting changed.
+  - Self-approved: requester Gmail, approver Entra. The content-effect approval was by Gmail.
+  - Before: no KEEL-RT-236 objects in any of the 12 collections.
+  - Fixtures, as specified: script, shell, remediation, compliance script, attribute; admx (Edge home page `https://example.com` enabled + built-in "Turn off Autoplay" Disabled); Linux compliance; reusable group (203.0.113.10); profile + policy set; branding (`KEEL-RT IT`, #1B2A4A, help desk name and email); Windows app protection (Edge).
+    - **Deviation:** I sent `printingBlocked`, but Windows app protection calls the field `printBlocked`. Graph ignored it silently, so the fixture has printing **allowed** (S `printBlocked` false). The drift was therefore the opposite: `printBlocked` → true, and the restore put back false. The same field is proven, in the other direction.
+  - Step 1, backup check: S = `cb317662`, exit 3 (incomplete only on todoSettings 500). **All 11 types `complete`.**
+    - Script payloads hold their bodies (32, 16, 8, 16, 16 base64 chars).
+    - The reusable group's `settingInstance` holds 203.0.113.10; the policy set lists 1 item (the profile); the admx has 2 definition values; the app protection has 1 app (Edge).
+  - Step 2, update:
+    - Drifts: all descriptions; shell body `echo drifted`; admx home page `https://example.org`; reusable 203.0.113.20; branding name `KEEL-RT drifted`; `printBlocked` true.
+    - The first admx `updateDefinitionValues` answered 400 "An error has occurred"; it needed the `definition@odata.bind` on the updated value.
+    - Dry run `61de584d` listed each changed field, with content effect `runs-on-devices` (shell script). **The admx home page wasn't listed** (comment added to #720).
+    - CE approval **4ae2d21a** (Gmail) and approval **72ecf1e2**. Enforce exit 0, 11× `update succeeded`.
+    - All read back as in S, home page example.com included (the definition values were rewritten with a new id).
+  - Step 3, create: every fixture except the profile deleted.
+    - Dry run `6d08bd79` (no content effects), approval **f01240eb**. Enforce exit 0, 11× `create succeeded`, new ids.
+    - Read back: set holds the profile and 0 assignments; admx 2 values with example.com; app protection Edge, `printBlocked` false, 0 assignments; reusable 203.0.113.10; shell `echo KEEL-RT`; branding `KEEL-RT IT` and #1B2A4A.
+    - Completion note: the backup could not read the assignments of the shell script and the policy set ("Assignments not restored"). Nothing was assigned.
+  - Step 4: dry run `853d2aa8` from S: **0 field changes**, 0 content effects, 0 skipped, 0 failed.
+  - Step 5: all 12 KEEL-RT-236 objects deleted; 0 left in all 12 collections. **Left in the tenant: nothing.**
+  - Step 6:
+    - Checks: `pseudonymize.mjs check` passes on 44 files; secret scan 0; no raw ids.
+    - Commit **9254d8c9** on `claude/live-evidence-q236` (pushed, no PR).
+    - All 22 print `fixture-tested -> live-qualified`, for these 11 kinds, create and update each: deviceManagementScript, deviceShellScript, deviceHealthScript, deviceComplianceScript, deviceCustomAttributeShellScript, groupPolicyConfiguration, deviceManagementCompliancePolicy, deviceManagementReusablePolicySetting, policySet, intuneBrandingProfile, windowsManagedAppProtection.
+    - observedAt: updates 2026-10-30 01:05:20–01:05:22 UTC, creates 01:10:20–01:10:22.
 - **Test tenant only.** Same hard rules and capture tooling as Q113 and Q129. Self-approve restores **and content effects**
   (`runs-on-devices`) under the 2026-10-14 standing authorization; log every approval id. Restorer for writes (it holds
   DeviceManagementScripts.ReadWrite.All, DeviceManagementConfiguration, ServiceConfig, Apps and RBAC ReadWrite: check the token

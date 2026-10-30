@@ -748,9 +748,11 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 - OneDrive site sharing and storage settings
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore OneDrive settings. Change them by hand in the SharePoint admin center using the backup.
+- Put back: OneDrive site sharing settings (switched on only after the restore of SharePoint tenant sharing and site settings is proven)
+
+**You do:** KEEL puts back a OneDrive's own sharing settings, default link type and permission, and guest and link expiry. A setting the backup shows following the tenant's OneDrive default is not pinned on the site. A locked site is never changed or unlocked. The owner, storage quota, sensitivity label and conditional access setting are changed by hand in the SharePoint admin center using the backup. Wider sharing needs a second approver.
 
 ### Purview sensitivity labels
 

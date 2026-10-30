@@ -19,7 +19,7 @@ import { objectNameSql } from '../cir/objectName.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { scopePredicate } from '../authz/entityScope.mjs';
 import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
-import { typeInfo } from '../insights/taxonomy.mjs';
+import { storedTypeOf, subkindFamilies, typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { RECORDED_CHANGE_PREDICATE } from '../store/openDrift.mjs';
 import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
@@ -84,6 +84,26 @@ const SEEN_AT = 'COALESCE(os.completed_at, d.detected_at)';
 const TEMPLATE_FAMILY_SQL = `CASE WHEN d.resource_type = 'configurationPolicy'
   THEN COALESCE(d.after_payload->'templateReference'->>'templateFamily', d.before_payload->'templateReference'->>'templateFamily') END`;
 
+// A kind can be a part of a stored type that lists file under another service: Intune
+// settings catalog policies made from an endpoint security template are Defender's
+// "Endpoint security policy" (insights/taxonomy.mjs#settingKind). The stored type is
+// read, and each row's kind comes from its template family. The map is the taxonomy's,
+// never a question's, and travels as a bind parameter.
+const SUBKIND_FAMILIES = JSON.stringify(subkindFamilies());
+const familyOf = (payload) => `(${payload}->'templateReference'->>'templateFamily')`;
+/** The kind one stored row files under, from its stored type and payloads. */
+const kindSql = (typeExpr, familyExpr, param) => `COALESCE($${param}::jsonb->${typeExpr}->>${familyExpr}, ${typeExpr})`;
+
+/** The stored types to read for the kinds asked about, and the kinds to keep among them
+ *  (null when every kind asked about is a stored type, so no row needs telling apart). */
+function readKinds(params) {
+  const kinds = params.resourceTypes ? [...params.resourceTypes] : params.resourceType ? [params.resourceType] : null;
+  if (!kinds) return { stored: null, kinds: null };
+  const stored = [...new Set(kinds.map(storedTypeOf))].sort();
+  const split = subkindFamilies();
+  return { stored, kinds: stored.some((type) => split[type]) ? kinds : null };
+}
+
 function filters({ tenantRef, scope, entity, at, typeExpr, keyExpr, asOfExpr, nextParam }) {
   const owner = entity
     ? scopePredicate({ central: false, entities: [entity] }, { tenantRef, typeExpr, keyExpr, asOfExpr, at, nextParam })
@@ -97,18 +117,26 @@ const TEMPLATES = Object.freeze({
   async changes(client, { tenantRef, scope, params, now }) {
     const where = filters({
       tenantRef, scope, entity: params.entity, at: now,
-      typeExpr: 'd.resource_type', keyExpr: 'd.natural_key', asOfExpr: 'd.detected_at', nextParam: 8,
+      typeExpr: 'd.resource_type', keyExpr: 'd.natural_key', asOfExpr: 'd.detected_at', nextParam: 10,
     });
     // A name is looked for anywhere in the saved name or key, as typed (no wildcards).
     const name = params.name ? `%${String(params.name).replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
-    const base = [tenantRef, params.from, params.to, params.resourceType, params.changeType, params.resourceTypes ? [...params.resourceTypes] : null, name];
+    // The stored type ($4) or types ($6) narrow the read; the kinds asked about then keep
+    // the rows that file under them ($8), so "Defender" holds the endpoint security
+    // policies and "settings catalog" the rest.
+    const read = readKinds(params);
+    const kind = kindSql('d.resource_type', `COALESCE(${familyOf('d.after_payload')}, ${familyOf('d.before_payload')})`, 9);
+    const single = read.stored?.length === 1 && !params.resourceTypes;
+    const base = [tenantRef, params.from, params.to, single ? read.stored[0] : null, params.changeType,
+      read.stored && !single ? read.stored : null, name, read.kinds, SUBKIND_FAMILIES];
     const condition = `d.tenant_ref = $1 AND ${SEEN_AT} >= $2 AND ${SEEN_AT} < $3 AND ${RECORDED_CHANGE_PREDICATE}
          AND ($4::text IS NULL OR d.resource_type = $4) AND ($5::text IS NULL OR d.change_type = $5)
          AND ($6::text[] IS NULL OR d.resource_type = ANY($6::text[]))
+         AND ($8::text[] IS NULL OR ${kind} = ANY($8::text[]))
          AND ($7::text IS NULL OR COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}, d.natural_key) ILIKE $7
               OR d.natural_key ILIKE $7)
          AND ${where.sql}`;
-    const limitParam = 8 + where.values.length;
+    const limitParam = 10 + where.values.length;
     // One row per resource: a change seen again in a later backup is the same change, so
     // its newest sighting in the period stands for it, and the count is of resources.
     // Only narrow columns go through this sort: a month can hold many thousands of rows,
@@ -176,12 +204,12 @@ const TEMPLATES = Object.freeze({
                OR EXISTS (SELECT 1 FROM job j WHERE j.kind = 'drift-detect' AND j.status = 'succeeded'
                                                   AND j.params->>'snapshotId' = s.id::text))
           AND ($2::text IS NULL OR s.coverage_digest->$2->>'outcome' IN ('complete', 'complete-empty'))`,
-      [tenantRef, params.resourceType],
+      [tenantRef, params.resourceType ? storedTypeOf(params.resourceType) : null],
     );
     const known = history?.collections > 0 ? { from: iso(history.first_at), to: iso(history.last_at) } : null;
     // When the kind asked about is next read: users are read once a day, not every hour,
     // so a gap since the last read is expected until then.
-    const tier = DESCRIPTORS.find((entry) => entry.type === params.resourceType)?.criticality ?? null;
+    const tier = DESCRIPTORS.find((entry) => entry.type === storedTypeOf(params.resourceType))?.criticality ?? null;
     const { rows: [schedule] } = tier ? await client.query(
       `SELECT cadence, cron_override, next_due_at FROM schedule
         WHERE tenant_ref = $1 AND job_kind = 'collect' AND tier = $2 AND enabled
@@ -234,22 +262,28 @@ const TEMPLATES = Object.freeze({
         tenantRef, scope, entity: params.entity, at: now,
         typeExpr: 'rv.resource_type', keyExpr: 'rv.natural_key', asOfExpr: 's.completed_at', nextParam: 3,
       });
+      // Counted by the kind each object files under: endpoint security policies apart from
+      // the rest of the settings catalog.
+      const kindParam = 3 + where.values.length;
       const { rows } = await client.query(
-        `SELECT rv.resource_type, count(*)::int AS count
+        `SELECT ${kindSql('rv.resource_type', familyOf('rv.payload'), kindParam)} AS kind, count(*)::int AS count
            FROM resource_version rv
            JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
           WHERE rv.snapshot_id = $2::uuid AND ${where.sql}
-          GROUP BY rv.resource_type`,
-        [tenantRef, latest.id, ...where.values],
+          GROUP BY 1`,
+        [tenantRef, latest.id, ...where.values, SUBKIND_FAMILIES],
       );
-      const counts = new Map(rows.map((row) => [row.resource_type, Number(row.count)]));
+      const counts = new Map(rows.map((row) => [row.kind, Number(row.count)]));
       const digest = latest.coverage_digest && typeof latest.coverage_digest === 'object' && !Array.isArray(latest.coverage_digest)
         ? latest.coverage_digest : {};
-      const types = params.resourceType && RESOURCE_TYPES.includes(params.resourceType)
+      // A part of a stored type is read with it, so it is listed wherever that type is.
+      const parts = [...new Set(Object.values(subkindFamilies()).flatMap((families) => Object.values(families)))];
+      const types = params.resourceType && RESOURCE_TYPES.includes(storedTypeOf(params.resourceType))
         ? [params.resourceType]
-        : [...new Set([...Object.keys(digest), ...counts.keys()])].sort();
+        : [...new Set([...Object.keys(digest), ...counts.keys(), ...parts.filter((part) => digest[storedTypeOf(part)])])].sort();
       for (const type of types) {
-        const outcome = typeof digest[type]?.outcome === 'string' ? digest[type].outcome : 'not-recorded';
+        const entry = digest[storedTypeOf(type)];
+        const outcome = typeof entry?.outcome === 'string' ? entry.outcome : 'not-recorded';
         const read = outcome === 'complete' || outcome === 'complete-empty';
         records.push({
           kind: 'coverage',
@@ -271,7 +305,7 @@ const TEMPLATES = Object.freeze({
     // whole tenant sees them, and a question about one Entra ID or Intune type leaves them out.
     // They come first: there are a dozen or so, while the settings types run past the
     // row budget, so listing them after the types would cut them from the answer.
-    if (scope.central === true && !params.entity && (!params.resourceType || !RESOURCE_TYPES.includes(params.resourceType))) {
+    if (scope.central === true && !params.entity && (!params.resourceType || !RESOURCE_TYPES.includes(storedTypeOf(params.resourceType)))) {
       const typeRecords = records.splice(0);
       const services = await loadServiceBackups(client, { tenantRef });
       for (const entry of services.settings) {

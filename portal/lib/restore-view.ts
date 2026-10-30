@@ -5,6 +5,8 @@ import { holdsObjectId } from "@/lib/object-ids";
 import { displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint } from "@/lib/services";
+import { itemKind } from "@/lib/type-groups";
+import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
 import type { JobRecord, SnapshotOption } from "@/lib/portal-jobs";
 import { jobStatusSentence } from "@/lib/sentences";
@@ -186,9 +188,12 @@ export function rowImpact(blastRadius: string, compared: boolean): string | null
   return compared ? null : blastRadius;
 }
 
-/** The service a restore row sits under: SharePoint for the sign-in rules SharePoint made. */
-export function restoreService(resource: { resourceType: string; service: string | null; name?: string | null }, label?: string): string | null {
-  return madeInSharePoint(resource.resourceType, resource.name, label) ? "SharePoint" : resource.service;
+/** The service a restore row sits under: SharePoint for the sign-in rules SharePoint made,
+ * Defender for the endpoint security policies (antivirus, firewall…) made in Intune. */
+export function restoreService(resource: { resourceType: string; service: string | null; name?: string | null; templateFamily?: string | null }, label?: string): string | null {
+  if (madeInSharePoint(resource.resourceType, resource.name, label)) return "SharePoint";
+  const kind = itemKind(resource);
+  return kind === resource.resourceType ? resource.service : typeInfo(kind).service ?? resource.service;
 }
 
 export const IMPACT_ORDER = ["tenant-lockout", "access-affecting", "cosmetic"];

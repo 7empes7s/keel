@@ -72,15 +72,15 @@ function resultsFor(product, document) {
   return RESULTS.get(key);
 }
 
-registerPredicate(SCUBA_PREDICATE, (facts, args, settings = {}) => {
+registerPredicate(SCUBA_PREDICATE, (facts, args, context = {}) => {
   // The tenant's ScubaGear lists (config.mjs). A rule that needs a list the tenant has
   // not set could only fail for the missing list, not for the tenant: could not check.
-  const config = settings?.scubaConfig ?? DEFAULT_SCUBA_CONFIG;
+  const config = context?.scubaConfig ?? DEFAULT_SCUBA_CONFIG;
   if (args.needsList && !configHasList(config, args.policyId)) {
     return { verdict: 'unknown', reason: REASON(`needs-setting:${args.needsList}`) };
   }
   const byType = Array.isArray(facts) ? { [args.reads[0]]: facts } : facts;
-  const built = buildInput(args.inputs, byType, { version: args.version, config });
+  const built = buildInput(args.inputs, byType, { version: args.version, config, now: context?.now });
   if (built.couldNotBuild) {
     return { verdict: 'unknown', reason: REASON(`incomplete:${built.couldNotBuild.key}`), details: [line(args, built.couldNotBuild.why, false)] };
   }

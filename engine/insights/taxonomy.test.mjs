@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { WORKLOADS } from '../collect/workloadContract.mjs';
-import { EDGE_TAXONOMY, OTHER_CATEGORY, PRIORITIES, SERVICES, SERVICE_FILES, TAXONOMY, compareInService, compareTypes, placeUnmapped, typeInfo } from './taxonomy.mjs';
+import { EDGE_TAXONOMY, OTHER_CATEGORY, PRIORITIES, SERVICES, SERVICE_FILES, SUBKIND_TAXONOMY, TAXONOMY, compareInService, compareTypes, placeUnmapped, settingArea, settingKind, templateFamilyOf, typeInfo } from './taxonomy.mjs';
 
 const DIR = new URL('./taxonomy.d/', import.meta.url);
 
@@ -88,8 +88,8 @@ test('compareTypes ranks the most urgent first, then by service and name', () =>
 });
 
 test('every entry sits in exactly one group of kinds in its own service file, so no list shows it ungrouped', () => {
-  for (const { service, entries: catalogued, edges = {}, categories } of SERVICE_FILES) {
-    const entries = { ...catalogued, ...edges };
+  for (const { service, entries: catalogued, edges = {}, subkinds = {}, categories } of SERVICE_FILES) {
+    const entries = { ...catalogued, ...edges, ...subkinds };
     assert.ok(Array.isArray(categories) && categories.length, `${service}: add categories to its taxonomy.d file`);
     const placed = categories.flatMap((category) => category.types);
     const twice = placed.filter((type, index) => placed.indexOf(type) !== index);
@@ -106,7 +106,7 @@ test('every entry sits in exactly one group of kinds in its own service file, so
       assert.match(category.name, /^[A-Z][a-z]/, `${service}: group name "${category.name}" reads as words`);
     }
   }
-  for (const entry of [...Object.values(TAXONOMY), ...Object.values(EDGE_TAXONOMY)]) assert.notEqual(entry.category, OTHER_CATEGORY.key, `${entry.type} has no group`);
+  for (const entry of [...Object.values(TAXONOMY), ...Object.values(EDGE_TAXONOMY), ...Object.values(SUBKIND_TAXONOMY)]) assert.notEqual(entry.category, OTHER_CATEGORY.key, `${entry.type} has no group`);
 });
 
 test('every service lists all its groups up front, so a kind not mapped yet lands in its group', () => {
@@ -118,7 +118,7 @@ test('every service lists all its groups up front, so a kind not mapped yet land
   }
   // The patterns agree with the hand-placed lists: every mapped kind, read as if it were
   // new, lands in the service and group it is listed under.
-  const wrong = [...Object.values(TAXONOMY), ...Object.values(EDGE_TAXONOMY)]
+  const wrong = [...Object.values(TAXONOMY), ...Object.values(EDGE_TAXONOMY), ...Object.values(SUBKIND_TAXONOMY)]
     .map((entry) => ({ entry, placed: placeUnmapped(entry.type) }))
     .filter(({ entry, placed }) => placed?.service !== entry.service || placed?.category !== entry.category)
     .map(({ entry, placed }) => `${entry.type}: listed under ${entry.service}/${entry.category}, patterns say ${placed ? `${placed.service}/${placed.category}` : 'nowhere'}`);
@@ -212,4 +212,33 @@ test('inside a service, people and objects come before roles, policies and setti
   assert.equal(typeInfo('exchange-mail-flow').categoryName, 'Mail flow and protection');
   assert.deepEqual(['roleAssignment', 'groupMembership', 'group'].sort(compareInService), ['group', 'groupMembership', 'roleAssignment']);
   assert.equal(typeInfo('groupMembership').service, 'Entra');
+});
+
+test('Intune endpoint security policies are filed under Defender, by their template family', () => {
+  // Every subkind is a part of a catalogued type of another service, with a name no
+  // catalogued type uses, so it never hides a real kind.
+  for (const file of SERVICE_FILES) {
+    for (const [kind, entry] of Object.entries(file.subkinds ?? {})) {
+      assert.ok(TAXONOMY[entry.of], `${kind}: of ${entry.of} is a catalogued type`);
+      assert.notEqual(TAXONOMY[entry.of].service, file.service, `${kind}: a subkind moves objects to another service`);
+      assert.ok(!TAXONOMY[kind] && !EDGE_TAXONOMY[kind], `${kind}: the code is not a stored type`);
+      assert.ok(Object.keys(entry.families).length, `${kind}: lists the template families it claims`);
+      assert.match(SUBKIND_TAXONOMY[kind].priorityReason ?? '', /^[A-Z].+\.$/, `${kind}: ranks like ${entry.of}`);
+    }
+  }
+  const antivirus = { displayName: 'KEEL-RT-AV', templateReference: { templateId: 'x_1', templateFamily: 'endpointSecurityAntivirus' } };
+  const kind = settingKind('configurationPolicy', templateFamilyOf(antivirus));
+  assert.equal(kind, 'defenderEndpointSecurityPolicy');
+  assert.deepEqual([typeInfo(kind).service, typeInfo(kind).categoryName, typeInfo(kind).name], ['Defender', 'Endpoint security', 'Endpoint security policy']);
+  assert.equal(typeInfo(kind).priority, typeInfo('configurationPolicy').priority);
+  assert.equal(settingArea('configurationPolicy', 'endpointSecurityFirewall'), 'Firewall');
+  // A plain settings catalog policy, a security baseline and endpoint privilege
+  // management stay Intune settings; other types are never moved.
+  for (const family of [null, undefined, 'none', 'baseline', 'endpointSecurityEndpointPrivilegeManagement']) {
+    assert.equal(settingKind('configurationPolicy', family), 'configurationPolicy', String(family));
+    assert.equal(settingArea('configurationPolicy', family), null, String(family));
+  }
+  assert.equal(settingKind('deviceConfiguration', 'endpointSecurityAntivirus'), 'deviceConfiguration');
+  assert.equal(templateFamilyOf({ templateReference: { templateFamily: '' } }), null);
+  assert.equal(templateFamilyOf(null), null);
 });

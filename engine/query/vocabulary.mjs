@@ -194,7 +194,9 @@ export const CONCEPT_WORDS = Object.freeze([
   {
     pattern: /\b(?:mde|defender for endpoint|antivirus|anti-virus|edr|endpoint detection|attack surface reduction|asr(?: rules)?|firewall|bitlocker|disk encryption|endpoint security)\b/i,
     label: 'Defender for Endpoint settings managed in Intune: endpoint security and baseline policies, and the threat defense connector',
-    kinds: ['configurationPolicy', 'deviceManagementIntent', 'mobileThreatDefenseConnector'],
+    // Endpoint security policies made from a settings catalog template (antivirus,
+    // firewall…), not every settings catalog policy: the rest are Intune device settings.
+    kinds: ['defenderEndpointSecurityPolicy', 'deviceManagementIntent', 'mobileThreatDefenseConnector'],
   },
   {
     pattern: /\b(?:mdo|defender for office(?: 365)?|atp|eop|exchange online protection|safe links|safe attachments|anti-?spam|anti-?phishing|anti-?malware|spam filters?|phishing protection|quarantine)\b/i,
@@ -257,6 +259,26 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['teams-voice-policies'],
   },
   {
+    pattern: /\b(?:external access polic(?:y|ies)|private channels?|shared channels?|channels? polic(?:y|ies)|files? polic(?:y|ies)|team templates?|shifts|teams upgrade|coexistence mode|azure communication services|acs federation)\b/i,
+    label: 'Teams external access, channel, files, template, Shifts and upgrade policies',
+    kinds: ['teams-collaboration-policies'],
+  },
+  {
+    pattern: /\b(?:anonymous (?:join|users?)|meeting (?:configuration|settings?|templates?)|end-to-end encryption|enhanced encryption|compliance recording|meeting invit(?:e|ation)s?|quality of service|qos)\b/i,
+    label: 'Teams meeting settings, encryption and compliance recording',
+    kinds: ['teams-meeting-settings'],
+  },
+  {
+    pattern: /\b(?:pstn usages?|voice routes?|pstn gateways?|session border controllers?|sbcs?|translation rules?|unassigned numbers?|network (?:regions?|sites?|subnets?)|trusted ips?|location-based routing|auto attendants?|call queues?|dial-in|audio conferencing|call hold|music on hold)\b/i,
+    label: 'Teams voice routing, network sites, auto attendants and call queues',
+    kinds: ['teams-voice-network'],
+  },
+  {
+    pattern: /\b(?:ip phones?|teams phones?|teams devices?|desk phones?|hot desking|update (?:management )?polic(?:y|ies)|teams updates?|mobility polic(?:y|ies)|vdi|feedback polic(?:y|ies)|workload polic(?:y|ies))\b/i,
+    label: 'Teams device and client policies',
+    kinds: ['teams-device-policies'],
+  },
+  {
     pattern: /\b(?:microsoft tunnel|tunnel gateway|vpn)\b/i,
     label: 'Microsoft Tunnel settings',
     kinds: ['microsoftTunnelConfiguration', 'microsoftTunnelHealthThreshold'],
@@ -295,6 +317,11 @@ export const CONCEPT_WORDS = Object.freeze([
     pattern: /\b(?:power platform dlp|power platform environments?|tenant isolation|power bi settings|fabric settings)\b/i,
     label: 'Power Platform and Power BI settings',
     kinds: ['power-platform-settings'],
+  },
+  {
+    pattern: /\b(?:(?:defender |endpoint |custom )?indicators?(?: of compromise)?|iocs?|(?:file|url|ip|domain|certificate) (?:allow|block) ?lists?)\b/i,
+    label: 'Defender for Endpoint indicators',
+    kinds: ['defender-endpoint-indicators'],
   },
   {
     pattern: /\bcompliance\b/i,

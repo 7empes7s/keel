@@ -108,7 +108,7 @@ test("every workload is listed under its service, with its newest backup", async
 
 test("services follow the portal's order and no stored code reaches the words", async () => {
   const groups = groupWorkloadsByService(await getRestoreWorkloads(), serviceOrder);
-  assert.deepEqual(groups.map((group) => group.service), ["Exchange", "SharePoint", "Teams", "Power Platform", "Purview"]);
+  assert.deepEqual(groups.map((group) => group.service), ["Exchange", "SharePoint", "Teams", "Power Platform", "Purview", "Defender"]);
   const onedrive = groups.find((group) => group.service === "SharePoint")!.workloads.map((workload) => workload.name);
   assert.ok(onedrive.includes("OneDrive settings"));
   for (const group of groups) {

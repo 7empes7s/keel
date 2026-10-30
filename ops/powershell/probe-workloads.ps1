@@ -441,6 +441,40 @@ if ($Workloads -contains 'teams') {
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingBroadcastConfiguration' -Block { Get-CsTeamsMeetingBroadcastConfiguration }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineUser' -Block { Get-CsOnlineUser -ResultSize 10 }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsGroupPolicyAssignment' -Block { Get-CsGroupPolicyAssignment }
+        # Teams voice network, call flows and device policies (engine/collect/workloads/teamsVoiceNetwork.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineVoiceRoute' -Block { Get-CsOnlineVoiceRoute }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlinePSTNGateway' -Block { Get-CsOnlinePSTNGateway }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsTranslationRule' -Block { Get-CsTeamsTranslationRule }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUnassignedNumberTreatment' -Block { Get-CsTeamsUnassignedNumberTreatment }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantNetworkRegion' -Block { Get-CsTenantNetworkRegion }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantNetworkSite' -Block { Get-CsTenantNetworkSite }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantNetworkSubnet' -Block { Get-CsTenantNetworkSubnet }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantTrustedIPAddress' -Block { Get-CsTenantTrustedIPAddress }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsNetworkRoamingPolicy' -Block { Get-CsTeamsNetworkRoamingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsAutoAttendant -First 100' -Block { Get-CsAutoAttendant -First 100 }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsCallQueue -First 100' -Block { Get-CsCallQueue -First 100 }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineDialInConferencingTenantSettings' -Block { Get-CsOnlineDialInConferencingTenantSettings }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsAudioConferencingPolicy' -Block { Get-CsTeamsAudioConferencingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsCallHoldPolicy' -Block { Get-CsTeamsCallHoldPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsIPPhonePolicy' -Block { Get-CsTeamsIPPhonePolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUpdateManagementPolicy' -Block { Get-CsTeamsUpdateManagementPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMobilityPolicy' -Block { Get-CsTeamsMobilityPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsVdiPolicy' -Block { Get-CsTeamsVdiPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsFeedbackPolicy' -Block { Get-CsTeamsFeedbackPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsWorkLoadPolicy' -Block { Get-CsTeamsWorkLoadPolicy }
+        # Teams collaboration policies and meeting settings (teamsCollaboration.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsExternalAccessPolicy' -Block { Get-CsExternalAccessPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsChannelsPolicy' -Block { Get-CsTeamsChannelsPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsFilesPolicy' -Block { Get-CsTeamsFilesPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsTemplatePermissionPolicy' -Block { Get-CsTeamsTemplatePermissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsShiftsPolicy' -Block { Get-CsTeamsShiftsPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUpgradePolicy' -Block { Get-CsTeamsUpgradePolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUpgradeConfiguration' -Block { Get-CsTeamsUpgradeConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsAcsFederationConfiguration' -Block { Get-CsTeamsAcsFederationConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsEnhancedEncryptionPolicy' -Block { Get-CsTeamsEnhancedEncryptionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsComplianceRecordingPolicy' -Block { Get-CsTeamsComplianceRecordingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingTemplatePermissionPolicy' -Block { Get-CsTeamsMeetingTemplatePermissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingConfiguration' -Block { Get-CsTeamsMeetingConfiguration }
     } catch {
         Add-Result -Workload 'teams' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "teams connect FAILED: $($_.Exception.Message)"

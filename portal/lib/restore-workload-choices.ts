@@ -36,12 +36,28 @@ export async function workloadBackups(client: Client, tenant: string, workload: 
   return rows.map((row) => ({ collectionId: String(row.id), takenAt: iso(row.observed_to), items: Number(row.items ?? 0) }));
 }
 
+/** One backup of one workload on this tenant by its id, however old: the list above holds
+ * only the newest 400, and an undo from the Changes page can restore from an approved
+ * setup's read older than those. Null when it is not a usable backup of this workload here. */
+export async function workloadBackup(client: Client, tenant: string, workload: string, collectionId: string): Promise<WorkloadBackupPoint | null> {
+  const { rows: [row] } = await client.query(
+    `SELECT c.id, c.observed_to, (SELECT count(*)::int FROM workload_observation o WHERE o.collection_id = c.id) AS items
+       FROM workload_collection c
+      WHERE c.tenant_ref = $1 AND c.workload = $2 AND c.outcome = ANY($3::text[]) AND c.id::text = $4`,
+    [tenant, workload, USABLE, collectionId],
+  );
+  return row ? { collectionId: String(row.id), takenAt: iso(row.observed_to), items: Number(row.items ?? 0) } : null;
+}
+
 /** The choices for one workload, from `collectionId` or else its newest backup; null when there is none. */
 export async function getWorkloadChoices(client: Client, tenant: string, workload: string, collectionId: string | null): Promise<WorkloadChoices | null> {
   if (!pageRestorable(workload)) return null;
-  const backups = await workloadBackups(client, tenant, workload);
-  const chosen = collectionId ? backups.find((backup) => backup.collectionId === collectionId) : backups[0];
+  const newestBackups = await workloadBackups(client, tenant, workload);
+  const listed = collectionId ? newestBackups.find((backup) => backup.collectionId === collectionId) : newestBackups[0];
+  // A backup older than the list is still offered when asked for by id, at the list's end.
+  const chosen = listed ?? (collectionId ? await workloadBackup(client, tenant, workload, collectionId) : null);
   if (!chosen) return null;
+  const backups = listed ? newestBackups : [...newestBackups, chosen];
   const source = await loadWorkloadSource(client, { tenantRef: tenant, collectionId: chosen.collectionId, workload });
   if (!source) return null;
   const newest = backups[0].collectionId === chosen.collectionId

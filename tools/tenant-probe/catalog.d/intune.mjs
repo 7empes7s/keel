@@ -18,6 +18,15 @@ export default [
   { type: 'windowsAutopilotDeploymentProfile', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'Beta-only surface — a fidelity risk the spec flags for Intune.' },
   { type: 'deviceManagementIntent', path: '/deviceManagement/intents', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // The templates older endpoint security and security baseline policies are
+  // made from. An intent names only its templateId; the template's
+  // templateSubtype says which Defender area it is (antivirus, firewall, ...).
+  // Read-only reference data. intentCount moves whenever a policy is made, so
+  // it is not selected. Live read checked 2026-10-30 (operator queue Q283):
+  // 16 templates, every selected field present.
+  { type: 'deviceManagementTemplate', path: '/deviceManagement/templates', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
+    select: 'id,displayName,description,versionInfo,isDeprecated,templateType,templateSubtype,platformType,publishedDateTime',
+    note: 'Reference catalogue of Microsoft templates. Used to file older endpoint security policies by area; never restored.' },
   { type: 'managedDevice', path: '/deviceManagement/managedDevices', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic', pageCap: 5,
     note: 'Device records are re-enrolled, not restored. Counted for scale only.' },
   // Restore gaps batch 19: the categories an app is in are a separate

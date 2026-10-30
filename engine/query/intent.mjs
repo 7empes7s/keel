@@ -21,7 +21,7 @@
  * add an entity, type or date the person did not ask about.
  */
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
-import { TAXONOMY } from '../insights/taxonomy.mjs';
+import { SUBKIND_TAXONOMY, TAXONOMY } from '../insights/taxonomy.mjs';
 import { ACTOR_WORDS, CONCEPT_WORDS, ELSEWHERE_WORDS, NOT_HELD_WORDS, SERVICE_WORDS, TYPE_WORDS } from './vocabulary.mjs';
 
 export const PLAN_VERSION = 1;
@@ -50,8 +50,12 @@ const ENTITY_CODE = /^[A-Z][A-Z0-9_]{1,31}$/;
 const PERIODS = Object.freeze(['today', 'yesterday', 'this-week', 'last-week', 'last-7-days', 'last-30-days', 'this-month', 'last-month']);
 
 export const RESOURCE_TYPES = Object.freeze(DESCRIPTORS.map(({ type }) => type));
+/** Kinds a question reads by name and service: the taxonomy's, and the parts of a stored
+ *  type that lists file under another service (Intune endpoint security policies are
+ *  Defender settings). execute.mjs reads a part from its stored type. */
+const KINDS = Object.freeze({ ...TAXONOMY, ...SUBKIND_TAXONOMY });
 /** Every kind a question can narrow to: collected types and service setting reads. */
-export const KNOWN_KINDS = Object.freeze([...new Set([...RESOURCE_TYPES, ...Object.keys(TAXONOMY)])]);
+export const KNOWN_KINDS = Object.freeze([...new Set([...RESOURCE_TYPES, ...Object.keys(KINDS)])]);
 /** A question about a whole service ("What changed in Entra") names every kind in it. */
 const MAX_KINDS = KNOWN_KINDS.length;
 
@@ -83,7 +87,7 @@ const FILLER = new Set(('a an the what which who whom whose when where how why d
 
 /** Each kind's own name ("Named location", "App consent policy") or its code, singular or
  *  plural. A name with a qualifier ("Security baseline (older format)") matches by code only. */
-const NAMED_KINDS = Object.freeze(Object.entries(TAXONOMY).map(([type, entry]) => {
+const NAMED_KINDS = Object.freeze(Object.entries(KINDS).map(([type, entry]) => {
   if (/\(/.test(entry.name)) return [new RegExp(`\\b${type.replace(/-/g, '\\-')}s?\\b`, 'i'), type];
   const name = entry.name.trim();
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[ -]');
@@ -91,8 +95,8 @@ const NAMED_KINDS = Object.freeze(Object.entries(TAXONOMY).map(([type, entry]) =
   return [new RegExp(`\\b(?:${plural}|${type.replace(/-/g, '\\-')}s?)\\b`, 'i'), type];
 }));
 
-const serviceOf = (type) => TAXONOMY[type]?.service ?? null;
-const nameOf = (type) => TAXONOMY[type]?.name ?? type;
+const serviceOf = (type) => KINDS[type]?.service ?? null;
+const nameOf = (type) => KINDS[type]?.name ?? type;
 const listWords = (words) => (words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`);
 
 /**
@@ -380,7 +384,7 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
       // A broad word next to a topic ("CA policies", "PIM roles") is part of that topic.
       for (const [pattern, test] of categoryWords) if (kinds.some((type) => test.test(nameOf(type)))) take(pattern);
     } else if (services.length || categories.length) {
-      const all = Object.entries(TAXONOMY);
+      const all = Object.entries(KINDS);
       kinds = all.filter(([, entry]) => (!services.length || services.includes(entry.service))
         && (!categories.length || categories.some((test) => test.test(entry.name)))).map(([type]) => type);
       if (!kinds.length && services.length) {

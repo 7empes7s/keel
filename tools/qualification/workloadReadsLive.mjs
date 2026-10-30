@@ -2,8 +2,10 @@
 /**
  * Live read proof for the Wave 2 cmdlet workloads (mail flow, Exchange settings, Teams
  * org-wide, Teams voice and live events, Purview retention and DLP, retention labels),
- * and for SharePoint's per-site sharing read (`--workload sharepoint-site-settings`,
- * one `Get-PnPTenantSite` with the PnP collector config).
+ * for SharePoint's per-site sharing read (`--workload sharepoint-site-settings`,
+ * one `Get-PnPTenantSite` with the PnP collector config), and for the admin REST
+ * workloads (`--workload power-platform-settings`, `--workload defender-endpoint-indicators`), which read through their own
+ * read-only transport with the collector's certificate config (/etc/keel/tenant.json).
  *
  * Their reads ship disabled until each one is live-qualified in the task-101 ledger, and
  * the scheduled `workload-collect` job builds that ledger only from signed records it
@@ -22,13 +24,13 @@
  *        [--powershell-image <tag>] [--site https://<tenant>.sharepoint.com/sites/KEEL-RT-... (sharepoint-structure, repeatable)]
  *
  * The record keeps, per read: its operation, family, status, object count, the module
- * version and the error code when it failed. No object, field value, name or tenant id
+ * version (for a REST read, the API version it is declared at) and the error code when it failed. No object, field value, name or tenant id
  * is kept. A read is proof only when its family answered in full (`read`); an empty
  * answer counts. Signed as `keel-release-runner` with KEEL_QUALIFICATION_HMAC_KEY.
  *
  * ledgerEvidenceFromWorkloadReadsAcceptance() is the import seam: a record that passes
  * `verify --require-live` becomes one live capture per read that answered, bound to the
- * module version the image pins. The collector's grants are left as the other records
+ * module version the image pins (a REST read: to its declared API version). The collector's grants are left as the other records
  * stored them.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -43,17 +45,27 @@ import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeR
 import {
   EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_WORKLOAD, readExchangeDistributionGroups, readExchangeRecipients,
 } from '../../engine/collect/workloads/exchangeRecipients.mjs';
+import {
+  TEAMS_COLLABORATION_WORKLOAD, TEAMS_MEETING_SETTINGS_WORKLOAD, readTeamsCollaboration, readTeamsMeetingSettings,
+} from '../../engine/collect/workloads/teamsCollaboration.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
-  READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
-  knownWorkload, provenReads, readModule, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
+  READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION,
+  declaredRestVersion, isRestWorkload, knownWorkload, provenReads, readModule, readTransport, workloadReads, workloadReadsCapturePlan,
+  workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
+import { DEFENDER_INDICATORS_WORKLOAD, defenderIndicatorsTransportFor, readDefenderIndicators } from '../../engine/collect/workloads/defenderIndicators.mjs';
+import { POWER_PLATFORM_WORKLOAD, powerPlatformTransportFor, readPowerPlatform } from '../../engine/collect/workloads/powerPlatform.mjs';
 import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, readSharePointStructure } from '../../engine/collect/workloads/sharepointStructure.mjs';
+import {
+  TEAMS_DEVICE_POLICIES_WORKLOAD, TEAMS_VOICE_NETWORK_WORKLOAD, readTeamsDevicePolicies, readTeamsVoiceNetwork,
+} from '../../engine/collect/workloads/teamsVoiceNetwork.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
+import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 
 /**
  * The SharePoint per-site sharing read, in the shape the written workloads' readers
@@ -72,7 +84,19 @@ export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
+  [TEAMS_VOICE_NETWORK_WORKLOAD]: readTeamsVoiceNetwork, [TEAMS_DEVICE_POLICIES_WORKLOAD]: readTeamsDevicePolicies,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: readExchangeOrgAccess, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: readExchangeOrgDefaults,
+  [TEAMS_COLLABORATION_WORKLOAD]: readTeamsCollaboration, [TEAMS_MEETING_SETTINGS_WORKLOAD]: readTeamsMeetingSettings,
+  [POWER_PLATFORM_WORKLOAD]: readPowerPlatform, [DEFENDER_INDICATORS_WORKLOAD]: readDefenderIndicators,
+});
+
+/**
+ * Each admin REST workload's production transport, built from the collector config: it can
+ * only send GETs of the workload's declared request shapes.
+ */
+export const REST_READ_TRANSPORTS = Object.freeze({
+  [POWER_PLATFORM_WORKLOAD]: (collectorConfig) => powerPlatformTransportFor(collectorConfig),
+  [DEFENDER_INDICATORS_WORKLOAD]: (collectorConfig) => defenderIndicatorsTransportFor(collectorConfig),
 });
 
 /**
@@ -96,9 +120,18 @@ export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, work
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 
+/** Whether `url` is a request for the declared REST read `operationId` (its host and path, any {placeholder}). */
+export function restRequestMatches(operationId, url) {
+  const operation = WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === operationId)?.operation;
+  if (operation?.kind !== 'rest') return false;
+  const parsed = new URL(url);
+  const template = operation.endpoint.split('?')[0].split(/\{[^}]+\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+');
+  return parsed.hostname === operation.host && new RegExp(`^${template}$`).test(decodeURIComponent(parsed.pathname));
+}
+
 /**
- * Runs the workload's collector once with the collector's PowerShell options. Returns the
- * unsigned record, with ids such as the collector's app id pseudonymized so it can be
+ * Runs the workload's collector once with the collector's PowerShell options, or, for a REST
+ * workload, with its read-only transport (`collector`). Returns the unsigned record, with ids such as the collector's app id pseudonymized so it can be
  * published, and, for the operator only, each failed read's error message (messages can
  * name the tenant, so they stay out of the record). It never signs or writes files.
  */
@@ -106,18 +139,25 @@ export async function captureWorkloadReads({
   workload, collector, read = WORKLOAD_READERS[workload], tenantRef, build, credential, moduleVersion, now = () => new Date(), readOptions = {},
 }) {
   knownWorkload(workload);
+  const rest = isRestWorkload(workload);
   const module = readModule(workload);
   const problems = [];
   if (!tenantRef || !build) problems.push('a capture needs --tenant-ref and a build');
   if (typeof credential !== 'string' || !credential.trim()) problems.push('a capture needs --collector-ref');
-  if (typeof moduleVersion !== 'string' || !MODULE_VERSION_RE.test(moduleVersion)) problems.push(`the ${module} version is unknown`);
+  if (rest && typeof collector !== 'function') problems.push(`a ${workload} capture needs its read-only REST transport`);
+  if (!rest && (typeof moduleVersion !== 'string' || !MODULE_VERSION_RE.test(moduleVersion))) problems.push(`the ${module} version is unknown`);
   if (problems.length) throw new Error(problems.join('; '));
 
   const declared = workloadReads(workload);
+  const families = declared.map((item) => item.family);
+  // A REST read is proof only if a request for it was sent: a per-environment read with no
+  // environment to read answers `read` with nothing sent, which proves nothing.
+  const sent = [];
+  const transport = rest ? async (url, init) => { sent.push(String(url)); return collector(url, init); } : null;
   let result = null;
   let error = null;
   try {
-    result = await read({ ...readOptions, powershell: collector, families: declared.map((item) => item.family) });
+    result = await read(rest ? { transport, families } : { ...readOptions, powershell: collector, families });
   } catch (failure) {
     error = failure;
   }
@@ -126,13 +166,16 @@ export async function captureWorkloadReads({
   const failureOf = (family) => [...(result?.failures ?? []), ...(result?.unavailable ?? [])].find((item) => item.family === family) ?? null;
   const reads = declared.map(({ family, operationId }) => {
     const summary = result?.discovery?.families?.[family] ?? null;
-    const status = summary?.status ?? 'failed';
+    let status = summary?.status ?? 'failed';
+    if (rest && status === 'read' && !sent.some((url) => restRequestMatches(operationId, url))) status = 'not-sent';
     const failed = failureOf(family);
     const detail = failed?.error ?? (error ? structuredFailure(error).error : null);
-    const code = [detail?.code, detail?.errorId].filter(Boolean).join(':') || null;
-    if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
+    // A REST read fails with an HTTP status rather than a PowerShell error id.
+    const code = [detail?.code, detail?.errorId].filter(Boolean).join(':') || (detail?.httpStatus ? `HTTP ${detail.httpStatus}` : null);
+    if (status === 'not-sent') diagnostics.push({ operationId, status, message: 'no request was sent for this read (nothing to read it for), so it proves nothing' });
+    else if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
     return {
-      operationId, family, version: moduleVersion, synthetic: false, capturedAt,
+      operationId, family, version: rest ? declaredRestVersion(operationId) : moduleVersion, synthetic: false, capturedAt,
       ok: status === 'read', status, objects: summary?.objects ?? 0, error: status === 'read' ? null : (code ?? status),
     };
   });
@@ -148,7 +191,7 @@ export async function captureWorkloadReads({
     synthetic: false,
     subject: {
       workload,
-      execution: { transport: WORKLOAD_READS_TRANSPORT, module, moduleVersion },
+      execution: rest ? { transport: readTransport(workload) } : { transport: readTransport(workload), module, moduleVersion },
       credentials: { collector: credential },
       outcome: result?.outcome ?? 'failed',
       reads,
@@ -159,8 +202,9 @@ export async function captureWorkloadReads({
 
 /**
  * The import seam: a record that passes the gate with --require-live becomes one live
- * capture per read that answered, and the module version they are bound to. Anything
- * else becomes nothing. Grants are not changed here.
+ * capture per read that answered, and the module version they are bound to (none for a
+ * REST workload, whose reads carry their API version). Anything else becomes nothing.
+ * Grants are not changed here.
  */
 export function ledgerEvidenceFromWorkloadReadsAcceptance(evidence, options = {}) {
   const result = verifyEvidence(evidence, { ...options, gate: WORKLOAD_READS_LIVE_GATE, requireLive: true });
@@ -177,7 +221,7 @@ export function ledgerEvidenceFromWorkloadReadsAcceptance(evidence, options = {}
     writes: [],
     grants: null,
     restorerGrants: null,
-    runtime: { modules: { [subject.execution.module]: subject.execution.moduleVersion } },
+    runtime: { modules: isRestWorkload(subject.workload) ? {} : { [subject.execution.module]: subject.execution.moduleVersion } },
   };
 }
 
@@ -202,6 +246,7 @@ const POWERSHELL_DOCKERFILE = new URL('../../ops/powershell/Dockerfile', import.
 export async function main(argv = process.argv.slice(2), {
   out = console.log, env = process.env, readFile = (path) => readFileSync(path, 'utf8'), capture = captureWorkloadReads,
   powershell = (tenantConfigPath, image) => ({ tenantConfigPath, ...(image ? { image } : {}) }),
+  restTransport = (workload, collectorConfig) => REST_READ_TRANSPORTS[workload](collectorConfig),
   pins = () => pinnedModuleVersions(readFileSync(POWERSHELL_DOCKERFILE, 'utf8')), write = writeFileSync,
 } = {}) {
   const options = parseArgs(argv);
@@ -224,12 +269,20 @@ export async function main(argv = process.argv.slice(2), {
   if (typeof tenantId !== 'string' || options.tenantRef !== tenantRefFor(tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }
-  const module = readModule(options.workload);
-  const moduleVersion = pins()[module];
-  if (!moduleVersion) throw new Error(`ops/powershell/Dockerfile pins no ${module} version; nothing was sent`);
   const readOptions = readOptionsFor(options.workload, { sites: options.sites, collectorConfig });
+  let collector;
+  let moduleVersion;
+  if (isRestWorkload(options.workload)) {
+    if (options.image) throw new Error(`--powershell-image is not for ${options.workload}, which reads an admin REST API; nothing was sent`);
+    collector = restTransport(options.workload, collectorConfig);
+  } else {
+    const module = readModule(options.workload);
+    moduleVersion = pins()[module];
+    if (!moduleVersion) throw new Error(`ops/powershell/Dockerfile pins no ${module} version; nothing was sent`);
+    collector = powershell(options.collectorConfig, options.image);
+  }
   const { record, diagnostics } = await capture({
-    workload: options.workload, collector: powershell(options.collectorConfig, options.image), readOptions,
+    workload: options.workload, collector, readOptions,
     tenantRef: options.tenantRef, build, credential: options.collectorRef, moduleVersion,
   });
   const hmacKey = env.KEEL_QUALIFICATION_HMAC_KEY ?? null;

@@ -99,7 +99,7 @@ export const FAMILIES = Object.freeze({
   dlpPolicy: Object.freeze({
     operation: 'purview.dlp-policies', cmdlet: 'Get-DlpCompliancePolicy', prefix: 'dlp-policy', rule: false, license: DLP_LICENCE,
     fields: Object.freeze([
-      'Name', 'Comment', 'Mode', 'Type', 'Workload', 'Priority', ...DLP_LOCATIONS, 'PolicyTemplateInfo', 'DistributionStatus', WHEN,
+      'Name', 'Comment', 'Enabled', 'Mode', 'Type', 'Workload', 'Priority', ...DLP_LOCATIONS, 'PolicyTemplateInfo', 'DistributionStatus', WHEN,
     ]),
   }),
   dlpRule: Object.freeze({
@@ -108,7 +108,7 @@ export const FAMILIES = Object.freeze({
     // report and what it contains. They are configuration; no incident is read.
     fields: Object.freeze([
       'Name', 'Policy', 'ParentPolicyName', 'Comment', 'Disabled', 'Mode', 'Priority', 'Workload',
-      'ContentContainsSensitiveInformation', 'ExceptIfContentContainsSensitiveInformation', 'AdvancedRule',
+      'ContentContainsSensitiveInformation', 'ExceptIfContentContainsSensitiveInformation', 'IsAdvancedRule', 'AdvancedRule',
       'ContentPropertyContainsWords', 'SubjectOrBodyContainsWords', 'SubjectOrBodyMatchesPatterns', 'DocumentNameMatchesPatterns',
       'ContentExtensionMatchesWords', 'AccessScope', 'From', 'SentToMemberOf', 'SenderDomainIs', 'RecipientDomainIs',
       'ExceptIfSenderDomainIs', 'ExceptIfRecipientDomainIs', 'BlockAccess', 'BlockAccessScope', 'NotifyUser', 'NotifyUserType',

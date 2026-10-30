@@ -1,5 +1,5 @@
 import { ATTRIBUTION_HEADLINES, attributionSentence } from "@/components/change-attribution";
-import { changedBy, plainKind } from "@/lib/baselines-view";
+import { changedBy, itemKindName } from "@/lib/baselines-view";
 import { compareSettings, DIFF_WORDS } from "@/lib/change-comparison";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
@@ -9,7 +9,7 @@ import type { DriftRecord } from "@/lib/types";
 
 /** "App permission grants: removed App Contoso · Write access", or "and 2 more". */
 export function whatChanged(item: DriftRecord): string {
-  const kind = plainKind(item.resourceType);
+  const kind = itemKindName(item);
   const read = Boolean(item.serviceRead);
   if (item.changeType === "added") return `${kind} added: ${read ? "it is new since the previous read" : "the approved setup does not have it"}.`;
   if (item.changeType === "removed") return `${kind} removed: ${read ? "the newest read no longer has it" : "the approved setup has it, the tenant no longer does"}.`;

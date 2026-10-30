@@ -211,6 +211,8 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   profileCardProperty: 'Microsoft Graph: /admin/people/profileCardProperties (PowerShell, no admin center page)',
   pronounsSettings: at(M365, 'Settings', 'Org settings', 'Pronouns'),
   defenderDetectionRule: at(DEFENDER, 'Investigation and response', 'Hunting', 'Custom detection rules'),
+  defenderIdentitySensor: at(DEFENDER, 'System', 'Settings', 'Identities', 'Sensors'),
+  secureScoreControlProfile: at(DEFENDER, 'Exposure management', 'Secure score', 'Recommended actions'),
   teamsCatalogApp: at(TEAMS, 'Teams apps', 'Manage apps'),
   engageCommunity: at(ENGAGE, 'Communities'),
 });

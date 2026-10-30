@@ -984,7 +984,18 @@ const OWN_CHECK_FINDING: ComplianceFinding = {
     resourceType: "conditionalAccessPolicy", field: "state", operator: "equals", expected: "enabled", appliesTo: "every", severity: "medium", createdBy: "p", createdAt: "2026-10-02T09:00:00Z",
   },
 };
-const OWN_COMPLIANCE: ComplianceData = { ...COMPLIANCE, findings: [...COMPLIANCE.findings, OWN_CHECK_FINDING] };
+// CISA ScubaGear rules run on the backup: one fails, one passes, one is a check to do by hand.
+const scubaFinding = (id: string, ref: string, title: string, verdict: ComplianceFinding["verdict"], reason: string | null = null): ComplianceFinding => ({
+  ...COMPLIANCE.findings[4], id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId: `scubagear.${ref}`, title,
+  description: `CISA ScubaGear ${ref}.`, framework: "cisa-scuba", edition: "2.0.0", profile: "aad", verdict, reason, exposed: verdict === "fail",
+  details: [{ subject: "Entra ID", setting: "ScubaGear finding", value: verdict === "fail" ? "0 conditional access policies block legacy authentication" : null, expected: "Requirement met", ok: verdict !== "fail" }],
+});
+const SCUBA_FINDINGS = [
+  scubaFinding("s1", "MS.AAD.1.1v1", "Legacy authentication SHALL be blocked.", "fail"),
+  scubaFinding("s2", "MS.AAD.3.2v2", "MFA SHALL be enforced for all users.", "pass"),
+  scubaFinding("s3", "MS.AAD.2.2v1", "A notification SHOULD be sent to the administrator when high-risk users are detected.", "unknown", "scubagear:check-by-hand"),
+];
+const OWN_COMPLIANCE: ComplianceData = { ...COMPLIANCE, findings: [...COMPLIANCE.findings, OWN_CHECK_FINDING, ...SCUBA_FINDINGS] };
 const OWN_CHOICES: OwnCheckChoices = {
   snapshotId: "s1",
   types: [
@@ -2283,7 +2294,8 @@ const serviceChange = (id: string, workload: string, resourceKey: string, name: 
   detectedAt: "2026-10-02T02:00:00Z", before: null, after: null, name,
   serviceRead: {
     workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", previousReadAt: "2026-09-30T02:00:00Z",
-    comparedWith: "approved", alertId: alert, alertState: "open",
+    undoFrom: { collectionId: "c0110000-0000-4000-8000-0000000000c4", readAt: "2026-09-30T02:00:00Z", approved: true },
+    beforeIsApproved: true, comparedWith: "approved", alertId: alert, alertState: "open",
     undo: serviceUndo({ workload, resourceKey, changeType: over.changeType ?? "modified" }, { restorable: true, reason: null }),
   },
   ...over,

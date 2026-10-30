@@ -319,6 +319,9 @@ export const TYPE_GUIDE = Object.freeze({
   deviceManagementIntent: manual('Security baselines (older format)', KEEL,
     'This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.',
     'Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.'),
+  deviceManagementTemplate: manual('Endpoint security templates', MS,
+    'Microsoft publishes these templates. They are the same in every tenant. KEEL reads them only to show which area an older endpoint security policy covers.',
+    'Nothing to restore.'),
   managedDevice: manual('Enrolled devices', MS,
     'A device record is created by the device when it enrolls. It is state, not configuration.',
     'Nothing to restore. Devices enroll again on their own once enrollment settings are back.'),
@@ -670,6 +673,12 @@ export const TYPE_GUIDE = Object.freeze({
   defenderDetectionRule: manual('Defender custom detection rules', NOT_BUILT,
     'KEEL backs up each custom detection rule: its hunting query, schedule, alert details and response actions. It does not restore them yet.',
     'Create the rule again in the Microsoft Defender portal, under Hunting, Custom detection rules, from the backup. Leave it off until you have checked its response actions, because a rule can isolate devices or disable users.'),
+  defenderIdentitySensor: manual('Defender for Identity sensors', NOT_BUILT,
+    'KEEL backs up which servers have a Defender for Identity sensor and each sensor\'s settings, such as its description, the domain controllers it covers and delayed updates. It does not restore them yet.',
+    'Install the sensor again on any server that lost it, then set the same settings in the Microsoft Defender portal, under Settings, Identities, Sensors, from the backup.'),
+  secureScoreControlProfile: manual('Secure Score action states', NOT_BUILT,
+    'KEEL backs up the state an admin set on each Secure Score action, such as resolved through a third party or risk accepted, with the reason given. It does not restore them yet.',
+    'Set the same state and reason on each action in the Microsoft Defender portal, under Exposure management, Secure Score, Recommended actions, from the backup.'),
   teamsCatalogApp: manual('Teams custom apps', NOT_BUILT,
     'KEEL backs up each app your organisation uploaded to Teams, with its versions and publishing state, but not the app package, which Microsoft does not give out. It does not restore them yet.',
     'Upload the app package again in the Teams admin center, under Teams apps, Manage apps, from your own copy, then check its details against the backup.'),
@@ -720,10 +729,20 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL adds back what a named site is missing (lists, libraries, site columns and content types) and puts its navigation back, but never changes or deletes an existing list, column or content type: those differences are listed for you to apply by hand. A re-added list comes back empty; its files and items come back from the content backup. Permissions, webhooks, custom actions, features and site settings are put back by hand. A site script or design comes back with a new id; who may use a design, and who may join a hub, are granted again by hand. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.' }),
   'teams-voice-policies': Object.freeze({ name: 'Teams calling, voice and live event policies',
     todo: 'The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider\'s API token is never backed up: enter it again.' }),
+  'teams-voice-network': Object.freeze({ name: 'Teams voice routing, network and call flows',
+    todo: 'KEEL does not restore these yet. A deleted voice route, gateway, network site, auto attendant or call queue is put back by hand in the Teams admin center using the backup. Recorded greetings and hold music are referenced by id, not kept: upload them again. Phone numbers and resource accounts are assigned again by hand.' }),
+  'teams-device-policies': Object.freeze({ name: 'Teams device and client policies',
+    todo: 'KEEL does not restore these yet. IP phone, update, mobility, VDI, feedback and workload policies are changed back by hand in the Teams admin center using the backup.' }),
+  'teams-collaboration-policies': Object.freeze({ name: 'Teams external access, channel, files, template, Shifts and upgrade policies',
+    todo: 'KEEL does not restore these yet. A changed or deleted policy, and the ACS federation and upgrade settings, are put back by hand in the Teams admin center using the backup. Which users a policy is assigned to is kept with the Teams voice policy backup.' }),
+  'teams-meeting-settings': Object.freeze({ name: 'Teams meeting configuration, encryption and compliance recording',
+    todo: 'KEEL does not restore these yet. The meeting configuration, end-to-end encryption, compliance recording and meeting template policies are put back by hand in the Teams admin center using the backup. A compliance recording policy names its recording bot\'s app, which must still exist.' }),
   'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',
     todo: 'KEEL restores only a retention label\'s text and duration; a shorter duration needs a second approver while restore approvals are on. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant\'s licence includes them.' }),
   'power-platform-settings': Object.freeze({ name: 'Power Platform and Power BI settings',
     todo: 'KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.' }),
+  'defender-endpoint-indicators': Object.freeze({ name: 'Defender for Endpoint indicators',
+    todo: 'KEEL does not restore these yet. Add a deleted file, certificate, IP address, domain or URL indicator back by hand in the Microsoft Defender portal, under Settings, Endpoints, Indicators, with the action, scope and expiry from the backup.' }),
 });
 
 const OPERATION_WORDS = Object.freeze({
@@ -778,10 +797,19 @@ function proofText(rows) {
   return parts.join('; ');
 }
 
+// Kinds declared but not backed up until their live read check passes.
+function gatedWords(ledger) {
+  const gated = ledger.types.filter((row) => CATALOG.find((entry) => entry.type === row.resourceType)?.liveGate).length;
+  if (gated === 0) return '';
+  return gated === 1 ? ' (one kind waits for a live read check first)' : ` (${gated} kinds wait for a live read check first)`;
+}
+
 function typeRow(ledgerType, entry, { cadence, edges }) {
   const catalog = CATALOG.find((candidate) => candidate.type === ledgerType.resourceType);
   const tier = catalog?.criticality;
-  const backup = tier ? `Yes (${TIER_WORDS[tier]}, ${cadence[tier]})` : 'Yes';
+  // A live-gated kind is declared but not collected until its live read check passes.
+  const backup = catalog?.liveGate ? 'Not yet (waiting for a live read check)'
+    : tier ? `Yes (${TIER_WORDS[tier]}, ${cadence[tier]})` : 'Yes';
   let restore;
   let proof;
   if (ledgerType.decision === 'automated') {
@@ -908,7 +936,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '',
     'For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.',
     '',
-    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
+    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one${gatedWords(ledger)}. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
     '',
     '## How to read this page',
     '',

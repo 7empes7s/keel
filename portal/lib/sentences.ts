@@ -116,7 +116,7 @@ function when(value: string | null | undefined): string {
 // The Microsoft service each workload sits under, by the start of its code.
 const WORKLOAD_SERVICES: [string, string][] = [
   ["exchange", "Exchange"], ["teams", "Teams"], ["purview", "Purview"], ["sharepoint", "SharePoint"],
-  ["onedrive", "OneDrive"], ["power-platform", "Power Platform"],
+  ["onedrive", "OneDrive"], ["power-platform", "Power Platform"], ["defender", "Defender"],
 ];
 
 // Restores the Restore page does not list as a backup of their own.

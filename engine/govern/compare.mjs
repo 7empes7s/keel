@@ -38,6 +38,7 @@ import { loadSymbolContext } from '../store/resourceSymbols.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
+import { templateFamilyOf } from '../insights/taxonomy.mjs';
 
 export const COMPARE_VERSION = 1;
 export const COMPARE_SECTIONS = Object.freeze(['settings', 'workloads', 'content']);
@@ -63,7 +64,7 @@ const CHANGE_ORDER = { removed: 0, changed: 1, added: 2 };
 
 // Ids that are the same in every tenant (global templates, branding languages) stay
 // matchable; every other id-keyed type is tenant-bound.
-const GLOBAL_ID_TYPES = new Set(['directorySettingTemplate', 'directoryRoleTemplate', 'organizationalBrandingLocalization']);
+const GLOBAL_ID_TYPES = new Set(['directorySettingTemplate', 'directoryRoleTemplate', 'deviceManagementTemplate', 'organizationalBrandingLocalization']);
 // Users are keyed by UPN, which carries the tenant's own domain.
 export const TENANT_BOUND_TYPES = new Set([...[...ID_KEY_TYPES].filter((type) => !GLOBAL_ID_TYPES.has(type)), 'user']);
 
@@ -88,6 +89,12 @@ const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest
 const iso = (value) => (value == null ? null : new Date(value).toISOString());
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nameOf = (payload, resourceType) => objectName(payload, resourceType);
+// The settings catalog template family (an Intune antivirus policy is a Defender
+// endpoint security policy), so lists can file the item where it belongs.
+const familyOf = (...payloads) => {
+  const family = payloads.map(templateFamilyOf).find(Boolean);
+  return family ? { templateFamily: family } : {};
+};
 
 /** A type's read outcome on one side. A side with no digest (fixtures, old rows) is 'unknown' and compared. */
 export function typeOutcome(coverage, type) {
@@ -212,13 +219,13 @@ export function compareSettings(left, right, { portable = false } = {}) {
       if (was && !now) {
         group.removed += 1;
         const payload = portable ? portablePayload(was.payload, was.references) : was.payload;
-        group.items.push({ naturalKey, name: nameOf(was.payload, resourceType), changeType: 'removed', blastRadius: changeBlastRadius(resourceType, was.payload, null, was.blast_radius ?? null), ...presenceFields(resourceType, payload, 'removed') });
+        group.items.push({ naturalKey, name: nameOf(was.payload, resourceType), ...familyOf(was.payload), changeType: 'removed', blastRadius: changeBlastRadius(resourceType, was.payload, null, was.blast_radius ?? null), ...presenceFields(resourceType, payload, 'removed') });
         continue;
       }
       if (!was && now) {
         group.added += 1;
         const payload = portable ? portablePayload(now.payload, now.references) : now.payload;
-        group.items.push({ naturalKey, name: nameOf(now.payload, resourceType), changeType: 'added', blastRadius: changeBlastRadius(resourceType, null, now.payload, now.blast_radius ?? null), ...presenceFields(resourceType, payload, 'added') });
+        group.items.push({ naturalKey, name: nameOf(now.payload, resourceType), ...familyOf(now.payload), changeType: 'added', blastRadius: changeBlastRadius(resourceType, null, now.payload, now.blast_radius ?? null), ...presenceFields(resourceType, payload, 'added') });
         continue;
       }
       if (settingsFingerprint(was, { portable }) === settingsFingerprint(now, { portable })) {
@@ -229,13 +236,23 @@ export function compareSettings(left, right, { portable = false } = {}) {
       const differences = portable
         ? fieldDifferences(resourceType, portablePayload(was.payload, was.references), portablePayload(now.payload, now.references))
         : fieldDifferences(resourceType, was.payload, now.payload);
-      group.items.push({ naturalKey, name: nameOf(now.payload, resourceType) ?? nameOf(was.payload, resourceType), changeType: 'changed', blastRadius: changeBlastRadius(resourceType, was.payload, now.payload, now.blast_radius ?? null), ...differences });
+      group.items.push({ naturalKey, name: nameOf(now.payload, resourceType) ?? nameOf(was.payload, resourceType), ...familyOf(now.payload, was.payload), changeType: 'changed', blastRadius: changeBlastRadius(resourceType, was.payload, now.payload, now.blast_radius ?? null), ...differences });
     }
     if (unkeyed.left || unkeyed.right) unmatched.push({ resourceType, service, ...unkeyed });
     for (const key of ['added', 'removed', 'changed', 'unchanged']) totals[key] += group[key];
     if (group.added + group.removed + group.changed === 0) continue;
     group.items.sort((a, b) => CHANGE_ORDER[a.changeType] - CHANGE_ORDER[b.changeType] || a.naturalKey.localeCompare(b.naturalKey));
     group.total = group.items.length;
+    // Counts per settings catalog template family over every changed item, listed or
+    // not, so a page that files endpoint security policies under Defender counts the
+    // ones past the list limit there too.
+    const families = {};
+    for (const item of group.items) {
+      if (!item.templateFamily) continue;
+      families[item.templateFamily] ??= { added: 0, removed: 0, changed: 0 };
+      families[item.templateFamily][item.changeType] += 1;
+    }
+    if (Object.keys(families).length) group.families = families;
     group.items = group.items.slice(0, MAX_ITEMS);
     groups.push(group);
   }

@@ -174,6 +174,7 @@ export const TYPE_DECISIONS = Object.freeze({
   deviceCategory: automated('intune-shared-devicecategory', 'restore gaps batch 1: create and update of the name and description; which devices are in a category is set at enrollment and is not restored'),
   termsAndConditions: manual('acceptance by users cannot be recreated: a recreated policy asks every user to accept again'),
   windowsAutopilotDeploymentProfile: automated('intune-enrollment-windowsautopilotdeploymentprofile', 'restore gaps batch 6: create and update of the profile through Graph beta, keeping its kind; the registered devices it applies to are not backed up, and who it is assigned to is written one assignment at a time (batch 15)', { view: 'graph-rest-beta' }),
+  deviceManagementTemplate: manual('Microsoft-published template catalogue'),
   deviceManagementIntent: manual('security baseline intents are beta-only and replaced by the settings catalog, and their settings are a separate collection that is not backed up'),
   managedDevice: manual('device state, enrolled by the device, not configuration'),
   mobileApp: automated('intune-apps-mobileapp', 'restore gaps batch 18: create and update of store, web, Microsoft 365 Apps, Edge and WinGet apps with their assignments; Win32 and line-of-business apps are recreated without their package and unassigned until it is uploaded; apps synced from Apple, Google or Microsoft are never created'),
@@ -1025,6 +1026,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'create and update are fixture-tested; device hardware records are not backed up; assignments are written one at a time'),
   deviceManagementIntent: byHand('device-management', 'POST /deviceManagement/intents (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'beta-only, replaced by the settings catalog; intent settings are not backed up'),
+  deviceManagementTemplate: byHand('device-management', null, 'none', 'Microsoft-published template catalogue; read only to tell which area an older endpoint security policy is'),
   managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
   mobileApp: subset('device-management', 'POST /deviceAppManagement/mobileApps; PATCH .../{id}; POST .../{id}/assign', 'DeviceManagementApps.ReadWrite.All',
     'create and update are fixture-tested; a Win32 or line-of-business app comes back without its package and is assigned only once it is uploaded; synced apps are never created; categories are written through categories/$ref (beta)'),
@@ -1338,6 +1340,9 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
     lost('relationship', 'group-scoped settings', 'settings under /groups/{id}/settings are not collected or written'),
   ]),
   directorySettingTemplate: Object.freeze([
+    lost('configuration', 'template catalogue', 'Microsoft-published and identical in every tenant; never written'),
+  ]),
+  deviceManagementTemplate: Object.freeze([
     lost('configuration', 'template catalogue', 'Microsoft-published and identical in every tenant; never written'),
   ]),
   organization: Object.freeze([

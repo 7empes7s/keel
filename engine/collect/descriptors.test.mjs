@@ -9,8 +9,8 @@ import { test } from 'node:test';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { DESCRIPTORS, descriptorsFor } from './descriptors.mjs';
 
-test('every catalogue type has exactly one descriptor', () => {
-  assert.deepEqual(DESCRIPTORS.map((d) => d.type).sort(), CATALOG.map((entry) => entry.type).sort());
+test('every catalogue type has exactly one descriptor, except one waiting for its live read check', () => {
+  assert.deepEqual(DESCRIPTORS.map((d) => d.type).sort(), CATALOG.filter((entry) => !entry.liveGate).map((entry) => entry.type).sort());
 });
 
 test('a new catalogue entry is described by default, after the listed types', () => {

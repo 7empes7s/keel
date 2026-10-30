@@ -218,12 +218,21 @@ const LISTED = [
 // catalogue entry is enough to collect it. Such a type is read-only, not
 // remappable and keyed by the displayName fallback until a DETAILS entry says
 // otherwise.
+//
+// A catalogue entry with `liveGate` is declared (the tenant probe reads it, and
+// names, groups and coverage know it) but gets no descriptor, so nothing
+// collects it and coverage lists it as not backed up. Removing `liveGate` once
+// a live read of it passes switches collection on.
 export function descriptorsFor(catalog) {
-  const catalogByType = new Map(catalog.map((entry) => [entry.type, entry]));
+  const collected = catalog.filter((entry) => !entry.liveGate);
+  const catalogByType = new Map(collected.map((entry) => [entry.type, entry]));
   const listed = new Set(LISTED);
-  const unlisted = catalog.map((entry) => entry.type).filter((type) => !listed.has(type));
+  const unlisted = collected.map((entry) => entry.type).filter((type) => !listed.has(type));
   return [...LISTED, ...unlisted].map((type) => describe(type, catalogByType));
 }
+
+/** Catalogue types declared but not collected until a live read of them passes. */
+export const LIVE_GATED_TYPES = Object.freeze(CATALOG.filter((entry) => entry.liveGate).map((entry) => entry.type));
 
 export const DESCRIPTORS = descriptorsFor(CATALOG);
 

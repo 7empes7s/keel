@@ -136,7 +136,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/resourceOperations': 'not-configuration',
   '/deviceManagement/reusableSettings': 'microsoft-published',
   '/deviceManagement/settingDefinitions': 'microsoft-published',
-  '/deviceManagement/templates': 'microsoft-published',
   '/deviceManagement/troubleshootingEvents': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsAnomaly': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsAppHealthApplicationPerformance': 'not-configuration',

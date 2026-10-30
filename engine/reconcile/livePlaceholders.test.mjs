@@ -33,7 +33,8 @@ function recordingReader() {
 const naturalKeyFor = (type, object) => `${type}:${object.id}`;
 
 test('no live read path holds an unfilled placeholder', async () => {
-  for (const entry of CATALOG) {
+  // A live-gated kind is not collected, so a restore never reads it live.
+  for (const entry of CATALOG.filter((item) => !item.liveGate)) {
     const reader = recordingReader();
     await buildLiveIndex(reader, { resourceTypes: [entry.type], naturalKeyFor });
     assert.ok(reader.paths.length > 0, `${entry.type}: nothing was read`);

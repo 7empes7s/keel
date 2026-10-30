@@ -18,7 +18,7 @@ export const ID_KEY_TYPES = new Set([
   'accessPackage', 'connectedOrganization', 'deviceEnrollmentConfiguration',
   'deviceCategory', 'managedDevice', 'managedAppPolicy',
   'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'termsAndConditions',
-  'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'contact',
+  'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'deviceManagementTemplate', 'contact',
   // Issue #156. A branding localization's id is its language (for example
   // fr-FR), the same in every tenant. A group expiration policy's id is the
   // only identity it has: it carries no name.

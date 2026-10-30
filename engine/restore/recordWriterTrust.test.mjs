@@ -11,7 +11,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
-import { INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, intuneTrustFieldStep, intuneWriteBody } from './intuneOperations.mjs';
+import { INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, changedIntuneFields, intuneTrustFieldStep, intuneWriteBody } from './intuneOperations.mjs';
 import { applyRecordWrite, changedRecordFields, defineRecord, recordTrustFieldStep, recordWriteBody, trustFieldStep } from './recordWriter.mjs';
 import { isTrustField } from './workloads/writeDeclarations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
@@ -253,4 +253,19 @@ test('a whole-payload record create sends a nested object without its trust fiel
   assert.equal(result.failed, undefined, result.failed?.error);
   assert.deepEqual(graph.calls.find((call) => call.method === 'POST').body, { displayName: 'KEEL-RT-NewNested', extra: { label: 'KEEL-RT' } });
   assert.deepEqual(result.applied.completion[0].fields, ['extra.issuerUri']);
+});
+
+test('an update never clears a live nested trust field the backup does not hold', async () => {
+  const path = '/deviceManagement/deviceCategories/cat-6';
+  const live = { id: 'cat-6', displayName: 'KEEL-RT-Cat6', description: 'Live', extra: { label: 'old', signingCertificate: 'MIIBlive' } };
+  const desired = { id: 'cat-src', displayName: 'KEEL-RT-Cat6', description: 'Backup', extra: { label: 'new' } };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceCategory', desired, { live: { state: 'present', targetId: 'cat-6', payload: live } }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.filter((call) => call.method === 'PATCH').map((call) => call.body), [{ description: 'Backup' }]);
+  assert.deepEqual(result.applied.completion[0].fields, ['extra.signingCertificate', 'extra']);
+  const before = { displayName: 'KEEL-RT-Vpn', vpnSettings: { connectionName: 'old', servers: [{ address: 'a', trustedRootCertificate: 'MIIBlive' }] } };
+  const backup = { displayName: 'KEEL-RT-Vpn', vpnSettings: { connectionName: 'new', servers: [{ address: 'a' }] } };
+  assert.deepEqual(changedIntuneFields('deviceConfiguration', backup, before), [], 'the built-in Intune writer leaves it out too');
+  assert.deepEqual(intuneTrustFieldStep('deviceConfiguration', backup, before, 'update').fields, ['vpnSettings.servers[0].trustedRootCertificate', 'vpnSettings']);
 });

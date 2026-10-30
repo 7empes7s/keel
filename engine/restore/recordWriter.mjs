@@ -268,6 +268,9 @@ function nestedTrustPaths(resourceType, value, prefix = []) {
     : nestedTrustPaths(resourceType, child, [...prefix, key])));
 }
 
+/** Whether a value holds a trust field below its top level (in a nested object or list). */
+export const holdsNestedTrust = (resourceType, value) => nestedTrustPaths(resourceType, value).length > 0;
+
 const valueAt = (value, segments) => segments.reduce((held, segment) => (held && typeof held === 'object' ? held[segment] : undefined), value);
 const pathText = (segments) => segments.reduce((text, segment) => (typeof segment === 'number' ? `${text}[${segment}]` : text ? `${text}.${segment}` : segment), '');
 
@@ -295,7 +298,9 @@ export function trustFieldStep(resourceType, payload, live, verb, { excluded = [
       if (differs([key], payload[key])) fields.push(key);
       continue;
     }
-    const nested = nestedTrustPaths(resourceType, payload[key], [key]);
+    // A nested trust field in the backup or in live (a backup without it would clear it).
+    const nested = [...nestedTrustPaths(resourceType, payload[key], [key]), ...(update && live ? nestedTrustPaths(resourceType, live[key], [key]) : [])]
+      .filter((segments, index, all) => all.findIndex((other) => pathText(other) === pathText(segments)) === index);
     if (nested.length === 0) continue;
     fields.push(...nested.filter((segments) => differs(segments, valueAt(payload, segments))).map(pathText));
     // An update leaves the whole field out (withoutTrustFields): its other values are a step too.
@@ -322,11 +327,17 @@ export const recordTrustFieldStep = (record, payload, live, verb) => (record.wri
   excluded: record.excluded, same: (field, left, right) => sameRecordField(record, field, left, right),
 }));
 
-/** The fields of the desired body whose value live does not hold. */
+/**
+ * The fields of the desired body whose value live does not hold. An update
+ * never sends a field whose live value holds a nested trust field, even when
+ * the backup's has none: Graph would replace it whole and clear the live one
+ * (trustFieldStep lists it for a person).
+ */
 export function changedRecordFields(record, desired, live, verb = 'update') {
   const want = recordWriteBody(record, desired, verb);
   const have = recordWriteBody(record, live ?? {}, verb);
-  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameRecordField(record, key, want[key], have[key]));
+  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameRecordField(record, key, want[key], have[key]))
+    .filter((key) => verb === 'create' || !holdsNestedTrust(record.resourceType, live?.[key]));
 }
 
 /** null, or the post-state refusal text: every sent field reads back as sent. */

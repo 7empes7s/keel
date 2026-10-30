@@ -2949,6 +2949,45 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
   });
 }
 
+// The match over time: a trend of the percentage after each backup, overall or for one
+// service, with every point listed newest first. Fits a phone and a desktop.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`the approved setup shows its match over time and fits ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/baselines", viewport.width < 600 ? "dark" : "light");
+    const card = page.locator(".bh-card");
+    await expect(page.getByRole("heading", { name: "Match over time" })).toBeVisible();
+    // The last 30 days by default: the newest point, the change since the first, the dip.
+    await expect(card.locator(".bh-facts")).toContainText(/Latest\s*\d+%/);
+    await expect(card.locator(".bh-facts")).toContainText(/Lowest\s*\d+%/);
+    await expect(card.getByRole("img", { name: /^Overall match over the last 30 days: \d+% now, lowest \d+%, highest \d+%, \d+ points$/ })).toBeVisible();
+    const thirty = Number((await card.locator('[data-fact="points"] dd').textContent()) ?? 0);
+    await card.getByRole("radio", { name: "All" }).click();
+    await expect(page).toHaveURL(/bh-range=all/);
+    await expect(card.locator('[data-fact="points"] dd')).toHaveText("22");
+    expect(thirty).toBeLessThan(22);
+    // One service's line.
+    await card.getByRole("button", { name: /Show/ }).click();
+    await page.getByRole("option", { name: "Entra ID" }).click();
+    await expect(page).toHaveURL(/bh-line=Entra/);
+    await expect(card.getByRole("img", { name: /^Entra ID match over every point stored: \d+% now, lowest 64%/ })).toBeVisible();
+    await expect(card.locator('[data-fact="lowest"]')).toHaveAttribute("data-tone", "soon");
+    // Every point, newest first, with its change since the one before and each service.
+    const rows = page.locator(".bh-row");
+    await expect(rows).toHaveCount(22);
+    await expect(rows.first()).toContainText(/settings match/);
+    await expect(rows.first().locator(".bh-delta")).toHaveText("▼ Down 1 point");
+    await expect(rows.last().locator(".bh-delta")).toHaveText("First point");
+    await expect(rows.first().locator(".bh-services li", { hasText: "Entra ID" })).toBeVisible();
+    await expect(page.locator(".bh-row", { hasText: "New approved setup in use" })).toHaveCount(1);
+    // The list sorts by match, worst first when descending.
+    await page.locator(".paged-rows").getByRole("button", { name: /Order by/ }).click();
+    await page.getByRole("option", { name: "Match" }).click();
+    await expect(rows.first().locator(".bh-percent")).toHaveText(/^\d+%$/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
+}
+
 // The guided create: start from a backup, name it, check what happens, then create.
 test("a new approved setup is made in three steps that say what will happen", async ({ page }) => {
   await open(page, "/baselines/new");

@@ -23,6 +23,7 @@ import { isSuppressed } from '../engine/govern/disposition.mjs';
 import { IGNORE_STILL_COUNTS_SQL } from '../engine/store/openDrift.mjs';
 import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
+import { recordBaselineScore } from '../engine/govern/baselineScore.mjs';
 import { parseCliArgs } from './args.mjs';
 
 function usage() {
@@ -245,6 +246,15 @@ async function detect() {
       drift,
       coveredTypes: coveredTypes ?? [...new Set([...before, ...after].map((row) => row.resource_type))],
     });
+
+    // One point of the approved setup's match percentage for this backup (Baselines
+    // page history). A failure is logged and never fails detection.
+    try {
+      const point = await recordBaselineScore(client, { tenantRef, trigger: 'backup', sourceId: snapshotId });
+      if (point) console.log(`approved setup match: ${point.percent}% (${point.matching} of ${point.judged} settings)`);
+    } catch (error) {
+      console.error(`approved setup match not recorded: ${error?.message ?? error}`);
+    }
 
     const suppressed = drift.filter((item) => isSuppressed(item, dispositions, new Date()));
     console.log(`snapshot ${snapshotId} complete`);

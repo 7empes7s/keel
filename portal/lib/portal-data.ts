@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 
 import { sameContent } from "../../engine/cir/canonicalHash.mjs";
 import { listBaselines } from "../../engine/govern/baseline.mjs";
+import { listBaselineScorePoints } from "../../engine/govern/baselineScore.mjs";
 import {
   baselineCompliance,
   complianceFindings,
@@ -51,6 +52,7 @@ import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, withWorkloadCoverage, workloadKinds } from "@/lib/workload-kinds";
 import { loadServiceChanges } from "@/lib/service-changes";
+import type { ScorePoint } from "@/lib/baseline-history-view";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
@@ -736,6 +738,14 @@ export async function getBaselineTypeCounts(baselineId: string, scope: EntitySco
     );
     return Object.fromEntries(rows.map((row) => [String(row.resource_type), Number(row.count ?? 0)]));
   });
+}
+
+/** The approved setup's match percentage over time, oldest first: one point after each
+ * backup and each run of service reads (engine/govern/baselineScore.mjs). Tenant-wide,
+ * so only a central reader is shown it. */
+export async function getBaselineScoreHistory(): Promise<ScorePoint[]> {
+  const ref = tenantRef();
+  return withClient(async (client) => (await listBaselineScorePoints(client, { tenantRef: ref })) as ScorePoint[]);
 }
 
 // Task 91: who made each open change, from Microsoft's audit logs (engine/identity/

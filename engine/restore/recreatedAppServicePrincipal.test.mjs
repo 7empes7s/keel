@@ -73,6 +73,9 @@ test('recordLiveIdentifiers records the live appId under the backup key', async 
   assert.equal(held.get(`${app.naturalKey}#appId`), 'from-this-run');
   // Only alternate identifiers of present objects: nothing for the absent principal.
   assert.deepEqual([...ids.keys()], [`${app.naturalKey}#appId`]);
+  // An app that was never recreated records nothing: its appId is written as stored.
+  const unchanged = { ...app, live: { state: 'present', targetId: OLD_OBJECT_ID, payload: { ...appPayload, appId: OLD_APP_ID.toUpperCase() } } };
+  assert.equal(recordLiveIdentifiers(new Map(), [unchanged]).size, 0);
 });
 
 test('the service principal is created with the recreated app\'s new appId, never the backup\'s', async () => {

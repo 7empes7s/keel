@@ -152,14 +152,19 @@ export function rewriteReferences(payload, references, ctx, naturalKey, resource
  * — the key rewriteReferences reads for an explicit identifier reference. An app
  * an earlier restore recreated keeps the backup's key but has a new appId, so a
  * service principal restored in a later run must carry the live appId, never the
- * one the key encodes. A value this run already holds (a create) is kept. */
+ * one the key encodes. A value this run already holds (a create) is kept, and
+ * a value the key already encodes is not recorded. */
 export function recordLiveIdentifiers(appliedIds, resources) {
   for (const resource of resources ?? []) {
     if (resource?.live?.state !== 'present') continue;
     for (const name of ALTERNATE_IDENTIFIERS[resource.resourceType] ?? []) {
       const value = resource.live.payload?.[name];
       const key = `${resource.naturalKey}#${name}`;
-      if (typeof value === 'string' && value.length > 0 && !appliedIds.has(key)) appliedIds.set(key, value);
+      if (typeof value !== 'string' || value.length === 0 || appliedIds.has(key)) continue;
+      // The key already encodes this value: an app that was never recreated
+      // keeps writing the backup's appId exactly as stored.
+      if (resource.naturalKey.toLowerCase() === `${resource.resourceType}:${value}`.toLowerCase()) continue;
+      appliedIds.set(key, value);
     }
   }
   return appliedIds;

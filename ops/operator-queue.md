@@ -12668,3 +12668,50 @@ item that needs it stays untouched.
         label gone and the policy equal to S. Report the evidence row outcomes.
 - **Report:** B; step 1 lists; steps 2 to 4 with exit codes; proven / not proven; `needsManualRevert`; approval id; the evidence
   branch and commit; import lines; what is left changed in the tenant (expected: nothing, plus `KEEL-RT-270-label` if created).
+
+### Q271: Live proofs for who holds Intune, Exchange and Defender admin roles, and multi admin approval policies (after PRs #767 and #781), about 60 minutes
+- Drafted by the "Restore role assignments and admin approval policies" thread (2026-10-30). PR #781 (stacked on #767) restores
+  four kinds that were backed up only. Each is written only when the dry run's "Changes admin access" effects were approved
+  (your standing self-approval on the test tenant covers it, log each approval id), or restore approvals are off for the service.
+  Users and groups are matched in the target by name; the approval lists them by name.
+- Needs: PRs #767 and #781 merged and deployed (build B). Check: `grep -q sameIntuneAssignment /opt/keel-live/engine/restore/intuneOperations.mjs`.
+  Q268 can run first; this item does not depend on it.
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
+  account. Every fixture gives a **read-only** role to an **empty** `KEEL-RT-` group (or the KEEL-RT fixture app), so nobody gains
+  access. Remove every fixture at the end.
+- **Step 0, permissions (Restorer app roles):** check the KEEL Restorer holds `DeviceManagementRBAC.ReadWrite.All`,
+  `DeviceManagementConfiguration.ReadWrite.All`, `RoleManagement.ReadWrite.Exchange` and `RoleManagement.ReadWrite.Defender`.
+  Add any that is missing to the **KEEL Restorer** app registration yourself (Microsoft Graph, application permission), set this
+  item `blocked: needs admin consent on KEEL Restorer` naming the permissions, and run the parts that do not need them meanwhile.
+- **Step 1, backup read:** take snapshot S *after* creating the fixtures below. Check S's Intune role assignment carries
+  `roleDefinition` (id and name). If the Intune role assignment collection failed, quote the error: the new per-assignment read is
+  `GET /beta/deviceManagement/roleAssignments/{id}/roleDefinition`.
+- **A. Intune role assignment** (`deviceManagementRoleAssignment`): fixture `KEEL-RT-271-intune-assignment`, built-in role
+  Read Only Operator, members and scope = empty group `KEEL-RT-271-group`.
+  1. Gate check: delete the assignment; restore from S selecting it; dry run. Expect one `create` and "Changes admin access"
+     effects that name `group:KEEL-RT-271-group` and the role by name, not ids. Promote **without** approving: expect it skipped
+     with "changes admin access". Quote it.
+  2. Approve (log the id), promote, capture `deviceManagementRoleAssignment.create`. Expect the same role, members and scope.
+  3. Update round: add a second empty group `KEEL-RT-271-group2` as a member; restore from S, approve, promote, capture
+     `deviceManagementRoleAssignment.update`. Expect the extra group gone.
+  4. Re-run the dry run from S: expect 0 planned writes, or the create reported "already there".
+- **B. Multi admin approval policy** (`operationApprovalPolicy`): fixture `KEEL-RT-271-approval` for a **device wipe** only,
+  approvers `KEEL-RT-271-group`. Never a policy that covers roles, scripts or approval policies themselves (that could lock the
+  test tenant behind an approval). Delete it; restore from S, approve, promote, capture `operationApprovalPolicy.create`. Then
+  change its description and approvers to `KEEL-RT-271-group2`, restore, approve, promote, capture `operationApprovalPolicy.update`.
+  If Intune answers that the write itself needs a second admin's approval, quote it and stop B.
+- **C. Exchange role assignment** (`exchangeRoleAssignment`): give the Exchange role View-Only Configuration to the `KEEL-RT-`
+  fixture app's service principal (`POST /beta/roleManagement/exchange/roleAssignments`, principal `/ServicePrincipals/{id}`,
+  scopes `/`). Snapshot (or reuse S if made after). Remove it; restore, approve, promote, capture `exchangeRoleAssignment.create`.
+  Also check a role held by a role group in S is reported as a manual step (quote it), never written.
+- **D. Defender role assignment** (`defenderRoleAssignment`): fixture `KEEL-RT-271-defender-assignment` of the custom role
+  `KEEL-RT-268-defender-role` (or a new `KEEL-RT-271-defender-role`, one read permission) to `KEEL-RT-271-group`. Delete it;
+  restore, approve, promote, capture `defenderRoleAssignment.create`. Then add `KEEL-RT-271-group2`, restore, approve, promote,
+  capture `defenderRoleAssignment.update`.
+- Cleanup: delete every `KEEL-RT-271-` assignment, policy, role and group made here; check the Restorer has no new roles.
+- Evidence: commit the records and `.capture.json` files on `claude/live-evidence-q271`, branched from `origin/master` (secret scan
+  and `pseudonymize.mjs check` first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
+- **Report:** B and S; Step 0 and Step 1 results; per operation promoted / refused (exact message) / skipped; dry run and approval
+  ids; whether the dry run named groups and roles (not ids); evidence branch, commit and PR; anything left in the tenant.

@@ -1,6 +1,6 @@
 /** A tenant's own compliance checks: written, validated, run with Keel's own after a
  * backup, read back by the Compliance reader, and removed. Also the known standards
- * (SCuBA, NIST) stay equal to their pinned sources. */
+ * (SCuBA, NIST) stay equal to their pinned sources and to the rules that run. */
 import { strict as assert } from 'node:assert';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -16,7 +16,8 @@ import { controlFromRow, createOwnCheck, listOwnControls, valueAt, ownCheckChoic
 import { evaluateControl } from './evaluate.mjs';
 import { controlFor, listControls } from './registry.mjs';
 import { runComplianceChecks } from './runChecks.mjs';
-import { NIST_REFS, SCUBA_COMMIT, SCUBA_POLICY_IDS, STANDARDS } from './standards.mjs';
+import { SCUBA_CONTROL_PREFIX as RUN_PREFIX, SCUBA_FRAMEWORK } from './scubagear/controls.mjs';
+import { NIST_REFS, SCUBA_CONTROL_PREFIX, SCUBA_POLICY_IDS, SCUBA_VERSION, STANDARDS } from './standards.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -197,9 +198,18 @@ test('a sensitive field can be neither picked nor checked', async (t) => {
 });
 
 test('the known standards match their pinned sources and name only real checks', () => {
-  const artifact = JSON.parse(readFileSync(new URL('../../docs/release/qualifications/scubagear-benchmark-acceptance.artifact.json', import.meta.url)));
-  assert.equal(artifact.commitSha, SCUBA_COMMIT);
-  assert.deepEqual([...SCUBA_POLICY_IDS].sort(), artifact.policies.map((policy) => policy.policyId).sort());
+  // SCuBA lists exactly the ScubaGear rules that run, from the pinned release, each
+  // mapped to the control that runs it.
+  const pin = JSON.parse(readFileSync(new URL('./scubagear/pin.json', import.meta.url)));
+  assert.equal(pin.version, SCUBA_VERSION);
+  assert.equal(SCUBA_CONTROL_PREFIX, RUN_PREFIX);
+  const running = listControls({ framework: SCUBA_FRAMEWORK });
+  assert.deepEqual([...SCUBA_POLICY_IDS].sort(), running.map((control) => control.controlId.slice(RUN_PREFIX.length)).sort());
+  assert.ok(running.every((control) => control.edition === SCUBA_VERSION));
+  const scuba = STANDARDS.find((standard) => standard.id === 'cisa-scuba');
+  assert.equal(scuba.complete, true);
+  assert.ok(scuba.refs.every((entry) => entry.areaName), 'every SCuBA section has a name');
+  assert.deepEqual(scuba.refs.map((entry) => entry.controls), scuba.refs.map((entry) => [{ controlId: `${RUN_PREFIX}${entry.ref}`, match: 'full', note: null }]));
   assert.deepEqual(NIST_REFS.map((entry) => [...entry]), NIST_MAPPINGS.map((entry) => [...entry]));
   for (const standard of STANDARDS) {
     assert.equal(new Set(standard.refs.map((entry) => entry.ref)).size, standard.refs.length, standard.id);

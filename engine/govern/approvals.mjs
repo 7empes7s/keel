@@ -22,7 +22,8 @@ import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { classifyApprovalActions, requiredApprovalsFor, standingPolicyRefusal } from './approvalPolicy.mjs';
 import {
-  RESTORE_APPROVALS_OFF_BASIS, RESTORE_APPROVALS_OFF_DECIDER, effectsNeedApproval, restoreNeedsApproval,
+  RESTORE_APPROVALS_OFF_BASIS, RESTORE_APPROVALS_OFF_DECIDER, approvalsOffReason, contentRestoreNeedsApproval,
+  effectsNeedApproval, restoreNeedsApproval,
 } from './restoreApprovalSettings.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
@@ -231,15 +232,26 @@ export async function requestApproval(client, {
     const approved = await approveIfRestoreApprovalsOff(client, { tenantRef, request, artifact });
     if (approved) return approved;
   }
+  if (action === 'content-restore' && requiredApprovals === 1) {
+    const approved = await approveIfApprovalsOff(client, {
+      tenantRef,
+      request,
+      // A content restore names its own tenant; one naming another never runs (gate.mjs).
+      settingTenantRef: request.params?.tenantRef === tenantRef ? tenantRef : null,
+      needFn: () => contentRestoreNeedsApproval(client, { tenantRef, workload: request.params?.workload }),
+    });
+    if (approved) return approved;
+  }
   return request;
 }
 
 /**
  * The customer's restore approval setting (restoreApprovalSettings.mjs): when every
- * service a restore writes to has restore approvals off, and so does every content
- * effect it carries, the request is approved as it is made. Nobody is named as its
+ * service a restore writes to and every kind of restore it is (a compliance fix,
+ * turning a Conditional Access policy on, ...) has restore approvals off, and so does
+ * every content effect it carries, the request is approved as it is made. Nobody is named as its
  * approver: decided_by is Keel's setting marker and the basis is kept on the request
- * and in the evidence with the services. Anything Keel cannot read or place, a dry run
+ * and in the evidence with the services and kinds. Anything Keel cannot read, a dry run
  * that cannot be promoted, or a two-person rule leaves the request waiting for a person.
  * Execution-time checks (lockout gate, preservation locks, trust fields, the fresh
  * digest and fingerprint) are untouched. Returns the approved row, or null.
@@ -247,6 +259,30 @@ export async function requestApproval(client, {
 async function approveIfRestoreApprovalsOff(client, { tenantRef, request, artifact }) {
   if (!validateArtifactForApproval(artifact).ok) return null;
   const jobParams = restoreJobParams(artifact);
+  return approveIfApprovalsOff(client, {
+    tenantRef,
+    request,
+    settingTenantRef: artifact.tenantRef,
+    needFn: async () => {
+      const need = await restoreNeedsApproval(client, { artifact });
+      if (need.required) return need;
+      if ((artifact.contentEffects ?? []).length > 0) {
+        const effects = await effectsNeedApproval(client, { tenantRef: artifact.tenantRef, effects: artifact.contentEffects });
+        if (effects.required) return { ...need, required: true };
+      }
+      return need;
+    },
+    jobParams,
+  });
+}
+
+/**
+ * Approves a request as it is made when `needFn` says the customer's settings need no
+ * person for it. `jobParams` set mints the worker's restore job (not for a CLI-run
+ * request). Anything that goes wrong leaves it waiting. Returns the approved row, or null.
+ */
+async function approveIfApprovalsOff(client, { tenantRef, request, settingTenantRef, needFn, jobParams = null }) {
+  if (typeof settingTenantRef !== 'string' || settingTenantRef.length === 0) return null;
   let decided;
   let need;
   await client.query('BEGIN');
@@ -254,17 +290,14 @@ async function approveIfRestoreApprovalsOff(client, { tenantRef, request, artifa
   try {
     const locked = await lockRequest(client, request.id);
     if (!locked || locked.status !== 'pending') return null;
-    // Read the setting inside the transaction, holding its rows, so a service turned
+    // Read the settings inside the transaction, holding their rows, so one turned
     // back on at the same moment is never missed.
-    await client.query('SELECT 1 FROM restore_approval_setting WHERE tenant_ref = $1 FOR SHARE', [artifact.tenantRef]);
-    need = await restoreNeedsApproval(client, { artifact });
+    await client.query('SELECT 1 FROM restore_approval_setting WHERE tenant_ref = $1 FOR SHARE', [settingTenantRef]);
+    await client.query('SELECT 1 FROM restore_approval_rule WHERE tenant_ref = $1 FOR SHARE', [settingTenantRef]);
+    need = await needFn();
     if (need.required) return null;
-    if ((artifact.contentEffects ?? []).length > 0) {
-      const effects = await effectsNeedApproval(client, { tenantRef: artifact.tenantRef, effects: artifact.contentEffects });
-      if (effects.required) return null;
-    }
-    const reason = `Restore approvals are off for ${need.services.join(', ')}`;
-    const job = locked.executor === 'cli' ? null : await enqueue(client, {
+    const reason = approvalsOffReason(need);
+    const job = locked.executor === 'cli' || !jobParams ? null : await enqueue(client, {
       kind: 'restore',
       params: jobParams,
       requestedBy: locked.requested_by,
@@ -300,11 +333,12 @@ async function approveIfRestoreApprovalsOff(client, { tenantRef, request, artifa
       jobId: decided.job?.id ?? null,
       basis: RESTORE_APPROVALS_OFF_BASIS,
       services: need.services,
-      settingTenantRef: artifact.tenantRef,
+      rules: need.rules ?? [],
+      settingTenantRef,
     },
     actor: RESTORE_APPROVALS_OFF_DECIDER,
   });
-  return Object.assign(decided.request, { approvalSkippedFor: need.services });
+  return Object.assign(decided.request, { approvalSkippedFor: need.services, approvalSkippedRules: need.rules ?? [] });
 }
 
 /** The restore job an approved dry run mints: its scope comes from the artifact alone. */

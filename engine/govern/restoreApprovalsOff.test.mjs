@@ -8,9 +8,14 @@ import {
   RESTORE_APPROVALS_OFF_BASIS,
   RESTORE_APPROVALS_OFF_DECIDER,
   WORKLOAD_RESTORE_SERVICES,
+  RESTORE_APPROVAL_RULES,
+  restoreApprovalScope,
   restoreArtifactServices,
+  restoreNeedsApproval,
+  setRestoreApprovalRule,
   setRestoreApprovalSetting,
 } from './restoreApprovalSettings.mjs';
+import { authorizeContentRestore } from '../content/restore/gate.mjs';
 import { grantRole } from '../authz/administration.mjs';
 import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
@@ -81,6 +86,12 @@ async function workloadRestore(client, { tenantRef, requestedBy, workload, allow
 async function turnOff(client, tenantRef, services, actor) {
   for (const service of services) await setRestoreApprovalSetting(client, { tenantRef, service, approvalRequired: false, actor });
 }
+
+async function turnOffRules(client, tenantRef, rules, actor) {
+  for (const rule of rules) await setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired: false, actor });
+}
+
+const ALL_SERVICES = ['Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender'];
 
 const ask = (client, { tenantRef, artifact, requestedBy, executor = 'worker' }) => requestApproval(client, {
   tenantRef, action: 'restore', params: { artifactId: artifact.id }, requestedBy, executor,
@@ -281,4 +292,116 @@ test('a kind Keel has not mapped is never placed by its name alone', async (t) =
   const artifact = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['exchangeNotAKindYet:KEEL-RT-a', 'exchangeNotAKindYet']] });
   assert.equal(await restoreArtifactServices(client, artifact), null);
   assert.equal((await ask(client, { tenantRef, artifact, requestedBy: requester })).status, 'pending');
+});
+
+test('each kind of restore that waited for a person is the customer choice: off for it and its services, it is approved', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  const requester = await principal(client);
+  await turnOff(client, tenantRef, ALL_SERVICES, admin);
+
+  const enforcement = await snapshotRestore(client, {
+    tenantRef, requestedBy: requester, objects: [['conditionalAccessPolicy:KEEL-RT-ca', 'conditionalAccessPolicy']],
+    extra: { conditionalAccessEnforcement: { promotes: randomUUID(), naturalKey: 'conditionalAccessPolicy:KEEL-RT-ca' } },
+  });
+  const fix = await snapshotRestore(client, {
+    tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-fix', 'group']],
+    extra: { complianceFix: { naturalKey: 'group:KEEL-RT-fix', field: 'visibility' } },
+  });
+  const tenantWide = await workloadRestore(client, { tenantRef, requestedBy: requester, workload: 'sharepoint-site-settings', allowTenantWide: true });
+  const elsewhere = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-x', 'group']] });
+  await client.query('UPDATE restore_dry_run SET target_tenant_id = $2 WHERE id = $1', [elsewhere.id, randomUUID()]);
+  const unplaced = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['exchangeNotAKindYet:KEEL-RT-a', 'exchangeNotAKindYet']] });
+
+  const cases = [
+    [enforcement, 'turn-on-conditional-access', ['Entra']],
+    [fix, 'compliance-fix', ['Entra']],
+    [tenantWide, 'tenant-wide', ['SharePoint']],
+    [elsewhere, 'other-tenant', ['Entra']],
+    [unplaced, 'unplaced', []],
+  ];
+  for (const [artifact, rule, services] of cases) {
+    const fresh = { ...artifact, ...(artifact === elsewhere ? { targetTenantId: (await client.query('SELECT target_tenant_id FROM restore_dry_run WHERE id = $1', [artifact.id])).rows[0].target_tenant_id } : {}) };
+    assert.deepEqual(await restoreApprovalScope(client, fresh), { services, rules: [rule] }, rule);
+    assert.equal((await ask(client, { tenantRef, artifact, requestedBy: requester, executor: 'cli' })).status, 'pending', `${rule} on by default`);
+    await turnOffRules(client, tenantRef, [rule], admin);
+    const approved = await ask(client, { tenantRef, artifact, requestedBy: requester, executor: 'cli' });
+    assert.equal(approved.status, 'approved', `${rule} off`);
+    assert.equal(approved.decided_by, RESTORE_APPROVALS_OFF_DECIDER);
+    assert.deepEqual(approved.approvalSkippedRules, [rule]);
+    const [decision] = await decisions(client, tenantRef, approved.id);
+    assert.deepEqual(decision.subject.rules, [rule]);
+  }
+});
+
+test('a kind of restore turned off still waits while one of its services has approvals on', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  const requester = await principal(client);
+  await turnOffRules(client, tenantRef, RESTORE_APPROVAL_RULES, admin);
+  const fix = await snapshotRestore(client, {
+    tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-fix', 'group']],
+    extra: { complianceFix: { naturalKey: 'group:KEEL-RT-fix', field: 'visibility' } },
+  });
+  assert.equal((await ask(client, { tenantRef, artifact: fix, requestedBy: requester })).status, 'pending');
+  assert.equal((await restoreNeedsApproval(client, { artifact: fix })).required, true);
+  await turnOff(client, tenantRef, ['Entra'], admin);
+  assert.equal((await restoreNeedsApproval(client, { artifact: fix })).required, false);
+});
+
+test('a two-person rule the customer set up still holds when every approval setting is off', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  const requester = await principal(client);
+  await turnOff(client, tenantRef, ALL_SERVICES, admin);
+  await turnOffRules(client, tenantRef, RESTORE_APPROVAL_RULES, admin);
+  await setApprovalPolicy(client, { tenantRef, actionClass: 'content-restore-other-location', twoPerson: true, actor: admin });
+  const elsewhere = await requestApproval(client, {
+    tenantRef, action: 'content-restore', params: { runId: 'run-x', tenantRef, workload: 'mail', request: {} }, requestedBy: requester,
+    executor: 'cli', policyActions: ['content-restore-other-location'],
+  });
+  assert.equal(elsewhere.status, 'pending');
+  assert.equal(elsewhere.required_approvals, 2);
+});
+
+test('content restores (mail, files, Teams) follow their own setting and their service, and run only while both stay off', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  const requester = await principal(client);
+  await grantRole(client, { principalId: requester, role: 'admin', grantedBy: admin });
+  const askContent = (workload, runId = randomUUID()) => requestApproval(client, {
+    tenantRef, action: 'content-restore', params: { runId, tenantRef, workload, request: {} }, requestedBy: requester, executor: 'cli',
+  });
+
+  assert.equal((await askContent('mail')).status, 'pending', 'on by default');
+  await turnOffRules(client, tenantRef, ['content-restore'], admin);
+  assert.equal((await askContent('mail')).status, 'pending', 'Exchange still on');
+  await turnOff(client, tenantRef, ['Exchange', 'SharePoint'], admin);
+  const runId = randomUUID();
+  const mail = await askContent('mail', runId);
+  assert.equal(mail.status, 'approved');
+  assert.equal(mail.decided_by, RESTORE_APPROVALS_OFF_DECIDER);
+  assert.deepEqual(mail.approvalSkippedFor, ['Exchange']);
+  assert.equal((await askContent('onedrive')).status, 'approved');
+  assert.equal((await askContent('teams-messages')).status, 'pending', 'Teams still on');
+  assert.equal((await askContent('not-a-workload')).status, 'pending');
+
+  const canFn = async () => true;
+  const authorized = await authorizeContentRestore(client, { actor: requester, approvalId: mail.id, runId, tenantRef, canFn });
+  assert.equal(authorized.approvedBy, RESTORE_APPROVALS_OFF_DECIDER);
+  await setRestoreApprovalSetting(client, { tenantRef, service: 'Exchange', approvalRequired: true, actor: admin });
+  await assert.rejects(
+    authorizeContentRestore(client, { actor: requester, approvalId: mail.id, runId, tenantRef, canFn }),
+    /restore approvals were off, and they are on again/,
+  );
+
+  // A content restore naming another tenant is never approved by this tenant's setting.
+  const other = await requestApproval(client, {
+    tenantRef, action: 'content-restore', params: { runId: randomUUID(), tenantRef: tenant(), workload: 'onedrive', request: {} }, requestedBy: requester, executor: 'cli',
+  });
+  assert.equal(other.status, 'pending');
 });

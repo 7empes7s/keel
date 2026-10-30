@@ -136,7 +136,7 @@ import {
 } from '../engine/restore/compensation.mjs';
 import { readUndoAssignments } from '../engine/restore/undoAssignedPolicy.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
-import { RESTORE_APPROVALS_OFF_BASIS, effectsNeedApproval } from '../engine/govern/restoreApprovalSettings.mjs';
+import { RESTORE_APPROVALS_OFF_BASIS, effectsNeedApproval, restoreNeedsApproval } from '../engine/govern/restoreApprovalSettings.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import {
   ComplianceFixRefusal, fixFor, fixedPayload, isWorkloadFix, newestSnapshotWith, parseWorkloadFixTarget, planComplianceFix,
@@ -1929,7 +1929,8 @@ async function planEnforcementRun({ client, request, persistArtifactId, requeste
 /**
  * The approval that promoted this artifact: approved, by someone other than the
  * requester. `byPerson` refuses one approved by the customer's restore approval
- * setting (approvals off): turning a Conditional Access policy on always needs a person.
+ * setting (approvals off): used when the setting for turning a Conditional Access
+ * policy on (or for Entra) is on now, so turning one back on since never goes unseen.
  */
 async function enforcementApproval(client, artifactId, { byPerson = false } = {}) {
   const { rows } = await client.query(
@@ -1954,7 +1955,10 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
   // Exactly the forward promotion gate: a changed plan or policy refuses first.
   const validation = deps.validateArtifactForExecutionFn(artifact, { digest: ctx.digest, currentStateFingerprint: ctx.fingerprint });
   if (!validation.ok) throw new Error(`enforcement promotion refused: ${validation.reason}`);
-  const approval = await enforcementApproval(client, artifact.id, { byPerson: true });
+  // A person approves it unless the customer turned approvals off for turning a
+  // Conditional Access policy on and for Entra; read again now, not at request time.
+  const byPerson = (await restoreNeedsApproval(client, { artifact })).required;
+  const approval = await enforcementApproval(client, artifact.id, { byPerson });
   if (!approval) throw new Error('enforcement promotion refused: turning a Conditional Access policy on needs an approved request from someone other than the requester');
 
   const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);

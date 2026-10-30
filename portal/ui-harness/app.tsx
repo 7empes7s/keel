@@ -23,7 +23,8 @@ import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } fr
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
-import type { RestoreApprovalSetting } from "@/lib/restore-approvals";
+import type { RestoreApprovalsView } from "@/lib/restore-approvals";
+import { RESTORE_APPROVAL_RULE_ORDER } from "@/lib/restore-approval-rules";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { NotificationsPage } from "@/components/notifications/notifications-page";
 import { ActivityPage } from "@/components/activity/activity-page";
@@ -1257,12 +1258,20 @@ const HARNESS_NAMER = (key: string) => {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return `Person ${[0, 1, 2, 3].map((index) => letters[(hash >>> (index * 5)) % letters.length]).join("")}`;
 };
-// Restore approvals: on for most services, off for Purview and SharePoint, changed by an admin.
-const RESTORE_APPROVALS: RestoreApprovalSetting[] = ["Entra", "Intune", "Exchange", "Teams", "SharePoint", "Purview", "Power Platform", "Defender"].map((service) => (
-  service === "Purview" || service === "SharePoint"
-    ? { service, approvalRequired: false, changedAt: "2026-10-01T08:00:00Z", changedBy: personRef("8c1e0000-0000-4000-8000-0000000000a1", "admin@contoso.com") }
-    : { service, approvalRequired: true, changedAt: null, changedBy: null }
-));
+// Restore approvals: on for most services and kinds, off for Purview, SharePoint and
+// content restores, changed by an admin.
+const RESTORE_APPROVALS: RestoreApprovalsView = {
+  services: ["Entra", "Intune", "Exchange", "Teams", "SharePoint", "Purview", "Power Platform", "Defender"].map((service) => (
+    service === "Purview" || service === "SharePoint"
+      ? { service, approvalRequired: false, changedAt: "2026-10-01T08:00:00Z", changedBy: personRef("8c1e0000-0000-4000-8000-0000000000a1", "admin@contoso.com") }
+      : { service, approvalRequired: true, changedAt: null, changedBy: null }
+  )),
+  rules: RESTORE_APPROVAL_RULE_ORDER.map((rule) => (
+    rule === "content-restore"
+      ? { rule, approvalRequired: false, changedAt: "2026-10-02T08:00:00Z", changedBy: personRef("8c1e0000-0000-4000-8000-0000000000a1", "admin@contoso.com") }
+      : { rule, approvalRequired: true, changedAt: null, changedBy: null }
+  )),
+};
 const ANONYMITY_ON: AnonymitySetting = { enabled: true, changedAt: "2026-10-01T08:00:00Z", changedBy: displayPerson(MAROUANE, HARNESS_NAMER) };
 const hidePerson = <T,>(ref: T): T => displayPerson(ref, HARNESS_NAMER) as T;
 function hidePeople<T extends { references?: RowReferences; signoffs?: EngineRef[] }>(row: T): T {
@@ -2634,8 +2643,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/settings": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
-      <RestoreApprovalSettingsCard canChange now={now} settings={RESTORE_APPROVALS} />
-      <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
+      <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" />
+      <RestoreApprovalSettingsCard canChange now={now} settings={RESTORE_APPROVALS} /></>;
     case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}

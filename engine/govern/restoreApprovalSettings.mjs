@@ -5,7 +5,12 @@
 // devices or shorten a group's lifetime (safety/contentEffects.mjs and the workload
 // effect rules). Whether such a change waits for a second person to approve it is the
 // customer's choice, per service. It is on for every service until an admin turns it
-// off, and each change is written to the audit record.
+// off, and each change is written to the audit record. Some kinds of restore have their
+// own setting on top (RESTORE_APPROVAL_RULES: content restores, turning a Conditional
+// Access policy on, compliance fixes, tenant-wide changes, restores into another tenant,
+// objects Keel cannot place in a service), on until an admin turns it off too.
+// Changing a setting never needs a second person; a two-person rule a customer set up
+// (approvalPolicy.mjs) still holds for every restore it covers.
 //
 // Off means the change is made as part of the restore, with its disclosure still shown
 // in the dry run. It never lifts a technical safety check: the break-glass lockout
@@ -124,69 +129,193 @@ export const WORKLOAD_RESTORE_SERVICES = Object.freeze({
   'purview-governance': 'Purview',
 });
 
-const WORKLOAD_PATH_PREFIX = 'workload:';
+// Kinds of restore with their own approval setting, next to the per-service one. A
+// restore of one of these kinds starts without a person only when its kind and every
+// service it writes to have approvals off. On until an admin turns it off. In the
+// order the Approvals page lists them.
+export const RESTORE_APPROVAL_RULES = Object.freeze([
+  'content-restore',
+  'turn-on-conditional-access',
+  'compliance-fix',
+  'tenant-wide',
+  'other-tenant',
+  'unplaced',
+]);
+// Plain names, for the reason kept on an approved request.
+export const RESTORE_APPROVAL_RULE_NAMES = Object.freeze({
+  'content-restore': 'mail, file and Teams content restores',
+  'turn-on-conditional-access': 'turning a Conditional Access policy on',
+  'compliance-fix': 'compliance fixes',
+  'tenant-wide': 'tenant-wide changes',
+  'other-tenant': 'restores into another tenant',
+  'unplaced': 'objects Keel cannot place in a service',
+});
+
+// The service each content restore workload (cli/keel-content-restore*.mjs) writes to.
+export const CONTENT_RESTORE_SERVICES = Object.freeze({
+  mail: 'Exchange',
+  onedrive: 'SharePoint',
+  'sharepoint-sites': 'SharePoint',
+  'teams-messages': 'Teams',
+});
+
+/** Every kind of restore, with whether it needs a person to approve it. On unless set. */
+export async function getRestoreApprovalRules(client, { tenantRef }) {
+  const { rows } = await client.query(
+    'SELECT rule, approval_required, updated_by, updated_at FROM restore_approval_rule WHERE tenant_ref = $1',
+    [tenantRef],
+  );
+  const byRule = new Map(rows.map((row) => [row.rule, row]));
+  return RESTORE_APPROVAL_RULES.map((rule) => {
+    const row = byRule.get(rule);
+    return {
+      rule,
+      approvalRequired: row ? row.approval_required === true : true,
+      updatedBy: row?.updated_by ?? null,
+      updatedAt: row?.updated_at ?? null,
+    };
+  });
+}
 
 /**
- * The services a restore's dry run writes to, or null when Keel cannot place every
- * object in one (then the restore waits for an approver). Always null for turning a
- * Conditional Access policy on (it can lock people out), a compliance fix, a
- * tenant-wide workload write, and a restore into another tenant.
+ * Turn the approval on or off for one kind of restore. The caller checks the actor
+ * holds `policies`. Writes the audit record first, so a change is never made without one.
  */
-export async function restoreArtifactServices(client, artifact) {
-  if (!artifact || artifact.conditionalAccessEnforcement) return null;
-  // A compliance fix writes the value a control asks for, not the backup's: not a restore.
-  if (artifact.complianceFix) return null;
-  // A tenant-wide workload write goes beyond the KEEL-RT- fixtures: a person approves it (issue #317).
-  if (artifact.workloadRestore?.allowTenantWide === true) return null;
-  // The setting is the source tenant's; a restore into another tenant waits for a person.
-  if (typeof artifact.targetTenantId !== 'string' || artifact.targetTenantId.length === 0
-    || tenantRefFor(artifact.targetTenantId) !== artifact.tenantRef) return null;
+export async function setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired, actor }) {
+  if (!RESTORE_APPROVAL_RULES.includes(rule)) {
+    throw new RestoreApprovalSettingError(`unknown kind of restore: ${rule} (one of ${RESTORE_APPROVAL_RULES.join(', ')})`);
+  }
+  if (typeof approvalRequired !== 'boolean') throw new RestoreApprovalSettingError('approvalRequired must be true or false');
+  if (typeof actor !== 'string' || actor.length === 0) throw new RestoreApprovalSettingError('a setting change needs an actor');
+  const before = (await getRestoreApprovalRules(client, { tenantRef })).find((entry) => entry.rule === rule);
+  if (before.approvalRequired === approvalRequired && before.updatedAt) return { changed: false, setting: before };
+  await appendEvidence(client, {
+    tenantRef,
+    kind: RESTORE_APPROVAL_SETTING_EVIDENCE_KIND,
+    subject: { rule, approvalRequired, previous: before.approvalRequired },
+    actor,
+  });
+  await client.query(
+    `INSERT INTO restore_approval_rule (tenant_ref, rule, approval_required, updated_by, updated_at)
+     VALUES ($1,$2,$3,$4, now())
+     ON CONFLICT (tenant_ref, rule)
+       DO UPDATE SET approval_required = EXCLUDED.approval_required, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [tenantRef, rule, approvalRequired, actor],
+  );
+  const setting = (await getRestoreApprovalRules(client, { tenantRef })).find((entry) => entry.rule === rule);
+  return { changed: before.approvalRequired !== approvalRequired, setting };
+}
+
+const WORKLOAD_PATH_PREFIX = 'workload:';
+
+const ordered = (all, picked) => all.filter((entry) => picked.has(entry));
+
+/**
+ * What a restore's dry run touches for its approval: { services, rules }. `services`
+ * are the services it writes to; `rules` the kinds of restore it is (turning a
+ * Conditional Access policy on, a compliance fix, a tenant-wide workload write, a
+ * restore into another tenant, objects Keel cannot place in a service). Null when Keel
+ * cannot read it (no dry run, no target tenant): then it waits for a person.
+ */
+export async function restoreApprovalScope(client, artifact) {
+  if (!artifact) return null;
+  if (typeof artifact.targetTenantId !== 'string' || artifact.targetTenantId.length === 0) return null;
+  const rules = new Set();
+  const services = new Set();
+  // Turning a policy on can lock people out: its own setting, on top of Entra's.
+  if (artifact.conditionalAccessEnforcement) {
+    rules.add('turn-on-conditional-access');
+    services.add('Entra');
+  }
+  // A compliance fix writes the value a control asks for, not the backup's.
+  if (artifact.complianceFix) rules.add('compliance-fix');
+  // A tenant-wide workload write goes beyond the KEEL-RT- fixtures (issue #317).
+  if (artifact.workloadRestore?.allowTenantWide === true) rules.add('tenant-wide');
+  // The setting is the source tenant's; writing into another tenant is its own kind.
+  if (tenantRefFor(artifact.targetTenantId) !== artifact.tenantRef) rules.add('other-tenant');
   const workload = artifact.workloadRestore?.workload
     ?? (String(artifact.collectorConfigPath ?? '').startsWith(WORKLOAD_PATH_PREFIX)
       ? String(artifact.collectorConfigPath).slice(WORKLOAD_PATH_PREFIX.length)
       : null);
   if (workload !== null) {
     const service = Object.hasOwn(WORKLOAD_RESTORE_SERVICES, workload) ? WORKLOAD_RESTORE_SERVICES[workload] : null;
-    return service ? [service] : null;
+    if (service) services.add(service);
+    else rules.add('unplaced');
+    return { services: ordered(RESTORE_APPROVAL_SERVICES, services), rules: ordered(RESTORE_APPROVAL_RULES, rules) };
   }
   const keys = [...new Set(artifact.closureKeys ?? [])];
-  if (keys.length === 0) return null;
+  if (keys.length === 0) rules.add('unplaced');
   const types = new Map();
   for (const resource of artifact.reconciliationResources ?? []) {
     if (typeof resource?.naturalKey === 'string' && typeof resource?.resourceType === 'string') {
       types.set(resource.naturalKey, resource.resourceType);
     }
   }
-  if (artifact.snapshotId) {
+  if (artifact.snapshotId && keys.length > 0) {
     const { rows } = await client.query(
       'SELECT natural_key, resource_type FROM resource_version WHERE snapshot_id = $1 AND natural_key = ANY($2::text[])',
       [artifact.snapshotId, keys],
     );
     for (const row of rows) if (!types.has(row.natural_key)) types.set(row.natural_key, row.resource_type);
   }
-  const services = new Set();
   for (const key of keys) {
     // Only a kind Keel has mapped counts as placed; a service guessed from a name does not.
     const type = types.get(key);
     const service = type !== undefined && typeInfo(type).known ? serviceForResourceType(type) : null;
-    if (!service) return null;
-    services.add(service);
+    if (service) services.add(service);
+    else rules.add('unplaced');
   }
-  return RESTORE_APPROVAL_SERVICES.filter((service) => services.has(service));
+  return { services: ordered(RESTORE_APPROVAL_SERVICES, services), rules: ordered(RESTORE_APPROVAL_RULES, rules) };
 }
 
 /**
- * Whether a restore still needs a person to approve it under the tenant's setting.
- * It does unless every service it writes to has restore approvals off. The setting
- * follows the dry run's tenant (its source), as content-effect approvals do.
- * Returns { required, services }.
+ * The services a restore's dry run writes to, or null when it is also one of the
+ * kinds of restore with their own setting (restoreApprovalScope has both).
+ */
+export async function restoreArtifactServices(client, artifact) {
+  const scope = await restoreApprovalScope(client, artifact);
+  return scope && scope.rules.length === 0 ? scope.services : null;
+}
+
+// Whether a scope needs a person: it does unless every service and every kind of
+// restore it touches has approvals off, and it touches at least one.
+async function scopeNeedsApproval(client, { tenantRef, scope }) {
+  if (!scope || (scope.services.length === 0 && scope.rules.length === 0)
+    || typeof tenantRef !== 'string' || tenantRef.length === 0) {
+    return { required: true, services: scope?.services ?? [], rules: scope?.rules ?? [] };
+  }
+  const offServices = new Set((await getRestoreApprovalSettings(client, { tenantRef }))
+    .filter((entry) => !entry.approvalRequired).map((entry) => entry.service));
+  const offRules = new Set((await getRestoreApprovalRules(client, { tenantRef }))
+    .filter((entry) => !entry.approvalRequired).map((entry) => entry.rule));
+  const required = scope.services.some((service) => !offServices.has(service))
+    || scope.rules.some((rule) => !offRules.has(rule));
+  return { required, services: scope.services, rules: scope.rules };
+}
+
+/**
+ * Whether a restore still needs a person to approve it under the tenant's settings.
+ * It does unless every service it writes to, and every kind of restore it is, has
+ * approvals off. The setting follows the dry run's tenant (its source), as
+ * content-effect approvals do. Returns { required, services, rules }.
  */
 export async function restoreNeedsApproval(client, { artifact }) {
-  const services = await restoreArtifactServices(client, artifact);
-  if (!services?.length || typeof artifact.tenantRef !== 'string' || artifact.tenantRef.length === 0) {
-    return { required: true, services: services ?? [] };
-  }
-  const settings = await getRestoreApprovalSettings(client, { tenantRef: artifact.tenantRef });
-  const off = new Set(settings.filter((entry) => !entry.approvalRequired).map((entry) => entry.service));
-  return { required: services.some((service) => !off.has(service)), services };
+  return scopeNeedsApproval(client, { tenantRef: artifact?.tenantRef, scope: await restoreApprovalScope(client, artifact) });
+}
+
+/**
+ * Whether a content restore (mail, files, Teams messages) needs a person: it does
+ * unless content restores and the workload's service both have approvals off. A
+ * workload Keel cannot place always needs one. Returns { required, services, rules }.
+ */
+export async function contentRestoreNeedsApproval(client, { tenantRef, workload }) {
+  const service = Object.hasOwn(CONTENT_RESTORE_SERVICES, String(workload)) ? CONTENT_RESTORE_SERVICES[workload] : null;
+  if (!service) return { required: true, services: [], rules: ['content-restore'] };
+  return scopeNeedsApproval(client, { tenantRef, scope: { services: [service], rules: ['content-restore'] } });
+}
+
+/** The plain reason kept on a request the settings approved. */
+export function approvalsOffReason({ services = [], rules = [] }) {
+  const names = [...services, ...rules.map((rule) => RESTORE_APPROVAL_RULE_NAMES[rule] ?? rule)];
+  return `Restore approvals are off for ${names.join(', ')}`;
 }

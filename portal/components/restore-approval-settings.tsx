@@ -1,40 +1,73 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
-import { Icon } from "@/components/shell/icons";
+import { Icon, type IconName } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Person } from "@/components/ui/person";
 import { postAction } from "@/lib/action-client";
 import { ago, formatTimestamp } from "@/lib/presentation";
-import type { RestoreApprovalSetting } from "@/lib/restore-approvals";
+import { RESTORE_APPROVAL_RULE_INFO, ruleOrder } from "@/lib/restore-approval-rules";
+import type { RestoreApprovalsView } from "@/lib/restore-approvals";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
+import type { EngineRef } from "@/lib/sentences";
 
-// Approvals page: whether a high-impact restore change waits for a second person, per
-// service. On for every service until someone with `policies` turns it off. Each change
-// is written to the audit record, so Activity shows who changed it and when.
+// Approvals page: whether a restore waits for a person, per service and per kind of
+// restore (content restores, turning a Conditional Access policy on, compliance fixes,
+// ...). On for every one until someone with `policies` turns it off. Each change is
+// written to the audit record, so Activity shows who changed it and when.
+
+interface Row {
+  key: string;
+  body: { service: string } | { rule: string };
+  name: string;
+  detail: string | null;
+  icon: IconName;
+  approvalRequired: boolean;
+  changedAt: string | null;
+  changedBy: EngineRef | null;
+  offWarning: ReactNode;
+}
+
 export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
-  settings: RestoreApprovalSetting[] | null;
+  settings: RestoreApprovalsView | null;
   canChange: boolean;
   now: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Services with approvals off first: they are the ones to look at.
-  const rows = [...(settings ?? [])].sort((a, b) => Number(a.approvalRequired) - Number(b.approvalRequired) || serviceOrder(a.service) - serviceOrder(b.service));
-  const off = rows.filter((row) => !row.approvalRequired);
+  // Off first in each group: those are the ones to look at.
+  const offFirst = (a: Row, b: Row) => Number(a.approvalRequired) - Number(b.approvalRequired);
+  const services: Row[] = (settings?.services ?? []).map((row) => {
+    const service = serviceFor(row.service);
+    return {
+      key: `service:${row.service}`, body: { service: row.service }, name: service.name, detail: null, icon: service.icon,
+      approvalRequired: row.approvalRequired, changedAt: row.changedAt, changedBy: row.changedBy,
+      offWarning: <p>Restores in {service.name}, and their high-impact changes, will be made without a second person approving them. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>,
+    };
+  }).sort((a, b) => offFirst(a, b) || serviceOrder((a.body as { service: string }).service) - serviceOrder((b.body as { service: string }).service));
+  const kinds: Row[] = (settings?.rules ?? []).map((row) => {
+    const info = RESTORE_APPROVAL_RULE_INFO[row.rule];
+    return {
+      key: `rule:${row.rule}`, body: { rule: row.rule }, name: info.name, detail: info.detail, icon: info.icon,
+      approvalRequired: row.approvalRequired, changedAt: row.changedAt, changedBy: row.changedBy,
+      offWarning: <p>{info.name} will start without a person approving them when the services they touch have approvals off too. Lockout checks still run first. The change is written to the audit record with your name.</p>,
+    };
+  }).sort((a, b) => offFirst(a, b) || ruleOrder((a.body as { rule: string }).rule) - ruleOrder((b.body as { rule: string }).rule));
+  const all = [...services, ...kinds];
+  const off = all.filter((row) => !row.approvalRequired);
 
-  async function change(service: string, approvalRequired: boolean) {
-    setBusy(service);
+  async function change(row: Row, approvalRequired: boolean) {
+    setBusy(row.key);
     setError(null);
     try {
-      await postAction("/api/restore-approvals", { service, approvalRequired }, crypto.randomUUID());
+      await postAction("/api/restore-approvals", { ...row.body, approvalRequired }, crypto.randomUUID());
       toast({
-        title: approvalRequired ? `Approvals on for ${serviceFor(service).name}` : `Approvals off for ${serviceFor(service).name}`,
+        title: approvalRequired ? `Approvals on for ${row.name}` : `Approvals off for ${row.name}`,
         detail: "The change is in the audit record.",
       });
       router.refresh();
@@ -44,6 +77,43 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
       setBusy(null);
     }
   }
+
+  const list = (rows: Row[], label: string) => (
+    <ul aria-label={label} className="ra-list">
+      {rows.map((row) => (
+        <li className="ra-row" data-off={row.approvalRequired ? undefined : ""} key={row.key}>
+          <span aria-hidden="true" className="ra-service-icon"><Icon name={row.icon} /></span>
+          <span className="ra-name">
+            <strong>{row.name}</strong>
+            {row.detail ? <small>{row.detail}</small> : null}
+            {row.changedAt ? (
+              <small>
+                Changed by <Person person={row.changedBy} />{" "}
+                <time dateTime={row.changedAt} title={formatTimestamp(row.changedAt)}>{ago(row.changedAt, now)}</time>
+              </small>
+            ) : <small>Keel&apos;s default</small>}
+          </span>
+          {row.approvalRequired
+            ? <Badge tone="fine">Approval needed</Badge>
+            : <Badge tone="soon">No approval</Badge>}
+          {canChange ? (row.approvalRequired ? (
+            <ConfirmButton
+              cancelLabel="Keep approvals"
+              size="sm"
+              confirmLabel="Turn off"
+              description={row.offWarning}
+              disabled={busy !== null}
+              onConfirm={() => change(row, false)}
+              title={`Turn off approvals for ${row.name}?`}
+              tone="danger"
+            >Turn off</ConfirmButton>
+          ) : (
+            <button aria-busy={busy === row.key || undefined} className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void change(row, true)} type="button">Turn on</button>
+          )) : null}
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
     <section aria-labelledby="restore-approvals-heading" className="ra-card" data-off={off.length ? "" : undefined}>
@@ -55,55 +125,28 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
             {settings === null
               ? <Badge tone="soon">Could not check</Badge>
               : off.length
-                ? <Badge tone="soon">Off for {off.length} of {rows.length}</Badge>
-                : <Badge tone="fine">On for every service</Badge>}
+                ? <Badge tone="soon">Off for {off.length} of {all.length}</Badge>
+                : <Badge tone="fine">On for everything</Badge>}
           </h2>
           <p>
-            Some restores do more than change a setting: they shorten how long content is kept, release a hold, widen
-            sharing, delete content, run scripts on devices or shorten group lifetimes. With approvals on, a second person
-            approves these first. With approvals off, Keel makes them with the restore and still lists them in the plan,
-            and a restore that only touches services with approvals off starts without waiting for an approver.
-            Lockout checks stay on either way, and turning a Conditional Access policy on always needs a person.
+            With approvals on, a second person approves a restore before it starts. Some restores also shorten how long
+            content is kept, release a hold, widen sharing, delete content, run scripts on devices or shorten group
+            lifetimes; with approvals off, Keel makes these with the restore and still lists them in the plan. A restore
+            starts without waiting only when every service and every kind of restore it touches has approvals off.
+          </p>
+          <p>
+            Lockout checks always run, Keel never writes sign-in trust or certificate settings, and a two-person rule you
+            set up still applies.
           </p>
         </div>
       </div>
       {settings !== null ? (
-        <ul className="ra-list">
-          {rows.map((row) => {
-            const service = serviceFor(row.service);
-            return (
-              <li className="ra-row" data-off={row.approvalRequired ? undefined : ""} key={row.service}>
-                <span aria-hidden="true" className="ra-service-icon"><Icon name={service.icon} /></span>
-                <span className="ra-name">
-                  <strong>{service.name}</strong>
-                  {row.changedAt ? (
-                    <small>
-                      Changed by <Person person={row.changedBy} />{" "}
-                      <time dateTime={row.changedAt} title={formatTimestamp(row.changedAt)}>{ago(row.changedAt, now)}</time>
-                    </small>
-                  ) : <small>Keel&apos;s default</small>}
-                </span>
-                {row.approvalRequired
-                  ? <Badge tone="fine">Approval needed</Badge>
-                  : <Badge tone="soon">No approval</Badge>}
-                {canChange ? (row.approvalRequired ? (
-                  <ConfirmButton
-                    cancelLabel="Keep approvals"
-                    size="sm"
-                    confirmLabel="Turn off"
-                    description={<p>Restores in {service.name}, and their high-impact changes, will be made without a second person approving them. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>}
-                    disabled={busy !== null}
-                    onConfirm={() => change(row.service, false)}
-                    title={`Turn off approvals for ${service.name}?`}
-                    tone="danger"
-                  >Turn off</ConfirmButton>
-                ) : (
-                  <button aria-busy={busy === row.service || undefined} className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void change(row.service, true)} type="button">Turn on</button>
-                )) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <h3 className="ra-group">By service</h3>
+          {list(services, "Restore approvals by service")}
+          <h3 className="ra-group">By kind of restore</h3>
+          {list(kinds, "Restore approvals by kind of restore")}
+        </>
       ) : null}
       {error ? <p className="ra-error" role="alert">{error}</p> : null}
     </section>

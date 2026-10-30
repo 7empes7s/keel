@@ -8,6 +8,8 @@
  *  - The approval must cover the restore's approval-policy class: a restore to another
  *    location needs a request filed as `content-restore-other-location`, so the tenant's
  *    two-person rule for that class applied when it was approved.
+ *  - A request the customer's restore approval settings approved (content restores and
+ *    the workload's service both off) runs only while they are still off.
  *  - The run must start within CONTENT_RESTORE_EXECUTION_WINDOW_MS of the decision, and a
  *    run that already completed is never started again: a new restore needs a new request.
  *  - On a test tenant, a restore writes only to targets named with the `KEEL-RT-` prefix.
@@ -15,6 +17,7 @@
  */
 import { can } from '../../authz/can.mjs';
 import { findPrincipalById } from '../../authz/principals.mjs';
+import { RESTORE_APPROVALS_OFF_DECIDER, contentRestoreNeedsApproval } from '../../govern/restoreApprovalSettings.mjs';
 
 export const CONTENT_RESTORE_CAPABILITY = 'content-restore';
 export const CONTENT_RESTORE_ACTION = 'content-restore';
@@ -71,6 +74,10 @@ export async function authorizeContentRestore(client, {
   if (request.requested_by !== actor) throw new ContentRestoreRefusedError(`approval request ${approvalId} was asked by someone else`);
   if (!request.decided_by || request.decided_by === request.requested_by) {
     throw new ContentRestoreRefusedError(`approval request ${approvalId} was not decided by someone other than the requester`);
+  }
+  if (request.decided_by === RESTORE_APPROVALS_OFF_DECIDER
+    && (await contentRestoreNeedsApproval(client, { tenantRef, workload: request.params?.workload })).required) {
+    throw new ContentRestoreRefusedError(`approval request ${approvalId} was approved because restore approvals were off, and they are on again; file a new request`);
   }
   const filedAs = Array.isArray(request.policy_actions) ? request.policy_actions : [];
   const missing = policyActions.filter((actionClass) => !filedAs.includes(actionClass));

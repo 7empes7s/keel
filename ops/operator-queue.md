@@ -13348,3 +13348,35 @@ item that needs it stays untouched.
 - **Expected:** all four reads proven; the run `complete` or `partial` only for unknown fields.
 - **Report:** capture exit code and proven/notProven; evidence branch and commit; import counts; the run line and unknown fields;
   anything left in the tenant (expected: nothing, reads only).
+
+### Q285: Live check that the anti-spam preset type and the DLP policy and rule switches come back (read-only toward the tenant, after PR #817), about 5 minutes
+- Drafted by the "Read missing Exchange and Defender fields" thread (2026-10-30). Code: PR #817. Three declared fields are added to
+  reads that are already live and on: `RecommendedPolicyType` on `mailflow.anti-spam-policies` (Get-HostedContentFilterPolicy),
+  `Enabled` on `purview.dlp-policies` (Get-DlpCompliancePolicy) and `IsAdvancedRule` on `purview.dlp-rules` (Get-DlpComplianceRule).
+  No new cmdlet, no new parameter, no new permission, so no new capture or import is needed. If a live answer does not carry one
+  of them, the run turns `partial` and names it in `unknownFields`; this item is what tells us.
+- Needs: /opt/keel-live at the #817 merge or later (`grep -q RecommendedPolicyType /opt/keel-live/engine/collect/workloads/mailFlow.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only, the Collector credentials the two workloads already use. No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
+  Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-workload-collect.mjs run` once by hand. Report the `exchange-mail-flow` and `purview-retention-dlp` outcomes,
+     their per-family `discovery.families` statuses, `fieldCounts` and **`unknownFields`** verbatim (field names only, never values).
+  2. From the database, for the newest run of each workload, report how many `anti-spam-policy:*` observations have
+     `RecommendedPolicyType`, how many `dlp-policy:*` have `Enabled`, and how many `dlp-rule:*` have `IsAdvancedRule`, with the
+     distinct values of each (they are enums and booleans, not tenant data: e.g. `Standard`/`Strict`/`Custom`, `true`/`false`).
+     For example:
+     ```sql
+     SELECT o.fields->>'kind' AS kind, o.fields->>'RecommendedPolicyType' AS preset, o.fields->>'Enabled' AS enabled,
+            o.fields->>'IsAdvancedRule' AS advanced, count(*)
+     FROM workload_observation o JOIN workload_collection c ON c.id = o.collection_id
+     WHERE c.id IN (SELECT DISTINCT ON (workload) id FROM workload_collection
+                    WHERE workload IN ('exchange-mail-flow','purview-retention-dlp') ORDER BY workload, observed_to DESC)
+       AND o.fields->>'kind' IN ('antiSpamPolicy','dlpPolicy','dlpRule')
+     GROUP BY 1,2,3,4 ORDER BY 1;
+     ```
+- **Expected:** both workloads `complete`, `unknownFields` none; every anti-spam policy has a `RecommendedPolicyType`, every DLP
+  policy an `Enabled`, every DLP rule an `IsAdvancedRule`.
+- **Report:** the deployed build; the run line for both workloads; unknown fields; the counts and values from step 2; anything left
+  in the tenant (expected: nothing, reads only).

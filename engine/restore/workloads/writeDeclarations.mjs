@@ -107,11 +107,13 @@ export function isTrustField(resourceType, field) {
  * check on key names never sees a trusted root certificate or a single sign-on
  * setting. A definition id is a trust setting when it names trust, a certificate
  * or sign-in (TRUST_FIELD_PATTERN), federation, single sign-on (Windows, Edge,
- * Office, the Apple extensible SSO payload) or a certificate payload (PKCS, SCEP,
- * PFX, Apple root, PEM and ACME payloads).
+ * Office, the Apple SSO and extensible SSO payloads), Kerberos and the servers
+ * browsers send credentials to, the Apple login window, or a certificate payload
+ * (PKCS, SCEP, PFX, Apple root, PEM, ACME and identity preference payloads).
  */
 export const TRUST_SETTING_PATTERN = new RegExp(
-  `${TRUST_FIELD_PATTERN.source}|federat|singlesignon|extensiblesso|pkcs|scep|pfx|com\\.apple\\.security\\.(?:root|pem|acme)`,
+  `${TRUST_FIELD_PATTERN.source}|federat|singlesignon|extensiblesso|kerberos|kdcproxy|authserverallowlist|authnegotiatedelegate`
+  + '|pkcs|scep|pfx|com\\.apple\\.security\\.(?:root|pem|acme|identitypreference)|com\\.apple\\.(?:sso|loginwindow)',
   'i',
 );
 

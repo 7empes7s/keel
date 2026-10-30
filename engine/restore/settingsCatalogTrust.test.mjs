@@ -62,6 +62,12 @@ test('trust, certificate and sign-in settings are found by their definition id a
   for (const id of [DEFENDER, WIPE_AFTER, 'linux_deviceencryption_required', 'com.apple.mail.managed_emailaddress']) {
     assert.equal(TRUST_SETTING_PATTERN.test(id), false, id);
   }
+  for (const id of [
+    'device_vendor_msft_policy_config_kerberos_kdcproxyservers', 'device_vendor_msft_policy_config_kerberos_cloudkerberosticketretrievalenabled',
+    'device_vendor_msft_policy_config_microsoft_edge~policy~microsoft_edge~httpauthentication_authserverallowlist',
+    'device_vendor_msft_policy_config_microsoft_edge~policy~microsoft_edge~httpauthentication_authnegotiatedelegateallowlist',
+    'com.apple.sso_realm', 'com.apple.loginwindow_loginwindowtext', 'com.apple.security.identitypreference_name',
+  ]) assert.equal(TRUST_SETTING_PATTERN.test(id), true, id);
   assert.deepEqual(trustSettingIds(catalogPolicy([settingOf('0', choice(DEFENDER, '1')), settingOf('1', simple(WIPE_AFTER, '10'))])), []);
   assert.deepEqual(trustSettingIds(null), []);
 });

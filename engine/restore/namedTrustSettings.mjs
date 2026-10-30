@@ -4,7 +4,10 @@
  *
  *  - custom (OMA-URI) profiles hold every setting under the same keys
  *    (omaSettings[].omaUri, .value) and say which setting it is only in the
- *    omaUri value, such as ./Device/Vendor/MSFT/RootCATrustedCertificates/...;
+ *    omaUri value, such as ./Device/Vendor/MSFT/RootCATrustedCertificates/...,
+ *    or in the value itself (text, or base64 of text or a certificate);
+ *  - Apple custom profiles hold the whole profile file (a property list,
+ *    base64) in one field, and name each payload by its PayloadType;
  *  - administrative templates (groupPolicyConfiguration) name each setting by
  *    a GUID definition id; only the definition's display name and category
  *    path (read with $expand=definition) say what it is.
@@ -44,14 +47,94 @@ export function isTrustSettingName(text) {
   return NAMED_TRUST_PATTERN.test(kept) || NAMED_TRUST_PATTERN.test(kept.replace(/[^a-z0-9]/gi, ''));
 }
 
-// Custom settings whose value is text Graph returns (a base64 value is left out:
-// random text in it can look like a name, and its OMA-URI says what it is).
-const TEXT_VALUE = /^#microsoft\.graph\.omaSetting(?:String|StringXml)$/;
+// Custom settings whose value is base64. Graph returns a StringXml value as
+// base64 (Edm.Binary); older backups hold it as written.
+const BASE64_VALUE = /^#microsoft\.graph\.omaSetting(?:StringXml|Base64)$/;
 
 /**
- * The OMA-URIs anywhere in a payload that name a trust setting, or whose text
- * value holds one (a VPN EAP or Wi-Fi XML naming its trusted root
- * certificates and servers), sorted and without repeats.
+ * The bytes a base64 value holds, or null when it is not strict base64 (the
+ * value is then not decoded: a guess could read random text as a name).
+ */
+export function decodeBase64(value) {
+  if (typeof value !== 'string') return null;
+  const compact = value.replace(/\s+/g, '');
+  if (compact.length === 0 || compact.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) return null;
+  return Buffer.from(compact, 'base64');
+}
+
+/**
+ * Which byte of each pair is zero in UTF-16 text without a byte order mark
+ * (ASCII-range text: 1 for little-endian, 0 for big-endian), or null.
+ */
+function utf16ZeroByte(bytes) {
+  if (bytes.length < 4 || bytes.length % 2 !== 0) return null;
+  const pairs = Math.min(bytes.length / 2, 256);
+  for (const zero of [1, 0]) {
+    let count = 0;
+    for (let i = 0; i < pairs; i += 1) if (bytes[2 * i + zero] === 0 && bytes[2 * i + 1 - zero] !== 0) count += 1;
+    if (count >= pairs * 0.9) return zero;
+  }
+  return null;
+}
+
+/**
+ * The text bytes hold (UTF-8, UTF-16 with or without a byte order mark, or a
+ * single-byte encoding such as ISO-8859-1 when they are not UTF-8), or null
+ * when they are binary: a control character.
+ */
+export function bytesAsText(bytes) {
+  if (!bytes || bytes.length === 0) return null;
+  let text;
+  const zero = utf16ZeroByte(bytes);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) text = bytes.subarray(2).toString('utf16le');
+  else if (bytes[0] === 0xfe && bytes[1] === 0xff) text = Buffer.from(bytes.subarray(2)).swap16().toString('utf16le');
+  else if (zero === 1) text = bytes.toString('utf16le');
+  else if (zero === 0) text = Buffer.from(bytes).swap16().toString('utf16le');
+  else {
+    text = bytes.toString('utf8');
+    if (text.includes('\uFFFD')) text = bytes.toString('latin1');
+  }
+  text = text.replace(/^\uFEFF/, '');
+  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(text) ? null : text;
+}
+
+/**
+ * Whether bytes are a certificate or a certificate container: PEM text, DER
+ * (an ASN.1 sequence whose long-form length fits), or BER with an indefinite
+ * length (PKCS #12 and CMS files start this way).
+ */
+export function isCertificateBytes(bytes) {
+  if (!bytes || bytes.length < 4) return false;
+  if (/-----BEGIN [A-Z0-9 ]*CERTIFICATE-----/.test(bytes.toString('latin1'))) return true;
+  if (bytes[0] !== 0x30) return false;
+  if (bytes[1] === 0x80) return bytes[2] === 0x02 || bytes[2] === 0x06 || bytes[2] === 0x30;
+  const size = bytes[1] - 0x80;
+  if (size < 2 || size > 4 || bytes.length < 2 + size) return false;
+  let length = 0;
+  for (let i = 0; i < size; i += 1) length = length * 256 + bytes[2 + i];
+  return bytes.length >= 2 + size + length;
+}
+
+/** Whether a custom setting's value holds a trust setting, read as text or decoded from base64. */
+function omaValueHoldsTrust(node) {
+  const type = node['@odata.type'] ?? '';
+  const value = node.value;
+  if (typeof value !== 'string') return false;
+  if (type === '#microsoft.graph.omaSettingString') return isTrustSettingName(value);
+  if (!BASE64_VALUE.test(type)) return false;
+  const bytes = decodeBase64(value);
+  // A StringXml value that is not base64 (older backups hold the XML as written) is read as it is.
+  if (!bytes) return type === '#microsoft.graph.omaSettingStringXml' && isTrustSettingName(value);
+  if (isCertificateBytes(bytes)) return true;
+  const text = bytesAsText(bytes);
+  return text !== null && isTrustSettingName(text);
+}
+
+/**
+ * The OMA-URIs anywhere in a payload that name a trust setting, or whose value
+ * holds one (a VPN EAP or Wi-Fi XML naming its trusted root certificates and
+ * servers, or a base64 value that decodes to such text or to a certificate),
+ * sorted and without repeats.
  */
 export function trustOmaUris(payload) {
   const found = new Set();
@@ -62,13 +145,71 @@ export function trustOmaUris(payload) {
     }
     if (!node || typeof node !== 'object') return;
     if (typeof node.omaUri === 'string') {
-      const text = TEXT_VALUE.test(node['@odata.type'] ?? '') && typeof node.value === 'string' ? node.value : null;
-      if (isTrustSettingName(node.omaUri) || isTrustSettingName(text)) found.add(node.omaUri);
+      if (isTrustSettingName(node.omaUri) || omaValueHoldsTrust(node)) found.add(node.omaUri);
     }
     Object.values(node).forEach(walk);
   };
   walk(payload);
   return [...found].sort();
+}
+
+/**
+ * Apple custom profiles: the field that holds the profile file, base64 of an
+ * XML property list (a .mobileconfig, possibly signed) or, for a macOS
+ * preference file, its XML.
+ */
+const APPLE_PROFILE_FIELDS = Object.freeze({
+  '#microsoft.graph.macOSCustomConfiguration': 'payload',
+  '#microsoft.graph.iosCustomConfiguration': 'payload',
+  '#microsoft.graph.macOSCustomAppConfiguration': 'configurationXml',
+});
+
+/** The field holding an Apple custom profile's file, or null when the payload is not one or the file is empty. */
+export function appleProfileField(payload) {
+  const field = APPLE_PROFILE_FIELDS[payload?.['@odata.type']];
+  return field && typeof payload[field] === 'string' && payload[field].trim().length > 0 ? field : null;
+}
+
+const PAYLOAD_TYPE = /<key>\s*PayloadType\s*<\/key>\s*<string>([^<]*)<\/string>/g;
+const DATA_BLOCK = /<data>([^<]*)<\/data>/g;
+
+/** The property list text in bytes: the file itself, or the one a signature wraps. */
+function propertyListText(bytes) {
+  const text = bytesAsText(bytes);
+  if (text !== null) return text;
+  // A signed profile is CMS (binary) around the XML, which is kept as written.
+  const raw = bytes.toString('latin1');
+  const start = raw.search(/<\?xml|<plist/);
+  const end = raw.lastIndexOf('</plist>');
+  if (start < 0 || end < start) return null;
+  return Buffer.from(raw.slice(start, end + '</plist>'.length), 'latin1').toString('utf8');
+}
+
+/**
+ * Trust, certificate and sign-in content in an Apple custom profile file:
+ * the trust payload types it holds (com.apple.security.root, .pkcs12,
+ * com.apple.extensiblesso, ...), or the field name when the trust content is
+ * elsewhere (a certificate in a data block, a Wi-Fi trusted server name).
+ * A file that cannot be read (binary property list, or not base64) is
+ * returned under unreadable, since nothing shows it holds none.
+ */
+export function appleProfileTrust(payload) {
+  const field = appleProfileField(payload);
+  if (field === null) return { trust: [], unreadable: [] };
+  const value = payload[field];
+  const bytes = decodeBase64(value);
+  const text = bytes ? propertyListText(bytes) : value.trimStart().startsWith('<') ? value : null;
+  if (text === null) return { trust: [], unreadable: [field] };
+  const trust = new Set();
+  for (const [, raw] of text.matchAll(PAYLOAD_TYPE)) {
+    const type = raw.trim();
+    if (isTrustSettingName(type)) trust.add(type);
+  }
+  // Data blocks are base64: read only for a certificate, never as text.
+  let certificate = false;
+  for (const [, data] of text.matchAll(DATA_BLOCK)) if (isCertificateBytes(decodeBase64(data))) certificate = true;
+  if (trust.size === 0 && (certificate || isTrustSettingName(text.replace(DATA_BLOCK, '<data></data>')))) trust.add(field);
+  return { trust: [...trust].sort(), unreadable: [] };
 }
 
 /**

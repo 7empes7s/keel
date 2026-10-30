@@ -56,7 +56,7 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import { trustSettingIds } from './workloads/writeDeclarations.mjs';
-import { groupPolicyTrustSettings, namedTrustSkip, trustOmaUris } from './namedTrustSettings.mjs';
+import { appleProfileField, appleProfileTrust, groupPolicyTrustSettings, namedTrustSkip, trustOmaUris } from './namedTrustSettings.mjs';
 import {
   applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, wholeReplaceTrustRefusal, withoutTrustFields,
@@ -223,22 +223,37 @@ export function trustSettingRefusal(resource, verb) {
 }
 
 /**
- * CLAUDE.md restore-writer rule for custom (OMA-URI) profiles: a trust,
- * certificate or sign-in setting is named by its omaUri value, not a key, so
- * the key-based trust check misses it. The custom settings are written as one
- * list, so leaving one out would delete it from the tenant: the whole write is
- * a manual step when the backup holds one, or (on update) the live profile does.
- * Returns null or the skipped outcome.
+ * CLAUDE.md restore-writer rule for custom profiles: a trust, certificate or
+ * sign-in setting is named by a value, not a key, so the key-based trust check
+ * misses it. In an OMA-URI profile it is an omaUri (or a value naming one); in
+ * an Apple custom profile it is a payload in the profile file. Both are
+ * written as one list or one file, so leaving one out would delete it from the
+ * tenant: the whole write is a manual step when the backup holds one, or (on
+ * update) the live profile does. A profile file that cannot be read is manual
+ * too, since nothing shows it holds none. Returns null or the skipped outcome.
  */
 export function omaTrustRefusal(resource, verb) {
-  const uris = new Set(trustOmaUris(resource?.payload));
-  if (verb === 'update') for (const uri of trustOmaUris(resource?.live?.payload)) uris.add(uri);
+  const payloads = [resource?.payload, ...(verb === 'update' ? [resource?.live?.payload] : [])];
+  const names = new Set();
+  const unreadable = new Set();
+  for (const payload of payloads) {
+    for (const uri of trustOmaUris(payload)) names.add(uri);
+    const apple = appleProfileTrust(payload);
+    for (const name of apple.trust) names.add(name);
+    for (const field of apple.unreadable) unreadable.add(field);
+  }
   // Without the live profile nothing shows its custom settings hold no trust setting the list would remove.
-  if (uris.size === 0 && verb === 'update' && Array.isArray(resource?.payload?.omaSettings) && !resource?.live?.payload) {
+  const writesWhole = Array.isArray(resource?.payload?.omaSettings) || appleProfileField(resource?.payload) !== null;
+  // A live Apple profile read without its file cannot show the backup's file removes no trust payload.
+  const liveFileMissing = appleProfileField(resource?.payload) !== null && appleProfileField(resource?.live?.payload) === null;
+  if (names.size === 0 && unreadable.size === 0 && verb === 'update' && writesWhole && (!resource?.live?.payload || liveFileMissing)) {
     return namedTrustSkip([], () => 'the live profile was not read, so nothing shows its custom settings hold no trust, certificate or sign-in setting the restore would remove; restore the profile by hand in the Intune admin center');
   }
-  if (uris.size === 0) return null;
-  return namedTrustSkip(uris, (names) => `this profile holds custom settings for trust, certificates or sign-in (${names}); a restore never writes them, and the custom settings are written as one list, so restore the profile by hand in the Intune admin center`);
+  if (names.size === 0 && unreadable.size > 0) {
+    return namedTrustSkip(unreadable, (fields) => `the profile file (${fields}) could not be read, so nothing shows it holds no trust, certificate or sign-in setting; restore the profile by hand in the Intune admin center`);
+  }
+  if (names.size === 0) return null;
+  return namedTrustSkip(names, (list) => `this profile holds custom settings for trust, certificates or sign-in (${list}); a restore never writes them, and the custom settings are written as one list or file, so restore the profile by hand in the Intune admin center`);
 }
 
 // ------------------------------------------------------------------- bodies

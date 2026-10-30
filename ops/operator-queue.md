@@ -12495,8 +12495,15 @@ item that needs it stays untouched.
   these cmdlets by hand and made the KEEL-RT- recipient fixtures. This item is the Q157-style capture Q204 needs.
 - Needs: /opt/keel-live at 2290d9b6 or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeRecipients.mjs`), and the
   `keel-powershell` image rebuilt at that build if `ops/powershell` changed since the last build (`run-cmdlet.ps1` has a new table).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 12:05 UTC, keel-operator). Build **B = 6caae1c0** (has 2290d9b6). Reads only, Collector credential (`/etc/keel/exchange-collector.json`, the `powershellConfigs.exchange` config); no New/Set/Add/Remove cmdlet; nothing granted or created; global admin not used. Image: the workload PowerShell scripts are mounted from the checkout at B (`engine/powershell/jobQueue.mjs` defaultScriptMount), so the new `run-cmdlet.ps1` table was used without an image rebuild.
+  - **Step 1, capture:**
+    - `exchange-distribution-groups`: exit **0**, outcome **complete**, proven `distribution-groups`, `dynamic-distribution-groups`, `microsoft-365-groups`; notProven `[]`; verify ok. pseudonymize check exit 0.
+    - `exchange-recipients`: exit **0**, outcome **complete**, proven `shared-mailboxes`, `room-mailboxes`, `equipment-mailboxes`, `mail-contacts`, `mailbox-permissions`, `send-as`, `calendar-processing`; notProven `[]`; verify ok. pseudonymize check exit 0.
+  - **Step 2:** `claude/live-evidence-exchange-recipients` **e8c40bba** (from origin/master, the 2 records only, secret scan 0, no addresses). No PR.
+  - **Step 3, import** (`--dir` = that checkout's `docs/release/qualifications`): exit **0**, imported **21**, refused **[]**, absent 5 (exchange-mail-flow / exchange-extended / purview-retention-dlp / purview-governance reads, exchange-role-definitions writes: not on master, only listed). New: `workload-reads-exchange-distribution-groups` reads 3, `workload-reads-exchange-recipients` reads 7, both evidenceBuild 6caae1c0.
+  - **Step 4, `run`:** exit **0**. Every enabled workload `complete`; `power-platform-settings` disabled. Observations: exchange-distribution-groups **20**, exchange-recipients **67**, exchange-extended 40, exchange-mail-flow 39, exchange-role-groups 39, exchange-mailbox-settings 2, onedrive-site-settings 1, purview-governance 2, purview-labels 21, purview-retention-dlp 10 (1 new change against the approved setup: the retention fixture's redeploy from Q263), sharepoint-site-settings 22, sharepoint-structure 5, teams-org-policies 26, teams-settings 11, teams-voice-policies 157. Both new workloads complete, so no reasons or gaps to report. Compliance checks: 9 run (4 pass, 5 fail).
+  - **Step 5, `proof`:** both new reads listed with **29 days** left (expire 2026-11-29). Exit **1** only because 4 older proofs expire in 6 days (2026-11-06: sharepoint-, teams-, exchange- and onedrive-purview-live-acceptance), which need a recapture soon. **Q204 is unblocked** on the reads side.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
   Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from

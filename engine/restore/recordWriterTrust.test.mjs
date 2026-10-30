@@ -190,10 +190,29 @@ test('no whole-payload body sends a trust field nested inside an object or a lis
   }
 });
 
-test('a nested trust field is dropped and its neighbours are kept', () => {
-  const body = intuneWriteBody('deviceConfiguration', { '@odata.type': '#microsoft.graph.windows10VpnConfiguration', displayName: 'KEEL-RT-Vpn', ...nestedTrust() }, 'update');
-  assert.deepEqual(body.vpnSettings, { connectionName: 'KEEL-RT-Vpn', servers: [{ address: 'vpn.example.test' }] });
-  assert.deepEqual(body.identityProviders, [{ name: 'KEEL-RT-Idp' }]);
+test('a create drops a nested trust field and keeps its neighbours; an update leaves the whole field out', () => {
+  const payload = { '@odata.type': '#microsoft.graph.windows10VpnConfiguration', displayName: 'KEEL-RT-Vpn', ...nestedTrust() };
+  const created = intuneWriteBody('deviceConfiguration', payload, 'create');
+  assert.deepEqual(created.vpnSettings, { connectionName: 'KEEL-RT-Vpn', servers: [{ address: 'vpn.example.test' }] });
+  assert.deepEqual(created.identityProviders, [{ name: 'KEEL-RT-Idp' }]);
+  // Graph replaces a nested object or list whole: sent without its trust field, it would clear the live one.
+  const updated = intuneWriteBody('deviceConfiguration', payload, 'update');
+  assert.deepEqual(Object.keys(updated).filter((key) => key !== '@odata.type'), ['displayName']);
+});
+
+test('an update never clears a live nested trust field: the field holding it is left for a person', async () => {
+  const path = '/deviceManagement/deviceCategories/cat-5';
+  const live = { id: 'cat-5', displayName: 'KEEL-RT-Cat5', description: 'Live', extra: { label: 'old', signingCertificate: 'MIIBlive' } };
+  const desired = { id: 'cat-src', displayName: 'KEEL-RT-Cat5', description: 'Backup', extra: { label: 'new', signingCertificate: 'MIIBlive' } };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceCategory', desired, { live: { state: 'present', targetId: 'cat-5', payload: live } }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.filter((call) => call.method === 'PATCH').map((call) => call.body), [{ description: 'Backup' }]);
+  const step = result.applied.completion[0];
+  assert.deepEqual(step.fields, ['extra'], 'the trust value is the same; the other values are what a person sets');
+  assert.match(step.description, /extra holds a trust setting, so it was not restored/);
+  // Neither the trust value nor its neighbours differ: nothing to do.
+  assert.equal(trustFieldStep('deviceCategory', { extra: { label: 'x', issuerUri: 'a' } }, { extra: { label: 'x', issuerUri: 'a' } }, 'update'), null);
 });
 
 test('a body with no trust field anywhere is sent as it is, and values that mention a certificate are kept', () => {

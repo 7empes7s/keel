@@ -254,7 +254,7 @@ export function intuneWriteBody(resourceType, payload, verb) {
   if (entry.settings) body.settings = settingsBody(payload?.settings);
   if (entry.scheduledActions && verb === 'create') body.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
   // A trust, certificate or sign-in field is never sent (intuneTrustFieldStep lists it for a person).
-  return withoutTrustFields(resourceType, body);
+  return withoutTrustFields(resourceType, body, verb);
 }
 
 /** The manual step for a policy's trust, certificate or sign-in fields the write leaves out, or null. */

@@ -210,7 +210,7 @@ export function recordWriteBody(record, payload, verb) {
     if (verb !== 'create' && record.createOnly.includes(key)) continue;
     body[key] = withoutAnnotations(value);
   }
-  return withoutTrustFields(record.resourceType, record.transform ? record.transform(body, { verb, payload }) : body);
+  return withoutTrustFields(record.resourceType, record.transform ? record.transform(body, { verb, payload }) : body, verb);
 }
 
 /**
@@ -221,9 +221,19 @@ export function recordWriteBody(record, payload, verb) {
  * `writable`; this covers the rest, at any depth: a field inside a nested
  * object or a list of objects (a profile's settings block, a list of servers)
  * is dropped the same way as a top-level one.
+ *
+ * An update sends a nested object or list whole, and Graph replaces it whole,
+ * so sending it without its trust field would clear the live one. An update
+ * therefore leaves out every top-level field that holds a nested trust field
+ * (trustFieldStep lists it for a person); a create, with nothing live to
+ * clear, sends it without the trust field.
  */
-export function withoutTrustFields(resourceType, body) {
-  return stripTrust(resourceType, body);
+export function withoutTrustFields(resourceType, body, verb = 'create') {
+  const stripped = stripTrust(resourceType, body);
+  if (verb === 'create' || stripped === body || !stripped || typeof stripped !== 'object' || Array.isArray(stripped)) return stripped;
+  const kept = {};
+  for (const [key, value] of Object.entries(stripped)) if (value === body[key]) kept[key] = value;
+  return kept;
 }
 
 const isTrustKey = (resourceType, key) => key !== '@odata.type' && !isAnnotation(key) && isTrustField(resourceType, key);
@@ -273,20 +283,32 @@ const isUnset = (value) => value === false || value === 0 || value === '' || sam
   || (Array.isArray(value) && value.length === 0) || (value && typeof value === 'object' && Object.keys(normalised(value)).length === 0);
 
 export function trustFieldStep(resourceType, payload, live, verb, { excluded = [], same = (_field, left, right) => sameValue(left, right) } = {}) {
-  // Top-level fields compare with the writer's own equality; a nested one by value at the same path.
-  const sameAt = (segments, left, right) => (segments.length === 1 ? same(segments[0], left, right) : sameValue(left, right));
-  const differing = Object.keys(payload ?? {})
-    .filter((key) => key !== '@odata.type' && !isAnnotation(key) && !SERVER_OWNED_ALWAYS.has(key) && !excluded.includes(key))
-    .flatMap((key) => (isTrustField(resourceType, key) ? [[key]] : nestedTrustPaths(resourceType, payload[key], [key])))
-    .filter((segments) => {
-      const desired = valueAt(payload, segments);
-      return verb === 'create' || !live ? !isUnset(desired) : !sameAt(segments, desired, valueAt(live, segments));
-    })
-    .map(pathText);
-  if (differing.length === 0) return null;
+  const update = verb !== 'create';
+  const differs = (segments, desired) => (verb === 'create' || !live ? !isUnset(desired)
+    // Top-level fields compare with the writer's own equality; a nested one by value at the same path.
+    : segments.length === 1 ? !same(segments[0], desired, live[segments[0]]) : !sameValue(desired, valueAt(live, segments)));
+  const fields = [];
+  const held = [];
+  for (const key of Object.keys(payload ?? {})) {
+    if (key === '@odata.type' || isAnnotation(key) || SERVER_OWNED_ALWAYS.has(key) || excluded.includes(key)) continue;
+    if (isTrustField(resourceType, key)) {
+      if (differs([key], payload[key])) fields.push(key);
+      continue;
+    }
+    const nested = nestedTrustPaths(resourceType, payload[key], [key]);
+    if (nested.length === 0) continue;
+    fields.push(...nested.filter((segments) => differs(segments, valueAt(payload, segments))).map(pathText));
+    // An update leaves the whole field out (withoutTrustFields): its other values are a step too.
+    const others = stripTrust(resourceType, payload[key]);
+    if (update && (live ? !sameValue(others, stripTrust(resourceType, live[key])) : !isUnset(others))) held.push(key);
+  }
+  if (fields.length === 0 && held.length === 0) return null;
+  const parts = [];
+  if (fields.length) parts.push(`Check ${fields.join(', ')} in the admin center and set the backup's value by hand if it is still wanted.`);
+  if (held.length) parts.push(`${held.join(', ')} ${held.length === 1 ? 'holds' : 'hold'} a trust setting, so ${held.length === 1 ? 'it was' : 'they were'} not restored either: set the backup's other values there by hand.`);
   return Object.freeze({
-    kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(differing),
-    description: `A restore never writes trust, certificate or sign-in settings. Check ${differing.join(', ')} in the admin center and set the backup's value by hand if it is still wanted.`,
+    kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze([...fields, ...held.filter((key) => !fields.includes(key))]),
+    description: `A restore never writes trust, certificate or sign-in settings. ${parts.join(' ')}`,
   });
 }
 

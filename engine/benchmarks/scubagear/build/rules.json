@@ -8,11 +8,21 @@
   },
   "products": [
     "aad",
-    "exo"
+    "exo",
+    "securitysuite",
+    "sharepoint",
+    "teams",
+    "powerplatform",
+    "powerbi"
   ],
   "entrypoints": [
     "aad/tests",
-    "exo/tests"
+    "exo/tests",
+    "securitysuite/tests",
+    "sharepoint/tests",
+    "teams/tests",
+    "powerplatform/tests",
+    "powerbi/tests"
   ],
   "sources": [
     {
@@ -22,6 +32,26 @@
     {
       "path": "Rego/EXOConfig.rego",
       "sha256": "5ebb12e897cd3915214f31f6b10ab8f890591c7512b90bbd11a527ab72746efb"
+    },
+    {
+      "path": "Rego/PowerBIConfig.rego",
+      "sha256": "ecc05bdd8d13d7ae6faa65db71a1896b4d4e5380c14d1ce1537524033fb42544"
+    },
+    {
+      "path": "Rego/PowerPlatformConfig.rego",
+      "sha256": "142fad53a8c6ffaf741e0beb6406be3b9430cd35a18ed8a02c2576e77f77891b"
+    },
+    {
+      "path": "Rego/SecuritySuiteConfig.rego",
+      "sha256": "caa6b5e7eeab80474988e60f995d14824d8c46b7472215027a90ef529fb87062"
+    },
+    {
+      "path": "Rego/SharepointConfig.rego",
+      "sha256": "a8b3f5344538793428f36e5bf51d045260d60cd73066f4b35fc71868968eba96"
+    },
+    {
+      "path": "Rego/TeamsConfig.rego",
+      "sha256": "7ce5a4de04c8e8f286574711d5e84cfb544bd6d01448303b3d6d50227a7846ed"
     },
     {
       "path": "Rego/Utils/AAD.rego",
@@ -45,5 +75,5 @@
     }
   ],
   "module": "rules.wasm",
-  "moduleSha256": "a814c3b65669536188a882bc3923ba45af24845b37f20816fbac9faceaaeb978"
+  "moduleSha256": "2bbc2507a8450acd629ccc3940f84430c11b9dcfc25cbd5e63af26435a5a6d11"
 }

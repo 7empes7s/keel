@@ -72,7 +72,10 @@ export const SENSITIVE_MASK = '(hidden)';
 // are already the read's declared fields only, with credential-shaped values redacted
 // at collection (mailFlow.mjs observeObject), so a predicate sees them as stored. Each
 // stored object carries its `kind` (the family it was read from).
-export const WORKLOAD_FACT_TYPES = Object.freeze(new Set(['exchange-mail-flow']));
+export const WORKLOAD_FACT_TYPES = Object.freeze(new Set([
+  'exchange-mail-flow', 'exchange-extended', 'purview-retention-dlp', 'teams-org-policies', 'teams-voice-policies',
+  'power-platform-settings', 'sharepoint-site-settings',
+]));
 
 const PREDICATES = new Map();
 const FIX_MATCHERS = new Map();

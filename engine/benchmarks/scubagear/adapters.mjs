@@ -28,7 +28,12 @@
  * Read-only: nothing here calls a tenant.
  */
 import { FAMILIES } from '../../collect/workloads/mailFlow.mjs';
+import { FAMILIES as EXTENDED } from '../../collect/workloads/exchangeExtended.mjs';
 import { ORGANIZATION_FIELDS } from '../../collect/workloads/exchange.mjs';
+import { FAMILIES as PURVIEW } from '../../collect/workloads/purviewRetentionDlp.mjs';
+import { FAMILIES as POWER_PLATFORM } from '../../collect/workloads/powerPlatform.mjs';
+import { FAMILIES as TEAMS } from '../../collect/workloads/teamsPolicies.mjs';
+import { FAMILIES as TEAMS_EXTENDED } from '../../collect/workloads/teamsExtended.mjs';
 import { SENSITIVE_MASK } from '../registry.mjs';
 
 export class CouldNotBuild extends Error {
@@ -44,6 +49,12 @@ export class CouldNotBuild extends Error {
 export const GRAPH_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export const WORKLOAD_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 export const MAIL_FLOW = 'exchange-mail-flow';
+export const EXCHANGE_EXTENDED = 'exchange-extended';
+export const PURVIEW_DLP = 'purview-retention-dlp';
+export const TEAMS_POLICIES = 'teams-org-policies';
+export const TEAMS_VOICE = 'teams-voice-policies';
+export const POWER_PLATFORM_SETTINGS = 'power-platform-settings';
+export const SHAREPOINT_SETTINGS = 'sharepoint-site-settings';
 
 // ScubaGear's ScubaConfigDefaults.json `privilegedRoles` at the pinned tag.
 export const PRIVILEGED_ROLES = Object.freeze([
@@ -65,16 +76,25 @@ export function pascal(value) {
 // every-few-hours one: a fresher limit would leave their rules could not check most of the day.
 const DAILY_TYPES = new Set(['user', 'groupSetting', 'appManagementPolicy', 'tenantAppManagementPolicy']);
 const graph = (resourceType) => Object.freeze({ resourceType, maxAgeMs: DAILY_TYPES.has(resourceType) ? WORKLOAD_MAX_AGE_MS : GRAPH_MAX_AGE_MS });
-const mailFlow = (...parts) => Object.freeze({ resourceType: MAIL_FLOW, parts: Object.freeze(parts), maxAgeMs: WORKLOAD_MAX_AGE_MS });
+const service = (resourceType, ...parts) => Object.freeze({ resourceType, parts: Object.freeze(parts), maxAgeMs: WORKLOAD_MAX_AGE_MS });
+const mailFlow = (...parts) => service(MAIL_FLOW, ...parts);
 const list = (facts, type) => facts[type] ?? [];
 const single = (facts, type) => list(facts, type).slice(0, 1);
 
 // Keel's own bookkeeping on a stored service-read object, which the cmdlet never returns.
 function cmdletObject(fact) {
-  const { kind, identity, id, ...fields } = fact;
+  const { kind, identity, id, lock, parent, parentStatus, case: _case, environment, ...fields } = fact;
   return fields;
 }
-const ofKind = (facts, kind) => list(facts, MAIL_FLOW).filter((fact) => fact.kind === kind).map(cmdletObject);
+const ofKind = (facts, kind, type = MAIL_FLOW) => list(facts, type).filter((fact) => fact.kind === kind).map(cmdletObject);
+
+/**
+ * An Exchange protection policy or rule as its Get cmdlet returns it. Keel keys these
+ * objects by Guid and keeps the Name; for them the cmdlet's Identity is the Name (the
+ * provider's comments say so: "Identity = Name of the policy").
+ */
+const named = (facts, kind, type) => ofKind(facts, kind, type).map((fields) => ({ ...fields, Identity: fields.Name ?? null }));
+const namedFields = (family) => Object.freeze([...family.fields, 'Identity']);
 
 function premium(facts) {
   return list(facts, 'subscribedSku').some((sku) => (sku.servicePlans ?? [])
@@ -223,9 +243,81 @@ function authenticationMethod(facts) {
   });
 }
 
+/**
+ * Input keys that are one family of a service read, as its cmdlet returns them. With
+ * `identity` (the Exchange families), Identity is added from the Name.
+ */
+function cmdletKeys(resourceType, families, keys, { identity = true, lacks = {}, nested = {} } = {}) {
+  return Object.fromEntries(Object.entries(keys).map(([key, kind]) => [key, Object.freeze({
+    reads: [service(resourceType, kind)],
+    fields: Object.freeze([...(identity ? namedFields(families[kind]) : families[kind].fields), ...(nested[key] ?? [])]),
+    lacks: lacks[key] ?? [],
+    build: (facts) => (identity ? named(facts, kind, resourceType) : ofKind(facts, kind, resourceType)),
+  })]));
+}
+
+/**
+ * The domains Teams external access is limited to, as a list (ScubaGear's REST read
+ * gives a list; an empty one means every domain is allowed). The Teams module Keel runs
+ * gives { AllowedDomain: [{ Domain }] } for a list and an object with no list when every
+ * domain is allowed. Any other shape is not guessed at.
+ */
+export function allowedDomains(value) {
+  const domainOf = (entry) => (typeof entry === 'string' ? entry : entry?.Domain);
+  const listed = Array.isArray(value) ? value
+    : value && typeof value === 'object' && !Array.isArray(value) && Object.hasOwn(value, 'AllowedDomain') ? [value.AllowedDomain].flat()
+      : value && typeof value === 'object' && Object.keys(value).every((key) => key === 'AllowAllKnownDomains') ? []
+        : null;
+  if (!listed || listed.some((entry) => typeof domainOf(entry) !== 'string')) {
+    throw new CouldNotBuild('federation_configuration', 'the backup does not say which domains Teams external access allows');
+  }
+  return listed.map(domainOf);
+}
+
+// SharePoint's numbers for Graph's named choices (SharingCapabilities and
+// SharingDomainRestrictionModes in the SharePoint admin API).
+export const SHARING_CAPABILITY = Object.freeze({
+  disabled: 0, externalUserSharingOnly: 1, externalUserAndGuestSharing: 2, existingExternalUserSharingOnly: 3,
+});
+export const SHARING_DOMAIN_RESTRICTION = Object.freeze({ none: 0, allowList: 1, blockList: 2 });
+
+function spoTenant(facts) {
+  const tenant = list(facts, SHAREPOINT_SETTINGS).find((fact) => fact.id === 'tenant');
+  if (!tenant) throw new CouldNotBuild('SPO_tenant', 'the SharePoint backup holds no tenant sharing settings');
+  const number = (table, value, name) => {
+    if (typeof value === 'string' && Object.hasOwn(table, value)) return table[value];
+    throw new CouldNotBuild('SPO_tenant', `the backup does not say how ${name} is set`);
+  };
+  const domains = (value) => (Array.isArray(value) ? value.join(' ') : '');
+  return [{
+    SharingCapability: number(SHARING_CAPABILITY, tenant.sharingCapability, 'external sharing'),
+    SharingDomainRestrictionMode: number(SHARING_DOMAIN_RESTRICTION, tenant.sharingDomainRestrictionMode, 'the sharing domain list'),
+    SharingAllowedDomainList: domains(tenant.sharingAllowedDomainList),
+    SharingBlockedDomainList: domains(tenant.sharingBlockedDomainList),
+  }];
+}
+
+/**
+ * Get-PowerPlatformDlpPoliciesRest answers one page, { value: [policy, ...] }. Keel reads
+ * the same policies through the newer governance API, whose policies carry the same
+ * name, displayName, environmentType and environments (each with its name). This is
+ * not confirmed against a live read yet.
+ */
+function dlpPolicies(facts) {
+  const value = list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === 'dlpPolicy').map((policy) => ({
+    name: policy.identity ?? null,
+    displayName: policy.displayName ?? null,
+    environmentType: policy.environmentType ?? null,
+    environments: Array.isArray(policy.environments) ? policy.environments : [],
+  }));
+  return [{ value }];
+}
+
 const SCUBA_CONFIG_FIELDS = Object.freeze([
   'M365Environment', 'Aad', 'Exo', 'CapExclusions', 'RoleExclusions', 'AgentExclusions', 'Agents', 'Users', 'Groups',
   'Applications', 'GuestUserTypes', 'AllowedForwardingDomains',
+  // Security Suite: its per-rule sections (and the older Defender ones), and where a run writes its files.
+  'SecuritySuite', 'Defender', 'OutputPath', 'OutPath', 'OutRegoFileName', 'OutputRegoFileName',
 ]);
 
 export const ADAPTERS = Object.freeze({
@@ -282,6 +374,88 @@ export const ADAPTERS = Object.freeze({
   // Keel's organization read keeps a few settings only, and is not wired here yet: a
   // rule that needs only these fields fails registration until it is.
   org_config: Object.freeze({ reads: null, fields: ORGANIZATION_FIELDS, build: null }),
+
+  // Security Suite (Defender for Office 365, Exchange Online Protection, Purview)
+  ...cmdletKeys(MAIL_FLOW, FAMILIES, {
+    anti_phish_policies: 'antiPhishPolicy', anti_malware_policies: 'antiMalwarePolicy', safe_attachment_policies: 'safeAttachmentPolicy',
+    safe_links_policies: 'safeLinksPolicy', hosted_content_filter_policies: 'antiSpamPolicy',
+  }, {
+    // Which preset (Standard, Strict or Custom) a policy belongs to: Keel's read does not keep it.
+    lacks: { hosted_content_filter_policies: ['RecommendedPolicyType'] },
+  }),
+  ...cmdletKeys(EXCHANGE_EXTENDED, EXTENDED, {
+    protection_policy_rules: 'eopPresetRule', atp_policy_rules: 'defenderPresetRule', atp_policy_for_o365: 'defenderForOffice',
+    anti_phish_rules: 'antiPhishRule', anti_malware_rules: 'antiMalwareRule', safe_attachment_rules: 'safeAttachmentRule',
+    safe_links_rules: 'safeLinksRule', hosted_content_filter_rules: 'antiSpamRule', conn_filter: 'connectionFilterPolicy',
+  }),
+  ...cmdletKeys(PURVIEW_DLP, PURVIEW, {
+    dlp_compliance_policies: 'dlpPolicy', dlp_compliance_rules: 'dlpRule', protection_alerts: 'alertPolicy',
+  }, {
+    // Whether a DLP policy is on, and whether a rule is written as an advanced rule: Keel's read keeps neither.
+    lacks: { dlp_compliance_policies: ['Enabled'], dlp_compliance_rules: ['IsAdvancedRule'] },
+    // Each sensitive type in a rule's ContentContainsSensitiveInformation has a name; Keel keeps that field whole.
+    nested: { dlp_compliance_rules: ['name'] },
+  }),
+  // ScubaGear's provider sets this from whether the Defender for Office 365 cmdlets
+  // exist. Keel's read of Get-AtpPolicyForO365 (a Defender for Office 365 cmdlet) is
+  // recorded as not licensed, with no object, when they do not: a tenant that has it
+  // always has its one Default object.
+  defender_license: Object.freeze({
+    reads: [service(EXCHANGE_EXTENDED, 'defenderForOffice')], fields: [],
+    build: (facts) => list(facts, EXCHANGE_EXTENDED).some((fact) => fact.kind === 'defenderForOffice'),
+  }),
+
+  // Teams
+  ...cmdletKeys(TEAMS_POLICIES, TEAMS, {
+    meeting_policies: 'meetingPolicy', client_configuration: 'clientConfiguration', app_policies: 'appPermissionPolicy',
+  }, { identity: false }),
+  federation_configuration: Object.freeze({
+    reads: [service(TEAMS_POLICIES, 'federationConfiguration')], fields: TEAMS.federationConfiguration.fields,
+    build: (facts) => ofKind(facts, 'federationConfiguration', TEAMS_POLICIES)
+      .map((configuration) => ({ ...configuration, AllowedDomains: allowedDomains(configuration.AllowedDomains) })),
+  }),
+  ...cmdletKeys(TEAMS_VOICE, TEAMS_EXTENDED, { broadcast_policies: 'liveEventsPolicy' }, { identity: false }),
+
+  // SharePoint and OneDrive. Keel reads the tenant's sharing settings through Graph
+  // (sharepointSettings), which names its choices; the SharePoint admin API ScubaGear
+  // reads gives the same choices as numbers. Only these settings are in Graph: a rule
+  // that names any other SharePoint admin setting reads "could not check".
+  SPO_tenant: Object.freeze({
+    reads: [service(SHAREPOINT_SETTINGS)],
+    fields: Object.freeze(['SharingCapability', 'SharingDomainRestrictionMode', 'SharingAllowedDomainList', 'SharingBlockedDomainList']),
+    build: spoTenant,
+  }),
+
+  // Power Platform
+  dlp_policies: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'dlpPolicy')], fields: Object.freeze(['value', 'name', 'displayName', 'environmentType', 'environments']),
+    build: dlpPolicies,
+  }),
+  environment_list: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'environment')], fields: Object.freeze(['EnvironmentName', 'IsDefault']),
+    build: (facts) => list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === 'environment')
+      .map((environment) => ({ EnvironmentName: environment.identity ?? null, IsDefault: environment.isDefault ?? null })),
+  }),
+  // The default environment is named Default-<tenant id>; the rules look for it by name.
+  tenant_id: Object.freeze({
+    reads: [graph('organization')], fields: [],
+    build: (facts) => {
+      const [organization] = list(facts, 'organization');
+      if (typeof organization?.id !== 'string') throw new CouldNotBuild('tenant_id', 'the backup holds no organization record to take the tenant id from');
+      return organization.id;
+    },
+  }),
+
+  // Power BI. Keel reads the same Fabric admin API ScubaGear does. The license and
+  // access keys say the read worked, which the control already requires before it runs.
+  powerbi_tenant_settings: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'powerBiSetting')], fields: Object.freeze(['settingName', ...POWER_PLATFORM.powerBiSetting.top]),
+    build: (facts) => list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === 'powerBiSetting')
+      .map(({ identity, ...fields }) => ({ ...cmdletObject(fields), settingName: identity ?? null })),
+  }),
+  powerbi_license_found: Object.freeze({ setting: true, fields: [], build: () => true }),
+  powerbi_license_reason: Object.freeze({ setting: true, fields: [], build: () => '' }),
+  powerbi_access_denied_reason: Object.freeze({ setting: true, fields: [], build: () => '' }),
 });
 
 /** The input document for `keys`, or { couldNotBuild } naming the first key it could not build. */

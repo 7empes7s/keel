@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRODUCT_ORDER, importScubaGearRules, scubaCoverage } from '../engine/benchmarks/scubagear/import.mjs';
 import { renderCoverageMarkdown } from '../engine/benchmarks/scubagear/report.mjs';
+import { scubaRuleOutcomes } from '../engine/benchmarks/scubagear/controls.mjs';
 import { BUILD_DIR, BUILD_MANIFEST } from '../engine/benchmarks/scubagear/opa.mjs';
 import { openPinnedScubaGear } from '../engine/benchmarks/scubagear/import.mjs';
 import { fixtureDocument } from '../engine/benchmarks/scubagear/fixtureTenant.mjs';
@@ -33,7 +34,7 @@ import { fixtureDocument } from '../engine/benchmarks/scubagear/fixtureTenant.mj
 export const GOLDEN_PATH = join(BUILD_DIR, 'golden.json');
 
 // The products whose rules Keel runs today. Adding one here, then rebuilding, compiles it in.
-export const BUILD_PRODUCTS = Object.freeze(['aad', 'exo']);
+export const BUILD_PRODUCTS = Object.freeze(['aad', 'exo', 'securitysuite', 'sharepoint', 'teams', 'powerplatform', 'powerbi']);
 export const OPA = Object.freeze({
   version: '1.20.2',
   url: 'https://github.com/open-policy-agent/opa/releases/download/v1.20.2/opa_linux_amd64_static',
@@ -109,7 +110,7 @@ function main(argv) {
   if (command === 'json') {
     process.stdout.write(`${JSON.stringify({ ...imported, coverage }, null, 2)}\n`);
   } else if (command === 'report') {
-    const markdown = renderCoverageMarkdown(imported, coverage);
+    const markdown = renderCoverageMarkdown(imported, coverage, scubaRuleOutcomes({ imported }));
     if (write) writeFileSync(REPORT_PATH, markdown);
     else process.stdout.write(markdown);
   } else {

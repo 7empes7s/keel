@@ -21,6 +21,16 @@ const ADA = '00000000-0000-4000-8000-0000000000a1';
 const BEN = '00000000-0000-4000-8000-0000000000b2';
 const CAL = '00000000-0000-4000-8000-0000000000c3';
 
+const TENANT_ID = '00000000-0000-4000-8000-00000000ffff';
+const ENVIRONMENT = '00000000-0000-4000-8000-0000000000e1';
+// A stored service-read object: Keel's own key fields, then the cmdlet's fields.
+const mail = (kind, suffix, fields) => {
+  const identity = `00000000-0000-4000-8000-000000000${suffix.padStart(3, '0')}`;
+  return { kind, identity, id: `${kind}:${identity}`, ...fields };
+};
+const teams = (kind, Identity, fields) => ({ kind, identity: Identity.toLowerCase(), id: `${kind}:${Identity.toLowerCase()}`, Identity, ...fields });
+const platform = (kind, identity, fields) => ({ kind, identity, id: `${kind}:${identity}`, ...fields });
+
 const everyone = {
   includeUsers: ['All'], excludeUsers: [], includeGroups: [], excludeGroups: [], includeRoles: [], excludeRoles: [],
   includeGuestsOrExternalUsers: null, excludeGuestsOrExternalUsers: null,
@@ -145,7 +155,73 @@ export const FIXTURE_BACKUPS = Object.freeze({
       Name: 'KEEL-RT-External sender warning', State: 'Enabled', Mode: 'Enforce', Priority: 0, FromScope: 'NotInOrganization', PrependSubject: '[EXTERNAL] ',
     },
     { kind: 'dkimSigning', identity: 'KEEL-RT-contoso.example', id: 'dkim:KEEL-RT-contoso.example', Domain: 'KEEL-RT-contoso.example', Enabled: true, Status: 'Valid' },
+    mail('antiMalwarePolicy', 'a1', {
+      Name: 'Default', IsDefault: true, EnableFileFilter: true, FileTypes: ['ace', 'cmd', 'exe', 'vbe'], FileTypeAction: 'Reject', ZapEnabled: false,
+    }),
+    mail('antiPhishPolicy', 'a2', {
+      Name: 'Office365 AntiPhish Default', IsDefault: true, Enabled: true,
+      EnableTargetedUserProtection: false, TargetedUsersToProtect: [], TargetedUserProtectionAction: 'NoAction',
+      EnableOrganizationDomainsProtection: true, EnableTargetedDomainsProtection: false, TargetedDomainsToProtect: [], TargetedDomainProtectionAction: 'Quarantine',
+      EnableFirstContactSafetyTips: true, EnableSimilarUsersSafetyTips: true, EnableSimilarDomainsSafetyTips: true, EnableUnusualCharactersSafetyTips: true,
+      EnableViaTag: true, EnableUnauthenticatedSender: false,
+    }),
+    mail('antiSpamPolicy', 'a3', { Name: 'Default', IsDefault: true, SpamAction: 'MoveToJmf', HighConfidenceSpamAction: 'Quarantine', PhishSpamAction: 'Quarantine', HighConfidencePhishAction: 'Quarantine', AllowedSenderDomains: [] }),
+    mail('safeLinksPolicy', 'a4', {
+      Name: 'KEEL-RT-Safe links', IsBuiltInProtection: false, EnableSafeLinksForEmail: true, EnableSafeLinksForTeams: true, EnableSafeLinksForOffice: true,
+      EnableForInternalSenders: true, ScanUrls: true, DeliverMessageAfterScan: true, TrackClicks: false, AllowClickThrough: false,
+    }),
+    mail('safeAttachmentPolicy', 'a5', { Name: 'KEEL-RT-Safe attachments', IsBuiltInProtection: false, Enable: true, Action: 'Block' }),
   ],
+  'exchange-extended': [
+    mail('safeLinksRule', 'b1', {
+      Name: 'KEEL-RT-Safe links', SafeLinksPolicy: 'KEEL-RT-Safe links', State: 'Enabled', Priority: 0,
+      SentTo: null, SentToMemberOf: null, RecipientDomainIs: null, ExceptIfSentTo: null, ExceptIfSentToMemberOf: null, ExceptIfRecipientDomainIs: null,
+    }),
+    mail('defenderForOffice', 'b2', { Name: 'Default', EnableATPForSPOTeamsODB: true, EnableSafeDocs: false, AllowSafeDocsOpen: false }),
+    mail('connectionFilterPolicy', 'b3', { Name: 'Default', IsDefault: true, IPAllowList: ['192.0.2.10'], IPBlockList: [], EnableSafeList: false }),
+  ],
+  'purview-retention-dlp': [
+    ...['Suspicious email sending patterns detected', 'Suspicious connector activity', 'Suspicious Email Forwarding Activity', 'Messages have been delayed',
+      'Tenant restricted from sending unprovisioned email'].map((Name, index) => mail('alertPolicy', `c${index}`, { Name, IsSystemRule: true, Disabled: false })),
+    mail('alertPolicy', 'c9', { Name: 'Tenant restricted from sending email', IsSystemRule: true, Disabled: true }),
+  ],
+  'teams-org-policies': [
+    teams('meetingPolicy', 'Global', {
+      AllowExternalParticipantGiveRequestControl: false, AllowAnonymousUsersToStartMeeting: false, AutoAdmittedUsers: 'EveryoneInCompanyExcludingGuests',
+      AllowPSTNUsersToBypassLobby: false, AllowCloudRecording: true,
+    }),
+    teams('meetingPolicy', 'Tag:KEEL-RT-Open meetings', {
+      AllowExternalParticipantGiveRequestControl: true, AllowAnonymousUsersToStartMeeting: false, AutoAdmittedUsers: 'Everyone',
+      AllowPSTNUsersToBypassLobby: true, AllowCloudRecording: true,
+    }),
+    teams('federationConfiguration', 'Global', {
+      AllowFederatedUsers: true, AllowedDomains: { AllowedDomain: [{ Domain: 'KEEL-RT-partner.example' }] }, BlockedDomains: [],
+      AllowTeamsConsumer: true, AllowTeamsConsumerInbound: false,
+    }),
+    teams('clientConfiguration', 'Global', { AllowGuestUser: true, AllowEmailIntoChannel: true }),
+    teams('appPermissionPolicy', 'Global', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'BlockedAppList', PrivateCatalogAppsType: 'BlockedAppList' }),
+  ],
+  'teams-voice-policies': [
+    teams('liveEventsPolicy', 'Global', { AllowBroadcastScheduling: true, BroadcastRecordingMode: 'AlwaysEnabled' }),
+  ],
+  'sharepoint-site-settings': [
+    {
+      id: 'tenant', sharingCapability: 'existingExternalUserSharingOnly', sharingDomainRestrictionMode: 'none',
+      sharingAllowedDomainList: [], sharingBlockedDomainList: [], isResharingByExternalUsersEnabled: false,
+    },
+  ],
+  'power-platform-settings': [
+    platform('environment', `Default-${TENANT_ID}`, { displayName: 'KEEL-RT-Default', isDefault: true }),
+    platform('environment', ENVIRONMENT, { displayName: 'KEEL-RT-Sales', isDefault: false }),
+    platform('dlpPolicy', '00000000-0000-4000-8000-0000000000d1', {
+      displayName: 'KEEL-RT-Default only', environmentType: 'OnlyEnvironments',
+      environments: [{ id: `/providers/admin/environment/Default-${TENANT_ID}`, name: `Default-${TENANT_ID}`, type: 'Microsoft.BusinessAppPlatform/scopes/environments' }],
+    }),
+    ...[['PublishToWeb', false], ['AllowGuestUserToAccessSharedContent', true], ['ExternalSharingV2', false], ['ServicePrincipalAccessPermissionAPIs', true],
+      ['AllowServicePrincipalsCreateAndUseProfiles', false], ['BlockResourceKeyAuthentication', true], ['RScriptVisual', true], ['EimInformationProtectionEdit', true]]
+      .map(([settingName, enabled]) => platform('powerBiSetting', settingName, { title: `KEEL-RT-${settingName}`, enabled, enabledSecurityGroups: [] })),
+  ],
+  organization: [{ id: TENANT_ID, displayName: 'KEEL-RT-Contoso' }],
 });
 
 // What each rule should give on this tenant, worked out by hand from the rules' text.
@@ -180,6 +256,40 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.AAD.8.2v1': 'fail', // everyone can invite guests
   'MS.EXO.1.1v2': 'pass', // no domain allows automatic forwarding
   'MS.EXO.7.1v1': 'pass', // external senders are flagged
+  'MS.SECURITYSUITE.1.1v1': 'pass', // the Default malware policy blocks .exe, .cmd and .vbe
+  'MS.SECURITYSUITE.1.2v1': 'fail', // zero-hour auto purge is off
+  'MS.SECURITYSUITE.1.4v1': 'pass', // Defender scans SharePoint, OneDrive and Teams files
+  'MS.SECURITYSUITE.2.2v1': 'pass', // the Default anti-phish policy protects the tenant's own domains, and quarantines
+  'MS.SECURITYSUITE.2.4v1': 'fail', // the unverified-sender question mark is off
+  'MS.SECURITYSUITE.4.1v1': 'fail', // one required alert is turned off
+  'MS.SECURITYSUITE.7.1v1': 'pass', // one Safe Links rule covers everyone, for email, Teams, Office and internal senders
+  'MS.SECURITYSUITE.7.2v1': 'pass', // it scans links before delivering
+  'MS.SECURITYSUITE.7.3v1': 'fail', // it does not track clicks
+  'MS.SECURITYSUITE.8.1v1': 'fail', // the connection filter has an IP allow list
+  'MS.SECURITYSUITE.8.2v1': 'pass', // the safe list is off
+  'MS.SHAREPOINT.1.1v1': 'pass', // SharePoint sharing is limited to existing guests
+  'MS.SHAREPOINT.1.3v1': 'fail', // external sharing is on, with no domain list
+  'MS.TEAMS.1.1v1': 'fail', // a named meeting policy lets outside people request control
+  'MS.TEAMS.1.2v2': 'pass',
+  'MS.TEAMS.1.3v1': 'pass', // the Global policy admits only people in the company, and dial-in users wait
+  'MS.TEAMS.1.4v1': 'pass',
+  'MS.TEAMS.1.5v1': 'fail', // the named policy lets dial-in users skip the lobby
+  'MS.TEAMS.1.6v1': 'fail', // cloud recording is on in the Global policy
+  'MS.TEAMS.1.7v2': 'fail', // live events are always recorded
+  'MS.TEAMS.2.1v2': 'pass', // external access is limited to one partner domain
+  'MS.TEAMS.2.2v2': 'pass', // personal Teams accounts cannot start a chat
+  'MS.TEAMS.2.3v2': 'fail', // users can still chat with personal Teams accounts
+  'MS.TEAMS.4.1v1': 'fail', // email into channels is on
+  'MS.POWERPLATFORM.2.1v1': 'pass', // a DLP policy covers the default environment
+  'MS.POWERPLATFORM.2.2v1': 'fail', // the Sales environment has no DLP policy
+  'MS.POWERBI.1.1v1': 'pass', // publish to web is off
+  'MS.POWERBI.2.1v1': 'fail', // every guest can open shared content
+  'MS.POWERBI.3.1v1': 'pass',
+  'MS.POWERBI.4.1v1': 'fail', // every app may call the read-only admin APIs
+  'MS.POWERBI.4.2v1': 'pass',
+  'MS.POWERBI.5.1v1': 'pass',
+  'MS.POWERBI.6.1v1': 'fail', // R and Python visuals are on
+  'MS.POWERBI.7.1v1': 'pass',
 });
 
 /**

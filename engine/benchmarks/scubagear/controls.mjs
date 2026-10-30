@@ -32,6 +32,8 @@ import { regoRuleInputs } from './rego.mjs';
 export const SCUBA_PREDICATE = 'scuba-rego';
 export const SCUBA_FRAMEWORK = 'cisa-scuba';
 export const SCUBA_CONTROL_PREFIX = 'scubagear.';
+// ScubaGear config sections that hold per-rule lists a tenant must supply.
+const CONFIG_SECTIONS = Object.freeze(['SecuritySuite', 'Defender']);
 const REASON = (code) => `${PREDICATE_UNKNOWN_PREFIX}${code}`;
 const SETTING_STATES = new Set(['run-setting', 'run-status']);
 
@@ -96,12 +98,38 @@ function line(args, text, ok) {
 // --- Registering every rule ----------------------------------------------------------
 
 /**
+ * Names a product's rules build themselves and read back, so no backup needs to hold
+ * them: keys of the objects a rule makes (a check's { Compliant, Message } answer), and
+ * Power BI setting names, which are the settingName values its rules look settings up
+ * by. A name here is read off nothing Keel stores, so a missing field can never hide
+ * behind it: each one was checked in the pinned Rego, and a test checks each is a string
+ * there.
+ */
+export const REGO_BUILT_NAMES = Object.freeze({
+  securitysuite: Object.freeze([
+    'Compliant', 'Message', // UserImpersonationCompliant and the other anti-phish checks
+    'ContentNames', 'SSN', 'ITIN', 'Credit_Card', // the DLP rules' own tally of sensitive types
+    'Exchange', 'SharePoint', 'OneDrive', 'Teams', 'Devices', // the DLP locations it tallies
+  ]),
+  powerplatform: Object.freeze(['EnvironmentType']), // DefaultEnvPolicies' own objects
+  powerbi: Object.freeze([
+    'PublishToWeb', 'AllowGuestUserToAccessSharedContent', 'ExternalSharingV2', 'ServicePrincipalAccessPermissionAPIs',
+    'AllowServicePrincipalsCreateAndUseProfiles', 'BlockResourceKeyAuthentication', 'RScriptVisual', 'EimInformationProtectionEdit',
+  ]),
+});
+
+/**
  * Why a rule cannot run on Keel's data at all, decided from its Rego alone, or null.
  * `rule` carries `inputs` (the keys it reads) and `members` (every member name its code
  * uses on the way: a superset of the fields it reads).
  */
 export function staticReason(rule, { adapters = ADAPTERS, sources = SCUBA_INPUT_SOURCES } = {}) {
   if (rule.manual) return REASON('check-by-hand');
+  // A rule that reads its own section of ScubaGear's config (the sensitive users or the
+  // partner domains to protect) needs a list only the tenant can give, which Keel has no
+  // place for yet. Run without it, the rule fails for the missing list, not the tenant.
+  const sections = CONFIG_SECTIONS.filter((section) => rule.members.includes(section));
+  if (sections.length) return REASON(`needs-setting:${sections.join(',')}`);
   const tenant = rule.inputs.filter((key) => !SETTING_STATES.has(sources[key]?.state));
   for (const key of tenant) {
     if (sources[key]?.state === 'not-read' || !adapters[key]) return REASON(`not-read:${key}`);
@@ -114,9 +142,9 @@ export function staticReason(rule, { adapters = ADAPTERS, sources = SCUBA_INPUT_
   // one of them (or an input key, or a run setting): anything else is a field Keel drops.
   const limited = tenant.filter((key) => Array.isArray(adapters[key].fields));
   if (limited.length && limited.length === tenant.length) {
-    const known = new Set([...rule.inputs, ...rule.inputs.flatMap((key) => adapters[key]?.fields ?? [])]);
+    const known = new Set([...rule.inputs, ...rule.inputs.flatMap((key) => adapters[key]?.fields ?? []), ...(REGO_BUILT_NAMES[rule.product] ?? [])]);
     const missing = rule.members.filter((member) => !known.has(member)).sort();
-    if (missing.length) return REASON(`field-not-read:${limited[0]}.${missing.join(',')}`);
+    if (missing.length) return REASON(`field-not-read:${limited.length === 1 ? limited[0] : limited.join('+')}.${missing.join(',')}`);
   } else if (limited.length) {
     throw new Error(`${rule.id} mixes reads of declared fields with full objects; decide how to check its fields first`);
   }
@@ -141,20 +169,31 @@ export function requiredReads(inputs, adapters = ADAPTERS) {
       }
     }
   }
-  return [...graphTypes.values(), ...[...workloads.values()].map((entry) => ({ ...entry, parts: [...entry.parts].sort() }))];
+  // A service read with no kinds (SharePoint's tenant settings) is needed whole.
+  return [...graphTypes.values(), ...[...workloads.values()].map(({ parts, ...entry }) => (parts.size ? { ...entry, parts: [...parts].sort() } : entry))];
+}
+
+/**
+ * Every pinned rule of `products` (all by default) with the reason it cannot run on
+ * Keel's data, or null when it runs: the list the coverage report shows.
+ */
+export function scubaRuleOutcomes({ products = null, imported = importScubaGearRules() } = {}) {
+  const pinned = openPinnedScubaGear();
+  const { pin } = pinned;
+  const chosen = products ?? Object.keys(pin.products);
+  const files = [...chosen.map((product) => pin.products[product].rego), ...pin.regoUtils]
+    .map((file) => ({ file, source: pinned.read(file) }));
+  const members = regoRuleInputs(files);
+  return imported.rules.filter((rule) => chosen.includes(rule.product)).map((rule) => {
+    const shaped = { ...rule, members: [...members.get(rule.id).members] };
+    return { rule, reason: staticReason(shaped) };
+  });
 }
 
 function registerScubaControls() {
   const { build } = readBuild();
-  const imported = importScubaGearRules();
-  const pinned = openPinnedScubaGear();
-  const { pin } = pinned;
-  const files = [...build.products.map((product) => pin.products[product].rego), ...pin.regoUtils]
-    .map((file) => ({ file, source: pinned.read(file) }));
-  const members = regoRuleInputs(files);
-  for (const rule of imported.rules.filter((candidate) => build.products.includes(candidate.product))) {
-    const shaped = { ...rule, members: [...members.get(rule.id).members] };
-    const unchecked = staticReason(shaped);
+  const { pin } = openPinnedScubaGear();
+  for (const { rule, reason: unchecked } of scubaRuleOutcomes({ products: build.products })) {
     const tenantInputs = rule.inputs.filter((key) => ADAPTERS[key] && !SETTING_STATES.has(SCUBA_INPUT_SOURCES[key]?.state));
     const reads = unchecked ? [] : requiredReads(rule.inputs);
     registerControl({

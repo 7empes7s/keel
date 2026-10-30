@@ -424,14 +424,28 @@ export function controlWhy(finding: ComplianceFinding): string | null {
   return CONTROL_WORDS[finding.controlId]?.why ?? null;
 }
 
+// The service each CISA ScubaGear product's rules are filed under. A rule Keel cannot
+// check has no evidence to take a service from, so it is placed by its product.
+const SCUBA_PRODUCT_SERVICES: Record<string, string> = {
+  aad: "Entra",
+  exo: "Exchange",
+  securitysuite: "Defender",
+  sharepoint: "SharePoint",
+  teams: "Teams",
+  powerplatform: "Power Platform",
+  powerbi: "Power Platform",
+};
+export const SCUBA_FRAMEWORK = "cisa-scuba";
+
 export function controlService(finding: ComplianceFinding): CloudService {
-  const own = CONTROL_WORDS[finding.controlId]?.service;
+  const own = CONTROL_WORDS[finding.controlId]?.service ?? (finding.framework === SCUBA_FRAMEWORK ? SCUBA_PRODUCT_SERVICES[finding.profile] : undefined);
   return own ? serviceFor(own) : typeService(controlTypes(finding)[0] ?? "other");
 }
 
 const STANDARD_WORDS: Record<string, string> = {
   "keel-custom": "Keel checks",
   "nist-800-53": "NIST SP 800-53",
+  [SCUBA_FRAMEWORK]: "CISA SCuBA",
 };
 
 export function standardName(finding: ComplianceFinding): string {
@@ -645,6 +659,7 @@ function scubaReasonWords(code: string): string {
   if (code.startsWith("not-read:")) return "Keel does not back up the settings this rule reads yet.";
   if (code.startsWith("field-not-read:")) return "A setting this rule reads is not in Keel's backup yet.";
   if (code.startsWith("incomplete:")) return "The backup cannot answer what this rule asks.";
+  if (code.startsWith("needs-setting:")) return "This rule needs a list only you can give, such as your sensitive users or partner domains, and Keel cannot take it yet.";
   return "Keel could not run this rule.";
 }
 

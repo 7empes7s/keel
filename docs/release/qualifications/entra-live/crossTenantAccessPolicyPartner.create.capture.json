@@ -1,5 +1,5 @@
 {
-  "restoreRef": "d5513312-2b4b-8330-94a4-042d3407d459",
+  "restoreRef": "bf94a888-c413-8c6c-b0d5-b66fb7c1dc06",
   "entry": {
     "naturalKey": "crossTenantAccessPolicyPartner:efc83404-0842-8940-959a-c048aa123c26",
     "resourceType": "crossTenantAccessPolicyPartner",
@@ -7,15 +7,11 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-13T13:23:36.168Z",
+    "recordedAt": "2026-10-30T00:14:58.500Z",
     "priorState": null,
     "intendedState": {
       "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
-      "inboundTrust": {
-        "isMfaAccepted": false,
-        "isCompliantDeviceAccepted": null,
-        "isHybridAzureADJoinedDeviceAccepted": null
-      },
+      "inboundTrust": null,
       "isServiceProvider": null,
       "tenantRestrictions": null,
       "b2bCollaborationInbound": null,
@@ -33,11 +29,7 @@
     },
     "postState": {
       "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
-      "inboundTrust": {
-        "isMfaAccepted": false,
-        "isCompliantDeviceAccepted": null,
-        "isHybridAzureADJoinedDeviceAccepted": null
-      },
+      "inboundTrust": null,
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/partners/$entity",
       "isServiceProvider": null,
       "tenantRestrictions": null,

@@ -1,5 +1,5 @@
 {
-  "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
+  "restoreRef": "bab76dc1-fbd1-8bc4-a617-f5bfc3a48ae3",
   "entry": {
     "naturalKey": "organizationalBrandingLocalization:fr-FR",
     "resourceType": "organizationalBrandingLocalization",
@@ -7,14 +7,17 @@
     "targetId": "fr-FR",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-13T11:53:00.436Z",
+    "recordedAt": "2026-10-30T00:04:57.883Z",
     "priorState": {
       "id": "fr-FR",
-      "cdnList": [],
-      "signInPageText": "KEEL-RT-148 DRIFTED fr",
+      "cdnList": [
+        "aadcdn.msftauthimages.net",
+        "aadcdn.msauthimages.net"
+      ],
+      "signInPageText": "KEEL-RT-246 drifted",
       "backgroundColor": "",
       "usernameHintText": "",
-      "faviconRelativeUrl": null,
+      "faviconRelativeUrl": "c1c6b6c8-iun1c1sj789g2uxdqjaa0lvqozofbkr7aecevoxlfri/logintenantbranding/1036/favicon?ts=639289152133405505",
       "customTermsOfUseUrl": null,
       "contentCustomization": {
         "attributeCollection": [],
@@ -53,11 +56,14 @@
     },
     "intendedState": {
       "id": "fr-FR",
-      "cdnList": [],
-      "signInPageText": "KEEL-RT-148",
+      "cdnList": [
+        "aadcdn.msftauthimages.net",
+        "aadcdn.msauthimages.net"
+      ],
+      "signInPageText": "KEEL-RT-246",
       "backgroundColor": "",
       "usernameHintText": "",
-      "faviconRelativeUrl": null,
+      "faviconRelativeUrl": "c1c6b6c8-iun1c1sj789g2uxdqjaa0lvqozofbkr7aecevoxlfri/logintenantbranding/1036/favicon?ts=639289145494804695",
       "customTermsOfUseUrl": null,
       "contentCustomization": {
         "attributeCollection": [],
@@ -96,13 +102,16 @@
     },
     "postState": {
       "id": "fr-FR",
-      "cdnList": [],
+      "cdnList": [
+        "aadcdn.msftauthimages.net",
+        "aadcdn.msauthimages.net"
+      ],
       "@odata.type": "#microsoft.graph.organizationalBrandingProperties",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/localizations/$entity",
-      "signInPageText": "KEEL-RT-148",
+      "signInPageText": "KEEL-RT-246",
       "backgroundColor": "",
       "usernameHintText": "",
-      "faviconRelativeUrl": null,
+      "faviconRelativeUrl": "c1c6b6c8-iun1c1sj789g2uxdqjaa0lvqozofbkr7aecevoxlfri/logintenantbranding/1036/favicon?ts=639289152133405505",
       "customTermsOfUseUrl": null,
       "contentCustomization": {
         "attributeCollection": [],

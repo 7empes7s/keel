@@ -12472,3 +12472,32 @@ item that needs it stays untouched.
      the two new workloads, their reasons and `fieldCounts` / unknown fields if not `complete`. A mailbox whose rights could not be
      read shows as a gap with a reason, not an empty list: report those reasons verbatim.
   5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' reads are listed as current. That unblocks Q204.
+
+### Q267: Find what fills the portal's database connections when it shows "Keel is busy" (read-only, no tenant), about 10 minutes
+- Drafted by the "Fix portal showing Keel is busy" thread (2026-10-30). Marouane saw the portal's "Keel is busy, try again in a
+  moment" page this morning (about 09:45 UTC). That page shows when the sign-in check waits 5 s for one of the portal's 8 pooled
+  database connections and none comes free (`portal/lib/db.ts`, PR #712). This item finds what holds them.
+  **Read-only: no tenant calls, no database writes, no restarts, no config changes.** Never print the database URL, a password,
+  a token or a tenant id.
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Result:
+- Do, on Mulinux:
+  1. Deployed commit (`git -C /opt/keel-live log --oneline -1`), `systemctl show keel-portal -p MainPID -p MemoryCurrent -p NRestarts -p ActiveEnterTimestamp`.
+  2. `journalctl -u keel-portal --since "2026-10-29 00:00" --no-pager | grep -E "database pool full|Started|Stopped|memory peak|background audit check failed|DeprecationWarning"`:
+     report, per hour, the count of `database pool full` lines, and every start/stop time and memory peak. Quote the first 5
+     `database pool full` lines verbatim with their timestamps, and any error stack printed right before or after them (up to 20 lines).
+  3. With `KEEL_DB_URL` from `/etc/keel/db.env` exported (not printed), **sample the portal's connections every 2 s for 3 minutes**
+     (90 samples). The portal's connections are the ones whose `client_port` belongs to keel-portal's process tree
+     (`ss -tnp | grep ':5432'` maps ports to pids; `pstree -p <MainPID>` for the tree). For each sample, print one line:
+     time, portal connections total, and counts by `state` (active / idle / idle in transaction), plus the count with
+     `wait_event_type = 'Lock'`. Query: `SELECT pid, client_port, state, wait_event_type, wait_event, now()-xact_start AS xact_age, now()-query_start AS query_age, left(query,100) FROM pg_stat_activity WHERE datname = current_database()`.
+     If any sample has 6 or more portal connections, also print those rows in full (query text cut to 100 characters).
+  4. Once, right after step 3: every connection to the database grouped by the owning process (`ss -tnp` pid → `ps -o pid,etime,args`,
+     args cut to 120 characters), with counts by state. This shows whether engine jobs, workers or your own recapture runs hold
+     many connections or locks. Also `SELECT count(*) FROM pg_locks WHERE NOT granted` and, if not 0, the blocking pids
+     (`pg_blocking_pids`) with their query (100 characters).
+  5. `SHOW max_connections` and the total connection count at that moment.
+  6. Say which of your own runs (Q245–Q249, Q264 or others) were running between 09:30 and 09:50 UTC today, and whether they go
+     through the portal's HTTP API or run engine CLIs directly.
+- **Report:** steps 1 to 6 (tables fine), each exit code. Do not change anything, even if a fix looks obvious.

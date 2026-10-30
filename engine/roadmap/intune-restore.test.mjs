@@ -346,6 +346,8 @@ test('mutation: a policy holding a password, key, certificate or encrypted setti
   const cases = [
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10CustomConfiguration', omaSettings: [{ '@odata.type': '#microsoft.graph.omaSettingString', omaUri: './Vendor/MSFT/x', isEncrypted: true, value: '****' }] }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10CustomConfiguration', omaSettings: [{ omaUri: './Vendor/MSFT/y', secretReferenceValueId: 'ref-1', value: null }] }],
+    // A trusted root certificate is named only by its OMA-URI (the trust-field rule).
+    ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10CustomConfiguration', omaSettings: [{ '@odata.type': '#microsoft.graph.omaSettingBase64', omaUri: './Device/Vendor/MSFT/RootCATrustedCertificates/Root/0123/EncodedCertificate', value: 'MIIB' }] }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', enterpriseCloudPrintOAuthClientSecret: null }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.iosWiFiConfiguration', ssid: 'Office', preSharedKey: null }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows81TrustedRootCertificate', trustedRootCertificate: null }],

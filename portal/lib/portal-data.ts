@@ -15,6 +15,8 @@ import {
 } from "../../engine/govern/baselineCompliance.mjs";
 import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
+import { intuneBaselineResults } from "../../engine/benchmarks/intuneBaselines.mjs";
+import { shapeBaselines, type EngineBaselineResults, type IntuneBaselineData } from "@/lib/intune-baselines-view";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
@@ -567,6 +569,17 @@ export async function getComplianceData(): Promise<ComplianceData> {
       standards: STANDARDS as unknown as KnownStandard[],
     };
   });
+}
+
+/** Intune security baselines: every setting of every version, matched against every
+ * settings catalog policy in the newest complete backup. Read-only. */
+export async function getIntuneBaselineData(): Promise<IntuneBaselineData> {
+  const ref = tenantRef();
+  const now = new Date();
+  return withClient(async (client) => shapeBaselines(
+    (await intuneBaselineResults(client, { tenantRef: ref, now })) as EngineBaselineResults,
+    now.toISOString(),
+  ));
 }
 
 /** What an own compliance check can be written on: the types and settings in the newest backup. */

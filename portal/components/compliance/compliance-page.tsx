@@ -247,6 +247,12 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
 
         {scubaLists ? <ScubaListsCard editHref={canConfigure ? href({ lists: "edit", open: null, grant: null }) : null} now={now} view={scubaLists} /> : null}
 
+        <Link className="ib-link-card" href="/compliance/intune-baselines">
+          <span aria-hidden="true" className="cp-kind"><Icon name="service-intune" /></span>
+          <span><b>Intune security baselines</b><small>Every setting of Microsoft&apos;s Windows, Defender, Edge and Microsoft 365 Apps baselines, checked against all your settings catalog policies.</small></span>
+          <Icon name="chevron" />
+        </Link>
+
         <section aria-label="Results at a glance" className="cp-tiles" style={{ ["--cp-tiles" as string]: tiles.length }}>
           {tiles.map((tile) => {
             const words = RESULTS[tile.key];

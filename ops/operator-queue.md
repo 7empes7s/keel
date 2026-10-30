@@ -13110,3 +13110,48 @@ item that needs it stays untouched.
   5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' reads are listed as current.
 - **Report:** B; steps 1 to 5 with exit codes; proven / not proven; unknown fields and live property names per family; evidence
   branch and commit; what is left changed in the tenant (expected: nothing).
+
+### Q279: Live read check of the Teams voice routing, network sites, call flows and device policy reads, then turn them on (read-only toward the tenant, after PR #800), about 15 minutes
+- Drafted by the "Back up Teams voice network and devices" thread (2026-10-30). Code: PR #800. Two new read-only workloads in the
+  Teams session, both shipped `disabled` until a live read record is imported. Each read switches on with its own proof, so one
+  read Microsoft refuses does not hold back the others:
+  `teams-voice-network` (Get-CsOnlinePstnUsages, Get-CsOnlineVoiceRoute, Get-CsOnlinePSTNGateway, Get-CsTeamsTranslationRule,
+  Get-CsTeamsUnassignedNumberTreatment, Get-CsTenantNetworkRegion, Get-CsTenantNetworkSite, Get-CsTenantNetworkSubnet,
+  Get-CsTenantTrustedIPAddress, Get-CsTeamsNetworkRoamingPolicy, Get-CsAutoAttendant and Get-CsCallQueue paged with
+  `-First 100 -Skip n`, Get-CsOnlineDialInConferencingTenantSettings, Get-CsTeamsAudioConferencingPolicy, Get-CsTeamsCallHoldPolicy)
+  and `teams-device-policies` (Get-CsTeamsIPPhonePolicy, Get-CsTeamsUpdateManagementPolicy, Get-CsTeamsMobilityPolicy,
+  Get-CsTeamsVdiPolicy, Get-CsTeamsFeedbackPolicy, Get-CsTeamsWorkLoadPolicy). The declared fields come from Microsoft's
+  documentation, not a live answer; this item tells us which to drop.
+- Needs: /opt/keel-live at the #800 merge or later (`test -f /opt/keel-live/engine/collect/workloads/teamsVoiceNetwork.mjs`).
+  `run-cmdlet.ps1` has a new table (`$AllowedTeamsVoiceNetwork`); as in Q266 the scripts are mounted from the checkout, so no
+  image rebuild is expected.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Teams Administrator, already held). No `New-`, `Set-`, `Grant-` or `Remove-`
+  cmdlet. Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** each workload with the Teams config the workloads use (`powershellConfigs.teams` in
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q266 step 1:
+     ```bash
+     for w in teams-voice-network teams-device-policies; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <that config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+       node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     done
+     ```
+     Report each exit code, `outcome`, `proven` and `notProven` verbatim, and for any read not proven its error code (for
+     example a cmdlet the app-only session does not expose). If a pseudonymize check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit both records to `claude/live-evidence-teams-voice-network` (from `origin/master`, those files only,
+     checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding these records and the other read records (as Q266 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and,
+     for the two new workloads, their per-family `discovery.families` statuses and object counts, `fieldCounts`, **`unknownFields`**
+     verbatim (field names only, never values), and any `skipped` reads. Unknown fields are expected on the first run; the thread
+     trims them in a follow-up PR.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' proven reads are listed as current.
+- **Report:** B; capture exit codes and proven/notProven; evidence branch and commit; import counts; the run table; per-family
+  statuses and unknown fields; anything left in the tenant (expected: nothing, reads only).

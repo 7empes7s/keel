@@ -686,6 +686,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - SharePoint site-level app permission grants
 - SharePoint site properties
 - SharePoint per-site sharing settings
+- SharePoint per-site admin settings
 
 **KEEL can restore:**
 
@@ -949,6 +950,20 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: SharePoint site designs
 
 **You do:** KEEL adds back what a named site is missing (lists, libraries, site columns and content types) and puts its navigation back, but never changes or deletes an existing list, column or content type: those differences are listed for you to apply by hand. A re-added list comes back empty; its files and items come back from the content backup. Permissions, webhooks, custom actions, features and site settings are put back by hand. A site script or design comes back with a new id; who may use a design, and who may join a hub, are granted again by hand. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.
+
+### SharePoint and OneDrive tenant settings
+
+**Backed up:**
+
+- SharePoint and OneDrive tenant settings: sharing, access, OneDrive, sites, Loop and versions
+- OneDrive sync limits: domain-joined PCs, Mac sync and blocked file types
+- SharePoint and OneDrive idle sign-out
+- Restricted SharePoint Search on or off
+- Sites allowed in Restricted SharePoint Search
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Sharing defaults, access control, OneDrive sync limits, idle sign-out and Restricted SharePoint Search are changed back by hand in the SharePoint admin center, or with Set-PnPTenant and the matching Set- cmdlets, using the backup. Restricted SharePoint Search is backed up only when the tenant has Microsoft 365 Copilot.
 
 ### Teams calling, voice and live event policies
 

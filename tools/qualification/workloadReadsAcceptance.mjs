@@ -17,6 +17,9 @@ import { SHAREPOINT_WORKLOAD, SITE_SHARING_FAMILIES, SITE_SHARING_MODULE } from 
 import {
   FAMILIES as SHAREPOINT_STRUCTURE, SHAREPOINT_STRUCTURE_MODULE, SHAREPOINT_STRUCTURE_WORKLOAD,
 } from '../../engine/collect/workloads/sharepointStructure.mjs';
+import {
+  FAMILIES as SHAREPOINT_TENANT, SHAREPOINT_TENANT_MODULE, SHAREPOINT_TENANT_WORKLOAD,
+} from '../../engine/collect/workloads/sharepointTenant.mjs';
 import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
 
@@ -43,13 +46,15 @@ export const READ_FAMILIES = Object.freeze({
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
   // Read only; its site templates need the sites a capture names (--site).
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE,
+  // Read only, tenant-wide on the admin site.
+  [SHAREPOINT_TENANT_WORKLOAD]: SHAREPOINT_TENANT,
 });
 
 // Read-only workloads name their module here; a written workload's comes from its writes.
 const READ_ONLY_MODULES = Object.freeze({
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE, [EXCHANGE_RECIPIENTS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE,
-  [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE, [SHAREPOINT_TENANT_WORKLOAD]: SHAREPOINT_TENANT_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

@@ -47,8 +47,9 @@ import {
   READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
   knownWorkload, provenReads, readModule, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
-import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
+import { SHAREPOINT_WORKLOAD, SITE_SETTINGS_FIELDS, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, readSharePointStructure } from '../../engine/collect/workloads/sharepointStructure.mjs';
+import { SHAREPOINT_TENANT_WORKLOAD, readSharePointTenant } from '../../engine/collect/workloads/sharepointTenant.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
 
@@ -59,16 +60,28 @@ import { readConfigFile } from '../../engine/config/configFile.mjs';
 export async function readSharePointSiteSharing({ powershell }) {
   try {
     const sites = await readSiteSharing(powershell);
-    return { outcome: 'complete', discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size } } }, failures: [] };
+    // The per-site settings come from the same answer. They count as read only when at
+    // least one listed site carries one of them, so a module that leaves them all out
+    // never switches them on.
+    const settings = [...sites.values()].some((body) => Object.values(SITE_SETTINGS_FIELDS).some((pick) => pick(body) !== undefined && pick(body) !== null));
+    return {
+      outcome: settings || sites.size === 0 ? 'complete' : 'partial',
+      discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size }, 'site-settings': { status: settings || sites.size === 0 ? 'read' : 'partial', objects: sites.size } } },
+      failures: settings || sites.size === 0 ? [] : [{ family: 'site-settings', error: { code: 'NOT_RETURNED', message: 'no listed site carried a lock state, access policy, label, custom script, restricted access or quota setting' } }],
+    };
   } catch (error) {
-    return { outcome: 'failed', discovery: { families: { 'site-sharing': { status: 'failed', objects: 0 } } }, failures: [{ family: 'site-sharing', error: structuredFailure(error).error }] };
+    const failed = { status: 'failed', objects: 0 };
+    return {
+      outcome: 'failed', discovery: { families: { 'site-sharing': failed, 'site-settings': failed } },
+      failures: ['site-sharing', 'site-settings'].map((family) => ({ family, error: structuredFailure(error).error })),
+    };
   }
 }
 
 export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
-  [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure, [SHAREPOINT_TENANT_WORKLOAD]: readSharePointTenant,
 });
 
 /**

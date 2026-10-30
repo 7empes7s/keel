@@ -21,6 +21,7 @@
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
   engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/exchange-recipients.test.mjs,
+  engine/roadmap/sharepoint-tenant.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -295,6 +296,16 @@ $AllowedPnPStructure = @{
     'Get-PnPSiteScript'   = @('Identity')
     'Get-PnPSiteTemplate' = @('Url')
 }
+# SharePoint and OneDrive tenant settings (engine/collect/workloads/sharepointTenant.mjs),
+# read on the admin site. Reads only, no parameters.
+$AllowedPnPTenant = @{
+    'Get-PnPTenant'                            = @()
+    'Get-PnPTenantSyncClientRestriction'       = @()
+    'Get-PnPBrowserIdleSignout'                = @()
+    'Get-PnPTenantRestrictedSearchMode'        = @()
+    'Get-PnPTenantRestrictedSearchAllowedList' = @()
+}
+
 $SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteHeader, SiteFooter, CustomActions'
 
 # SharePoint structure restore (engine/restore/workloads/sharepointStructure.mjs and
@@ -393,6 +404,7 @@ elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManag
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 elseif ($AllowedPnPStructure.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructure[$name] }
+elseif ($AllowedPnPTenant.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPTenant[$name] }
 elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructureWrites[$name] }
 elseif ($AllowedOneDriveWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedOneDriveWrites[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }

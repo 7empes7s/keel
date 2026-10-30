@@ -12,7 +12,7 @@ export default Object.freeze({
     { key: 'sites', name: 'Sites and OneDrive', types: ['sharepoint-site-settings', 'sharepoint-structure', 'onedrive-site-settings'], match: /site|structure|onedrive|hub|library/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role|admin/ },
     { key: 'access', name: 'Sharing and access control', types: [], match: /sharing|access|guest|unmanaged|ipaddress|location/ },
-    { key: 'tenant', name: 'Tenant settings', types: ['sharepointSettings', 'itemInsightsSettings'], match: /setting|tenant|insight|config/ },
+    { key: 'tenant', name: 'Tenant settings', types: ['sharepoint-tenant', 'sharepointSettings', 'itemInsightsSettings'], match: /setting|tenant|insight|config/ },
     { key: 'connectors', name: 'Copilot connectors', types: ['externalConnection'], match: /connector|connection|search/ },
   ]),
   entries: Object.freeze({
@@ -30,6 +30,12 @@ export default Object.freeze({
       name: 'SharePoint site structure',
       priority: 'normal',
       reason: 'Lists, libraries, columns and navigation that a site\'s content and pages depend on.',
+    },
+    // Read with PnP on the admin site (a workload, so it sets its own priority).
+    'sharepoint-tenant': {
+      name: 'SharePoint admin center setting',
+      priority: 'high',
+      reason: 'Sets how everything in SharePoint and OneDrive can be shared, synced and reached from unmanaged devices.',
     },
     'onedrive-site-settings': {
       name: 'OneDrive setting',

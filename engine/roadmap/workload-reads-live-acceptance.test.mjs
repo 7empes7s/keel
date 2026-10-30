@@ -31,8 +31,9 @@ import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtende
 import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
-import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
+import { pnpSiteReadsActivation } from '../collect/workloads/sharepoint.mjs';
 import { sharePointStructureActivation } from '../collect/workloads/sharepointStructure.mjs';
+import { sharePointTenantActivation } from '../collect/workloads/sharepointTenant.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
@@ -58,13 +59,14 @@ const ACTIVATION = {
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
-  'sharepoint-site-settings': siteSharingActivation,
+  'sharepoint-site-settings': pnpSiteReadsActivation,
   'sharepoint-structure': sharePointStructureActivation,
+  'sharepoint-tenant': sharePointTenantActivation,
 };
 const TABLES = {
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
-  'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
+  'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure', 'AllowedPnPTenant'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).
 const SCRIPT = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');

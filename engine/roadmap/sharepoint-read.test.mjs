@@ -16,8 +16,9 @@ import { after, test } from 'node:test';
 import { listWorkloads, registerWorkload } from '../collect/registry.mjs';
 import { buildWorkloadLedger, scopeProblems } from '../collect/workloadContract.mjs';
 import {
-  SHAREPOINT_DESCRIPTOR, SHAREPOINT_OPERATIONS, SITE_FIELDS, SITE_SHARING_OPERATION, UNSUPPORTED_SITE_FIELDS,
+  SHAREPOINT_DESCRIPTOR, SHAREPOINT_OPERATIONS, SITE_FIELDS, SITE_SETTINGS_FIELDS, SITE_SHARING_OPERATION,
   collectSharePointSites, readSharePointSites, readSiteSharing, sharingCapabilityName, recordSharePointRun, sharePointActivation, siteSharingActivation,
+  SITE_SETTINGS_OPERATION, siteSettingsActivation,
 } from '../collect/workloads/sharepoint.mjs';
 import { CmdletError } from '../powershell/jobQueue.mjs';
 import { MODULE_VERSIONS, fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
@@ -173,9 +174,9 @@ test('an unsupported field stays unknown and is never given a value', async () =
   const graph = fakeGraph({ pages: [[site(1)]] });
   const result = await readSharePointSites({ transport: graph.transport, tenantHost: HOST, now });
   const [entry] = result.sites;
-  for (const field of UNSUPPORTED_SITE_FIELDS) {
+  for (const field of Object.keys(SITE_SETTINGS_FIELDS)) {
     assert.equal(entry.fieldCoverage[field].status, 'unknown', field);
-    assert.match(entry.fieldCoverage[field].reason, /not qualified/);
+    assert.match(entry.fieldCoverage[field].reason, /not live-qualified/);
     assert.equal(field in entry.fields, false, field);
   }
   // A supported field Graph did not return is unknown too: absent, not null-as-observed.
@@ -361,4 +362,47 @@ test('per-site sharing: the enum number ConvertTo-Json writes is stored by name;
     siteSharing: async () => { throw new CmdletError('connect', { code: 'CMDLET_ERROR', cmdlet: 'Get-PnPTenantSite', message: 'AADSTS700027: unauthorized_client', category: 'OpenError', errorId: 'ConnectFailed' }); },
   });
   assert.equal(refused.sites[0].fieldCoverage.sharingCapability.status, 'failed');
+});
+
+test('per-site admin settings come from the same PnP answer, under their own ledger row', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = 'sha256:site-settings';
+  const PNP = [{
+    Url: `https://${HOST}/sites/site1`, SharingCapability: 2, LockState: 'Unlock', ConditionalAccessPolicy: 1, SensitivityLabel: '11111111-0000-4000-8000-000000000001',
+    DenyAddAndCustomizePages: 2, RestrictedAccessControl: true, RestrictedAccessControlGroups: ['g2', 'g1'], StorageQuota: 26214400, ExternalUserExpirationInDays: 60,
+  }];
+  const evidence = (ids) => ids.map((operationId) => ({
+    operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: new Date().toISOString(), ok: true,
+    version: [SITE_SHARING_OPERATION, SITE_SETTINGS_OPERATION].includes(operationId) ? MODULE_VERSIONS['PnP.PowerShell'] : 'v1.0', proofRef: `${operationId}@test`,
+  }));
+  const grants = { permissions: ['SharePointTenantSettings.Read.All', 'Sites.Read.All', 'Sites.FullControl.All'], roles: ['SharePoint Administrator'] };
+  const runtime = { modules: { 'PnP.PowerShell': MODULE_VERSIONS['PnP.PowerShell'] } };
+  const live = fakeCmdletContainer({ module: 'PnP.PowerShell', allowlist: { 'Get-PnPTenantSite': ['Identity'] }, answer: () => PNP });
+  const collect = (ledger) => collectSharePointSites(client, { tenantRef, ledger, transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now, powershell: live.powershell });
+
+  // Sharing proven, settings not: one call, sharing read, settings stay unknown with the reason.
+  const sharingOnly = buildWorkloadLedger({ evidence: evidence([...SHAREPOINT_OPERATIONS, SITE_SHARING_OPERATION]), grants, runtime, tenantRef });
+  assert.equal(siteSettingsActivation(sharingOnly).enabled, false);
+  const first = await collect(sharingOnly);
+  assert.equal(live.calls.length, 1);
+  assert.equal(first.result.sites[0].fields.sharingCapability, 'ExternalUserAndGuestSharing');
+  for (const field of Object.keys(SITE_SETTINGS_FIELDS)) {
+    assert.equal(first.result.sites[0].fieldCoverage[field].status, 'unknown', field);
+    assert.equal(field in first.result.sites[0].fields, false, field);
+  }
+
+  // Settings proven, sharing not: still one call, and only the settings are kept.
+  const settingsOnly = buildWorkloadLedger({ evidence: evidence([...SHAREPOINT_OPERATIONS, SITE_SETTINGS_OPERATION]), grants, runtime, tenantRef });
+  assert.equal(siteSettingsActivation(settingsOnly).enabled, true, siteSettingsActivation(settingsOnly).reasons.join('; '));
+  const second = await collect(settingsOnly);
+  assert.equal(live.calls.length, 2);
+  const entry = second.result.sites[0];
+  assert.equal(entry.fieldCoverage.sharingCapability.status, 'unknown');
+  assert.deepEqual(Object.fromEntries(Object.keys(SITE_SETTINGS_FIELDS).map((field) => [field, entry.fields[field]])), {
+    lockState: 'Unlock', conditionalAccessPolicy: 'AllowLimitedAccess', sensitivityLabel: '11111111-0000-4000-8000-000000000001',
+    denyAddAndCustomizePages: 'Enabled', restrictedAccessControl: true, restrictedAccessControlGroups: ['g1', 'g2'], storageQuota: 26214400,
+    externalUserExpirationInDays: 60,
+  });
+  assert.ok(Object.keys(SITE_SETTINGS_FIELDS).every((field) => entry.fieldCoverage[field].operation === SITE_SETTINGS_OPERATION));
+  assert.equal(second.result.outcome, 'complete');
 });

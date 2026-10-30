@@ -29,7 +29,16 @@ const FIELD_LABELS: Record<string, string> = {
 // The fields a read names a resource by, best first.
 const NAME_FIELDS = ["displayName", "DisplayName", "name", "Name", "title", "Title", "webUrl", "url", "identity"];
 // Keys that hold one tenant-wide group of settings rather than a named resource.
-const TENANT_KEYS: Record<string, string> = { tenant: "Sharing settings", organization: "Organization settings" };
+const TENANT_KEYS: Record<string, string> = {
+  tenant: "Sharing settings",
+  organization: "Organization settings",
+  // SharePoint and OneDrive tenant settings (workload sharepoint-tenant): one object per read.
+  "tenant-settings:tenant": "SharePoint and OneDrive tenant settings",
+  "sync-client:tenant": "OneDrive sync limits",
+  "idle-sign-out:tenant": "Idle sign-out",
+  "restricted-search:tenant": "Restricted SharePoint Search",
+  "restricted-search-sites:tenant": "Sites allowed in Restricted SharePoint Search",
+};
 
 const text = (value: unknown): string | null => (typeof value === "string" && value.trim().length > 0 ? value.trim() : null);
 const record = (value: unknown): Record<string, unknown> | null =>

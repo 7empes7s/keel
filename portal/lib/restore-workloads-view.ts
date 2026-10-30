@@ -66,7 +66,7 @@ export function hasBackupData(workload: Pick<RestoreWorkload, "backup" | "lastRu
 export const WORKLOAD_ORDER: readonly string[] = [
   "exchange-mailbox-settings", "exchange-recipients", "exchange-distribution-groups", "exchange-role-groups",
   "exchange-mail-flow", "exchange-extended",
-  "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings",
+  "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings", "sharepoint-tenant",
   "teams-settings", "teams-org-policies", "teams-voice-policies",
   "power-platform-settings",
   "purview-labels", "purview-governance", "purview-retention-dlp",

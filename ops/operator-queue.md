@@ -11494,8 +11494,37 @@ item that needs it stays untouched.
   Observed on 2026-10-28, lapse **2026-11-27 07:47–11:48 UTC**: `accessReviewPolicy` u, `multiTenantOrganizationIdentitySyncPolicyTemplate` u,
   `multiTenantOrganizationPartnerConfigurationTemplate` u (Q110), `b2bManagementPolicy` u (Q111), `mobileApp` c+u, `mobileAppCategory` c (Q209).
 - Needs: nothing. Run it at the deployed commit B, after Q235–Q237. Start it no later than 2026-11-20 so the cloud PR lands in time.
-- Status: todo
-- Result:
+- Status: done in part (5 promoted; 2 no longer written by design)
+- Result: done in part (2026-10-30 01:55 UTC, keel-operator). **5 of 7 promoted**: accessReviewPolicy u, multiTenantOrganizationIdentitySyncPolicyTemplate u, mobileApp c and u, mobileAppCategory c. New observedAt 2026-10-30, so they lapse 2026-11-29.
+  - **The other 2 can no longer be renewed, by design:** commit 22eee59f ("Treat cross-tenant consent and guest domain fields as trust fields") stopped those writes.
+    - **b2bManagementPolicy u**: the dry run fails with `unsupported operation: b2bManagementPolicy update is not a registered write capability (claim: unsupported)`.
+    - **multiTenantOrganizationPartnerConfigurationTemplate u**: skipped as `manual: The cross-tenant access settings of the multitenant organization template (automaticUserConsentSettings) differ from the backup. … A restore never changes them …`.
+    - Their master records (observed 2026-10-28) lapse 2026-11-27. Since the write is now unregistered or manual, the cloud thread should demote or remove them rather than recapture.
+  - B = **05a930b5**.
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted. No inboundTrust or other trust field sent. No app assigned, no package uploaded.
+  - Self-approved: requester Gmail, approver Entra.
+  - **Settings before → after:**
+
+    | setting | before | after |
+    |---|---|---|
+    | accessReviewPolicy `isGroupOwnerManagementEnabled` | false | false (restored by Keel) |
+    | MTO sync template `userSyncInbound.isSyncAllowed` | true | true (restored by Keel) |
+    | MTO partner template `automaticUserConsentSettings` (inboundTrust null, untouched) | inboundAllowed true, outboundAllowed true | the same, **put back by hand** |
+    | b2bManagementPolicy (exists, default) | BlockedDomains `[]` | `[]`, **put back by hand** |
+
+  - Fixtures: `KEEL-RT-238-cat`; web link `KEEL-RT-238-app-web` (https://example.com/) in that category.
+  - S = `b0701801`, exit 3 (incomplete only on todoSettings 500).
+  - Update:
+    - Drifts: the three booleans flipped; `keel-rt-drift.example` added to BlockedDomains; link renamed `-drift`.
+    - Dry run `7235ad76` failed on b2b (above). Re-run with the 3 writable types: `7e9139b9`, approval **51c797ac**, exit 0, 3× `update succeeded`. Read back as in S.
+  - Create: link and category deleted. Dry run `f4d8ffe5`, approval **1210aa88**, exit 0, both `create succeeded`.
+    - New app 7340ea18… (https://example.com/, in `KEEL-RT-238-cat`, 0 assignments); new category f644ed77….
+  - Re-run: dry run `e4fe8147` from S: **0 field changes** ("categories already as in the backup"), 0 skipped, 0 failed.
+  - Cleanup: link and category deleted; 0 KEEL-RT-238 objects. Settings as in the table. **Left in the tenant: nothing.**
+  - Evidence:
+    - Checks: `pseudonymize.mjs check` passes on 10 files; secret scan 0; no raw ids.
+    - Commit **72fd8afe** on `claude/live-evidence-q238` (pushed, no PR).
+    - Each prints `fixture-tested -> live-qualified`, with observedAt (2026-10-30, UTC): accessReviewPolicy.update 01:47:14; multiTenantOrganizationIdentitySyncPolicyTemplate.update 01:47:14; mobileApp.update 01:47:18; mobileApp.create 01:51:06; mobileAppCategory.create 01:51:05.
 - **Test tenant only.** Same hard rules and capture tooling as Q110, Q111 and Q209. Self-approve; log every approval id. Restorer for
   writes; grant nothing. Tenant-wide settings follow the 2026-10-22 approval: **write down every value before you drift it and put it
   back right after.** **Never change `inboundTrust`** or any trust, federation, certificate or sign-in field. Never assign an app,

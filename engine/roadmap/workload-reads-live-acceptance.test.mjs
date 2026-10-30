@@ -12,9 +12,12 @@
 //  - a record that claims an undeclared read, a failed read as proof, a read at another
 //    module version, another credential, or no signature fails the gate; one filed under
 //    another workload is refused on import;
-//  - nothing is sent when the collector config names another tenant or --out is misnamed.
+//  - nothing is sent when the collector config names another tenant or --out is misnamed;
+//  - an admin REST workload (Power Platform) captures through its own read-only transport:
+//    only GETs of its declared shapes, each read bound to its declared API version, no
+//    module; a record claiming another API version or a PowerShell module fails the gate.
 //
-// Everything runs against a fake PowerShell container. No tenant is touched.
+// Everything runs against a fake PowerShell container or a fake admin API. No tenant is touched.
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -25,7 +28,8 @@ import {
   READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, captureWorkloadReads, ledgerEvidenceFromWorkloadReadsAcceptance, main, workloadReadsRecordFile,
 } from '../../tools/qualification/workloadReadsLive.mjs';
 import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymize.mjs';
-import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
+import { isRestWorkload, readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
+import { assertPowerPlatformRequest, powerPlatformActivation, readOnlyPowerPlatformTransport } from '../collect/workloads/powerPlatform.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
 import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
@@ -117,7 +121,8 @@ const BASE = WORKLOAD_DESCRIPTORS.filter((descriptor) => !CAPTURED.has(descripto
 }));
 const ledger = (reads) => buildWorkloadLedger({ evidence: [...BASE, ...reads], grants: GRANTS, runtime: RUNTIME, tenantRef, now: NOW });
 
-for (const workload of Object.keys(READ_FAMILIES)) {
+// The PowerShell workloads; the admin REST ones have their own tests below.
+for (const workload of Object.keys(READ_FAMILIES).filter((name) => !isRestWorkload(name))) {
   test(`${workload}: a read-only capture imports as live read proof and turns the workload on`, async () => {
     const live = fakeTenant(workload);
     const { record, diagnostics } = await capture(workload, live);
@@ -239,4 +244,117 @@ test('nothing is sent when the collector config names another tenant or --out is
   await assert.rejects(main(args(`/tmp/${workloadReadsRecordFile('exchange-mail-flow')}`), deps), /not the tenant the collector config names/);
   await assert.rejects(main(args('/tmp/reads.json'), deps), /must be named workload-reads-exchange-mail-flow-live-acceptance\.json/);
   assert.equal(sent, 0);
+});
+
+// ------------------------------------------------------------ admin REST workloads
+
+const PP = 'power-platform-settings';
+const BAP_ENVIRONMENTS = '/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments';
+/** A fake set of Power Platform and Fabric admin APIs behind the real read-only transport. */
+function fakeAdminApi(fail = {}) {
+  const sent = [];
+  const answers = {
+    [BAP_ENVIRONMENTS]: { value: [{ name: 'KEEL-RT-env-a', location: 'europe', properties: { displayName: 'KEEL-RT-env-a' } }] },
+    '/providers/PowerPlatform.Governance/v2/policies': { value: [] },
+    '/providers/Microsoft.PowerApps/scopes/admin/environments/KEEL-RT-env-a/apis': { value: [{ name: 'shared_office365', type: 'Microsoft.PowerApps/apis', properties: {} }] },
+    '/v1/admin/tenantsettings': { tenantSettings: [{ settingName: 'KEEL-RT-setting', enabled: true }] },
+  };
+  const fetchImpl = async (url, init) => {
+    sent.push({ url, method: init.method, body: init.body });
+    const { pathname } = new URL(url);
+    if (fail[pathname]) return new Response(JSON.stringify({ error: { code: 'Forbidden', message: 'contoso.onmicrosoft.com is not allowed' } }), { status: fail[pathname] });
+    return new Response(JSON.stringify(answers[pathname] ?? null), { status: answers[pathname] ? 200 : 404 });
+  };
+  const audiences = [];
+  return { sent, audiences, transport: readOnlyPowerPlatformTransport(async (audience) => { audiences.push(audience); return 'token'; }, fetchImpl) };
+}
+const restCapture = (api, extra = {}) => captureWorkloadReads({ workload: PP, collector: api.transport, tenantRef, build, credential: 'app:collector', now, ...extra });
+
+test(`${PP}: a read-only REST capture imports as live read proof bound to each API version and turns the workload on`, async () => {
+  const api = fakeAdminApi();
+  const { record, diagnostics } = await restCapture(api);
+  assert.ok(api.sent.length >= 4 && api.sent.every((call) => call.method === 'GET' && call.body === undefined), 'only GETs are sent');
+  assert.ok(api.sent.every((call) => assertPowerPlatformRequest(call.url)), 'every request is a declared shape');
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(record.subject.execution, { transport: 'rest-read-only' });
+  for (const item of record.subject.reads) {
+    const descriptor = WORKLOAD_DESCRIPTORS.find((entry) => entry.id === item.operationId);
+    assert.equal(item.version, descriptor.operation.version, `${item.operationId} carries its declared API version`);
+  }
+  const evidence = signed(record);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions()).failures, []);
+
+  const seam = ledgerEvidenceFromWorkloadReadsAcceptance(evidence, { tenantRef, build, hmacKey: KEY, now: NOW });
+  assert.deepEqual(seam.failures, []);
+  assert.deepEqual(seam.reads.map((item) => item.operationId).sort(), Object.values(READ_FAMILIES[PP]).map((spec) => spec.operation).sort());
+  assert.equal(seam.grants, null);
+  assert.deepEqual(seam.runtime, { modules: {} }, 'a REST record stores no module version');
+
+  assert.equal(powerPlatformActivation(ledger([])).enabled, false, 'off without the read proof');
+  const activation = powerPlatformActivation(ledger(seam.reads));
+  assert.equal(activation.enabled, true, activation.reasons.join('; '));
+  assert.deepEqual(activation.skipped, []);
+  assert.doesNotMatch(JSON.stringify(evidence), new RegExp(TENANT));
+});
+
+test(`${PP}: a REST read that is refused is not proof, keeps its message out of the record, and only that family stays off`, async () => {
+  const { record, diagnostics } = await restCapture(fakeAdminApi({ '/v1/admin/tenantsettings': 403 }));
+  const failed = record.subject.reads.find((item) => item.operationId === 'powerbi.tenant-settings');
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error, 'HTTP 403');
+  assert.doesNotMatch(JSON.stringify(record), /contoso/);
+  assert.match(diagnostics.find((item) => item.operationId === 'powerbi.tenant-settings').message, /HTTP 403/);
+  const evidence = signed(record);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions()).failures, []);
+  const seam = ledgerEvidenceFromWorkloadReadsAcceptance(evidence, { tenantRef, build, hmacKey: KEY, now: NOW });
+  assert.ok(!seam.reads.some((item) => item.operationId === 'powerbi.tenant-settings'));
+  const activation = powerPlatformActivation(ledger(seam.reads));
+  assert.equal(activation.enabled, true);
+  assert.deepEqual(activation.skipped.map((item) => item.family), ['powerBiSetting']);
+});
+
+test(`${PP}: a REST record that claims another API version or a PowerShell module fails the gate`, async () => {
+  const { record } = await restCapture(fakeAdminApi());
+  const tamper = (change) => { const copy = structuredClone(record); change(copy); return signed(copy); };
+  const cases = [
+    [tamper((r) => Object.assign(r.subject.reads[0], { version: '2019-01-01' })), /declared API version/],
+    [tamper((r) => { r.subject.execution = { transport: 'powershell-cmdlet-job', module: 'ExchangeOnlineManagement', moduleVersion: '3.5.0' }; }), /own rest-read-only transport/],
+    [tamper((r) => { r.subject.reads.push({ ...r.subject.reads[0], operationId: 'mailflow.transport-rules' }); }), /not a declared power-platform-settings read/],
+  ];
+  for (const [evidence, reason] of cases) {
+    const result = verifyEvidence(evidence, verifyOptions());
+    assert.equal(result.ok, false);
+    assert.match(result.failures.join(' '), reason);
+    assert.equal(ledgerEvidenceFromWorkloadReadsAcceptance(evidence, { tenantRef, build, hmacKey: KEY, now: NOW }).reads.length, 0);
+  }
+  // A PowerShell record cannot pass as a REST one either.
+  const ps = signed((await capture('exchange-extended', fakeTenant('exchange-extended'))).record);
+  ps.subject.workload = PP;
+  assert.equal(verifyEvidence(signed(ps), verifyOptions()).ok, false);
+});
+
+test(`${PP}: the CLI captures with the REST transport from the collector config and never needs a PowerShell pin`, async () => {
+  const api = fakeAdminApi();
+  const written = [];
+  const outputs = [];
+  const configs = [];
+  const deps = {
+    out: (line) => outputs.push(line), env: { KEEL_QUALIFICATION_HMAC_KEY: KEY }, write: (path, text) => written.push({ path, text }),
+    readFile: () => JSON.stringify({ tenantId: TENANT, clientId: 'app', certPath: '/etc/keel/c.pem', keyPath: '/etc/keel/k.pem' }),
+    restTransport: (workload, config) => { configs.push([workload, config.tenantId]); return api.transport; },
+    pins: () => { throw new Error('a REST capture reads no PowerShell pin'); },
+  };
+  const args = (out, extra = []) => ['capture', '--workload', PP, '--tenant-ref', tenantRef, '--collector-ref', 'app:collector',
+    '--collector-config', '/etc/keel/tenant.json', '--build', build, '--out', out, ...extra];
+  const code = await main(args(`/records/${workloadReadsRecordFile(PP)}`), deps);
+  assert.equal(code, 0, 'the signed record verifies');
+  assert.deepEqual(configs, [[PP, TENANT]]);
+  assert.equal(written.length, 1);
+  assert.equal(JSON.parse(written[0].text).subject.workload, PP);
+  assert.deepEqual(JSON.parse(outputs[0]).proven.sort(), Object.values(READ_FAMILIES[PP]).map((spec) => spec.operation).sort());
+
+  const before = api.sent.length;
+  await assert.rejects(main(args(`/records/${workloadReadsRecordFile(PP)}`, ['--powershell-image', 'keel-ps:1']), deps), /not for power-platform-settings/);
+  await assert.rejects(main(args(`/records/${workloadReadsRecordFile(PP)}`, ['--site', 'https://contoso.sharepoint.com/sites/KEEL-RT-x']), deps), /--site is only for/);
+  assert.equal(api.sent.length, before, 'nothing was sent');
 });

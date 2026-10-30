@@ -131,6 +131,9 @@ test('restore approvals: sign-in is never turned off for KEEL\'s own app, a Micr
     // Without the list of KEEL's own apps, nothing is turned off.
     [servicePrincipal, { ...GUARD, keelAppIds: [] }, /cannot tell here which apps are its own/],
     [servicePrincipal, undefined, /cannot tell here which apps are its own/],
+    // Unknown kind or owner: held, as it could be a managed identity or a Microsoft app.
+    [{ ...servicePrincipal, servicePrincipalType: undefined }, GUARD, /does not say what kind/],
+    [{ ...servicePrincipal, appOwnerOrganizationId: undefined }, GUARD, /does not say which organisation owns/],
   ];
   for (const [live, guard, reason] of cases) {
     const resource = spResource({ ...live, accountEnabled: false }, live);

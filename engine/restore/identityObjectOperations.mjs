@@ -104,8 +104,13 @@ function signInLockout(resource, ctx = {}) {
   }
   if (keelAppIds.includes(appId)) return 'this is one of KEEL\'s own apps; turning its sign-in off would lock KEEL out, so a restore never does it';
   const type = live.servicePrincipalType ?? payload.servicePrincipalType;
-  if (type && type !== 'Application') return `this is a ${type} service principal; a restore turns sign-in off only for an application's`;
-  if (MICROSOFT_OWNER_TENANTS.includes(lower(live.appOwnerOrganizationId ?? payload.appOwnerOrganizationId))) {
+  if (type !== 'Application') {
+    return type ? `this is a ${type} service principal; a restore turns sign-in off only for an application's`
+      : 'the backup does not say what kind of service principal this is; a restore turns sign-in off only for an application\'s';
+  }
+  const owner = live.appOwnerOrganizationId ?? payload.appOwnerOrganizationId;
+  if (!owner) return 'the backup does not say which organisation owns this app, so it could be a Microsoft application; a restore never turns those off';
+  if (MICROSOFT_OWNER_TENANTS.includes(lower(owner))) {
     return 'this service principal belongs to a Microsoft application; turning it off can break Microsoft 365 services, so a restore never does it';
   }
   return null;

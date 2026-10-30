@@ -13380,3 +13380,34 @@ item that needs it stays untouched.
   policy an `Enabled`, every DLP rule an `IsAdvancedRule`.
 - **Report:** the deployed build; the run line for both workloads; unknown fields; the counts and values from step 2; anything left
   in the tenant (expected: nothing, reads only).
+
+### Q286: Live read check of the Defender for Endpoint indicators read, then turn it on (read-only toward the tenant, after PR #821 and the Q282 consent), about 10 minutes
+- Drafted by the "Back up Defender for Endpoint indicators" thread (2026-10-30). Code: PR #821. One new read-only REST workload,
+  `defender-endpoint-indicators`, shipped `disabled` until a live read record is imported: one GET of
+  `https://api.security.microsoft.com/api/indicators?$top=10000` (more pages with `$skip` only if a page is full), token audience
+  `https://api.securitycenter.microsoft.com/`, WindowsDefenderATP application permission `Ti.Read.All` (added to the KEEL Collector
+  manifest in Q282). Fields were declared from Microsoft's documentation; this item tells us which to drop.
+- Needs: /opt/keel-live at the #821 merge or later (`test -f /opt/keel-live/engine/collect/workloads/defenderIndicators.mjs`), and
+  Marouane's "Grant admin consent" on KEEL Collector (Q282). Check consent first: a Collector token for
+  `https://api.securitycenter.microsoft.com/.default` must carry `Ti.Read.All` in `roles` (report yes/no, never the token). If no, set
+  this item `blocked` and stop.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential from `/etc/keel/tenant.json`. GETs only. Grant, consent, create or change nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture**, as Q284 step 1 with `w=defender-endpoint-indicators` and `--collector-config /etc/keel/tenant.json` (no
+     `--powershell-image`, no `--site`), then the pseudonymize check. Report exit code, `outcome`, `proven` and `notProven` verbatim.
+     A 403 with `Ti.Read.All` in the token is a result: report the error code and message.
+  2. **Evidence:** commit the record to `claude/live-evidence-defender-indicators` (from `origin/master`, that file only, checked for
+     secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q280 step 3). Report exit code and
+     `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the defender-endpoint-indicators outcome, its object count,
+     `fieldCounts`, and the names of fields with status `unknown` (names only, never values).
+  5. **Completeness check (read-only):** the number of indicators the Defender portal (Settings, Endpoints, Indicators: all tabs)
+     shows, against the object count from step 4. Microsoft documents that an app without `Ti.ReadWrite.All` sees only the
+     indicators it created; if the counts differ, report both and do **not** add any other permission.
+- **Expected:** the read proven; `complete-empty` if the tenant has no indicators (fine), otherwise `complete`.
+- **Report:** consent yes/no; capture exit code and proven/notProven; evidence branch and commit; import counts; the run line,
+  unknown fields and the portal count; anything left in the tenant (expected: nothing, reads only).

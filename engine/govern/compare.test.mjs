@@ -6,7 +6,7 @@ import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import {
-  CompareError, compareContentHoldings, compareContentItems, compareSettings, compareSnapshots, compareTenants, compareWithLive, compareWorkloads,
+  CompareError, MAX_ITEMS, compareContentHoldings, compareContentItems, compareSettings, compareSnapshots, compareTenants, compareWithLive, compareWorkloads,
   differenceCount, listCompareSources, portablePayload, presenceFields,
 } from './compare.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
@@ -385,4 +385,26 @@ test('a settings catalog item carries its template family, so lists can file it 
     assert.equal(items['KEEL-RT-Old'].changeType, 'removed');
     assert.equal('templateFamily' in items['KEEL-RT-Old'], false, 'a policy with no template family carries none');
   }
+});
+
+test('per-family counts cover every changed item, also those past the list limit', () => {
+  const policy = (name, family) => ({
+    natural_key: `configurationPolicy:${name}`, resource_type: 'configurationPolicy', payload_hash: name, hash_version: 2, blast_radius: null, references: [],
+    payload: { name, platforms: 'windows10', technologies: 'mdm', ...(family ? { templateReference: { templateFamily: family } } : {}) },
+  });
+  // Plain policies sort first, so every antivirus policy falls past MAX_ITEMS.
+  const plain = Array.from({ length: MAX_ITEMS + 1 }, (_, index) => policy(`KEEL-RT-A${String(index).padStart(3, '0')}`, null));
+  const av = Array.from({ length: 5 }, (_, index) => policy(`KEEL-RT-Z${index}`, 'endpointSecurityAntivirus'));
+  const fw = policy('KEEL-RT-Z9', 'endpointSecurityFirewall');
+  const result = compareSettings({ rows: [fw], coverage: null }, { rows: [...plain, ...av], coverage: null });
+  const [group] = result.groups;
+  assert.equal(group.total, MAX_ITEMS + 7);
+  assert.equal(group.items.length, MAX_ITEMS);
+  assert.equal(group.items.some((item) => item.templateFamily === 'endpointSecurityAntivirus'), false, 'no antivirus policy is listed');
+  assert.deepEqual(group.families, {
+    endpointSecurityAntivirus: { added: 5, removed: 0, changed: 0 },
+    endpointSecurityFirewall: { added: 0, removed: 1, changed: 0 },
+  });
+  const none = compareSettings({ rows: [], coverage: null }, { rows: plain.slice(0, 2), coverage: null });
+  assert.equal('families' in none.groups[0], false, 'a type with no template family carries no family counts');
 });

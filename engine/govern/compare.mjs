@@ -243,6 +243,16 @@ export function compareSettings(left, right, { portable = false } = {}) {
     if (group.added + group.removed + group.changed === 0) continue;
     group.items.sort((a, b) => CHANGE_ORDER[a.changeType] - CHANGE_ORDER[b.changeType] || a.naturalKey.localeCompare(b.naturalKey));
     group.total = group.items.length;
+    // Counts per settings catalog template family over every changed item, listed or
+    // not, so a page that files endpoint security policies under Defender counts the
+    // ones past the list limit there too.
+    const families = {};
+    for (const item of group.items) {
+      if (!item.templateFamily) continue;
+      families[item.templateFamily] ??= { added: 0, removed: 0, changed: 0 };
+      families[item.templateFamily][item.changeType] += 1;
+    }
+    if (Object.keys(families).length) group.families = families;
     group.items = group.items.slice(0, MAX_ITEMS);
     groups.push(group);
   }

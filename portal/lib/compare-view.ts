@@ -46,6 +46,9 @@ export interface SettingsGroup {
   unchanged: number;
   total: number;
   items: SettingsItem[];
+  // Changed items per settings catalog template family, over every item and not only
+  // the listed ones. Absent on older results and on types with no template family.
+  families?: Record<string, { added: number; removed: number; changed: number }>;
 }
 
 export interface SettingsSection {
@@ -431,28 +434,44 @@ export function groupKind(group: Pick<SettingsGroup, "resourceType" | "kind">): 
 
 /** The settings groups by the kind each item is (itemKind), not only by stored type: the
  *  endpoint security policies inside "Settings catalog policy" become their own Defender
- *  group. Counts follow the items; what the engine counted but did not list (unchanged,
- *  and items past the list limit) stays with the stored type. */
+ *  group. Counts come from the engine's per-family counts, so items past the list limit
+ *  are counted under the right kind; an older result without them counts the listed
+ *  items only. Unchanged items stay with the stored type. */
 export function settingsByKind(groups: readonly SettingsGroup[]): SettingsGroup[] {
+  type Counts = { added: number; removed: number; changed: number };
+  const zero = (): Counts => ({ added: 0, removed: 0, changed: 0 });
+  const kindOf = (group: SettingsGroup, templateFamily: string | null | undefined) => itemKind({ resourceType: group.resourceType, templateFamily });
   return groups.flatMap((group) => {
-    const parts = new Map<string, SettingsItem[]>();
+    const items = new Map<string, SettingsItem[]>();
     for (const item of group.items) {
-      const kind = itemKind({ resourceType: group.resourceType, templateFamily: item.templateFamily });
-      if (kind === group.resourceType) continue;
-      parts.set(kind, [...(parts.get(kind) ?? []), item]);
+      const kind = kindOf(group, item.templateFamily);
+      if (kind !== group.resourceType) items.set(kind, [...(items.get(kind) ?? []), item]);
     }
-    if (!parts.size) return [group];
-    const moved = new Set([...parts.values()].flat());
-    const count = (items: readonly SettingsItem[], change: ChangeType) => items.filter((item) => item.changeType === change).length;
-    const split = [...parts.entries()].map(([kind, items]): SettingsGroup => ({
-      ...group, kind, items, total: items.length, unchanged: 0,
-      added: count(items, "added"), removed: count(items, "removed"), changed: count(items, "changed"),
-    }));
-    const kept = group.items.filter((item) => !moved.has(item));
-    const rest: SettingsGroup = {
-      ...group, items: kept, total: group.total - moved.size,
-      added: group.added - count([...moved], "added"), removed: group.removed - count([...moved], "removed"), changed: group.changed - count([...moved], "changed"),
+    const counts = new Map<string, Counts>();
+    const add = (kind: string, change: Partial<Counts>) => {
+      const entry = counts.get(kind) ?? zero();
+      for (const key of ["added", "removed", "changed"] as const) entry[key] += change[key] ?? 0;
+      counts.set(kind, entry);
     };
-    return rest.added + rest.removed + rest.changed > 0 ? [rest, ...split] : split;
+    if (group.families) {
+      for (const [family, change] of Object.entries(group.families)) {
+        const kind = kindOf(group, family);
+        if (kind !== group.resourceType) add(kind, change);
+      }
+    } else {
+      for (const [kind, listed] of items) for (const item of listed) add(kind, { [item.changeType]: 1 });
+    }
+    if (!counts.size) return [group];
+    const sum = (entry: Counts) => entry.added + entry.removed + entry.changed;
+    const moved = [...counts.values()].reduce((all, entry) => ({ added: all.added + entry.added, removed: all.removed + entry.removed, changed: all.changed + entry.changed }), zero());
+    const split = [...counts.entries()].map(([kind, entry]): SettingsGroup => ({
+      ...group, kind, items: items.get(kind) ?? [], ...entry, unchanged: 0, total: sum(entry), families: undefined,
+    }));
+    const movedItems = new Set([...items.values()].flat());
+    const rest: SettingsGroup = {
+      ...group, items: group.items.filter((item) => !movedItems.has(item)), total: group.total - sum(moved), families: undefined,
+      added: group.added - moved.added, removed: group.removed - moved.removed, changed: group.changed - moved.changed,
+    };
+    return sum(rest) > 0 ? [rest, ...split] : split;
   });
 }

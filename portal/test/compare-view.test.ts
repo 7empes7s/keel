@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { compareSettings } from "../../engine/govern/compare.mjs";
+import { MAX_ITEMS, compareSettings } from "../../engine/govern/compare.mjs";
 import { CompareView } from "@/components/compare-view";
 import { NAV_MAP, visibleNavLinks } from "@/components/nav-links";
 import {
@@ -136,7 +136,7 @@ test("endpoint security policies are listed under Defender, by area, not as Intu
     ["defenderEndpointSecurityPolicy", "configurationPolicy", 1, 0, 1, 0, 2, ["KEEL-RT-AV", "KEEL-RT-FW"]],
   ]);
   // A type with no endpoint security policy among its items stays as it is.
-  const plain = settingsByKind([{ ...section.groups[0], items: section.groups[0].items.filter((item) => !item.templateFamily) }]);
+  const plain = settingsByKind([{ ...section.groups[0], families: undefined, items: section.groups[0].items.filter((item) => !item.templateFamily) }]);
   assert.equal(plain.length, 1);
   assert.equal(plain[0].kind, undefined);
   // Only endpoint security policies: no empty Intune group is left behind.
@@ -151,4 +151,34 @@ test("endpoint security policies are listed under Defender, by area, not as Intu
   assert.equal(serviceOf("KEEL-RT-FW"), "Defender");
   assert.equal(serviceOf("KEEL-RT-Wifi"), "Intune");
   assert.match(html, /Endpoint security policy/);
+});
+
+test("endpoint security policies past the list limit are counted under Defender, not Intune", () => {
+  const policy = (name: string, family: string | null) => row(`configurationPolicy:${name}`, {
+    name, platforms: "windows10", technologies: "mdm", ...(family ? { templateReference: { templateFamily: family } } : {}),
+  }, name);
+  // Plain policies sort first, so no endpoint security policy is in the listed items.
+  const plain = Array.from({ length: MAX_ITEMS + 1 }, (_, index) => policy(`KEEL-RT-A${String(index).padStart(3, "0")}`, null));
+  const av = Array.from({ length: 5 }, (_, index) => policy(`KEEL-RT-Z${index}`, "endpointSecurityAntivirus"));
+  const section = compareSettings({ rows: [], coverage: null }, { rows: [...plain, ...av], coverage: null }) as SettingsSection;
+  assert.equal(section.groups[0].items.length, MAX_ITEMS);
+
+  const groups = settingsByKind(section.groups);
+  assert.deepEqual(groups.map((group) => [groupKind(group), group.added, group.total, group.items.length]), [
+    ["configurationPolicy", MAX_ITEMS + 1, MAX_ITEMS + 1, MAX_ITEMS],
+    ["defenderEndpointSecurityPolicy", 5, 5, 0],
+  ]);
+
+  const html = renderToStaticMarkup(createElement(CompareView, { data: { generatedAt: "2026-10-03T00:00:00.000Z", tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: result(section), problem: null } }));
+  const blocks = html.split(/<h3 class="bl-service-heading">/).slice(1);
+  const defender = blocks.find((block) => block.startsWith("Defender") || block.slice(0, block.indexOf("</h3>")).replace(/<[^>]+>/g, "") === "Defender");
+  assert.ok(defender, "a Defender block is shown");
+  assert.match(defender, /And 5 more\./);
+  const intune = blocks.find((block) => block.slice(0, block.indexOf("</h3>")).replace(/<[^>]+>/g, "") === "Intune");
+  assert.ok(intune, "an Intune block is shown");
+  assert.match(intune, /And 1 more\./);
+
+  // An older result without per-family counts still counts what it lists.
+  const old = settingsByKind([{ ...section.groups[0], families: undefined }]);
+  assert.deepEqual(old.map(groupKind), ["configurationPolicy"]);
 });

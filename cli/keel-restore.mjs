@@ -136,7 +136,7 @@ import {
 } from '../engine/restore/compensation.mjs';
 import { readUndoAssignments } from '../engine/restore/undoAssignedPolicy.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
-import { effectsNeedApproval } from '../engine/govern/restoreApprovalSettings.mjs';
+import { RESTORE_APPROVALS_OFF_BASIS, effectsNeedApproval } from '../engine/govern/restoreApprovalSettings.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import {
   ComplianceFixRefusal, fixFor, fixedPayload, isWorkloadFix, newestSnapshotWith, parseWorkloadFixTarget, planComplianceFix,
@@ -1926,14 +1926,19 @@ async function planEnforcementRun({ client, request, persistArtifactId, requeste
   return { mode: 'dry-run', conditionalAccessEnforcement: ctx.plan, results, status, artifactId: persistArtifactId ?? null };
 }
 
-/** The approval that promoted this artifact: approved, by someone other than the requester. */
-async function enforcementApproval(client, artifactId) {
+/**
+ * The approval that promoted this artifact: approved, by someone other than the
+ * requester. `byPerson` refuses one approved by the customer's restore approval
+ * setting (approvals off): turning a Conditional Access policy on always needs a person.
+ */
+async function enforcementApproval(client, artifactId, { byPerson = false } = {}) {
   const { rows } = await client.query(
     `SELECT requested_by, decided_by, justification FROM approval_request
       WHERE action = 'restore' AND status = 'approved' AND params->>'artifactId' = $1
         AND decided_by IS NOT NULL AND decided_by <> requested_by
+        AND (NOT $2::boolean OR standing_policy IS DISTINCT FROM $3)
       ORDER BY decided_at DESC LIMIT 1`,
-    [artifactId],
+    [artifactId, byPerson, RESTORE_APPROVALS_OFF_BASIS],
   );
   return rows[0] ? { approvedBy: rows[0].decided_by, reason: rows[0].justification ?? `approved restore ${artifactId}` } : null;
 }
@@ -1949,7 +1954,7 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
   // Exactly the forward promotion gate: a changed plan or policy refuses first.
   const validation = deps.validateArtifactForExecutionFn(artifact, { digest: ctx.digest, currentStateFingerprint: ctx.fingerprint });
   if (!validation.ok) throw new Error(`enforcement promotion refused: ${validation.reason}`);
-  const approval = await enforcementApproval(client, artifact.id);
+  const approval = await enforcementApproval(client, artifact.id, { byPerson: true });
   if (!approval) throw new Error('enforcement promotion refused: turning a Conditional Access policy on needs an approved request from someone other than the requester');
 
   const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);

@@ -1,15 +1,15 @@
 {
-  "restoreRef": "658da439-359f-83f7-9969-87c0d646a253",
+  "restoreRef": "d85d49ad-2c17-8ff6-90d5-7d82a1172916",
   "entry": {
-    "naturalKey": "conditionalAccessPolicy:KEEL-RT-148-ca-delete",
+    "naturalKey": "conditionalAccessPolicy:KEEL-RT-249-ca-delete",
     "resourceType": "conditionalAccessPolicy",
     "operation": "delete",
-    "targetId": "4b2af6f4-da66-8c92-b650-a2168009fcca",
+    "targetId": "bf638600-f01a-8fd0-ba7c-5be5a03240a4",
     "outcome": "succeeded",
     "outcomeDetail": "absent",
-    "recordedAt": "2026-10-16T20:32:18.285Z",
+    "recordedAt": "2026-10-30T11:05:26.697Z",
     "priorState": {
-      "id": "4b2af6f4-da66-8c92-b650-a2168009fcca",
+      "id": "bf638600-f01a-8fd0-ba7c-5be5a03240a4",
       "state": "enabledForReportingButNotEnforced",
       "conditions": {
         "users": {
@@ -47,18 +47,18 @@
         "servicePrincipalRiskLevels": []
       },
       "templateId": null,
-      "displayName": "KEEL-RT-148-ca-delete",
+      "displayName": "KEEL-RT-249-ca-delete",
       "grantControls": {
         "operator": "OR",
         "termsOfUse": [],
         "builtInControls": [
-          "mfa"
+          "block"
         ],
         "authenticationStrength": null,
         "customAuthenticationFactors": [],
-        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('4b2af6f4-da66-8c92-b650-a2168009fcca')/grantControls/authenticationStrength/$entity"
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('bf638600-f01a-8fd0-ba7c-5be5a03240a4')/grantControls/authenticationStrength/$entity"
       },
-      "createdDateTime": "2026-10-16T20:29:00.4194228Z",
+      "createdDateTime": "2026-10-30T10:59:33.476615Z",
       "deletedDateTime": null,
       "sessionControls": null,
       "modifiedDateTime": null

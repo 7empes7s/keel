@@ -1,15 +1,15 @@
 {
-  "restoreRef": "42ad72b5-6b0e-84a4-8d03-09ab659f6087",
+  "restoreRef": "4610a299-7b2d-846a-8c49-f753b6297575",
   "entry": {
-    "naturalKey": "namedLocation:KEEL-RT-148-delete",
+    "naturalKey": "namedLocation:KEEL-RT-247-location-delete",
     "resourceType": "namedLocation",
     "operation": "delete",
-    "targetId": "619bcc3e-fd6b-865d-a96d-ba28695795de",
+    "targetId": "a1bc0e8e-edf2-8235-8691-7f10cfc79237",
     "outcome": "succeeded",
     "outcomeDetail": "absent",
-    "recordedAt": "2026-10-14T09:26:47.733Z",
+    "recordedAt": "2026-10-30T09:27:35.660Z",
     "priorState": {
-      "id": "619bcc3e-fd6b-865d-a96d-ba28695795de",
+      "id": "a1bc0e8e-edf2-8235-8691-7f10cfc79237",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -18,10 +18,10 @@
       ],
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
-      "displayName": "KEEL-RT-148-delete",
-      "createdDateTime": "2026-10-13T21:58:22.4718704Z",
+      "displayName": "KEEL-RT-247-location-delete",
+      "createdDateTime": "2026-10-30T09:22:10.270603Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-13T21:58:22.4718704Z"
+      "modifiedDateTime": "2026-10-30T09:22:10.270603Z"
     },
     "intendedState": null,
     "postState": null

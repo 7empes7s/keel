@@ -23,6 +23,8 @@
  * Nothing here deletes: no Remove- cmdlet is declared, and no Enable-/Disable- one
  * (a rule's State is listed for an administrator).
  */
+import { ONEDRIVE_WRITTEN_FIELDS } from '../../collect/workloads/onedrive.mjs';
+
 const EXO = Object.freeze({
   module: 'ExchangeOnlineManagement', session: 'exo',
   rbac: Object.freeze({ permissions: Object.freeze(['Exchange.ManageAsApp']), roles: Object.freeze(['Exchange Administrator']) }),
@@ -38,6 +40,14 @@ const TEAMS = Object.freeze({
   rbac: Object.freeze({ permissions: Object.freeze([]), roles: Object.freeze(['Teams Administrator']) }),
   requires: Object.freeze(['teams.settings.update']),
 });
+// OneDrive site settings: Set-PnPTenantSite in the PnP session on the SharePoint admin site.
+// App-only PnP with SharePoint Sites.FullControl.All acts as a SharePoint admin.
+const PNP = Object.freeze({
+  module: 'PnP.PowerShell', session: 'pnp',
+  rbac: Object.freeze({ permissions: Object.freeze(['Sites.FullControl.All']), roles: Object.freeze(['SharePoint Administrator']) }),
+  requires: Object.freeze(['sharepoint.tenant-settings.update']),
+});
+const PNP_DOCS = 'https://pnp.github.io/powershell/cmdlets';
 const EXO_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchange';
 const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
@@ -138,20 +148,21 @@ export function trustSettingIds(payload) {
 }
 
 const entries = {};
-function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields }) {
+function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields, name = null }) {
   const trust = fields.filter((field) => isTrustField(resourceType, field));
   if (trust.length) throw new Error(`${id} declares trust, certificate or sign-in fields a restore never writes: ${trust.join(', ')}`);
   entries[id] = Object.freeze({
     workload, family, resourceType, kind: 'cmdlet', method, module: plane.module, session: plane.session, identity,
+    ...(name ? { name } : {}),
     ...(identity === 'fixed' ? { fixedIdentity } : {}), readBack,
     fields: Object.freeze([...fields]), rbac: plane.rbac, grantsRequired: true, requires: plane.requires,
-    source: `${docs}/${method.toLowerCase()}`,
+    source: docs === PNP_DOCS ? `${docs}/${method}.html` : `${docs}/${method.toLowerCase()}`,
   });
 }
 
 /** One update (Set-) per family, and for a named Teams policy an add (New-) too. */
-function family(plane, docs, { workload, prefix, family: name, resourceType, readBack, set, create = null, identity = 'guid', fixedIdentity, fields }) {
-  declare(plane, docs, { id: `${prefix}.update`, workload, family: name, resourceType, readBack, method: set, identity, fixedIdentity, fields });
+function family(plane, docs, { workload, prefix, family: name, resourceType, readBack, set, create = null, identity = 'guid', fixedIdentity, fields, label = null }) {
+  declare(plane, docs, { id: `${prefix}.update`, workload, family: name, resourceType, readBack, method: set, identity, fixedIdentity, fields, name: label });
   if (create) declare(plane, docs, { id: `${prefix}.add`, workload, family: name, resourceType, readBack, method: create, identity: 'name', fields });
 }
 
@@ -391,6 +402,20 @@ family(IPPS, EXO_DOCS, {
 family(IPPS, EXO_DOCS, {
   workload: 'purview-governance', prefix: 'purview.retention-label', family: 'retentionLabel', resourceType: 'purviewRetentionLabel',
   readBack: 'purview.retention-labels', set: 'Set-ComplianceTag', fields: ['Comment', 'Notes', 'RetentionDuration'],
+});
+
+// ------------------------------------------------------------ OneDrive
+// One named OneDrive site's sharing settings (engine/collect/workloads/onedrive.mjs reads
+// them with Get-PnPTenantSite). Identity is the site's address (`url`), always a
+// personal site on the tenant's -my host (checked here and again in run-cmdlet.ps1).
+// The written fields and why the rest are not are in onedrive.mjs (ONEDRIVE_WRITTEN_FIELDS).
+// A value the site follows from the tenant's OneDrive default is never pinned (cmdletSettings.mjs).
+export const ONEDRIVE_WRITE_WORKLOAD = 'onedrive-site-settings';
+export const ONEDRIVE_WRITE_OPERATION = 'onedrive.site-settings.update';
+family(PNP, PNP_DOCS, {
+  workload: ONEDRIVE_WRITE_WORKLOAD, prefix: 'onedrive.site-settings', family: 'onedriveSite', resourceType: 'onedriveSiteSettings',
+  readBack: 'onedrive.site-settings', set: 'Set-PnPTenantSite', identity: 'url', label: 'OneDrive site sharing settings',
+  fields: ONEDRIVE_WRITTEN_FIELDS,
 });
 
 export const WKLD_WRITE_OPERATIONS = Object.freeze(entries);

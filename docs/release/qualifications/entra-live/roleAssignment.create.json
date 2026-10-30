@@ -7,23 +7,23 @@
   "resourceType": "roleAssignment",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
+  "build": "1d8bd1025c27e4ebaf0c8389a0199ae3a81c2d64",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-14T19:23:26.852Z",
-  "restoreRef": "af3ac17a-a446-8df1-9c27-1592db50ff97",
-  "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-u3f32611d4ab3@t42987720ee3.example@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+  "observedAt": "2026-10-30T10:05:13.718Z",
+  "restoreRef": "0f031511-81c3-80c4-abac-a3da62a4cb00",
+  "naturalKey": "roleAssignment:roleDefinition:8fe792ad-0b48-8d53-877a-3ac0f7ae29dd@user:keel-rt-u3f32611d4ab3@t42987720ee3.example@/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
   "fixtureKind": "by-reference",
-  "captureSha256": "eab9cbd389468cfd55920364530104fbc2c250b5ef15e58dbf660700e28b66dd",
+  "captureSha256": "35785235e37a157bb102a832fa3da2d9743423b7a3072f5ad5dc9d744e378de3",
   "proofRef": "docs/release/qualifications/entra-live/roleAssignment.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "ec5efc166fddfb0e8ca682ea6539ad6a38b598cf7f0dbb45b592b774041d0456"
+      "signature": "c1be79a75aceeba4eb4e76991cf3d6bc1fc254a6a896a9f332ca3fbe4cde477e"
     }
   }
 }

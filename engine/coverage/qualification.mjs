@@ -85,7 +85,7 @@ export const TYPE_DECISIONS = Object.freeze({
   // Issue #156: basic tenant settings.
   organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; its logos, background image, favicon and custom stylesheet are backed up and uploaded back (fixture-tested, not yet live)'),
   organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; its images and stylesheet are backed up and uploaded back (fixture-tested, not yet live); adding or removing a language is by hand'),
-  groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
+  groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is written only once approved under the restore approval setting'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; Wave 2: a permanently deleted user is recreated disabled with a password nobody sees and a credentials checklist'),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
@@ -1361,7 +1361,6 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
     lost('configuration', 'added or removed languages', 'create and delete are not qualified; a missing language is added by hand'),
   ]),
   groupLifecyclePolicy: Object.freeze([
-    lost('configuration', 'shorter lifetime, wider scope or fewer notice addresses', 'could expire and delete groups, so the restore is refused and left to a person'),
     lost('relationship', 'selected groups', 'which groups a Selected policy covers is changed through addGroup and removeGroup, which are not written'),
     lost('configuration', 'missing policy', 'create and delete are not qualified; a missing policy is recreated by hand'),
   ]),

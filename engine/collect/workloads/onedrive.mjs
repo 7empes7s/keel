@@ -21,8 +21,9 @@
  *    declares, but SharePoint proof is never OneDrive proof: activation needs the
  *    `onedrive.site-settings` row itself live-qualified and enabled, after Exchange
  *    (and so Teams and SharePoint) is qualified.
- *  - Read-only. No OneDrive write is declared. Every difference is reported for a
- *    person to act on; a locked site is flagged and never changed or unlocked.
+ *  - Read-only here. The restore (engine/restore/workloads/onedriveSettings.mjs) writes
+ *    back only ONEDRIVE_WRITTEN_FIELDS, with its own qualification; a locked site is
+ *    flagged and never changed or unlocked.
  *  - Errors are structured, as in the Exchange adapter: a cmdlet error is `failed` or
  *    `denied`, never an empty success, and an empty answer is `unknown`.
  */
@@ -80,6 +81,18 @@ export const ONEDRIVE_FIELDS = Object.freeze({
   ConditionalAccessPolicy: explicit,
 });
 export const INHERITANCE_STATES = Object.freeze(['explicit', 'inherited', 'undetermined']);
+
+// The settings a restore writes back to one site (Set-PnPTenantSite, declared in
+// engine/restore/workloads/writeDeclarations.mjs): its sharing, default links and expiry.
+// The rest is listed for an administrator: LockState (a locked site is never changed or
+// unlocked), Owner, Template, the quota (the read cannot tell the site's own from the
+// tenant default), the sensitivity label and the conditional access setting.
+export const ONEDRIVE_WRITTEN_FIELDS = Object.freeze([
+  'SharingCapability', 'SharingDomainRestrictionMode', 'SharingAllowedDomainList', 'SharingBlockedDomainList',
+  'DefaultSharingLinkType', 'DefaultLinkPermission',
+  'OverrideTenantExternalUserExpirationPolicy', 'ExternalUserExpirationInDays',
+  'OverrideTenantAnonymousLinkExpirationPolicy', 'AnonymousLinkExpirationInDays',
+]);
 
 // Never requested, never stored, never counted as configuration.
 export const ONEDRIVE_EXCLUDED_CONTENT = Object.freeze([
@@ -258,8 +271,16 @@ const inheritanceIn = (observation, field) => {
  *    (even when the shown value is the same);
  *  - `inherited-default`: both sides follow the tenant default and the shown value
  *    moved, which is a tenant change, not a site change (`siteChange: false`).
- * No OneDrive write is declared, so every change is `restore: 'manual'`.
+ * `restore` is `keel` when a restore puts the earlier value back (a written field, the
+ * site's own value, the site not locked), else `manual` with the reason.
  */
+function restoreOf(field, from, locked, before, after) {
+  if (locked) return { restore: 'manual', reason: `the site is locked (LockState ${after?.fields?.LockState ?? before?.fields?.LockState}); KEEL never changes or unlocks it` };
+  if (!ONEDRIVE_WRITTEN_FIELDS.includes(field)) return { restore: 'manual', reason: 'KEEL does not write this OneDrive setting; a SharePoint administrator applies this change' };
+  if (from.inheritance !== 'explicit') return { restore: 'manual', reason: 'the earlier value is the tenant default, not the site\'s own; KEEL does not pin it on the site' };
+  return { restore: 'keel', reason: null };
+}
+
 export function compareOneDriveSites(before, after) {
   const changes = [];
   const unknown = [];
@@ -278,10 +299,7 @@ export function compareOneDriveSites(before, after) {
     else change = 'value';
     changes.push({
       field, change, before: from, after: to, siteChange: change !== 'inherited-default',
-      restore: 'manual',
-      reason: locked
-        ? `the site is locked (LockState ${after?.fields?.LockState ?? before?.fields?.LockState}); KEEL never changes or unlocks it`
-        : 'KEEL declares no OneDrive write; a SharePoint administrator applies this change',
+      ...restoreOf(field, from, locked, before, after),
     });
   }
   return { changes, unknown, locked };

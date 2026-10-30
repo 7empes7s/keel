@@ -87,7 +87,7 @@ test('every kind with a high-impact rule lands in the service its name says, so 
   const expected = (type) => (/^exchange/.test(type) ? 'Exchange'
     : /^teams/.test(type) ? 'Teams'
       : /^(purview|retentionLabel$|ediscovery)/.test(type) ? 'Purview'
-        : /^sharepoint/.test(type) ? 'SharePoint'
+        : /^(sharepoint|onedrive)/.test(type) ? 'SharePoint'
           : /^(device|configurationPolicy$|windowsManagedAppProtection$|managedAppPolicy$|mobileApp)/.test(type) ? 'Intune'
             : 'Entra');
   const types = [...Object.keys(CONTENT_EFFECT_RULES), ...Object.keys(WORKLOAD_EFFECT_RULES)];

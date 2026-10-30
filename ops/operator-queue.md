@@ -13446,3 +13446,38 @@ item that needs it stays untouched.
   `partial` only for unknown fields.
 - **Report:** B; capture exit code and proven/notProven; evidence branch and commit; import counts; the run line and unknown fields;
   anything left in the tenant (expected: nothing, reads only).
+
+### Q288: Live read check of the Power Platform tenant settings and tenant isolation reads, and the Power BI optional fields (read-only toward the tenant, after PRs #811 and #823), about 10 minutes
+- Drafted by the "Read Power Platform and Teams app settings" thread (2026-10-30). Code: PR #823 (stacked on #816 and #804). It adds two
+  families to `power-platform-settings`: `tenantSettings` (`powerplatform.tenant-settings`) and `tenantIsolation`
+  (`powerplatform.tenant-isolation`). Both ship disabled until this capture proves them. Once on, ScubaGear MS.POWERPLATFORM.1.1, 1.2,
+  3.1, 5.1 and 6.1 can run.
+- **Requests sent (all reads):**
+  - `POST https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/listTenantSettings?api-version=2020-10-01`, with no
+    body. This is a read: Microsoft documents it only as a POST. The transport refuses a body, and refuses any other POST (for example
+    `updateTenantSettings`).
+  - `GET https://api.bap.microsoft.com/providers/PowerPlatform.Governance/v1/tenants/<tenant id>/tenantIsolationPolicy?api-version=2020-06-01`.
+    The tenant id is taken from the default environment's name (`Default-<tenant id>`).
+- Needs: Q284 done, and /opt/keel-live at the #823 merge or later
+  (`grep -q listTenantSettings /opt/keel-live/engine/collect/workloadContract.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only, with the Collector credential from `/etc/keel/tenant.json`. Grant, register or change nothing. If a read
+  answers 401 or 403, report it as is: do not add a role or a permission.
+- Do: the same steps as Q284 (capture with `--workload power-platform-settings`, pseudonymize check, evidence on
+  `claude/live-evidence-power-platform`, import, one `run`, `proof`). Then report:
+  1. The capture exit code, plus `proven` and `notProven`, verbatim. `powerplatform.tenant-settings` and
+     `powerplatform.tenant-isolation` should both be proven.
+  2. From the `run`: the `discovery.families` status of `tenantSettings` and `tenantIsolation`, and the names of any field with status
+     `unknown` (names only, never values).
+  3. The shape of each answer, with **no values**:
+     - for tenant settings: whether the top-level keys `disableEnvironmentCreationByNonAdminUsers`,
+       `disableTrialEnvironmentCreationByNonAdminUsers`, `disablePortalsCreationByNonAdminUsers` and
+       `powerPlatform.powerApps.disableShareWithEveryone` exist with exactly that spelling, and whether each is true/false;
+     - for tenant isolation: whether the answer was a JSON object with `properties.isDisabled`, a JSON `null`, an empty body or a 404.
+  4. **Power BI optional fields:** for the `powerBiSetting` family, list the field names that came back `unknown` (from
+     `fieldCounts` and the stored field coverage), and how many settings each is unknown on. The declared fields are `title, enabled,
+     canSpecifySecurityGroups, tenantSettingGroup, enabledSecurityGroups, excludedSecurityGroups, properties, delegateToCapacity,
+     delegateToDomain, delegateToWorkspace`. Names and counts only, never values.
+- **Expected:** both new reads proven; the run `complete`, or `partial` only for unknown fields.
+- **Report:** the four items above; the evidence branch and commit; anything left in the tenant (expected: nothing, reads only).

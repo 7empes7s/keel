@@ -12,7 +12,8 @@
  *      - CISA marks the rule as a manual check (scubagear:check-by-hand);
  *      - it reads data Keel does not collect (scubagear:not-read:<input>);
  *      - its code names a field Keel's read of that input does not keep
- *        (scubagear:field-not-read:<input>.<field>);
+ *        (scubagear:field-not-read:<input>.<field>), or a field Microsoft offers only in a
+ *        preview that does not return it (scubagear:preview-only:<input>.<field>);
  *      - a backup it needs is missing, too old or incomplete (the usual reasons);
  *      - the backup cannot answer what it asks (scubagear:incomplete:<input>);
  *      - it gave no result, or the rule runner could not load or failed (scubagear:no-result,
@@ -136,7 +137,7 @@ export function staticReason(rule, { adapters = ADAPTERS, sources = SCUBA_INPUT_
   }
   for (const key of tenant) {
     const lacking = (adapters[key].lacks ?? []).filter((field) => rule.members.includes(field));
-    if (lacking.length) return REASON(`field-not-read:${key}.${lacking.sort().join(',')}`);
+    if (lacking.length) return REASON(`${adapters[key].lacksReason ?? 'field-not-read'}:${key}.${lacking.sort().join(',')}`);
   }
   // When every input is a read of declared fields, every member the rule names must be
   // one of them (or an input key, or a run setting): anything else is a field Keel drops.

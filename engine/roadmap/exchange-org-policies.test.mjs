@@ -238,6 +238,11 @@ test('each policy is one observation under its identity, with declared fields on
   assert.equal(partial.outcome, 'partial');
   assert.deepEqual(partial.unknownFields, { transportConfig: { SmtpClientAuthenticationDisabled: 1 } });
 
+  // Every tenant has one organization configuration: an empty answer is a gap, not a complete read.
+  const noOrganization = await readExchangeOrgDefaults({ powershell: fakeExchange({ output: { ...healthyTenant(), 'Get-OrganizationConfig': [] } }).powershell });
+  assert.equal(noOrganization.outcome, 'partial');
+  assert.ok(noOrganization.discovery.empty.includes('organizationConfig'));
+
   // A denied read is a failure, never an empty list.
   const denied = await readExchangeOrgAccess({
     powershell: fakeExchange({ output: healthyTenant(), errors: { 'Get-ApplicationAccessPolicy': { message: 'Access is denied', category: 'PermissionDenied', errorId: 'x' } } }).powershell,

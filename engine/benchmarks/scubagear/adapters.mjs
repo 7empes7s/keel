@@ -113,12 +113,31 @@ const namedFields = (family) => Object.freeze([...family.fields, 'Identity']);
  */
 function sharingPolicies(facts) {
   const policies = ofKind(facts, 'sharingPolicy', EXCHANGE_ORG_ACCESS_WORKLOAD);
+  // Every tenant has its default sharing policy; none in the backup is not "nothing shared".
+  if (policies.length === 0) throw new CouldNotBuild('sharing_policy', 'the backup holds no sharing policy, and every tenant has a default one');
   for (const policy of policies) {
     if (policy.Domains != null && (!Array.isArray(policy.Domains) || policy.Domains.some((domain) => typeof domain !== 'string'))) {
       throw new CouldNotBuild('sharing_policy', 'a sharing policy lists its domains in a form the rules cannot read');
     }
   }
   return policies;
+}
+
+/**
+ * An organization-wide Exchange answer (Get-TransportConfig, Get-OrganizationConfig):
+ * exactly one object, with each setting the rule compares stored as true or false. The
+ * rules compare with == false / == true, so a missing object, or a setting stored as
+ * text or null, would read as a pass; then the input cannot be built.
+ */
+function organizationWide(key, kind, booleans) {
+  return (facts) => {
+    const found = ofKind(facts, kind, EXCHANGE_ORG_DEFAULTS_WORKLOAD);
+    if (found.length !== 1) throw new CouldNotBuild(key, `the backup holds ${found.length} ${kind} objects, and every tenant has exactly one`);
+    for (const field of booleans) {
+      if (typeof found[0][field] !== 'boolean') throw new CouldNotBuild(key, `${field} is not stored as true or false`);
+    }
+    return found;
+  };
 }
 
 function premium(facts) {
@@ -470,14 +489,14 @@ export const ADAPTERS = Object.freeze({
   // until their live read check passes; until then these rules read "could not check".
   transport_config: Object.freeze({
     reads: [service(EXCHANGE_ORG_DEFAULTS_WORKLOAD, 'transportConfig')], fields: DEFAULTS_FAMILIES.transportConfig.fields,
-    build: (facts) => ofKind(facts, 'transportConfig', EXCHANGE_ORG_DEFAULTS_WORKLOAD),
+    build: organizationWide('transport_config', 'transportConfig', ['SmtpClientAuthenticationDisabled']),
   }),
   sharing_policy: Object.freeze({
     reads: [service(EXCHANGE_ORG_ACCESS_WORKLOAD, 'sharingPolicy')], fields: ACCESS_FAMILIES.sharingPolicy.fields, build: sharingPolicies,
   }),
   org_config: Object.freeze({
     reads: [service(EXCHANGE_ORG_DEFAULTS_WORKLOAD, 'organizationConfig')], fields: DEFAULTS_FAMILIES.organizationConfig.fields,
-    build: (facts) => ofKind(facts, 'organizationConfig', EXCHANGE_ORG_DEFAULTS_WORKLOAD),
+    build: organizationWide('org_config', 'organizationConfig', ['AuditDisabled']),
   }),
 
   // Security Suite (Defender for Office 365, Exchange Online Protection, Purview)

@@ -224,14 +224,15 @@ function orgPolicyWorkload({ workload, type, families, label, required = [] }) {
 }
 
 // Every tenant has a default sharing, Outlook on the web and role assignment policy, a
-// transport configuration and mailbox plans, so an empty answer there is a gap.
+// transport configuration, an organization configuration and mailbox plans, so an empty
+// answer there is a gap.
 export const ORG_ACCESS = orgPolicyWorkload({
   workload: EXCHANGE_ORG_ACCESS_WORKLOAD, type: 'exchangeOrgAccess', families: ACCESS_FAMILIES, label: 'sharing and client access settings',
   required: ['sharingPolicy', 'owaMailboxPolicy', 'roleAssignmentPolicy', 'externalInOutlook'],
 });
 export const ORG_DEFAULTS = orgPolicyWorkload({
   workload: EXCHANGE_ORG_DEFAULTS_WORKLOAD, type: 'exchangeOrgDefaults', families: DEFAULTS_FAMILIES, label: 'transport and new mailbox defaults',
-  required: ['transportConfig', 'casMailboxPlan', 'mailboxPlan'],
+  required: ['transportConfig', 'organizationConfig', 'casMailboxPlan', 'mailboxPlan'],
 });
 
 export const readExchangeOrgAccess = (options) => ORG_ACCESS.read(options);

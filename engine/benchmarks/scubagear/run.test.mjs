@@ -168,6 +168,20 @@ test('mailbox auditing is checked from the organization settings backup, and wit
   assert.match(missing.reason, /^exchange-org-defaults:/);
 });
 
+test('an empty or oddly typed organization-wide answer cannot be checked, rather than reading as a pass', () => {
+  const defaults = FIXTURE_BACKUPS['exchange-org-defaults'];
+  const withDefaults = (objects) => ({ ...FIXTURE_BACKUPS, 'exchange-org-defaults': objects });
+  const noOrganization = run(id('MS.EXO.13.1v1'), withDefaults(defaults.filter((object) => object.kind !== 'organizationConfig')));
+  assert.equal(noOrganization.verdict, 'unknown');
+  assert.equal(noOrganization.reason, 'scubagear:incomplete:org_config');
+  const textAudit = run(id('MS.EXO.13.1v1'), withDefaults(defaults.map((object) => (object.kind === 'organizationConfig' ? { ...object, AuditDisabled: 'True' } : object))));
+  assert.equal(textAudit.reason, 'scubagear:incomplete:org_config');
+  const nullSmtp = run(id('MS.EXO.5.1v1'), withDefaults(defaults.map((object) => (object.kind === 'transportConfig' ? { ...object, SmtpClientAuthenticationDisabled: null } : object))));
+  assert.equal(nullSmtp.reason, 'scubagear:incomplete:transport_config');
+  const noPolicy = run(id('MS.EXO.6.1v1'), { ...FIXTURE_BACKUPS, 'exchange-org-access': [] });
+  assert.equal(noPolicy.reason, 'scubagear:incomplete:sharing_policy');
+});
+
 test('a sharing policy whose domains are not text cannot be checked, rather than reading as a pass', () => {
   const objects = FIXTURE_BACKUPS['exchange-org-access'].map((policy) => ({ ...policy, Domains: [{ Domain: '*', Actions: ['CalendarSharingFreeBusySimple'] }] }));
   const result = run(id('MS.EXO.6.2v1'), { ...FIXTURE_BACKUPS, 'exchange-org-access': objects });

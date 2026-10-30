@@ -10556,7 +10556,8 @@ item that needs it stays untouched.
   `conditionalAccessPolicy` restore-soft-deleted (11-11 11:15), update (11-12 21:29), create (11-13 13:02). Finish by **2026-11-08**.
   (`conditionalAccessPolicy` delete lapses 11-15; it needs a fixture with no exclusions and is queued separately if Marouane agrees.)
 - Needs: Q244 done or blocked. Run at the deployed commit B, from your own checkout at B.
-- Status: blocked: waiting on Marouane (second GA session for lockout steps)
+- **Go from Marouane (2026-10-30 08:27 UTC, in the "Rerun restores for older Entra records" thread: "go now").** He is signed in to the test tenant as a second Global Administrator and reachable to undo a change, as the lockout steps require. Run the lockout items now, back to back: Q245, Q247, the home realm part of Q248, then Q249. If a step needs him to act (a CA purge in the portal, an undo), say so in the Result at once.
+- Status: todo
 - Result: blocked, not started (2026-10-29 23:47 UTC, keel-operator). B = 53cbe462. Nothing written in the tenant.
   - Break-glass: `keel-breakglass.mjs report` → overall **ready** (`every-account-ready`).
   - **Waiting on Marouane.** Every lockout-sensitive step in the checklist (165/166 roleDefinition, 174/175 authenticationStrengthPolicy, 182–184 conditionalAccessPolicy) has the precondition "Marouane keeps a second, separate Global Administrator session signed in to the test tenant for the whole step, and is reachable to undo the change by hand." keel-operator can't check that, and this item doesn't waive it.
@@ -10683,7 +10684,8 @@ item that needs it stays untouched.
   `unifiedRoleManagementPolicy` u and `authorizationPolicy` u (11-13 14:19); `authenticationMethodsPolicy` u (11-13 18:55);
   `roleAssignment` delete (11-13 19:12) and c (11-13 19:23). Finish by **2026-11-10**.
 - Needs: Q246 done or blocked. Run at the deployed commit B, from your own checkout at B.
-- Status: blocked: waiting on Marouane (second GA session for lockout steps)
+- **Go from Marouane (2026-10-30 08:27 UTC, in the "Rerun restores for older Entra records" thread: "go now").** He is signed in to the test tenant as a second Global Administrator and reachable to undo a change, as the lockout steps require. Run the lockout items now, back to back: Q245, Q247, the home realm part of Q248, then Q249. If a step needs him to act (a CA purge in the portal, an undo), say so in the Result at once.
+- Status: todo
 - Result: blocked, not started (2026-10-30 00:38 UTC, keel-operator). B = 53cbe462. Nothing written in the tenant.
   - **Waiting on Marouane, same as Q245.** All nine steps are lockout-sensitive in the checklist (namedLocation, roleAssignment, roleEligibilitySchedule, unifiedRoleManagementPolicy, authorizationPolicy, authenticationMethodsPolicy). Each has the precondition "Marouane keeps a second, separate Global Administrator session signed in to the test tenant for the whole step, and is reachable to undo the change by hand".
   - Break-glass read **ready** at 23:45 UTC; it will be re-checked before each step.
@@ -10723,7 +10725,8 @@ item that needs it stays untouched.
   `homeRealmDiscoveryPolicy` c and u (all from Q67/Q74). Q235 (consent records, same deadline) uses different fixtures; run them
   back to back. Finish by **2026-11-12**.
 - Needs: Q247 done or blocked. Run at the deployed commit B, from your own checkout at B.
-- Status: done in part (6 promoted; HRD waits on second GA session)
+- **Go from Marouane (2026-10-30 08:27 UTC, in the "Rerun restores for older Entra records" thread: "go now").** He is signed in to the test tenant as a second Global Administrator and reachable to undo a change, as the lockout steps require. Run the lockout items now, back to back: Q245, Q247, the home realm part of Q248, then Q249. If a step needs him to act (a CA purge in the portal, an undo), say so in the Result at once.
+- Status: todo (only the home realm discovery create and update are left; 6 promoted earlier)
 - Result: done in part (2026-10-30 00:45 UTC, keel-operator). **6 of 8 promoted**: claimsMappingPolicy, tokenIssuancePolicy and tokenLifetimePolicy, create and update. **homeRealmDiscoveryPolicy c and u: blocked, not run.** HRD is lockout-sensitive in the checklist (steps 180/181), so it waits on the same second-GA precondition as Q245 and Q247.
   - B = **53cbe462**.
   - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted. Self-approved: requester Gmail, approver Entra.
@@ -10774,7 +10777,8 @@ item that needs it stays untouched.
   2026-10-16 20:32 (Q98) and lapses **2026-11-15 20:32 UTC**. A new restore is needed (as Q244). Finish by **2026-11-13**.
 - Needs: Q248 done or blocked. Break-glass readiness **ready** (`node cli/keel-breakglass.mjs report --config "$COLLECTOR"`); if
   not, stop and report blocked.
-- Status: blocked: waiting on Marouane (second GA session for the CA delete)
+- **Go from Marouane (2026-10-30 08:27 UTC, in the "Rerun restores for older Entra records" thread: "go now").** He is signed in to the test tenant as a second Global Administrator and reachable to undo a change, as the lockout steps require. Run the lockout items now, back to back: Q245, Q247, the home realm part of Q248, then Q249. If a step needs him to act (a CA purge in the portal, an undo), say so in the Result at once.
+- Status: todo
 - Result: blocked, not started (2026-10-30 00:47 UTC, keel-operator). B = 53cbe462. No fixture created; nothing written.
   - Break-glass read **ready** at 23:45 UTC; it will be re-checked right before A.
   - **Waiting on Marouane, same as Q245 and Q247.** Checklist step 186 (conditionalAccessPolicy delete, lockout-sensitive) needs "Marouane keeps a second, separate Global Administrator session signed in to the test tenant for the whole step, and is reachable to undo the change by hand". Q98 ran with Marouane confirming in the session.

@@ -12426,3 +12426,14 @@ item that needs it stays untouched.
      the outcome, and say so in the Result.
 - **Report:** the assignment id; step 4 statuses, error codes and request-ids; whether the conditions come back expanded on GET by id;
   anything left in the tenant.
+
+### Q265: Remove the Restorer's Cloud Application Administrator role added in Q264 (about 2 minutes)
+- Drafted by the "Find why service principal creation policy gets 403" thread (2026-10-30). Q264 showed the role does not unblock
+  app creation policies (still 403 even on read), so it only widens the Restorer's privileges. App creation policies stay a manual
+  restore step (PR #752). Removing a role grants nothing.
+- Needs: nothing. **Quick.**
+- Status: todo
+- Result:
+- Do: as the Restorer (as in Q264 step 2), `DELETE v1.0 /roleManagement/directory/roleAssignments/egSMFQfJVkW370RlUaa198mZ0YxuqWZGkk-qDKaRDzI-1`.
+  Report the status. Then list the Restorer's directory roles and confirm they match Q264 step 1 (the same 8 roles).
+  Touch nothing else.

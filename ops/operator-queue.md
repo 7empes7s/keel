@@ -10906,7 +10906,6 @@ item that needs it stays untouched.
   step 2 is the new fixture `KEEL-RT-274-ca` (`78747b49…`), which the create step itself puts in deleted items, so it needs its own
   portal purge. The thread has asked Marouane for it. Once he confirms, resume at step 2 from snapshot **f3c3fab5**: check
   `78747b49…` is gone (404) from CA deleted items, then restore, read back, capture, clean up, commit (steps 2 to 4).
-  (Another item also carries the number Q274, the Exchange org read check; this one is the Conditional Access create.)
 - Needs: none. Run at the deployed commit B, from your own checkout at B.
 - Status: blocked (CA purge 403: needs Marouane's portal click)
 - Result: **blocked at step 2: the purge from CA deleted items answers 403 again** (2026-10-30 15:45 UTC, keel-operator). Build **B = 04e979e3**. Restorer for writes, Collector for reads; global admin not used. Break-glass report **ready** (both accounts) before step 1, the snapshot, the delete and after cleanup. Marouane's account and the break-glass accounts were never targeted.

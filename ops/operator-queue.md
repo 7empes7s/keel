@@ -11172,8 +11172,16 @@ item that needs it stays untouched.
   live: `attributeSet` (v1.0 `/directory/attributeSets`, update) and `customSecurityAttributeDefinition` (v1.0
   `/directory/customSecurityAttributeDefinitions`, update). Both in `engine/restore/identityObjectOperations.mjs`.
 - Needs: PR #692 merged and deployed (build B at or after its merge commit). Without it the capture refuses these fixtures.
-- Status: todo
-- Result:
+- Status: blocked: waiting on consent (Keel Restorer: CustomSecAttributeDefinition.ReadWrite.All)
+- Result: blocked: needs admin consent on **Keel Restorer** (2026-10-30 01:58 UTC, keel-operator). B = 05a930b5 (#692 deployed). Nothing created in the tenant.
+  - Token check:
+    - Collector holds `CustomSecAttributeDefinition.Read.All` (yes).
+    - Restorer holds **no** CustomSecAttribute role (`CustomSecAttributeDefinition.ReadWrite.All` missing).
+  - Fixtures: none existed. 0 attribute sets and 0 attribute definitions, so `KEELRTSet` and `KEELRTSet_KEELRTAttr` would be new. Nothing created yet; they are created once, after consent.
+  - **Permission added (2026-10-28 rule):** `CustomSecAttributeDefinition.ReadWrite.All` (Application, role id 12338004…) appended to Keel Restorer's requiredResourceAccess (PATCH 204). Re-read: 66 Graph roles, the new one included.
+    - Done as the Restorer (Application.ReadWrite.All). Global admin not used; nothing granted.
+  - **Waiting on Marouane:** App registrations → Keel Restorer → API permissions → Grant admin consent (`CustomSecAttributeDefinition.ReadWrite.All`).
+  - Note: this adds one more role to the Restorer's token (#681 size issue). Viva Engage writes now use the separate engage-writer app, so that path isn't affected.
 - **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q111. Self-approve under the 2026-10-14
   standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used for the restore.
 - **Fixture name exception (this item only):** Graph forbids hyphens in attribute set ids and attribute names, so these two

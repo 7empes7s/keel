@@ -109,8 +109,11 @@ export interface ServiceSummary {
 export interface ServiceReadKind {
   type: string;
   read: boolean;
-  // Settings the latest read found; absent or null when not known.
+  // Settings the latest read found, and its open changes by kind, counted in full (not
+  // the page's list of recent ones); absent or null when not known, and then the read
+  // gets no score.
   itemCount?: number | null;
+  open?: ChangeTally | null;
 }
 
 /** Settings judged and settings that match, before they become a percentage. */
@@ -126,7 +129,7 @@ export function matchScore({ matching, judged }: MatchCount): ComplianceScore {
 }
 
 /** The open changes to one kind of setting, by what they did. */
-type ChangeTally = Record<DriftRecord["changeType"], number>;
+export type ChangeTally = Record<DriftRecord["changeType"], number>;
 
 /**
  * How many settings of one kind match the approved setup.
@@ -206,7 +209,8 @@ export function serviceSummaries(
       tally[item.changeType ?? "modified"] += 1;
       tallies.set(item.resourceType, tally);
     }
-    const readCounts = new Map(serviceReads.map((read) => [read.type, read.read ? read.itemCount ?? null : null]));
+    const readCounts = new Map(serviceReads.map((read) => [read.type, read.read && read.open ? read.itemCount ?? null : null]));
+    const readOpen = new Map(serviceReads.map((read) => [read.type, read.open ?? null]));
     const scored = new Set([...captured, ...changedTypes, ...serviceReads.filter((read) => read.read).map((read) => read.type)]);
     const counts = new Map<string, MatchCount>();
     for (const type of scored) {
@@ -214,7 +218,9 @@ export function serviceSummaries(
       const count = basis === "approved-setup" ? held[type] ?? 0 : readCounts.get(type);
       // A service read whose size is not known cannot be scored.
       if (count === null || count === undefined) continue;
-      const match = kindMatch(count, tallies.get(type) ?? { added: 0, modified: 0, removed: 0 }, basis);
+      // A service read counts its open changes in full; the list of changes may hold only recent ones.
+      const changes = (basis === "previous-backup" ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
+      const match = kindMatch(count, changes, basis);
       if (!match.judged) continue;
       const code = entry(type).service.code;
       const sum = counts.get(code) ?? { matching: 0, judged: 0 };

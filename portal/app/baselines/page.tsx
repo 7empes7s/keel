@@ -17,7 +17,7 @@ import {
   type SnapshotOption,
 } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import { getServiceChanges, getServiceReadCounts } from "@/lib/service-changes";
+import { getServiceChanges, getServiceReadTotals, type ServiceReadTotals } from "@/lib/service-changes";
 import type { BaselinesData, DriftRecord } from "@/lib/types";
 
 const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
@@ -56,16 +56,18 @@ export default async function BaselinesPage() {
   // tenant-wide service reads, compared with the previous backup, so only a central
   // administrator sees them (as on the Changes page).
   const active = data.baselines.find((baseline) => baseline.active) ?? null;
-  const [items, coverage, serviceChanges, held, readCounts] = await Promise.all([
+  const [items, coverage, serviceChanges, held, readTotals] = await Promise.all([
     getDriftData(access.scope).then((drift) => drift.items as DriftRecord[], () => null),
     getCoverageData().catch(() => null),
     access.scope.central ? getServiceChanges().catch(() => [] as DriftRecord[]) : Promise.resolve([] as DriftRecord[]),
     active ? getBaselineTypeCounts(active.id, access.scope).catch(() => null) : Promise.resolve(null),
-    access.scope.central ? getServiceReadCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+    // The base of each service read's match percentage; null leaves those services unscored.
+    access.scope.central ? getServiceReadTotals().catch(() => null) : Promise.resolve(null as ServiceReadTotals | null),
   ]);
   const backedUp = (coverage?.types ?? []).filter((type) => type.reportStatus === "covered").map((type) => type.type);
   const serviceReads: ServiceReadKind[] = access.scope.central
-    ? (coverage?.workloads ?? []).map((kind) => ({ type: kind.type, read: kind.reportStatus === "covered", itemCount: readCounts[kind.type] ?? null }))
+    ? (coverage?.workloads ?? []).map((kind) => ({ type: kind.type, read: kind.reportStatus === "covered", itemCount: readTotals?.held[kind.type] ?? null,
+      open: readTotals ? readTotals.open[kind.type] ?? { added: 0, modified: 0, removed: 0 } : null }))
     : [];
 
   const verdict = setupVerdict(active, items, data.generatedAt);

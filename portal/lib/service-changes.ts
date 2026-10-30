@@ -91,10 +91,17 @@ async function undoChoices(client: KeelClient, tenant: string, rows: Record<stri
   return found;
 }
 
-/** How many settings each service's latest read found (its observations), by workload.
- * The base of the match percentage for services compared read to read. */
-export async function loadServiceReadCounts(client: KeelClient, tenant: string): Promise<Record<string, number>> {
-  const { rows } = await client.query(
+/** The match percentage's base for services compared read to read, by workload:
+ * how many settings the newest read found, and the open changes by kind. The changes are
+ * counted here with no time window or row limit (unlike the list on the page), so a
+ * difference that has stayed open for months still counts as not matching. */
+export interface ServiceReadTotals {
+  held: Record<string, number>;
+  open: Record<string, Record<DriftRecord["changeType"], number>>;
+}
+
+export async function loadServiceReadTotals(client: KeelClient, tenant: string): Promise<ServiceReadTotals> {
+  const { rows: heldRows } = await client.query(
     `WITH latest AS (
        SELECT DISTINCT ON (workload) id, workload FROM workload_collection
         WHERE tenant_ref = $1
@@ -105,13 +112,34 @@ export async function loadServiceReadCounts(client: KeelClient, tenant: string):
       GROUP BY latest.workload`,
     [tenant],
   );
-  return Object.fromEntries(rows.map((row) => [String(row.workload), Number(row.count ?? 0)]));
+  // The same rule as loadServiceChanges: the newest change per resource, still open.
+  const { rows: openRows } = await client.query(
+    `SELECT workload, change_type, count(*)::int AS count FROM (
+       SELECT DISTINCT ON (d.workload, d.resource_key) d.workload, d.change_type, a.state AS alert_state
+         FROM workload_drift d
+         JOIN workload_collection c ON c.id = d.collection_id
+         LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
+                          AND a.control = 'baseline' AND a.condition = 'drift'
+        WHERE d.tenant_ref = $1
+        ORDER BY d.workload, d.resource_key, c.observed_to DESC, d.detected_at DESC
+     ) newest
+     WHERE alert_state IS NULL OR alert_state = ANY($2::text[])
+     GROUP BY workload, change_type`,
+    [tenant, LISTED],
+  );
+  const open: ServiceReadTotals["open"] = {};
+  for (const row of openRows) {
+    const tally = open[String(row.workload)] ??= { added: 0, modified: 0, removed: 0 };
+    const kind = String(row.change_type) as DriftRecord["changeType"];
+    if (kind in tally) tally[kind] += Number(row.count ?? 0);
+  }
+  return { held: Object.fromEntries(heldRows.map((row) => [String(row.workload), Number(row.count ?? 0)])), open };
 }
 
-export async function getServiceReadCounts(): Promise<Record<string, number>> {
+export async function getServiceReadTotals(): Promise<ServiceReadTotals> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
-    return await loadServiceReadCounts(client, tenantRef());
+    return await loadServiceReadTotals(client, tenantRef());
   } finally {
     await client.end();
   }

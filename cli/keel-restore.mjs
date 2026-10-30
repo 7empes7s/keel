@@ -144,7 +144,7 @@ import {
 import { newestWorkloadRead } from '../engine/benchmarks/runChecks.mjs';
 import { planWorkloadComplianceFix } from '../engine/benchmarks/workloadFix.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
-import { engageWriterConfigPath, restoreWriterTokens } from '../engine/restore/engageWriter.mjs';
+import { engageWriterAppId, engageWriterConfigPath, restoreWriterTokens } from '../engine/restore/engageWriter.mjs';
 import {
   DEFAULT_SCOPE_PATH as DEFAULT_WORKLOAD_SCOPE_PATH, readWorkloadScope, workloadPowershellConfigPath,
 } from '../engine/collect/workloads/powershellConfigs.mjs';
@@ -810,7 +810,7 @@ export async function runRestore({
       breakGlassUserIds: protectedPrincipalIds,
       breakGlassGroupIds: [],
       // KEEL's own apps: never deleted, and never turned off (servicePrincipal sign-in).
-      keelAppIds: [collectorConfig?.clientId, targetConfig?.clientId].filter(Boolean),
+      ...keelOwnApps({ collectorConfig, targetConfig, readFile, path: engageWriterConfigPathFn() }),
       caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
     };
     // Same-tenant restore: a live object is matched by its object id before its
@@ -1602,7 +1602,20 @@ export function incompleteReadDeleteRefusals(allUnreadTypes, plannedResources) {
   return [...refusals.values()];
 }
 
-async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, undoChoices = {}, deps }) {
+/**
+ * KEEL's own apps, which a restore never deletes or turns off: the Collector, the
+ * Restorer and the Engage writer when it is set up. keelAppIdsUnknown says why the
+ * list may be short (the Engage writer's file is there but unreadable).
+ */
+function keelOwnApps({ collectorConfig, targetConfig, readFile, path }) {
+  const engage = engageWriterAppId({ path: path ?? engageWriterConfigPath(), readFile });
+  return {
+    keelAppIds: [collectorConfig?.clientId, targetConfig?.clientId, engage.appId].filter(Boolean),
+    ...(engage.unreadable ? { keelAppIdsUnknown: engage.unreadable } : {}),
+  };
+}
+
+async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, undoChoices = {}, readFile, deps }) {
   const entries = await deps.listJournalFn(client, { restoreRef: forward.id });
   if (entries.length === 0) {
     throw new Error(`compensation refused: restore ${forward.id} has no journaled writes (nothing was written, or it ran before operation journaling)`);
@@ -1648,7 +1661,7 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
   const deletionGuardOptions = {
     breakGlassUserIds: protectedPrincipalIds,
     breakGlassGroupIds: [],
-    keelAppIds: [collectorConfig?.clientId, targetConfig?.clientId].filter(Boolean),
+    ...keelOwnApps({ collectorConfig, targetConfig, readFile, path: deps.engageWriterConfigPathFn?.() }),
     caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
   };
   const existingTargetIds = new Map(targetResources.map((resource) => [resource.naturalKey, resource.sourceId]));
@@ -1678,7 +1691,7 @@ async function planCompensationRun({ client, compensateArtifactId, undoChoices, 
 
   const ctx = await buildCompensation({
     client, forward, collectorConfig, targetConfig,
-    collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, undoChoices: undoChoices ?? {}, deps,
+    collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, undoChoices: undoChoices ?? {}, readFile, deps,
   });
   logCompensation(logger, ctx.plan);
 
@@ -1745,7 +1758,7 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
     client, forward, collectorConfig, targetConfig,
     collectorConfigPath: artifact.collectorConfigPath, targetConfigPath: artifact.targetConfigPath,
     // The choices the reviewed plan holds; any other plan changes the digest.
-    undoChoices: undoChoicesOf(artifact.compensation), deps,
+    undoChoices: undoChoicesOf(artifact.compensation), readFile, deps,
   });
   // Exactly the forward promotion gate: a changed journal, plan or target refuses
   // before a single write; the compensation's content effects need their own
@@ -1757,7 +1770,10 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
   if (waiting.length > 0) {
     throw new Error(`compensation promotion refused: ${waiting.length} assigned polic${waiting.length === 1 ? 'y waits' : 'ies wait'} for a choice to delete or skip (${waiting.join(', ')}); plan the undo again with the choices`);
   }
-  await deps.assertContentEffectApprovalFn(client, { artifact, effects: ctx.contentEffects.effects });
+  const contentEffectApproval = await deps.assertContentEffectApprovalFn(client, { artifact, effects: ctx.contentEffects.effects });
+  // As in a forward promotion: only effects whose approval was just checked unlock a
+  // write the writer otherwise holds (an approved undo of a sign-in change).
+  const approvedContentEffects = contentEffectApproval ? ctx.contentEffects.effects : [];
   logCompensation(logger, ctx.plan);
 
   const results = { applied: [], skipped: [], failed: [], notRemediable: [] };
@@ -1780,6 +1796,7 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
       restoreRef: artifact.id,
       deletionGuardOptions: ctx.deletionGuardOptions,
       signInPathGate: { reader: ctx.targetReader, protectedPrincipalIds: ctx.protectedPrincipalIds },
+      approvedContentEffects,
     });
     results.applied.push(...result.applied);
     results.skipped.push(...result.skipped);

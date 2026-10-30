@@ -117,6 +117,10 @@ SERVER_OWNED.set('servicePrincipalCreationPolicy', new Set(['includes.id', 'excl
 // finds each one in the target by id, by this run's recreate, or by name.
 SERVER_OWNED.set('mobileApp', new Set(['categories.id']));
 
+// Issue #746: Graph stamps each localized message of a compliance notification
+// template with the time of the read, so the value moves on every collection.
+SERVER_OWNED.set('notificationMessageTemplate', new Set(['localizedNotificationMessages.lastModifiedDateTime']));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

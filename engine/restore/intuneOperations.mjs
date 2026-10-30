@@ -1087,30 +1087,78 @@ export function undoAssignmentsPath(resourceType, payload, targetId) {
   return path ? { version: record.version, path: `${path}/assignments` } : null;
 }
 
-/** Localized messages of a notification template: added or updated by locale, never removed. */
-async function localizedMessagesAfterWrite(io, { payload, verb, targetId, live }) {
-  if (!Array.isArray(payload?.localizedNotificationMessages)) return null;
-  const base = `/deviceManagement/notificationMessageTemplates/${encodeURIComponent(targetId)}/localizedNotificationMessages`;
-  const fieldsOf = (message) => ({ locale: message.locale, subject: message.subject, messageTemplate: message.messageTemplate, isDefault: message.isDefault ?? false });
+// Issue #746: a template's defaultLocale must name a locale it already holds a
+// message for (Graph answers 400 otherwise), so it is never in the template's
+// own body: the messages are written first, then defaultLocale is set last.
+const messageFields = (message) => ({ locale: message.locale, subject: message.subject, messageTemplate: message.messageTemplate, isDefault: message.isDefault ?? false });
+
+/** The localized messages a write adds (POST) or changes (PATCH), by locale; none is removed. */
+function localizedMessageWrites({ payload, verb, live }) {
+  if (!Array.isArray(payload?.localizedNotificationMessages)) return [];
   const have = new Map((verb === 'create' ? [] : live?.localizedNotificationMessages ?? []).map((message) => [lower(message.locale), message]));
-  const written = [];
+  const writes = [];
   for (const message of payload.localizedNotificationMessages) {
-    const want = fieldsOf(message);
+    const want = messageFields(message);
     const current = have.get(lower(message.locale));
-    if (current && sameValue(fieldsOf(current), want)) continue;
-    const request = current
-      ? { path: `${base}/${encodeURIComponent(current.id)}`, method: 'PATCH', body: { subject: want.subject, messageTemplate: want.messageTemplate, isDefault: want.isDefault } }
-      : { path: base, method: 'POST', body: want };
-    const result = await io.retryOperation(() => io.writer.write('v1.0', request.path, { method: request.method, body: request.body }));
-    if (!result.ok) return { error: `writing the ${message.locale} message failed: ${outcomeDetail(result)}` };
-    written.push(message.locale);
+    if (current && sameValue(messageFields(current), want)) continue;
+    writes.push(current
+      ? { locale: message.locale, id: current.id, method: 'PATCH', body: { subject: want.subject, messageTemplate: want.messageTemplate, isDefault: want.isDefault } }
+      : { locale: message.locale, method: 'POST', body: want });
   }
-  if (written.length === 0) return null;
-  const check = await io.retryOperation(() => io.writer.read('v1.0', base));
-  const got = new Map((check?.body?.value ?? []).map((message) => [lower(message.locale), fieldsOf(message)]));
-  const wrong = payload.localizedNotificationMessages.filter((message) => !sameValue(got.get(lower(message.locale)), fieldsOf(message))).map((message) => message.locale);
-  if (check?.ok !== true || wrong.length > 0) return { error: `post-state: the ${wrong.join(', ') || 'localized'} messages did not read back as written` };
-  return { changes: { localizedMessages: written } };
+  return writes;
+}
+
+const defaultLocaleChange = ({ payload, verb, live }) => {
+  const want = payload?.defaultLocale;
+  if (typeof want !== 'string' || want.length === 0) return null;
+  return verb !== 'create' && lower(live?.defaultLocale) === lower(want) ? null : want;
+};
+
+/** Dry run: the messages and default locale the write would change, so the plan shows them. */
+async function localizedMessagesPlan(io, { payload, verb, before }) {
+  const writes = localizedMessageWrites({ payload, verb, live: before });
+  const locale = defaultLocaleChange({ payload, verb, live: before });
+  return {
+    ...(writes.length > 0 ? { localizedMessages: writes.map((write) => write.locale) } : {}),
+    ...(locale ? { defaultLocale: locale } : {}),
+  };
+}
+
+/** Localized messages of a notification template: added or updated by locale, never removed; then its default locale. */
+async function localizedMessagesAfterWrite(io, { payload, verb, targetId, live }) {
+  const path = `/deviceManagement/notificationMessageTemplates/${encodeURIComponent(targetId)}`;
+  const base = `${path}/localizedNotificationMessages`;
+  const changes = {};
+  if (Array.isArray(payload?.localizedNotificationMessages)) {
+    const writes = localizedMessageWrites({ payload, verb, live });
+    for (const write of writes) {
+      const at = write.method === 'PATCH' ? `${base}/${encodeURIComponent(write.id)}` : base;
+      const result = await io.retryOperation(() => io.writer.write('v1.0', at, { method: write.method, body: write.body }));
+      if (!result.ok) return { error: `writing the ${write.locale} message failed: ${outcomeDetail(result)}` };
+    }
+    if (writes.length > 0) {
+      const check = await io.retryOperation(() => io.writer.read('v1.0', base));
+      const got = new Map((check?.body?.value ?? []).map((message) => [lower(message.locale), messageFields(message)]));
+      const wrong = payload.localizedNotificationMessages.filter((message) => !sameValue(got.get(lower(message.locale)), messageFields(message))).map((message) => message.locale);
+      if (check?.ok !== true || wrong.length > 0) return { error: `post-state: the ${wrong.join(', ') || 'localized'} messages did not read back as written` };
+      changes.localizedMessages = writes.map((write) => write.locale);
+    }
+  }
+  if (defaultLocaleChange({ payload, verb, live })) {
+    // Graph sets it itself from the default message; it is written only when it still differs.
+    const read = await io.retryOperation(() => io.writer.read('v1.0', path));
+    if (read?.ok !== true) return { error: `the default locale could not be read back: ${outcomeDetail(read)}` };
+    if (lower(read.body?.defaultLocale) !== lower(payload.defaultLocale)) {
+      const result = await io.retryOperation(() => io.writer.write('v1.0', path, { method: 'PATCH', body: { defaultLocale: payload.defaultLocale } }));
+      if (!result.ok) return { error: `setting the default locale to ${payload.defaultLocale} failed: ${outcomeDetail(result)}` };
+      const after = await io.retryOperation(() => io.writer.read('v1.0', path));
+      if (after?.ok !== true || lower(after.body?.defaultLocale) !== lower(payload.defaultLocale)) {
+        return { error: `post-state: the default locale did not read back as ${payload.defaultLocale}` };
+      }
+      changes.defaultLocale = payload.defaultLocale;
+    }
+  }
+  return Object.keys(changes).length > 0 ? { changes } : null;
 }
 
 const lower = (value) => String(value ?? '').toLowerCase();
@@ -1701,8 +1749,8 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   notificationMessageTemplate: defineRecord({
     resourceType: 'notificationMessageTemplate', version: 'v1.0', collection: '/deviceManagement/notificationMessageTemplates',
-    readQuery: '$expand=localizedNotificationMessages', operations: ['create', 'update'], excluded: ['localizedNotificationMessages'],
-    afterWrite: localizedMessagesAfterWrite, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+    readQuery: '$expand=localizedNotificationMessages', operations: ['create', 'update'], excluded: ['localizedNotificationMessages', 'defaultLocale'],
+    afterWrite: localizedMessagesAfterWrite, planChanges: localizedMessagesPlan, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
   // Restore gaps, batch 1: Intune tenant settings whose backup is complete.
   // A reusable settings group is referenced by id from settings catalog

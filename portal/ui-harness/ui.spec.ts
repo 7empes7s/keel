@@ -763,24 +763,43 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(groups.nth(0).locator(".sel-group-name b")).toHaveText("Changed recently");
 });
 
-test("restore lists the backups of other services, and only those", async ({ page }) => {
-  await open(page, "/restore");
-  const section = page.locator(".restore-services");
-  await expect(section.locator("h2")).toHaveText("Other services");
-  // Only services with a backup or a failed backup run; Power Platform (not switched on)
-  // and Purview (no backup) are left out.
-  await expect(section.locator(".restore-service h3")).toHaveText(["Exchange Online", "SharePoint and OneDrive", "Teams"]);
-  await expect(section.locator(".restore-workload", { hasText: "Purview sensitivity labels" })).toHaveCount(0);
-  await expect(section.locator(".restore-workload", { hasText: "Power Platform and Power BI" })).toHaveCount(0);
-  const flow = section.locator(".restore-workload", { hasText: "Exchange mail flow and protection" });
-  await expect(flow.locator(".restore-workload-backup")).toHaveText("Backed up 3 hours ago · 7 items.");
-  await expect(section.locator(".restore-workload", { hasText: "Teams organization policies" })).toContainText("The newest backup failed");
-  // No capability lists or how-to copy: that lives in the docs.
-  await expect(section).not.toContainText("What you do by hand");
-  await expect(section).not.toContainText("What the backup holds");
-  await expect(section).not.toContainText("More services");
+test("restore lists every service in one list, each kind with its status", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/restore?size=all");
+  // No separate section further down: every service is a group of the one list.
+  await expect(page.locator(".restore-services")).toHaveCount(0);
+  const names = page.locator(".restore-list .sel-group-name b");
+  await expect(names).toHaveText(["Changed recently", "Entra ID", "Exchange Online", "SharePoint and OneDrive", "Teams", "Intune", "Power Platform", "Purview", "Defender"]);
+  const group = (name: string) => page.locator(".restore-list .sel-group").filter({ has: page.locator(".sel-group-name b", { hasText: new RegExp(`^${name}$`) }) });
+  // Exchange: its backed-up settings, then its other kinds in order, mailboxes first.
+  const exchange = group("Exchange Online");
+  await expect(exchange.locator(".sel-group-head .sel-group-count")).toHaveText("1 setting · 2 more kinds");
+  await expect(exchange.locator(".restore-workload-head b")).toHaveText(["Exchange mailbox settings", "Exchange mail flow and protection"]);
+  await expect(exchange.locator(".restore-workload", { hasText: "Exchange mail flow and protection" }).locator(".restore-workload-backup")).toHaveText("Backed up 3 hours ago · 7 items.");
+  // Teams has nothing in the tenant backup: no box to tick, its kinds still show.
+  const teams = group("Teams");
+  await expect(teams.locator(".sel-group-head .sel-check")).toHaveCount(0);
+  await expect(teams.locator(".sel-group-head .sel-group-count")).toHaveText("1 kind");
+  await expect(teams.locator(".restore-workload")).toContainText("The newest backup failed");
+  // Kinds with nothing backed up, or not switched on, show with their status instead of disappearing.
+  await expect(group("Purview").locator(".restore-workload")).toContainText("Not backed up yet");
+  await expect(group("Purview").locator(".restore-chip")).toHaveText("Nothing to put back yet");
+  await expect(group("Power Platform").locator(".restore-workload")).toContainText("Not switched on for this tenant yet");
+  // Kept but not put back by KEEL: says so, and where a person makes the change.
+  const onedrive = group("SharePoint and OneDrive").locator(".restore-workload", { hasText: "OneDrive settings" });
+  await expect(onedrive.locator(".restore-chip")).toHaveText("By hand only");
+  await expect(onedrive).toContainText("SharePoint admin center");
+  // A service with nothing backed up at all still shows, and says so.
+  await expect(group("Defender").locator(".sel-group-head .sel-group-count")).toHaveText("Nothing in this backup");
   // No stored code on the screen outside Technical details.
-  await expect(section.locator(".restore-workload-head")).not.toContainText(["power-platform-settings", "exchange-mail-flow"]);
+  await expect(page.locator(".restore-workload-head")).not.toContainText(["power-platform-settings", "exchange-mail-flow"]);
+  // The find narrows the kinds too.
+  await page.getByPlaceholder("Find settings").fill("sensitivity");
+  await expect(names).toHaveText(["Purview"]);
+  // The Type view lists each kind as its own group after the backup's kinds.
+  await page.getByPlaceholder("Find settings").fill("");
+  await page.getByRole("radio", { name: "Type" }).click();
+  await expect(page.locator(".restore-list .sel-group", { hasText: "Purview sensitivity labels" }).locator(".sel-group-count")).toHaveText("Not backed up yet");
 });
 
 // Exchange, Teams and Purview: the same four steps from a service card, then Approvals.

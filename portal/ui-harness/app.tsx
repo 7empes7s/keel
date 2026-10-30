@@ -94,7 +94,6 @@ import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntent, type ChangeIntentsData, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type PeopleSummary, type SitePermissionsData } from "@/lib/site-permissions-view";
-import { WorkloadServices } from "@/components/restore/workload-services";
 import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
@@ -2506,8 +2505,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
       status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore" />
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
-      snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} />
-    <WorkloadServices canApprove canRestore now={now} workloads={RESTORE_WORKLOADS} />
+      snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} workloads={RESTORE_WORKLOADS} />
     <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} now={now} title="Restores and checks" /></div>
   </>;
 }

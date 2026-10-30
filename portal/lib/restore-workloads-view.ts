@@ -61,6 +61,32 @@ export function hasBackupData(workload: Pick<RestoreWorkload, "backup" | "lastRu
   return workload.backup !== null || workload.lastRun?.outcome === "failed";
 }
 
+// Inside a service, kinds sit in the portal's order: people and mailboxes, then groups,
+// then roles, then policies and settings (engine WORKLOADS; a test keeps every one here).
+export const WORKLOAD_ORDER: readonly string[] = [
+  "exchange-mailbox-settings", "exchange-recipients", "exchange-distribution-groups", "exchange-role-groups",
+  "exchange-mail-flow", "exchange-extended",
+  "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings",
+  "teams-settings", "teams-org-policies", "teams-voice-policies",
+  "power-platform-settings",
+  "purview-labels", "purview-governance", "purview-retention-dlp",
+];
+
+/** Sort key for a kind inside its service; kinds not in the list go last. */
+export function workloadOrder(workload: string): number {
+  const index = WORKLOAD_ORDER.indexOf(workload);
+  return index === -1 ? WORKLOAD_ORDER.length : index;
+}
+
+/** How a kind can be put back, as a short badge: from this page, by hand, or not yet. */
+export function workloadRestoreBadge(workload: Pick<RestoreWorkload, "workload" | "writes" | "backup">): { tone: WorkloadTone; text: string } {
+  if (!workload.backup) return { tone: "muted", text: "Nothing to put back yet" };
+  if (startsFromPage(workload)) return { tone: "fine", text: "Can be put back here" };
+  // KEEL has a restore for part of it, but not one started from this page yet.
+  if (workload.writes.length) return { tone: "soon", text: "Not from this page yet" };
+  return { tone: "soon", text: "By hand only" };
+}
+
 export interface WorkloadServiceGroup {
   service: string | null;
   workloads: RestoreWorkload[];
@@ -74,6 +100,7 @@ export function groupWorkloadsByService(workloads: RestoreWorkload[], order: (se
     if (!groups.has(key)) groups.set(key, { service: workload.service, workloads: [] });
     groups.get(key)!.workloads.push(workload);
   }
+  for (const group of groups.values()) group.workloads.sort((a, b) => workloadOrder(a.workload) - workloadOrder(b.workload));
   return [...groups.values()].sort((a, b) => order(a.service) - order(b.service));
 }
 

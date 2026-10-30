@@ -93,8 +93,9 @@ export default async function RestorePage({
     }
   }
 
-  // Secondary: the other Microsoft 365 services (Exchange, SharePoint, Teams, Purview,
-  // Power Platform) are backed up as workload collections, not in the snapshot.
+  // Secondary: Exchange, SharePoint, Teams, Purview and Power Platform are mostly backed
+  // up as workload collections, not in the snapshot. Their kinds join the main list, each
+  // under its service; without a tenant backup they show on their own.
   let workloads: RestoreWorkload[] | null;
   try {
     workloads = await getRestoreWorkloads();
@@ -152,6 +153,7 @@ export default async function RestorePage({
           resources={resourceData.resources}
           snapshotId={snapshotId}
           snapshots={snapshots}
+          workloads={workloads}
         />
       ) : (
         <>
@@ -165,10 +167,9 @@ export default async function RestorePage({
               No finished backups yet. Run a backup before planning a restore.
             </p>
           </section>
+          <WorkloadServices canApprove={capabilities.includes("approve")} canRestore={canRestore} now={now} workloads={workloads} />
         </>
       )}
-
-      <WorkloadServices canApprove={capabilities.includes("approve")} canRestore={canRestore} now={now} workloads={workloads} />
 
       <div data-layer="explanation">
         {followUps === null

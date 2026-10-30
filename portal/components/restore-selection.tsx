@@ -12,6 +12,8 @@ import { ContentEffectsPanel, type ContentEffect } from "@/components/content-ef
 import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/components/incident-recovery";
 import { ObjectSteps, PendingSteps, type ObjectStep, type PendingStep } from "@/components/pending-steps";
 import { RestorePoint } from "@/components/restore/restore-point";
+import { WorkloadKinds } from "@/components/restore/workload-services";
+import { WorkloadRestore } from "@/components/restore/workload-restore";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { Verdict, type VerdictTone } from "@/components/verdict";
@@ -47,7 +49,9 @@ import {
 } from "@/lib/restore-view";
 import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
-import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
+import { madeInSharePoint, SERVICES, serviceFor, serviceOrder } from "@/lib/services";
+import { workloadOrder, type RestoreWorkload } from "@/lib/restore-workloads-view";
+import { useViewState } from "@/lib/use-view-state";
 import { typeService } from "@/lib/baselines-view";
 import { kindOrder, kindParts } from "@/lib/type-groups";
 
@@ -276,43 +280,108 @@ const SORTS: ListSort<RestoreItem>[] = [
   { key: "changed", label: "When it changed", desc: true, compare: (a, b) => byTime(a.change?.seenAt, b.change?.seenAt) },
 ];
 
-const GROUPINGS: Grouping<RestoreItem>[] = [
-  {
-    key: "service",
-    label: "Service",
-    // "Changed recently" leads; every other setting sits under its Microsoft service.
-    groupsOf: (items) => {
-      const changed = items.filter((item) => item.change);
-      const rest = items.filter((item) => !item.change);
-      // Inside a service, settings sit under their kind: users, groups, roles, then
-      // policies and tenant settings.
-      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code))
-        .map((group) => withKinds(group, group.key === "other" ? null : group.key));
-      return changed.length
-        ? [{ key: CHANGED_GROUP, label: "Changed recently", icon: "clock" as IconName, about: "Different now, newest first", items: ordered(changed) }, ...services]
-        : services;
+// Kinds of setting backed up and put back on their own (mailboxes, Teams policies,
+// Purview labels...), shown inside their service in the Service view and as their own
+// group in the Type view. The find narrows them by name and service like the rows.
+interface OtherKinds {
+  workloads: RestoreWorkload[];
+  query: string;
+  render: (workloads: RestoreWorkload[]) => ReactNode;
+}
+
+function kindsMatching(kinds: OtherKinds): RestoreWorkload[] {
+  const query = kinds.query.trim().toLowerCase();
+  const shown = query
+    ? kinds.workloads.filter((workload) => `${workload.name} ${workload.reads.join(" ")} ${serviceFor(workload.service).name}`.toLowerCase().includes(query))
+    : kinds.workloads;
+  return [...shown].sort((a, b) => serviceOrder(a.service) - serviceOrder(b.service) || workloadOrder(a.workload) - workloadOrder(b.workload));
+}
+
+const kindsWords = (count: number) => `${count} ${count === 1 ? "kind" : "kinds"}`;
+
+// Every Microsoft 365 service the portal knows, in its order, so none goes missing:
+// "Keel" holds Keel's own records and has nothing to put back.
+const RESTORE_SERVICES = SERVICES.filter((service) => service.code !== "Keel");
+
+function groupingsFor(kinds: OtherKinds): Grouping<RestoreItem>[] {
+  return [
+    {
+      key: "service",
+      label: "Service",
+      // "Changed recently" leads; every other setting sits under its Microsoft service,
+      // and each service shows the kinds it backs up on their own after its rows.
+      groupsOf: (items) => {
+        const changed = items.filter((item) => item.change);
+        const rest = items.filter((item) => !item.change);
+        const others = kindsMatching(kinds);
+        // Inside a service, settings sit under their kind: users, groups, roles, then
+        // policies and tenant settings.
+        const fromBackup = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code))
+          .map((group) => withKinds(group, group.key === "other" ? null : group.key));
+        const byCode = new Map(fromBackup.map((group) => [group.key.toLowerCase(), group]));
+        const searching = kinds.query.trim() !== "";
+        const services: ListGroup<RestoreItem>[] = [];
+        for (const service of RESTORE_SERVICES) {
+          const group = byCode.get(service.code.toLowerCase());
+          const own = others.filter((workload) => (workload.service ?? "").toLowerCase() === service.code.toLowerCase());
+          // While finding, a service with nothing that matches is left out.
+          if (!group && !own.length && searching) continue;
+          const base = group ?? { key: service.code, ...serviceGroup(service.code), items: [] };
+          const rows = base.items.length;
+          services.push({
+            ...base,
+            count: own.length
+              ? rows ? `${plural(rows, "setting")} · ${own.length} more ${own.length === 1 ? "kind" : "kinds"}` : kindsWords(own.length)
+              : rows ? undefined : "Nothing in this backup",
+            extra: own.length
+              ? kinds.render(own)
+              : rows ? undefined : <p className="restore-kinds-none">This backup holds no {service.name} settings.</p>,
+          });
+        }
+        // Anything not placed in a known service still shows, after them.
+        const placed = new Set(RESTORE_SERVICES.map((service) => service.code.toLowerCase()));
+        services.push(...fromBackup.filter((group) => !placed.has(group.key.toLowerCase())));
+        return changed.length
+          ? [{ key: CHANGED_GROUP, label: "Changed recently", icon: "clock" as IconName, about: "Different now, newest first", items: ordered(changed) }, ...services]
+          : services;
+      },
     },
-  },
-  {
-    key: "type",
-    label: "Type",
-    // Service by service, and inside each the same order as the Service view.
-    groupsOf: (items) => grouped(items, (item) => item.resourceType, (type) => ({
-      label: plainType(type),
-      icon: typeService(type).icon,
-      about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
-    }), (type) => kindOrder(type)),
-  },
-  {
-    key: "impact",
-    label: "Impact",
-    groupsOf: (items) => grouped(items, (item) => item.blastRadius, (radius) => ({
-      label: impactWords(radius),
-      icon: (radius === "tenant-lockout" ? "alert" : radius === "cosmetic" ? "check" : "info") as IconName,
-      about: IMPACT_ABOUT[radius] ?? "How much a wrong restore could break",
-    }), (radius) => (IMPACT_ORDER.indexOf(radius) === -1 ? IMPACT_ORDER.length : IMPACT_ORDER.indexOf(radius))),
-  },
-];
+    {
+      key: "type",
+      label: "Type",
+      // Service by service, and inside each the same order as the Service view; the kinds
+      // backed up on their own follow, each as its own group.
+      groupsOf: (items) => [
+        ...grouped(items, (item) => item.resourceType, (type) => ({
+          label: plainType(type),
+          icon: typeService(type).icon,
+          about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
+        }), (type) => kindOrder(type)),
+        ...kindsMatching(kinds).map((workload): ListGroup<RestoreItem> => {
+          const service = serviceFor(workload.service);
+          return {
+            key: `kind:${workload.workload}`,
+            label: workload.name,
+            icon: service.icon,
+            about: `${service.name} · put back on its own`,
+            items: [],
+            count: workload.backup ? plural(workload.backup.items, "item") : "Not backed up yet",
+            extra: kinds.render([workload]),
+          };
+        }),
+      ],
+    },
+    {
+      key: "impact",
+      label: "Impact",
+      groupsOf: (items) => grouped(items, (item) => item.blastRadius, (radius) => ({
+        label: impactWords(radius),
+        icon: (radius === "tenant-lockout" ? "alert" : radius === "cosmetic" ? "check" : "info") as IconName,
+        about: IMPACT_ABOUT[radius] ?? "How much a wrong restore could break",
+      }), (radius) => (IMPACT_ORDER.indexOf(radius) === -1 ? IMPACT_ORDER.length : IMPACT_ORDER.indexOf(radius))),
+    },
+  ];
+}
 
 const TONE_WORDS: Record<RiskTone, string> = { urgent: "Deleted", soon: "Changed", low: "Low risk", fine: "Fine" };
 
@@ -336,6 +405,7 @@ export function RestoreSelection({
   changes = null,
   now,
   lastRestore = null,
+  workloads = [],
 }: {
   canRestore: boolean;
   canApprove?: boolean;
@@ -349,8 +419,13 @@ export function RestoreSelection({
   now: string;
   // The last restore job, for its tile: words, when, and its page.
   lastRestore?: { label: string; detail: string; href: string; tone: RiskTone } | null;
+  // Kinds of setting backed up on their own (Exchange, SharePoint, Teams, Purview, Power
+  // Platform); null when they could not be read.
+  workloads?: RestoreWorkload[] | null;
 }) {
   const router = useRouter();
+  const query = useViewState().get("q");
+  const [openWorkload, setOpenWorkload] = useState<string | null>(null);
   const [preview, setPreview] = useState<SelectionPreview | null>(null);
   const [planning, setPlanning] = useState(false);
   const [justification, setJustification] = useState("");
@@ -375,6 +450,17 @@ export function RestoreSelection({
     const placed = { ...resource, service: restoreService(resource, label), label };
     return change ? { ...placed, change } : placed;
   }), [resources, changeByKey, names]);
+  const groupings = useMemo(() => groupingsFor({
+    workloads: workloads ?? [],
+    query,
+    render: (list) => (
+      <>
+        <p className="restore-kinds-head">Backed up separately. Each is put back on its own, with the same check and approval.</p>
+        <WorkloadKinds canRestore={canRestore} now={now} onStart={setOpenWorkload} open={openWorkload} workloads={list} />
+      </>
+    ),
+  }), [workloads, query, canRestore, now, openWorkload]);
+  const workloadOpen = (workloads ?? []).find((workload) => workload.workload === openWorkload) ?? null;
 
   useEffect(() => () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -600,7 +686,10 @@ export function RestoreSelection({
             </div>
           ) : null}
 
-          {items.length ? (
+          {workloads === null ? (
+            <p className="action-error">KEEL could not read the backups of Exchange, SharePoint, Teams, Purview and Power Platform. Reload in a minute.</p>
+          ) : null}
+          {items.length || workloads?.length ? (
             <div className="restore-list" id="restore-list">
               <SelectableList
                 action={{
@@ -615,7 +704,7 @@ export function RestoreSelection({
                   // The one amber action on the page: undo everything that changed.
                   return undoButton(keys, keys.length === 1 ? "Undo 1 change" : `Undo all ${keys.length}`, group.label, group.key === CHANGED_GROUP);
                 }}
-                groupings={GROUPINGS}
+                groupings={groupings}
                 items={items}
                 label={`Settings in the backup of ${dayWords(currentSnapshot ? takenAt(currentSnapshot) : null)}`}
                 matches={(item, query) => `${item.label} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
@@ -629,6 +718,17 @@ export function RestoreSelection({
           ) : (
             <p className="empty-state">This backup has nothing KEEL can put back.</p>
           )}
+          {workloadOpen ? (
+            <WorkloadRestore
+              canApprove={canApprove}
+              canRestore={canRestore}
+              key={workloadOpen.workload}
+              name={workloadOpen.name}
+              now={now}
+              onClose={() => setOpenWorkload(null)}
+              workload={workloadOpen.workload}
+            />
+          ) : null}
           {!canRestore ? <p className="restore-readonly">You can look at backups, but putting settings back needs the restore role.</p> : null}
         </>
       ) : (

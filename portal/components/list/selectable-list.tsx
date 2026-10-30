@@ -24,6 +24,12 @@ export interface ListGroup<T> {
   // set, `items` is every part's rows in order; each part has its own count, select-all
   // and open/close (kept in the URL as `<group>.<part>`).
   parts?: ListGroup<T>[];
+  // What else the group holds that is not a row here, such as kinds of setting backed
+  // up and put back on their own. Shown at the end of the open group; a group with no
+  // rows still shows when it has this.
+  extra?: ReactNode;
+  // The header's count, when rows alone do not say what the group holds.
+  count?: string;
 }
 
 export interface Grouping<T> {
@@ -358,14 +364,16 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           return (
             <section className="sel-group" data-closed={isClosed || undefined} key={group.key}>
               <header className="sel-group-head">
-                <input
-                  aria-label={`Select all ${plural(ids.length, noun)} in ${group.label}`}
-                  checked={check === "all"}
-                  className="sel-check"
-                  onChange={() => setSelection((current) => setMany(current, ids, check !== "all"))}
-                  ref={(element) => { if (element) element.indeterminate = check === "some"; }}
-                  type="checkbox"
-                />
+                {ids.length ? (
+                  <input
+                    aria-label={`Select all ${plural(ids.length, noun)} in ${group.label}`}
+                    checked={check === "all"}
+                    className="sel-check"
+                    onChange={() => setSelection((current) => setMany(current, ids, check !== "all"))}
+                    ref={(element) => { if (element) element.indeterminate = check === "some"; }}
+                    type="checkbox"
+                  />
+                ) : <span aria-hidden="true" className="sel-check-space" />}
                 <button
                   aria-expanded={!isClosed}
                   className="sel-group-toggle"
@@ -374,7 +382,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 >
                   {group.icon ? <Icon name={group.icon} /> : null}
                   <span className="sel-group-name"><b>{group.label}</b>{group.about ? <small>{group.about}</small> : null}</span>
-                  <span className="sel-group-count">{plural(ids.length, noun)}{continued && !isClosed ? <small className="sel-group-continued">continued</small> : null}</span>
+                  <span className="sel-group-count">{group.count ?? plural(ids.length, noun)}{continued && !isClosed ? <small className="sel-group-continued">continued</small> : null}</span>
                   {tone && attention ? <StatusBadge status={{ tone, count: attention, note: `${attention} ${tone === "urgent" ? "urgent" : "to check soon"}${soonToo ? `, and ${soonToo} to check soon` : ""}` }} /> : null}
                   <Icon className="sel-group-chevron" name="chevron-down" />
                 </button>
@@ -409,7 +417,9 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                     );
                   })}
                 </div>
-              ) : rowsOf(group, first.start, first.end, later)}
+              ) : ids.length ? rowsOf(group, first.start, first.end, later) : null}
+              {/* The group's other kinds follow its last row, on the page that shows it. */}
+              {!isClosed && group.extra && later === 0 ? <div className="sel-extra">{group.extra}</div> : null}
             </section>
           );
         })}

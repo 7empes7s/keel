@@ -8651,6 +8651,58 @@ section.wizard-panel {
   }
 }
 
+/* A group header with no rows to pick keeps its name in line with the others. */
+.sel-check-space {
+  width: 1.125rem;
+  flex: none;
+}
+
+/* What a group holds besides its rows, after the last one. */
+.sel-extra {
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  border-top: 1px solid var(--line);
+}
+
+/* Restore: a service's kinds backed up on their own, inside its group of the main list. */
+.restore-list .sel-extra .restore-workloads {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.restore-kinds-head {
+  margin: 0 0 var(--space-sm);
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.restore-kinds-none {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.restore-workload-todo {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 62rem) {
+  .restore-list .sel-extra .restore-workloads {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* On a phone a long count ("1 setting · 2 more kinds") wraps, so the service name keeps its room. */
+@media (max-width: 40rem) {
+  .restore-list .sel-group-toggle > .sel-group-count {
+    max-width: 6.5rem;
+    text-align: right;
+    white-space: normal;
+  }
+}
+
 /* Restore: putting back one of the other services, the same four steps as Entra ID and Intune. */
 .restore-workload-start {
   justify-self: start;

@@ -85,6 +85,8 @@ const heldUnless = (fields) => (payload) => (fields.every((field) => Array.isArr
 const builtInGrantPolicy = (payload) => (/^microsoft-/i.test(String(payload?.id ?? '')) ? always(payload) : []);
 // Restore gaps batch 21: an object the backup does not mark as custom (isBuiltIn false) is not written.
 const builtInFlag = (payload) => (payload?.isBuiltIn !== false ? always(payload) : []);
+// The Defender role API has no isBuiltIn (#742): only a role marked built in is Microsoft's.
+const markedBuiltIn = (payload) => (payload?.isBuiltIn === true ? always(payload) : []);
 const organizationDefault = (payload) => (payload?.isOrganizationDefault === true ? always(payload) : []);
 // Token lifetime, token issuance, claims mapping and home realm discovery policies.
 const STS_POLICY_MISSING = Object.freeze([
@@ -270,7 +272,7 @@ export const COMPLETENESS = Object.freeze({
   exchangeRoleAssignment: { whole: 'not-written' },
   exchangeCustomAppScope: { missing: [part('The app role assignments that use it', 'other-route')] },
   // Restore gaps batch 21: custom roles written; built-in ones are Microsoft's.
-  defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', builtInFlag)] },
+  defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', markedBuiltIn)] },
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.

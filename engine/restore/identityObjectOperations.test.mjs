@@ -1057,13 +1057,16 @@ test('restore gaps batch 20: a settings member Graph added after the backup is n
 const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
 // The provider object, so its role list reads as empty rather than missing.
 const DEFENDER = { '/roleManagement/defender': {} };
+// As the Defender role API returns it: no isBuiltIn and no isEnabled (#742).
 const defenderRole = (extra = {}) => ({
-  id: 'role-src', displayName: 'KEEL-RT-defender-role', description: 'Reads security data', isBuiltIn: false, isEnabled: true,
+  id: 'role-src', displayName: 'KEEL-RT-defender-role', description: 'Reads security data',
   rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }], ...extra,
 });
 
 test('restore gaps batch 21: a custom Defender role is recreated with its permissions and updated in place', async () => {
+  // #742: the API never returns isBuiltIn, so a role without it is custom and is written.
   const backup = defenderRole();
+  assert.equal('isBuiltIn' in backup, false);
   const graph = idoFakeGraph({ seed: DEFENDER });
   const created = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
   assert.equal(created.failed, undefined, created.failed?.error);
@@ -1084,14 +1087,17 @@ test('restore gaps batch 21: a custom Defender role is recreated with its permis
   assert.deepEqual(patch.body, { description: 'Reads security data', rolePermissions: backup.rolePermissions }, 'the wider permission is taken away');
 });
 
-test('restore gaps batch 21: a built-in or unmarked Defender role, or one with no permissions, is never written', async () => {
-  for (const [payload, expect] of [
-    [defenderRole({ isBuiltIn: true, displayName: 'Security Reader' }), /^manual: "Security Reader" is a built-in Defender role/],
-    [defenderRole({ isBuiltIn: undefined }), /does not say whether this Defender role is built in/],
+test('restore gaps batch 21: a Defender role marked built in, or one with no permissions, is never written', async () => {
+  const builtIn = defenderRole({ isBuiltIn: true, displayName: 'Security Reader' });
+  for (const [resource, verb] of [
+    [{ naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: builtIn, references: [] }, 'create'],
+    // The backup lacks the flag (as the API returns it) but the live role says built in.
+    [{ naturalKey: 'role-1', resourceType: 'defenderRoleDefinition', payload: defenderRole({ id: 'role-1', displayName: 'Security Reader' }), references: [],
+      live: { state: 'present', targetId: 'role-1', payload: builtIn } }, 'update'],
   ]) {
-    const graph = idoFakeGraph({ seed: DEFENDER });
-    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload, references: [] }, 'create', FAST);
-    assert.match(result.skipped?.reason ?? '', expect);
+    const graph = idoFakeGraph({ seed: { ...DEFENDER, [`${DEFENDER_ROLES}/role-1`]: builtIn } });
+    const result = await applyIdentityObjectWrite(graph, resource, verb, FAST);
+    assert.match(result.skipped?.reason ?? '', /^manual: "Security Reader" is a built-in Defender role/);
     assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
   }
   const graph = idoFakeGraph({ seed: DEFENDER });

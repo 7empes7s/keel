@@ -484,15 +484,19 @@ async function allowedValuesAfterWrite(io, { payload, verb, targetId, live }) {
   return { changes: { allowedValues: written } };
 }
 
-/** A Defender role is written only when the backup says it is a custom role with at least one permission. */
+/**
+ * A Defender role is written only when it is a custom role with at least one permission.
+ * The Defender XDR role API has no isBuiltIn property (asking for it answers 400) and
+ * lists only roles an admin made or imported: Microsoft's built-in security roles are
+ * directory roles, not Defender roles. So a role is custom unless the backup or the live
+ * role says isBuiltIn true (#742).
+ */
 function defenderRoleRefusal(resource) {
   const payload = resource.payload ?? {};
-  if (payload.isBuiltIn !== false) {
+  if (payload.isBuiltIn === true || resource.live?.payload?.isBuiltIn === true) {
     return {
       outcome: 'skipped',
-      reason: payload.isBuiltIn === true
-        ? `manual: "${payload.displayName ?? payload.id}" is a built-in Defender role: Microsoft manages it and nobody can change it`
-        : 'manual: the backup does not say whether this Defender role is built in, so KEEL does not write it',
+      reason: `manual: "${payload.displayName ?? payload.id}" is a built-in Defender role: Microsoft manages it and nobody can change it`,
     };
   }
   const actions = (payload.rolePermissions ?? []).flatMap((permission) => permission?.allowedResourceActions ?? []);
@@ -639,8 +643,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
   }),
   // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
-  // description and permissions. Microsoft's own roles (isBuiltIn true, or
-  // no flag at all) are never written. Who holds the role is a separate kind
+  // description and permissions. The API has no isBuiltIn and lists only
+  // custom roles, so only a role marked isBuiltIn true is skipped (#742).
+  // Who holds the role is a separate kind
   // (defenderRoleAssignment), restored by hand after a privilege review.
   // Graph documents the create; the update uses the same PATCH as the other
   // role providers and is confirmed by the live proof.

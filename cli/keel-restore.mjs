@@ -809,7 +809,8 @@ export async function runRestore({
     const deletionGuardOptions = {
       breakGlassUserIds: protectedPrincipalIds,
       breakGlassGroupIds: [],
-      keelAppIds: [],
+      // KEEL's own apps: never deleted, and never turned off (servicePrincipal sign-in).
+      keelAppIds: [collectorConfig?.clientId, targetConfig?.clientId].filter(Boolean),
       caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
     };
     // Same-tenant restore: a live object is matched by its object id before its
@@ -1647,7 +1648,7 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
   const deletionGuardOptions = {
     breakGlassUserIds: protectedPrincipalIds,
     breakGlassGroupIds: [],
-    keelAppIds: [],
+    keelAppIds: [collectorConfig?.clientId, targetConfig?.clientId].filter(Boolean),
     caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
   };
   const existingTargetIds = new Map(targetResources.map((resource) => [resource.naturalKey, resource.sourceId]));

@@ -39,7 +39,7 @@ import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/resto
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
-export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts']);
+export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in']);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
 
 const NOT_BACKED_UP = 'KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.';
@@ -58,6 +58,8 @@ const DISCLOSURES = Object.freeze({
     + `so more people, devices or apps can reach the organisation's data, or fewer checks apply. ${NOT_BACKED_UP}`,
   'acts-on-accounts': 'This turns on a rule or workflow that acts by itself on people\'s accounts, mail or devices: it can block access, '
     + `or run tasks that change, disable or delete accounts. ${NOT_BACKED_UP}`,
+  'blocks-sign-in': 'This turns off sign-in for an app. The app, and every person, service or automation that uses it, '
+    + `stops working until someone turns it back on. Check nobody relies on the app now before approving. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {
@@ -524,6 +526,13 @@ export const PROTECTION_EFFECT_RULES = Object.freeze({
   // PIM role settings: each reviewed rule the backup would weaken (adminRoleOperations, ruleWeakening).
   unifiedRoleManagementPolicy: { rules: [], effects: (before, after) => pimRuleWeakenings(after, before)
     .map(({ ruleId, before: from, after: to }) => ({ field: `rules[${ruleId}]`, effect: 'weakens-protection', before: from, after: to })) },
+  // Whether a service principal can sign in (identityObjectOperations, servicePrincipalRefusal).
+  // The writer's lockout checks still hold: KEEL's own apps, a Microsoft application
+  // and a managed identity are never turned off.
+  servicePrincipal: { rules: [
+    rule('accountEnabled', 'weakens-protection', turnsFalseToTrue),
+    rule('accountEnabled', 'blocks-sign-in', turnsTrueToFalse),
+  ] },
   // Intune tenant switches (intuneOperations).
   onPremisesConditionalAccessSettings: { rules: [
     rule('enabled', 'acts-on-accounts', turnsOn),

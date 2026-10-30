@@ -1,9 +1,10 @@
 /**
  * Wave 2 IDO: restore of identity objects that had no writer.
  *
- *  - servicePrincipal update and delete. An update writes only the reviewed
- *    attributes below; whether the service principal is enabled is reported,
- *    never written (the same rule as a user). A delete is refused for a
+ *  - servicePrincipal update and delete. An update writes the reviewed
+ *    attributes below; whether the service principal can sign in is written
+ *    only behind restore approvals, and never turned off for KEEL's own apps, a
+ *    Microsoft application or a managed identity. A delete is refused for a
  *    Microsoft-owned service principal, a managed identity, and KEEL's own app.
  *  - application owners, service principal owners and app role grants
  *    (application permissions granted to a service principal), ADD ONLY: an
@@ -72,17 +73,105 @@ function servicePrincipalDeleteGuard(_io, { payload }) {
   return null;
 }
 
-function servicePrincipalRefusal(resource, verb) {
-  const payload = verb === 'delete' ? (resource.live?.payload ?? resource.payload) : resource.payload;
-  if (verb === 'update' && payload?.accountEnabled !== undefined && resource.live?.payload
-    && payload.accountEnabled !== resource.live.payload.accountEnabled
-    && SERVICE_PRINCIPAL_WRITABLE_FIELDS.every((field) => sameValue(payload[field], resource.live.payload[field]))) {
-    return {
-      outcome: 'skipped',
-      reason: `manual: the service principal is ${resource.live.payload.accountEnabled ? 'enabled' : 'disabled'} now and ${payload.accountEnabled ? 'enabled' : 'disabled'} in the backup; a restore never turns sign-in on or off, so change it by hand`,
-    };
+/**
+ * Restore approvals: whether a service principal can sign in (accountEnabled).
+ * Turning it on is a 'weakens-protection' effect (the app can reach data again),
+ * turning it off a 'blocks-sign-in' effect (the app, and everything that uses it,
+ * stops working). Either is written only once the promotion checked its approval,
+ * or the customer turned restore approvals off for Entra. The lockout checks hold
+ * whatever the approval says: a restore never turns off KEEL's own apps, a
+ * Microsoft application or a service principal that is not an application's.
+ */
+const SIGN_IN_PORTAL_PATH = 'Entra admin center > Enterprise applications > (the app) > Properties > Enabled for users to sign in';
+
+/** { want, now } when the backup and live differ in whether the service principal can sign in, else null. */
+function signInChange(resource, verb) {
+  if (verb !== 'update') return null;
+  const want = resource.payload?.accountEnabled;
+  const now = resource.live?.payload?.accountEnabled;
+  if (typeof want !== 'boolean' || typeof now !== 'boolean' || want === now) return null;
+  return { want, now };
+}
+
+/** Why a restore must never turn this service principal's sign-in off, or null. */
+function signInLockout(resource, ctx = {}) {
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const keelAppIds = (ctx.deletionGuardOptions?.keelAppIds ?? []).map(lower).filter(Boolean);
+  const appId = lower(live.appId ?? payload.appId);
+  if (keelAppIds.length === 0) {
+    return 'KEEL cannot tell here which apps are its own, and turning off one of them would lock KEEL out, so a restore never turns sign-in off without that list';
+  }
+  if (keelAppIds.includes(appId)) return 'this is one of KEEL\'s own apps; turning its sign-in off would lock KEEL out, so a restore never does it';
+  const type = live.servicePrincipalType ?? payload.servicePrincipalType;
+  if (type !== 'Application') {
+    return type ? `this is a ${type} service principal; a restore turns sign-in off only for an application's`
+      : 'the backup does not say what kind of service principal this is; a restore turns sign-in off only for an application\'s';
+  }
+  const owner = live.appOwnerOrganizationId ?? payload.appOwnerOrganizationId;
+  if (!owner) return 'the backup does not say which organisation owns this app, so it could be a Microsoft application; a restore never turns those off';
+  if (MICROSOFT_OWNER_TENANTS.includes(lower(owner))) {
+    return 'this service principal belongs to a Microsoft application; turning it off can break Microsoft 365 services, so a restore never does it';
   }
   return null;
+}
+
+const signInWords = (enabled) => (enabled ? 'on' : 'off');
+
+/** The manual step for a sign-in change a restore did not make, with why. */
+function signInStep({ want, now }, why) {
+  return Object.freeze({
+    kind: 'manual-setting', requirement: 'servicePrincipalSignIn', fields: Object.freeze(['accountEnabled']), portalPath: SIGN_IN_PORTAL_PATH,
+    description: `Sign-in for this app is ${signInWords(now)} now and ${signInWords(want)} in the backup. ${why} To change it by hand: ${SIGN_IN_PORTAL_PATH}.`,
+  });
+}
+
+/** null when this sign-in change may be written; otherwise why it is held (lockout or approval). */
+function signInHeld(resource, verb, change, ctx = {}) {
+  if (!change.want) {
+    const lockout = signInLockout(resource, ctx);
+    if (lockout) return `Not changed: ${lockout}.`;
+  }
+  if (protectionChangeApproved(resource, verb, ctx)) return null;
+  return `Not changed yet: ${change.want ? 'turning it on lets the app reach data again' : 'turning it off stops the app and everything that uses it'}, so ${PROTECTION_APPROVAL_STEP}.`;
+}
+
+function servicePrincipalRefusal(resource, verb, ctx = {}) {
+  const change = signInChange(resource, verb);
+  if (!change) return null;
+  // Only a sign-in difference: nothing else to write, so a held change skips the whole update.
+  const onlySignIn = SERVICE_PRINCIPAL_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]));
+  if (!onlySignIn) return null;
+  const held = signInHeld(resource, verb, change, ctx);
+  if (!held) return null;
+  return { outcome: 'skipped', reason: `manual: ${held}`, completion: [signInStep(change, held)] };
+}
+
+/** In a dry run: the sign-in change the write would make, or the step it would leave. */
+function servicePrincipalPlan(_io, { resource, verb, ctx }) {
+  const change = signInChange(resource, verb);
+  if (!change) return null;
+  const held = signInHeld(resource, verb, change, ctx);
+  return held ? { signInHeld: held } : { signIn: signInWords(change.want) };
+}
+
+/**
+ * After the reviewed attributes: sign-in turned on or off when that change may be
+ * written (read back), otherwise a step for a person.
+ */
+async function servicePrincipalAfterWrite(io, { resource, verb, targetId, live, ctx }) {
+  const change = signInChange({ ...resource, live: { ...resource.live, payload: live } }, verb);
+  if (!change) return {};
+  const held = signInHeld(resource, verb, change, ctx);
+  if (held) return { completion: [signInStep(change, held)] };
+  const path = `/servicePrincipals/${encodeURIComponent(targetId)}`;
+  const result = await io.retryOperation(() => io.writer.write('v1.0', path, { method: 'PATCH', body: { accountEnabled: change.want } }));
+  if (!result.ok) return { error: `turning sign-in ${signInWords(change.want)} failed: ${outcomeDetail(result)}` };
+  const check = await readUntil(io, 'v1.0', path, (r) => isNotFound(r) || (r?.ok === true && r.body?.accountEnabled !== change.want), io.readOptions);
+  if (check?.ok !== true || check.body?.accountEnabled !== change.want) {
+    return { error: `post-state: sign-in did not read back as ${signInWords(change.want)}` };
+  }
+  return { live: check.body, changes: { signIn: signInWords(change.want) } };
 }
 
 // ------------------------------------------------------ guest federation
@@ -569,6 +658,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   servicePrincipal: defineRecord({
     resourceType: 'servicePrincipal', version: 'v1.0', collection: '/servicePrincipals', operations: ['update', 'delete'],
     writable: SERVICE_PRINCIPAL_WRITABLE_FIELDS, refusal: servicePrincipalRefusal, deleteGuard: servicePrincipalDeleteGuard,
+    afterWrite: servicePrincipalAfterWrite, planChanges: servicePrincipalPlan,
     permission: 'Application.ReadWrite.All', docs: v1('serviceprincipal-update'),
   }),
   lifecycleWorkflow: defineRecord({

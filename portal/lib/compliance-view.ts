@@ -522,8 +522,9 @@ export const COVERAGE_WORDS: Record<"full" | "partial", string> = { full: "Check
 
 export const KNOWN_STANDARDS_NOTE = "Meeting a standard here is not a certification. CIS Benchmarks are not included: their licence does not allow Keel to ship them.";
 
-/** A known standard's checked policies, worst first (fails, then could not check, then
- * passes), and in the standard's own order within each result. */
+/** A known standard's checked policies, worst first in the order of RESULTS (fails, not
+ * set up yet, could not check, accepted, passes, not relevant), and in the standard's own
+ * order within each result. */
 export function orderCoverageRows(rows: CoverageRow[]): CoverageRow[] {
   const rank = (row: CoverageRow) => (row.result === "not-checked" ? 99 : RESULTS[row.result].rank);
   return rows.map((row, index) => ({ row, index })).sort((left, right) => rank(left.row) - rank(right.row) || left.index - right.index).map((entry) => entry.row);

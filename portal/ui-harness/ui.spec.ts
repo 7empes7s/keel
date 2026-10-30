@@ -4878,6 +4878,13 @@ test("Compliance · measure against a known standard, write your own check, remo
   await known.locator(".cp-known-table").getByRole("link", { name: "Legacy authentication SHALL be blocked." }).click();
   await expect(page.locator(".bl-sheet h2")).toContainText("Legacy authentication SHALL be blocked.");
   await page.keyboard.press("Escape");
+  // The picked standard is kept in the address, and a result with no policy says so.
+  await open(page, "/benchmarks/own?std=nist-800-53");
+  await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await open(page, "/benchmarks/own?std-result=excepted");
+  await expect(known.locator(".cp-known-table")).toHaveCount(0);
+  await expect(known).toContainText("No policy has these results.");
+  await open(page, "/benchmarks/own");
 
   // The tenant's own check sits beside Keel's, filed under its own standard.
   await expect(page.locator(".cp-score-list", { hasText: "By standard" })).toContainText("Contoso hardening");

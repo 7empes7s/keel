@@ -9836,8 +9836,26 @@ item that needs it stays untouched.
   not a Win32 app, or that has an assignment. It prints `uploaded <name>: content version <n>, publishingState <state>` per app.
 - Needs: PR #654 merged (`tools/coverage-fixtures/intuneTestPackage.mjs` on master). /opt/keel-live at `9550175` or later
   (`grep -q appRelationshipDelete /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 14:05 UTC, keel-operator). Build **B = 1c571efa** (has `appRelationshipDelete`; tool from PR #654). Restorer for writes, Collector for reads and backups; global admin not used; **no app was ever assigned**.
+  - Fixtures (Q209 shell body): `KEEL-RT-212-a-main` 18c0b2a7…, `-a-dep` 1524af9b…, `-b-main` 2957ee4c…, `-b-dep` bdcddc4d…, `-b-other` 8d3dec31….
+  - **Step 1, package:** tool exit 0, five lines `uploaded KEEL-RT-212-<x>: content version 1, publishingState published` (a-main, a-dep, b-main, b-dep, b-other). Read back each: `publishingState published`, `committedContentVersion 1`, assignments `[]`.
+  - **Step 2, links by hand:** `updateRelationships` a-main → a-dep (detect) **200**; b-main → b-dep + b-other (detect) **200**. The #653 400 is gone once the apps are packaged.
+  - **Step 3:** S **efe69995**: mobileApp (5 KEEL-RT-212) and mobileAppRelationship complete (3 items). Links in S: `mobileAppRelationship:18c0b2a7…_1524af9b…` (a-main→a-dep, detect), `…2957ee4c…_bdcddc4d…` (b-main→b-dep, detect), `…2957ee4c…_8d3dec31…` (b-main→b-other, detect); the id is `<source>_<target>`.
+  - **Step 4, link restore:** removed a-main's link (`{relationships: []}` 200, list `[]`). Dry run **e9f34b6d** create (changes `sourceId, targetId, targetType, dependencyType`; follow-up "The app packages on both ends…"); approval **bed0abf7-7c57-4acd-9a3f-2f0f0307dca3**; enforce exit 0, `create succeeded`; read back `a-dep detect child`, same id. Set `autoInstall` by hand (200); dry run **f938caf4** update (changes `dependencyType`); approval **80fb98bd-b9cf-4be4-bb08-b974a299d48d**; enforce exit 0; read back `detect`. Both captured.
+  - **Step 5, link undo:**
+    - Sent only b-main → b-other (200). Restore A **a9c3bb76** (approval **81eac64d-67b7-44cd-830e-09f60e7877df**), create succeeded; read back b-dep detect + b-other detect.
+    - `--compensate A`: `compensation of a9c3bb76…: 1 inverse write(s), 0 conflict(s), 0 not applied, 0 manual, 0 irrecoverable` → C **0b38ae1b** (the CLI printed its own id, not the `--persist-artifact` one I passed). Approval **61f75700-27b2-4271-b153-a5754dd6bec1**; enforce exit 0, `compensation applied 1`; journal `delete succeeded absent`; read back **only b-other detect**.
+    - Put b-dep back as autoInstall with b-other (200). A2 **1ea8aee0** update (changes `dependencyType`; approval **a47c8502-fbf5-42bf-bab8-77e7a84037eb**), read back b-dep detect + b-other detect.
+    - `--compensate A2`: `1 inverse write(s), 0 conflict(s), 0 not applied, 0 manual, 0 irrecoverable` → C2 **9196f3c4**; approval **d9f9b709-49e3-4ff6-ac9a-d3a4ca45b6c7**; enforce exit 0, `compensation applied 1`; read back **b-dep autoInstall + b-other detect**, as expected.
+    - No `not applied` / `already absent` seen.
+  - **Step 6, recreate with a link:**
+    - Deleting a-main/a-dep first answered **400** (`Cannot delete this app as it is the parent of another app: 1524af9b…` / `…the child of another app: 18c0b2a7…`). So I cleared a-main's links (200), then both deletes 200 and GET 404.
+    - Dry run **b5624bf3**: create a-dep, create a-main (each with the follow-up "The app package (the installer file), which must be uploaded before the app is assigned"), and **create** for the link (planned, not skipped, in the dry run).
+    - Approval **cf27de0c-d6dd-4b19-8700-cfd7ee9eaca3**; enforce exit 0. Both shells recreated without a package (a-dep 3b67ca3e…, a-main 34c7c78c…, notPublished; I uploaded nothing). The link wave said `applied 0, skipped 1`.
+    - **But KEEL did call `updateRelationships`:** the journal reads `create | failed | status 400`, and Intune's 400 ("PublishingState is not 'Published'") is mapped to the skip `manual: Intune does not let … be changed until its package is uploaded, so the link was not written; upload the package in <portal>, then restore again` (`linkWriteAnswer`, intuneOperations.mjs). Nothing was written, but the call is made, against the item's "no updateRelationships call", and the journal shows `failed`. Noted on #653.
+  - **Captures:** `mobileAppRelationship.create` (13:45:18) and `.update` (13:48:31), both `fixture-tested -> live-qualified`; pseudonymize check passes; secret scan 0. `claude/live-evidence-q212` **3201117a** (no PR).
+  - **Step 7, cleanup:** cleared b-main's links, deleted all 5 KEEL-RT-212 apps (published and recreated, 200 each); list now `[]`. Left in KEEL: completion items for the recreated shells (pending).
 - **Test tenant only. Restorer for writes, Collector for reads and backups. No app is ever assigned.** The package is uploaded only to
   the KEEL-RT-212 Win32 shells below, with the tool, never by hand. Self-approve under the 2026-10-14 standing authorization and log
   every approval id. Run every restore from your own checkout at B (never `/opt/keel`).

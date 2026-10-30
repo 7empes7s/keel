@@ -12902,3 +12902,42 @@ item that needs it stays untouched.
      baseline noted in step 2 as the active one.
 - **Report:** B; break-glass readiness; S and baseline ids; drift id; remediate exit code, artifact id and gate outcome; what is
   left in the tenant (expected: nothing) and the active baseline.
+
+### Q274: Live read check of the Exchange sharing, client access, transport and new mailbox default reads, then turn them on (read-only toward the tenant, after PR #791), about 15 minutes
+- Drafted by the "Back up Exchange org access settings" thread (2026-10-30). Code: PR #791. Two new read-only workloads, both
+  shipped `disabled` until a live read record is imported:
+  `exchange-org-access` (Get-AuthenticationPolicy, Get-SharingPolicy, Get-OrganizationRelationship, Get-IntraOrganizationConnector,
+  Get-OwaMailboxPolicy, Get-RoleAssignmentPolicy, Get-ApplicationAccessPolicy, Get-ExternalInOutlook) and
+  `exchange-org-defaults` (Get-TransportConfig, Get-EmailAddressPolicy, Get-CASMailboxPlan, Get-MailboxPlan). No parameters.
+  The declared fields come from Microsoft's documentation, not from a live answer; this item is what tells us which to drop.
+- Needs: /opt/keel-live at the #791 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgPolicies.mjs`).
+  `run-cmdlet.ps1` has a new table (`$AllowedExchangeOrgPolicies`); as in Q266 the scripts are mounted from the checkout, so no
+  image rebuild is expected.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
+  cmdlet. Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** each workload with the Exchange config the workloads use (`powershellConfigs.exchange` in
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q266 step 1:
+     ```bash
+     for w in exchange-org-access exchange-org-defaults; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <that config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+       node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     done
+     ```
+     Report each exit code, `outcome`, `proven` and `notProven` verbatim. If a pseudonymize check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit both records to `claude/live-evidence-exchange-org-policies` (from `origin/master`, those files only,
+     checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding these records and the other read records (as Q266 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and,
+     for the two new workloads, their per-family `discovery.families` statuses, `fieldCounts` and **`unknownFields`** verbatim
+     (field names only, never values). Unknown fields are expected on the first run; the thread trims them in a follow-up PR.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' reads are listed as current.
+- **Report:** B; capture exit codes and proven/notProven; evidence branch and commit; import counts; the run table; unknown
+  fields per family; anything left in the tenant (expected: nothing, reads only).

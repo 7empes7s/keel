@@ -446,7 +446,6 @@ const STANDARD_WORDS: Record<string, string> = {
   "keel-custom": "Keel checks",
   "cisa-scuba": "CISA SCuBA",
   "nist-800-53": "NIST SP 800-53",
-  [SCUBA_FRAMEWORK]: "CISA SCuBA",
 };
 
 export function standardName(finding: ComplianceFinding): string {

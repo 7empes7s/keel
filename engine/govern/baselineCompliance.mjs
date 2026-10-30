@@ -61,13 +61,15 @@ function leftOutReason(coverage) {
  * whole-estate backup has read it in full since (so "Capture new version" would add
  * it). Without the source backup's record only the kinds stored at capture are known.
  */
-function leftOutOf(scope, sourceDigest, latest, sourceSnapshotId) {
+function leftOutOf(scope, sourceDigest, latest, sourceSnapshotId, capturedAt) {
   const held = new Set(Array.isArray(scope?.types) ? scope.types : []);
   const stored = new Map((Array.isArray(scope?.leftOut) ? scope.leftOut : [])
     .filter((item) => typeof item?.type === 'string')
     .map((item) => [item.type, String(item.reason ?? 'unknown')]));
   const kinds = isRecord(sourceDigest) ? DESCRIPTORS.map(({ type }) => type) : [...stored.keys()];
-  const newer = latest && latest.id !== String(sourceSnapshotId ?? '') ? latest : null;
+  // Only a backup finished after the capture can add a kind (portal resnapshotSource).
+  const newer = latest && latest.id !== String(sourceSnapshotId ?? '')
+    && (capturedAt === null || ms(latest.completedAt) > ms(capturedAt)) ? latest : null;
   return [...new Set(kinds)]
     .filter((type) => !held.has(type))
     .sort()
@@ -94,7 +96,7 @@ function captureOf(baseline, legacyWindow, now, sourceDigest = null, latest = nu
       sourceSnapshotId: baseline.source_snapshot_id ? String(baseline.source_snapshot_id) : null,
       window: scope ? { startedAt: scope.startedAt ?? null, completedAt: scope.completedAt ?? null } : null,
       types: Array.isArray(scope?.types) ? [...scope.types] : [],
-      leftOut: leftOutOf(scope, sourceDigest, latest, baseline.source_snapshot_id),
+      leftOut: leftOutOf(scope, sourceDigest, latest, baseline.source_snapshot_id, iso(baseline.captured_at)),
     };
   }
   if (legacyWindow?.completed_at) {

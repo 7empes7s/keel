@@ -12483,7 +12483,8 @@ item that needs it stays untouched.
 - Status: todo
 - Result:
 - Do, on Mulinux:
-  1. Deployed commit (`git -C /opt/keel-live log --oneline -1`), `systemctl show keel-portal -p MainPID -p MemoryCurrent -p NRestarts -p ActiveEnterTimestamp`.
+  1. Deployed commit (`git -C /opt/keel-live log --oneline -1`) and whether it includes the fix (PR #765, merge `df60da27`:
+     `git -C /opt/keel-live merge-base --is-ancestor df60da27 HEAD; echo $?`), `systemctl show keel-portal -p MainPID -p MemoryCurrent -p NRestarts -p ActiveEnterTimestamp`.
   2. `journalctl -u keel-portal --since "2026-10-29 00:00" --no-pager | grep -E "database pool full|Started|Stopped|memory peak|background audit check failed|DeprecationWarning"`:
      report, per hour, the count of `database pool full` lines, and every start/stop time and memory peak. Quote the first 5
      `database pool full` lines verbatim with their timestamps, and any error stack printed right before or after them (up to 20 lines).

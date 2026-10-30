@@ -109,6 +109,8 @@ export const WORKLOAD_RESTORE_SERVICES = Object.freeze({
   'sharepoint-site-grants': 'SharePoint',
   'sharepoint-site-permissions': 'SharePoint',
   'sharepoint-structure': 'SharePoint',
+  // OneDrive is managed in the SharePoint admin center.
+  'onedrive-site-settings': 'SharePoint',
   'exchange-mailbox-settings': 'Exchange',
   'exchange-mail-flow': 'Exchange',
   'exchange-extended': 'Exchange',

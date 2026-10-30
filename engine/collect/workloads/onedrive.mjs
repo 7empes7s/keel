@@ -54,7 +54,28 @@ export const ONEDRIVE_DESCRIPTOR = Object.freeze({
 // PnP and SharePoint Online documentation; not measured against a tenant.
 const explicit = Object.freeze({ kind: 'explicit' });
 const undetermined = Object.freeze({ kind: 'undetermined' });
-const inheritedIfNone = Object.freeze({ kind: 'conditional', inheritedWhen: (value) => (value === undefined || value === null ? null : value === 'None') });
+// run-cmdlet.ps1 serialises with ConvertTo-Json, which writes an enum as its number, so
+// Get-PnPTenantSite's enums can arrive as numbers (as in sharepoint.mjs). Each list is the
+// PnP enum's names in number order. A name passes through.
+export const ONEDRIVE_ENUMS = Object.freeze({
+  SharingCapability: Object.freeze(['Disabled', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly']),
+  SharingDomainRestrictionMode: Object.freeze(['None', 'AllowList', 'BlockList']),
+  DefaultSharingLinkType: Object.freeze(['None', 'Direct', 'Internal', 'AnonymousAccess']),
+  DefaultLinkPermission: Object.freeze(['None', 'View', 'Edit']),
+});
+/** The enum name of a OneDrive setting's value: a number becomes its name, a name stays; anything else is null. */
+export function oneDriveEnumName(field, value) {
+  const names = ONEDRIVE_ENUMS[field];
+  if (!names) return null;
+  if (Number.isInteger(value)) return names[value] ?? null;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return names[Number(value)] ?? null;
+  if (typeof value === 'string' && value.length > 0) return names.find((name) => name.toLowerCase() === value.toLowerCase()) ?? value;
+  return null;
+}
+const inheritedIfNone = (field) => Object.freeze({
+  kind: 'conditional',
+  inheritedWhen: (value) => (value === undefined || value === null ? null : oneDriveEnumName(field, value) === 'None'),
+});
 const inheritedUnlessOverride = (flag) => Object.freeze({
   kind: 'conditional',
   inheritedWhen: (_value, body) => (typeof body[flag] === 'boolean' ? body[flag] === false : null),
@@ -67,8 +88,8 @@ export const ONEDRIVE_FIELDS = Object.freeze({
   SharingDomainRestrictionMode: explicit,
   SharingAllowedDomainList: explicit,
   SharingBlockedDomainList: explicit,
-  DefaultSharingLinkType: inheritedIfNone,
-  DefaultLinkPermission: inheritedIfNone,
+  DefaultSharingLinkType: inheritedIfNone('DefaultSharingLinkType'),
+  DefaultLinkPermission: inheritedIfNone('DefaultLinkPermission'),
   OverrideTenantExternalUserExpirationPolicy: explicit,
   ExternalUserExpirationInDays: inheritedUnlessOverride('OverrideTenantExternalUserExpirationPolicy'),
   OverrideTenantAnonymousLinkExpirationPolicy: explicit,

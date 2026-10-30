@@ -4,7 +4,7 @@
  *
  * One record per written workload (mail flow, Exchange settings, Teams org-wide
  * policies, Teams voice and live event policies, Purview retention and DLP, Purview
- * retention labels). Within it, each writer family that has a KEEL-RT- fixture holds
+ * retention labels, OneDrive site sharing settings). Within it, each writer family that has a KEEL-RT- fixture holds
  * one write capture: a harmless setting moved, read back, and put back.
  *
  * What a capture may change, decided here so the capture and the check agree:
@@ -14,11 +14,19 @@
  *  - only a change the WKLD content-effect classifier finds nothing in, both ways.
  * Nothing else is ever chosen, so no capture can shorten retention, release a hold or
  * widen who sees content.
+ *
+ * OneDrive is the one exception (NARROWING_CAPTURES): every field its writer sends is a
+ * sharing field, so nothing on a site changes harmlessly both ways. On the test tenant
+ * only, a capture may narrow one default link setting of a KEEL-RT- person's OneDrive
+ * (Edit links to View, say). The classifier must find nothing in that narrowing; the
+ * put-back then returns the site to the exact value it held a moment before, which the
+ * operator's standing approval for test-tenant content effects covers (2026-10-14).
  */
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
 import { classifyWorkloadEffects, WORKLOAD_EFFECT_RULES } from '../../engine/restore/workloads/cmdletSettings.mjs';
 import { TEST_TENANT_REFS } from '../../engine/govern/approvalPolicy.mjs';
 import { exchangeSecretProblems } from './exchangeAcceptance.mjs';
+import { ONEDRIVE_ENUMS, oneDriveEnumName } from '../../engine/collect/workloads/onedrive.mjs';
 
 export const WORKLOAD_WRITES_LIVE_GATE = 'workload-writers-live-acceptance';
 export const WORKLOAD_WRITES_LIVE_OPERATION = 'workload.writer-qualification';
@@ -77,7 +85,32 @@ const LABELS = Object.freeze({
   'teams-voice-policies': 'Teams voice and live event policies',
   'purview-retention-dlp': 'Purview retention and DLP',
   'purview-governance': 'Purview retention labels',
+  'onedrive-site-settings': 'OneDrive site sharing settings',
 });
+
+/**
+ * The narrowing moves a OneDrive capture may make (see the header), per written type and
+ * field: from each value to a narrower one. Only defaults for links made later: no
+ * existing link, guest or expiry changes, and SharingCapability (which would cut off
+ * existing links) is never touched.
+ */
+export const NARROWING_CAPTURES = Object.freeze({
+  onedriveSiteSettings: Object.freeze({
+    DefaultLinkPermission: Object.freeze({ Edit: 'View' }),
+    DefaultSharingLinkType: Object.freeze({ AnonymousAccess: 'Direct', Internal: 'Direct' }),
+  }),
+});
+
+/** The narrower value a capture writes over `before`, in the form the site reported it (an enum number stays a number), or null. */
+export function narrowerValue(resourceType, field, before) {
+  const moves = NARROWING_CAPTURES[resourceType]?.[field];
+  const target = moves ? moves[oneDriveEnumName(field, before)] ?? null : null;
+  if (!target) return null;
+  const number = ONEDRIVE_ENUMS[field].indexOf(target);
+  if (typeof before === 'number') return number;
+  if (typeof before === 'string' && /^\d+$/.test(before)) return String(number);
+  return target;
+}
 
 /** Each written workload: its label, module, and the write operations it declares. */
 export const WRITTEN_WORKLOADS = Object.freeze(Object.fromEntries(Object.keys(LABELS).map((workload) => {
@@ -90,13 +123,23 @@ export const WRITTEN_WORKLOADS = Object.freeze(Object.fromEntries(Object.keys(LA
 /** The record file for one workload, beside the other live acceptance records. */
 export const workloadWritesRecordFile = (workload) => `workload-writers-${workload}-live-acceptance.json`;
 
-/** True for a KEEL-RT- name. The prefix decides; no exact fixture name is ever checked. */
+// A OneDrive is named by its address, https://<tenant>-my.sharepoint.com/personal/<person>.
+const ONEDRIVE_SITE_RE = /^https:\/\/[a-z0-9-]+-my\.sharepoint\.com\/personal\/([a-z0-9_.-]+)\/?$/i;
+
+/**
+ * True for a KEEL-RT- name, or a OneDrive whose person part is one. The prefix decides;
+ * no exact fixture name is ever checked.
+ */
 export function isFixtureName(name) {
-  return typeof name === 'string' && name.toUpperCase().startsWith(WORKLOAD_FIXTURE_PREFIX);
+  if (typeof name !== 'string') return false;
+  const person = ONEDRIVE_SITE_RE.exec(name)?.[1];
+  return (person ?? name).toUpperCase().startsWith(WORKLOAD_FIXTURE_PREFIX);
 }
 
-/** The name an object is known by: a Teams policy's tag name, else its Name. */
+/** The name an object is known by: a OneDrive's address, a Teams policy's tag name, else its Name. */
 export function fixtureNameOf(resource) {
+  const url = resource?.url ?? resource?.fields?.url;
+  if (typeof url === 'string' && ONEDRIVE_SITE_RE.test(url)) return url;
   const identity = resource?.fields?.Identity;
   if (typeof identity === 'string' && /^tag:/i.test(identity)) return identity.slice(4);
   return typeof resource?.fields?.Name === 'string' ? resource.fields.Name : null;
@@ -125,15 +168,17 @@ function candidateFields(write, { tenantWide = false } = {}) {
 
 /** Whether a capture may write `field` of this write at all (the check's view, without the object). */
 export function captureFieldAllowed(write, field, type, options = {}) {
+  if (type === 'narrowing') return write.fields.includes(field) && Boolean(NARROWING_CAPTURES[write.resourceType]?.[field]);
   return candidateFields(write, options).some((candidate) => candidate.field === field && candidate.type === type);
 }
 
 /**
  * The one change a capture makes to `resource` for `write`: { field, type, before,
  * after }, or { reason } when nothing on it can be changed harmlessly. `marker` is
- * the text written to a text field.
+ * the text written to a text field. `narrowing` (test tenant only) allows a OneDrive
+ * narrowing (NARROWING_CAPTURES).
  */
-export function chooseCaptureChange(write, resource, { marker, tenantWide = false }) {
+export function chooseCaptureChange(write, resource, { marker, tenantWide = false, narrowing = false }) {
   const fields = resource?.fields ?? {};
   for (const { field, type } of candidateFields(write, { tenantWide })) {
     if (resource?.fieldCoverage?.[field]?.status !== 'observed') continue;
@@ -149,6 +194,19 @@ export function chooseCaptureChange(write, resource, { marker, tenantWide = fals
     const to = { ...fields, [field]: after };
     if (effectsOf(write, fields, to).length || effectsOf(write, to, fields).length) continue;
     return { field, type, before, after };
+  }
+  // OneDrive: a narrowing of one default link setting, on the test tenant only.
+  for (const field of Object.keys(NARROWING_CAPTURES[write.resourceType] ?? {})) {
+    if (!write.fields.includes(field) || resource?.fieldCoverage?.[field]?.status !== 'observed') continue;
+    const before = fields[field] ?? null;
+    const after = narrowerValue(write.resourceType, field, before);
+    if (after === null) continue;
+    if (!narrowing) return { reason: `narrowing ${field} is allowed on the test tenant only` };
+    if (effectsOf(write, fields, { ...fields, [field]: after }).length) continue;
+    return { field, type: 'narrowing', before, after };
+  }
+  if (NARROWING_CAPTURES[write.resourceType]) {
+    return { reason: `nothing on it can be narrowed: ${Object.entries(NARROWING_CAPTURES[write.resourceType]).map(([field, moves]) => `${field} must be ${Object.keys(moves).join(' or ')}`).join(', or ')}` };
   }
   return { reason: 'no comment, description or harmless switch on it can be changed without a content effect' };
 }
@@ -173,6 +231,8 @@ export function identityNamesFixture(write, capture) {
   // A fixed identity names the one tenant-wide object, never a fixture.
   if (write.identity === 'fixed') return capture.scope === 'tenant-wide' && identity === write.fixedIdentity;
   if (capture.scope === 'tenant-wide' && write.identity === 'policy') return identity === capture.fixture && identity.toLowerCase() === 'global';
+  // A OneDrive is named by its address: the KEEL-RT- person's site recorded.
+  if (write.identity === 'url') return capture.scope === 'fixture' && identity === capture.fixture && isFixtureName(identity);
   if (write.identity === 'policy') return identity.toLowerCase() === `tag:${capture.fixture.toLowerCase()}`;
   return GUID_RE.test(identity);
 }
@@ -219,6 +279,11 @@ function structuralProblems(capture, { workload, moduleVersion, observedAt, tena
     problems.push(`${id}: a switch capture must flip a true/false value`);
   } else if (capture.type === 'text' && (typeof capture.target !== 'string' || !(capture.before === null || capture.before === undefined || typeof capture.before === 'string'))) {
     problems.push(`${id}: a text capture must write text over text`);
+  } else if (capture.type === 'narrowing') {
+    // Only the forward change is judged: the put-back returns the value read just before.
+    const target = narrowerValue(write.resourceType, capture.field, capture.before);
+    if (target === null || !sameValue(target, capture.target)) problems.push(`${id}: a narrowing capture must write the declared narrower value`);
+    else if (effectsOf(write, { [capture.field]: capture.before }, { [capture.field]: capture.target }).length) problems.push(`${id}: the change has a content effect`);
   } else if (kind === 'update') {
     const from = { [capture.field]: capture.before ?? null };
     const to = { [capture.field]: capture.target ?? null };
@@ -317,6 +382,12 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
   const tenantWideWrites = Array.isArray(subject.writes) && subject.writes.some((item) => item?.scope === 'tenant-wide');
   if ((subject.tenantWide === true || tenantWideWrites) && !(testTenantRefs.includes(evidence.tenantRef) && evidence.tenantRef === tenantRef)) {
     failures.push('tenant-wide writes are allowed on the test tenant only');
+  }
+
+  // A OneDrive narrowing (and so its put-back) is allowed on the test tenant only.
+  if (Array.isArray(subject.writes) && subject.writes.some((item) => item?.type === 'narrowing')
+    && !(testTenantRefs.includes(evidence.tenantRef) && evidence.tenantRef === tenantRef)) {
+    failures.push('a narrowing capture is allowed on the test tenant only');
   }
 
   // Both refusal probes must have been refused here, before anything was sent.

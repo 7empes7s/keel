@@ -319,6 +319,9 @@ export const TYPE_GUIDE = Object.freeze({
   deviceManagementIntent: manual('Security baselines (older format)', KEEL,
     'This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.',
     'Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.'),
+  deviceManagementTemplate: manual('Endpoint security templates', MS,
+    'Microsoft publishes these templates. They are the same in every tenant. KEEL will read them only to show which area an older endpoint security policy covers, once a live read check passes.',
+    'Nothing to restore.'),
   managedDevice: manual('Enrolled devices', MS,
     'A device record is created by the device when it enrolls. It is state, not configuration.',
     'Nothing to restore. Devices enroll again on their own once enrollment settings are back.'),
@@ -792,10 +795,19 @@ function proofText(rows) {
   return parts.join('; ');
 }
 
+// Kinds declared but not backed up until their live read check passes.
+function gatedWords(ledger) {
+  const gated = ledger.types.filter((row) => CATALOG.find((entry) => entry.type === row.resourceType)?.liveGate).length;
+  if (gated === 0) return '';
+  return gated === 1 ? ' (one kind waits for a live read check first)' : ` (${gated} kinds wait for a live read check first)`;
+}
+
 function typeRow(ledgerType, entry, { cadence, edges }) {
   const catalog = CATALOG.find((candidate) => candidate.type === ledgerType.resourceType);
   const tier = catalog?.criticality;
-  const backup = tier ? `Yes (${TIER_WORDS[tier]}, ${cadence[tier]})` : 'Yes';
+  // A live-gated kind is declared but not collected until its live read check passes.
+  const backup = catalog?.liveGate ? 'Not yet (waiting for a live read check)'
+    : tier ? `Yes (${TIER_WORDS[tier]}, ${cadence[tier]})` : 'Yes';
   let restore;
   let proof;
   if (ledgerType.decision === 'automated') {
@@ -922,7 +934,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '',
     'For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.',
     '',
-    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
+    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one${gatedWords(ledger)}. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
     '',
     '## How to read this page',
     '',

@@ -30,7 +30,7 @@ const NAMED_BY_FIELD = new Set([
   "tokenIssuancePolicy", "tokenLifetimePolicy", "featureRolloutPolicy", "accessReviewScheduleDefinition", "accessPackage",
   "connectedOrganization", "deviceConfiguration", "deviceCompliancePolicy", "configurationPolicy",
   "deviceEnrollmentConfiguration", "deviceManagementRoleDefinition", "deviceCategory", "termsAndConditions",
-  "windowsAutopilotDeploymentProfile", "deviceManagementIntent", "mobileApp", "managedAppPolicy",
+  "windowsAutopilotDeploymentProfile", "deviceManagementIntent", "deviceManagementTemplate", "mobileApp", "managedAppPolicy",
   "targetedManagedAppConfiguration", "mobileAppConfiguration", "lifecycleWorkflow", "lifecycleWorkflowCustomTaskExtension",
   "customSecurityAttributeDefinition", "accessPackageCatalog", "accessPackageAssignmentPolicy", "agreement",
   "appManagementPolicy", "identityApiConnector", "deviceManagementScript", "deviceShellScript", "deviceHealthScript",

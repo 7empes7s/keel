@@ -201,6 +201,7 @@ export const COMPLETENESS = Object.freeze({
   termsAndConditions: { whole: 'not-written', missing: [part('Who accepted the terms', 'read-only')] },
   windowsAutopilotDeploymentProfile: { missing: [part('The registered device hardware it applies to', 'other-route')] },
   deviceManagementIntent: { whole: 'not-written', missing: [part('The baseline\'s settings', 'other-route')] },
+  deviceManagementTemplate: { managed: true },
   managedDevice: { managed: true },
   // Restore gaps batch 18: the parts depend on the kind of app (intuneAppKinds.mjs).
   mobileApp: { missing: [

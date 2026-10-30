@@ -64,7 +64,7 @@ const CHANGE_ORDER = { removed: 0, changed: 1, added: 2 };
 
 // Ids that are the same in every tenant (global templates, branding languages) stay
 // matchable; every other id-keyed type is tenant-bound.
-const GLOBAL_ID_TYPES = new Set(['directorySettingTemplate', 'directoryRoleTemplate', 'organizationalBrandingLocalization']);
+const GLOBAL_ID_TYPES = new Set(['directorySettingTemplate', 'directoryRoleTemplate', 'deviceManagementTemplate', 'organizationalBrandingLocalization']);
 // Users are keyed by UPN, which carries the tenant's own domain.
 export const TENANT_BOUND_TYPES = new Set([...[...ID_KEY_TYPES].filter((type) => !GLOBAL_ID_TYPES.has(type)), 'user']);
 

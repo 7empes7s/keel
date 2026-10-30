@@ -561,7 +561,7 @@ export async function applyWave(writer, governor, wave, {
     const intuneRefusal = intuneWriteRefusal(resource, effectiveVerb);
     if (intuneRefusal) {
       (intuneRefusal.outcome === 'skipped' ? skipped : failed).push(intuneRefusal.outcome === 'skipped'
-        ? { naturalKey: resource.naturalKey, reason: intuneRefusal.reason }
+        ? { naturalKey: resource.naturalKey, reason: intuneRefusal.reason, ...(intuneRefusal.completion ? { completion: intuneRefusal.completion } : {}) }
         : { naturalKey: resource.naturalKey, error: intuneRefusal.reason });
       return;
     }

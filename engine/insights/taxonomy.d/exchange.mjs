@@ -13,9 +13,9 @@ export default Object.freeze({
     { key: 'groups', name: 'Groups and address lists', types: ['exchange-distribution-groups'], match: /distribution|dynamicgroup|unifiedgroup|roomlist|addresslist|addressbook/ },
     { key: 'roles', name: 'Admin roles', types: ['exchange-role-groups', 'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope'], match: /role|scope/ },
     { key: 'mail-flow', name: 'Mail flow and protection', types: ['exchange-mail-flow'], match: /mailflow|transport|connector|connectionfilter|defenderforoffice|journal|accepteddomain|remotedomain|dkim|dmarc|spam|phish|malware|safelink|safeattachment|quarantine|protection|threat/ },
-    { key: 'access', name: 'Sharing and client access', types: [], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|authpolicy|authenticationpolicy|addin/ },
+    { key: 'access', name: 'Sharing and client access', types: ['exchange-org-access'], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|authpolicy|authenticationpolicy|addin/ },
     { key: 'tenant', name: 'Filtering, retention and mobile', types: ['exchange-extended'], match: /extended|filter|hygiene|retention|mobile|activesync|deviceaccess/ },
-    { key: 'organization', name: 'Organization settings', types: [], match: /organization|orgconfig|setting|config/ },
+    { key: 'organization', name: 'Organization settings', types: ['exchange-org-defaults'], match: /organization|orgconfig|setting|config/ },
   ]),
   entries: Object.freeze({
     // Exchange admin roles, read from Microsoft Graph (catalogue types take their tier's priority).
@@ -38,6 +38,17 @@ export default Object.freeze({
       name: 'Distribution list or Microsoft 365 group mail setting',
       priority: 'normal',
       reason: 'Decides who gets a list\'s mail and who may send to it.',
+    },
+    // Read with the Exchange organisation policy cmdlets (exchangeOrgPolicies.mjs).
+    'exchange-org-access': {
+      name: 'Exchange sharing or client access policy',
+      priority: 'high',
+      reason: 'Decides who outside the organization sees calendars, which apps may open mailboxes and whether legacy sign-in is allowed.',
+    },
+    'exchange-org-defaults': {
+      name: 'Exchange transport setting or new mailbox default',
+      priority: 'high',
+      reason: 'Can turn SMTP AUTH back on for the whole organization or change what every new mailbox gets.',
     },
     'exchange-mailbox-settings': {
       name: 'Exchange mailbox setting',

@@ -17,7 +17,7 @@ import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs'
 import { workloadTarget, writeFamilies } from './cmdletSettings.mjs';
 import { EXCHANGE_WORKLOAD } from '../../collect/workloads/exchange.mjs';
 import { TEAMS_WORKLOAD } from '../../collect/workloads/teams.mjs';
-import { SHAREPOINT_STRUCTURE_WORKLOAD } from '../../collect/workloads/sharepointStructure.mjs';
+import { SHAREPOINT_STRUCTURE_WORKLOAD, TEMPLATE_STORAGE_FIELDS } from '../../collect/workloads/sharepointStructure.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from './sharepointStructureWrites.mjs';
 import { structureTarget } from './sharepointStructure.mjs';
 
@@ -55,7 +55,7 @@ const PAGE_DECLARATIONS = Object.freeze({ ...WKLD_WRITE_OPERATIONS, ...SHAREPOIN
 // A site's template is stored for a restore, not compared: PnP rewrites it on every
 // export, so a change shows in its summaries (lists, columns, content types, navigation).
 const NOT_COMPARED = Object.freeze({
-  [SHAREPOINT_STRUCTURE_WORKLOAD]: Object.freeze(['templateXml', 'templateSha256', 'templateBytes']),
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: TEMPLATE_STORAGE_FIELDS,
 });
 
 const PURVIEW_KINDS = Object.freeze({
@@ -191,7 +191,10 @@ export function workloadChoices(workload, observations, newest = null) {
         items: [],
       });
     }
-    const change = changeOf(later, observation, NOT_COMPARED[workload] ?? null);
+    let change = changeOf(later, observation, NOT_COMPARED[workload] ?? null);
+    // Site templates are read only for the sites the backup scope names, and a site's read
+    // can fail on its own: a site absent from the newest backup is not known to be gone.
+    if (change === 'deleted' && kind === 'siteTemplate') change = null;
     let restorable = spec.update;
     let reason = null;
     if (restorable && change === 'deleted' && !spec.add) {

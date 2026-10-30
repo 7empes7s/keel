@@ -123,6 +123,12 @@ test('SharePoint site structure: hubs, designs, scripts and sites are offered by
     site('/sites/keel-rt-legal', { title: 'KEEL-RT Legal', lists: [] }),
   ];
   const groups = workloadChoices('sharepoint-structure', chosen, newest);
+  // A site missing from the newest backup (out of scope, or its read failed) is not called deleted.
+  const unread = workloadChoices('sharepoint-structure', chosen, newest.slice(0, 4)).find((group) => group.kind === 'siteTemplate');
+  assert.deepEqual(unread.items.map((item) => [item.name, item.change, item.restorable]), [
+    ['KEEL-RT Finance (/sites/keel-rt-finance)', 'same', true],
+    ['KEEL-RT Legal (/sites/keel-rt-legal)', null, true],
+  ]);
   assert.deepEqual(groups.map((group) => [group.kind, group.restorable]), [
     ['hubSite', true], ['siteDesign', true], ['siteScript', true], ['siteTemplate', true],
   ]);

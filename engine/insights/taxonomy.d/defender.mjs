@@ -2,7 +2,7 @@
 // catalogue's criticality and blast radius (see ../taxonomy.mjs).
 export default Object.freeze({
   service: 'Defender',
-  prefix: /^(defender|mde|xdr|attacksimulation|simulation|securityzone)/,
+  prefix: /^(defender|mde|xdr|attacksimulation|simulation|securityzone|securescore)/,
   fallback: 'tenant',
   // Types by kind, in the order a list shows them: people and objects first, then
   // roles and access, then policies, then tenant-wide settings. taxonomy.test.mjs fails
@@ -16,8 +16,9 @@ export default Object.freeze({
     // are Defender for Endpoint settings, so lists file them here (see `subkinds`).
     { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy'], match: /endpointsecurity|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
     { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule'], match: /foroffice|polic|rule|detection|indicator|alert/ },
+    { key: 'sensors', name: 'Sensors and coverage', types: ['defenderIdentitySensor'], match: /sensor|coverage/ },
     { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
-    { key: 'exposure', name: 'Exposure management', types: ['securityZone'], match: /exposure|zone|vulnerab/ },
+    { key: 'exposure', name: 'Exposure management', types: ['securityZone', 'secureScoreControlProfile'], match: /exposure|zone|vulnerab|securescore/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),
   entries: Object.freeze({
@@ -31,6 +32,9 @@ export default Object.freeze({
     securityZone: { name: 'Exposure management zone' },
     // Remaining kinds, batch 9.
     defenderDetectionRule: { name: 'Custom detection rule' },
+    // Defender XDR beyond email (baselines gap audit, section E).
+    defenderIdentitySensor: { name: 'Defender for Identity sensor' },
+    secureScoreControlProfile: { name: 'Secure Score improvement action' },
   }),
   // Kinds that are a part of a catalogued type of another service, told apart by a field
   // of each object (see settingKind in ../taxonomy.mjs). The object stays stored, backed

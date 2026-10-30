@@ -81,7 +81,7 @@ test("every service the Restore page starts a restore for gets its service in th
   for (const workload of PAGE_RESTORE_WORKLOADS) {
     const name = jobName(dryRun({ workload, collectionId: randomUUID(), targets: ["one"] }));
     assert.doesNotMatch(name, BROKEN, name);
-    assert.match(name, /Exchange|Teams|Purview|SharePoint/, name);
+    assert.match(name, /Exchange|Teams|Purview|SharePoint|OneDrive/, name);
   }
   assert.equal(workloadSubject("purview-retention-dlp"), "Purview retention and data loss prevention");
   assert.equal(workloadSubject("exchange-extended"), "Exchange organization settings");

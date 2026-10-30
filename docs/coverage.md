@@ -384,9 +384,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Company branding per language.** Puts the sign-in page text, colours and layout of each existing language back, and uploads its images and stylesheet again when they changed (tested against a simulated tenant only).
   - *Not brought back:* header logo of each language (a file the backup does not hold); adding or removing a language (in the backup, but KEEL does not write it yet).
   - *You do:* The header logo is uploaded by hand, and a language that was added or removed is added or removed by hand.
-- **Group expiration policy.** Puts the policy back only when that makes group expiry less aggressive.
-  - *Not brought back:* the list of groups a selected-groups policy covers (stored separately and not in the backup yet); a change that makes expiry more aggressive (in the backup, but KEEL does not write it yet).
-  - *You do:* A shorter lifetime, more groups covered or a removed notice address could expire and delete groups, so KEEL leaves that change to a person. A missing policy, and the list of groups it covers, are set by hand.
+- **Group expiration policy.** Puts the policy back. A shorter lifetime, more groups covered or a dropped notice address waits for approval first.
+  - *Not brought back:* the list of groups a selected-groups policy covers (stored separately and not in the backup yet).
+  - *You do:* A missing policy, and the list of groups it covers, are set by hand. A change that could expire and delete groups waits until a second person approves it in Approvals, unless restore approvals are off for Entra.
 - **Administrative units.** Puts the name and description back.
   - *Not brought back:* members and admins scoped to the unit (stored separately and not in the backup yet); dynamic membership rules and a deleted unit (in the backup, but KEEL does not write it yet).
   - *You do:* Members, admins scoped to the unit, dynamic membership rules and a deleted unit are restored by hand from the backup.
@@ -742,9 +742,11 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 - OneDrive site sharing and storage settings
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore OneDrive settings. Change them by hand in the SharePoint admin center using the backup.
+- Put back: OneDrive site sharing settings (switched on only after the restore of SharePoint tenant sharing and site settings is proven)
+
+**You do:** KEEL puts back a OneDrive's own sharing settings, default link type and permission, and guest and link expiry. A setting the backup shows following the tenant's OneDrive default is not pinned on the site. A locked site is never changed or unlocked. The owner, storage quota, sensitivity label and conditional access setting are changed by hand in the SharePoint admin center using the backup. Wider sharing needs a second approver.
 
 ### Purview sensitivity labels
 

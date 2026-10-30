@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { restoreSentNotice } from "@/lib/restore-sent";
 import { ActionRequestError, postAction } from "@/lib/action-client";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
@@ -202,14 +203,16 @@ type RestoreStep = "select" | "dry-run" | "review" | "confirm" | "track";
 
 // Roadmap task-131: the current step's title is the page's verdict sentence. The
 // choose step's sentence says what changed instead (lib/restore-view restoreVerdict).
-export function restoreStepVerdict(step: Exclude<RestoreStep, "select">, failed: boolean): { text: string; tone: VerdictTone } {
+export function restoreStepVerdict(step: Exclude<RestoreStep, "select">, failed: boolean, started = false): { text: string; tone: VerdictTone } {
   switch (step) {
     case "dry-run": return { text: "Step 2 of 4: KEEL is checking what would change. Nothing is written.", tone: "good" };
     case "review": return failed
       ? { text: "Step 3 of 4: the check found problems, so nothing can be put back from it.", tone: "critical" }
       : { text: "Step 3 of 4: review what will change.", tone: "good" };
     case "confirm": return { text: "Step 3 of 4: review what will change, then send it for approval.", tone: "attention" };
-    case "track": return { text: "Step 4 of 4: sent to approvers. Nothing changes until one of them approves.", tone: "good" };
+    case "track": return started
+      ? { text: "Step 4 of 4: approved without an approver, because restore approvals are off for the services it changes.", tone: "good" }
+      : { text: "Step 4 of 4: sent to approvers. Nothing changes until one of them approves.", tone: "good" };
   }
 }
 
@@ -435,6 +438,7 @@ export function RestoreSelection({
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [sentStarted, setSentStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // The dry run in flight: set once .../restore/dry-run enqueues a job, cleared once
@@ -580,10 +584,12 @@ export function RestoreSelection({
         idempotencyKey,
       );
       if (payload.approvalRequest) {
-        setMessage("Sent to approvers. Nothing changes until one of them approves.");
+        const notice = restoreSentNotice(payload.approvalRequest);
+        setMessage(`${notice.title}. ${notice.detail}`);
+        setSentStarted(notice.started);
         setIdempotencyKey(crypto.randomUUID());
         resetDryRun();
-        toast({ tone: "info", title: "Sent to approvers", detail: "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
+        toast({ tone: notice.started ? "success" : "info", title: notice.title, detail: notice.detail, href: notice.href, hrefLabel: notice.hrefLabel });
         router.refresh();
       } else {
         setError("KEEL could not send the restore for approval. Try again in a minute.");
@@ -611,7 +617,7 @@ export function RestoreSelection({
   const reviewFailed = artifact !== null && artifact.status !== "completed";
   const verdict = step === "select"
     ? restoreVerdict({ chosen: currentSnapshot ? takenAt(currentSnapshot) : null, isNewest, changes })
-    : restoreStepVerdict(step, reviewFailed);
+    : restoreStepVerdict(step, reviewFailed, sentStarted);
   const objectResults = (entries: DryRunResourceResult[]) => entries.filter((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX));
   const changedCount = (changes?.changes ?? []).filter((change) => change.kind === "changed").length;
   const deletedCount = (changes?.changes ?? []).filter((change) => change.kind === "deleted").length;
@@ -829,13 +835,19 @@ export function RestoreSelection({
 
       {step === "track" ? (
         <section aria-labelledby="restore-track-heading" className="wizard-panel wizard-track">
-          <h3 id="restore-track-heading">Sent to approvers</h3>
+          <h3 id="restore-track-heading">{sentStarted ? "Approved: restore approvals are off" : "Sent to approvers"}</h3>
           <p aria-live="polite">{message}</p>
           <ol className="track-timeline">
             <li className="track-done">Check finished</li>
-            <li className="track-done">Approval requested</li>
-            <li className="track-current">Another person reviews this same plan</li>
-            <li>KEEL checks the tenant again, then restores; the job appears below</li>
+            {sentStarted ? (
+              <li className="track-done">No approver needed: restore approvals are off for the services it changes</li>
+            ) : (
+              <>
+                <li className="track-done">Approval requested</li>
+                <li className="track-current">Another person reviews this same plan</li>
+              </>
+            )}
+            <li className={sentStarted ? "track-current" : undefined}>KEEL checks the tenant again, then restores; the job appears below</li>
           </ol>
           <div className="form-actions">
             <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>

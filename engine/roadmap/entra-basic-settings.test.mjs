@@ -31,6 +31,7 @@ import { buildLiveIndex } from '../reconcile/liveState.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
 import {
   BRANDING_WRITABLE_FIELDS, GROUP_LIFETIME_PORTAL_PATH, brandingSendable, groupLifecycleGuard, groupLifetimeCompletionItem,
+  groupNoticeCompletionItem, groupScopeCompletionItem,
 } from '../restore/tenantPolicyOperations.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
@@ -417,7 +418,7 @@ test('group expiry: a longer lifetime or narrower scope is restored', async () =
   }]);
 });
 
-test('mutation: group expiry that could delete groups is left to a person and nothing is sent', async () => {
+test('mutation: group expiry that could delete groups is held for a person and nothing is sent', async () => {
   const base = { id: 'policy-1', groupLifetimeInDays: 180, managedGroupTypes: 'Selected', alternateNotificationEmails: '' };
   for (const [change, pattern] of [
     [{ groupLifetimeInDays: 30 }, /shorter than the live 180 days/],
@@ -481,8 +482,8 @@ test('D3: a shorter group lifetime is a content effect needing the separate appr
   assert.deepEqual(effects.map(({ naturalKey, field, effect, before, after }) => ({ naturalKey, field, effect, before, after })), [
     { naturalKey: resource.naturalKey, field: 'groupLifetimeInDays', effect: 'retention-reducing', before: 180, after: 90 },
   ]);
-  // A longer lifetime, or a change to the other fields, is not a content effect.
-  assert.deepEqual(classifyContentEffects([{ ...resource, payload: { ...expiryLive, groupLifetimeInDays: 365, managedGroupTypes: 'All' } }]).effects, []);
+  // A longer lifetime, a narrower scope or an added address is not a content effect.
+  assert.deepEqual(classifyContentEffects([{ ...resource, payload: { ...expiryLive, groupLifetimeInDays: 365, managedGroupTypes: 'None', alternateNotificationEmails: 'x@contoso.example' } }]).effects, []);
 
   // A dry run simulates the write and reports the pending approval, so it stays promotable.
   const dry = await run(graph, [resource], { mode: 'dry-run' });
@@ -499,14 +500,93 @@ test('D3: a shorter group lifetime is a content effect needing the separate appr
   assert.deepEqual(graph.bodies, [{ method: 'PATCH', path: '/groupLifecyclePolicies/policy-1', body: { groupLifetimeInDays: 90 } }]);
 });
 
-test('D3: an approved shorter lifetime never unlocks a wider scope or a dropped notice address', async () => {
-  for (const change of [{ managedGroupTypes: 'All' }, { alternateNotificationEmails: '' }]) {
-    const live = { ...expiryLive, alternateNotificationEmails: 'it@contoso.example' };
+// Item 3 (held-back directions): expiry that covers more groups, and a dropped
+// renewal notice address, are content effects too, each approved on its own.
+const noticeLive = Object.freeze({ ...expiryLive, alternateNotificationEmails: 'it@contoso.example;Admins@contoso.example' });
+const effectView = (effects) => effects.map(({ naturalKey, field, effect, before, after }) => ({ naturalKey, field, effect, before, after }));
+
+test('D3: a wider expiry scope or a dropped notice address is a content effect, held without its approval and written with it', async () => {
+  for (const [change, field, before, after, item, pattern] of [
+    [{ managedGroupTypes: 'All' }, 'managedGroupTypes', 'Selected', 'All',
+      groupScopeCompletionItem({ from: 'Selected', to: 'All' }), /expiry would cover more groups \(All instead of Selected\)/],
+    [{ alternateNotificationEmails: 'admins@contoso.example' }, 'alternateNotificationEmails', noticeLive.alternateNotificationEmails, 'admins@contoso.example',
+      groupNoticeCompletionItem({ dropped: ['it@contoso.example'], to: 'admins@contoso.example' }), /stop renewal notices to it@contoso\.example/],
+  ]) {
     const graph = recordingGraph();
-    const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...live, groupLifetimeInDays: 90, ...change }, live);
-    const { effects } = classifyContentEffects([resource]);
+    const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...noticeLive, ...change }, noticeLive);
+    const { effects, refusals } = classifyContentEffects([resource]);
+    assert.deepEqual(refusals, []);
+    assert.deepEqual(effectView(effects), [{ naturalKey: resource.naturalKey, field, effect: 'retention-reducing', before, after }]);
+
+    // Without the approval: skipped with the guided step, nothing sent.
+    const held = await run(graph, [resource]);
+    assert.equal(graph.bodies.length, 0, field);
+    assert.match(held.skipped[0].reason, /^manual: /);
+    assert.match(held.skipped[0].reason, pattern);
+    assert.match(held.skipped[0].reason, /separate high-impact approval/);
+    assert.deepEqual(held.skipped[0].completion, item);
+
+    // An approval of other values does not unlock it.
+    const other = classifyContentEffects([{ ...resource, payload: { ...noticeLive, managedGroupTypes: 'All', alternateNotificationEmails: '' } }]).effects
+      .filter((effect) => effect.field !== field || JSON.stringify(effect.after) !== JSON.stringify(after));
+    assert.equal((await run(graph, [resource], { approvedContentEffects: other })).skipped.length, 1, field);
+    assert.equal(graph.bodies.length, 0, field);
+
+    // A dry run simulates it and reports the pending approval.
+    const dry = await run(graph, [resource], { mode: 'dry-run' });
+    assert.deepEqual(dry.skipped, []);
+    assert.deepEqual(dry.applied[0].pendingApproval, item);
+    assert.equal(graph.bodies.length, 0);
+
+    // With the approval the promotion checked (or every effect, when approvals are off): sent.
+    const result = await run(graph, [resource], { approvedContentEffects: effects });
+    assert.deepEqual(result.skipped, []);
+    assert.deepEqual(result.failed, []);
+    assert.deepEqual(graph.bodies, [{ method: 'PATCH', path: '/groupLifecyclePolicies/policy-1', body: change }]);
+  }
+});
+
+test('D3: every change that can delete groups needs its own approval; one approval never unlocks another', async () => {
+  const graph = recordingGraph();
+  const desired = { ...noticeLive, groupLifetimeInDays: 90, managedGroupTypes: 'All', alternateNotificationEmails: '' };
+  const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', desired, noticeLive);
+  const { effects } = classifyContentEffects([resource]);
+  assert.deepEqual(effects.map((effect) => effect.field).sort(), ['alternateNotificationEmails', 'groupLifetimeInDays', 'managedGroupTypes']);
+  for (const approved of effects) {
+    const result = await run(graph, [resource], { approvedContentEffects: effects.filter((effect) => effect !== approved) });
+    assert.equal(graph.bodies.length, 0, approved.field);
+    assert.equal(result.skipped.length, 1);
+    assert.deepEqual(result.skipped[0].completion, ({
+      groupLifetimeInDays: groupLifetimeCompletionItem({ from: 180, to: 90 }),
+      managedGroupTypes: groupScopeCompletionItem({ from: 'Selected', to: 'All' }),
+      alternateNotificationEmails: groupNoticeCompletionItem({ dropped: ['it@contoso.example', 'admins@contoso.example'], to: '' }),
+    })[approved.field]);
+  }
+  // A backup without the notice field leaves the addresses alone: no effect to approve.
+  const { alternateNotificationEmails: _omitted, ...withoutNotice } = desired;
+  assert.deepEqual(classifyContentEffects([{ ...resource, payload: withoutNotice }]).effects.map((effect) => effect.field).sort(), ['groupLifetimeInDays', 'managedGroupTypes']);
+  // Nothing approved: one guided step that names all three.
+  const held = await run(graph, [resource]);
+  assert.equal(held.skipped[0].completion.requirement, 'groupLifetimeInDays, managedGroupTypes, alternateNotificationEmails');
+  for (const part of ['Set the group lifetime to 90 days', 'Set expiration to cover All groups', 'Set the email contact for groups with no owners to ""']) {
+    assert.ok(held.skipped[0].completion.description.includes(part), part);
+  }
+  assert.equal((held.skipped[0].completion.description.match(/Or have a second person/g) ?? []).length, 1);
+  const result = await run(graph, [resource], { approvedContentEffects: effects });
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path: '/groupLifecyclePolicies/policy-1',
+    body: { alternateNotificationEmails: '', groupLifetimeInDays: 90, managedGroupTypes: 'All' } }]);
+});
+
+test('D3: a scope or lifetime value that cannot be compared is never written, whatever is approved', async () => {
+  for (const change of [{ managedGroupTypes: 'Everything' }, { groupLifetimeInDays: 0 }]) {
+    const graph = recordingGraph();
+    const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...noticeLive, ...change }, noticeLive);
+    const approvedContentEffects = Object.keys(change).map((field) => ({
+      naturalKey: resource.naturalKey, resourceType: 'groupLifecyclePolicy', field, effect: 'retention-reducing', before: noticeLive[field], after: change[field],
+    }));
     for (const mode of ['enforce', 'dry-run']) {
-      const result = await run(graph, [resource], { mode, approvedContentEffects: effects });
+      const result = await run(graph, [resource], { mode, approvedContentEffects });
       assert.equal(graph.bodies.length, 0, JSON.stringify(change));
       assert.equal(result.skipped.length, 1, `${mode} ${JSON.stringify(change)}`);
       assert.equal(result.skipped[0].completion, undefined);

@@ -45,6 +45,7 @@ import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import m365Settings from './catalog.d/m365-settings.mjs';
 import lastLeftovers from './catalog.d/last-leftovers.mjs';
 import adminCenterSettings from './catalog.d/admin-center-settings.mjs';
+import defenderXdr from './catalog.d/defender-xdr.mjs';
 
 export const CATALOG = [
   ...tenant,
@@ -65,6 +66,7 @@ export const CATALOG = [
   ...m365Settings,
   ...lastLeftovers,
   ...adminCenterSettings,
+  ...defenderXdr,
 ];
 
 /** Directory object types whose ids other resources reference by GUID. */

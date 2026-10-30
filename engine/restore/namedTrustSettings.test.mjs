@@ -84,6 +84,15 @@ test('a custom profile holding a trust OMA-URI is manual on create and update, a
   assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'create'), null);
   // An update without the live profile cannot show the list removes no trust setting.
   assert.match(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'update')?.reason ?? '', /^manual: the live profile was not read/);
+  // So is a live profile read without its custom settings list: the backup list would replace settings nobody checked.
+  const { omaSettings: _list, ...withoutList } = plain;
+  for (const liveProfile of [withoutList, { ...plain, omaSettings: null }]) {
+    const refusal = intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(liveProfile)), 'update');
+    assert.equal(refusal?.outcome, 'skipped');
+    assert.match(refusal.reason, /^manual: the live profile was not read/);
+  }
+  // An empty live list was read, so it holds no trust setting to remove.
+  assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live({ ...plain, omaSettings: [] })), 'update'), null);
 });
 
 // --------------------------------------------- base64 values and Apple files
@@ -113,6 +122,15 @@ test('a base64 custom value is decoded: trust text or a certificate is found und
   const wlan = '<?xml version="1.0" encoding="ISO-8859-1"?><WLANProfile><name>Caf\u00e9</name><TrustedRootCA>ab cd</TrustedRootCA></WLANProfile>';
   for (const value of [b64(Buffer.from(wlan, 'latin1')), b64(Buffer.from(wlan, 'utf16le')), b64(Buffer.from(wlan, 'utf16le').swap16()), b64(Buffer.from([0x30, 0x80, 0x02, 0x01, 0x03, 0x30, 0x80]))]) {
     assert.deepEqual(trustOmaUris(customProfile([base64Setting(value)])), [NEUTRAL], value);
+  }
+  // UTF-16 without a byte order mark whose text is mostly not ASCII (Cyrillic, CJK), either byte order.
+  for (const words of ['\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0441\u0435\u0442\u0438 ', '\u7121\u7dda\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb ']) {
+    const text = `${words.repeat(20)}<TrustedRootCA>ab</TrustedRootCA>${words.repeat(20)}`;
+    for (const bytes of [Buffer.from(text, 'utf16le'), Buffer.from(text, 'utf16le').swap16()]) {
+      assert.deepEqual(trustOmaUris(customProfile([base64Setting(b64(bytes))])), [NEUTRAL], text);
+    }
+    // The same text without a trust name is not trust.
+    assert.deepEqual(trustOmaUris(customProfile([base64Setting(b64(Buffer.from(words.repeat(40), 'utf16le')))])), []);
   }
   // A StringXml value that is not base64 is read as written, XML or not.
   assert.deepEqual(trustOmaUris(customProfile([base64Setting('ServerNames: TrustedRootCA x', '#microsoft.graph.omaSettingStringXml')])), [NEUTRAL]);
@@ -190,6 +208,10 @@ test('an Apple custom profile holding trust content is manual on create and upda
   const unreadable = intuneWriteRefusal(resourceOf('deviceConfiguration', binary), 'create');
   assert.match(unreadable?.reason ?? '', /^manual: the profile file \(payload\) could not be read/);
   assert.deepEqual(unreadable.completion[0].fields, ['payload']);
+  // A file with a few stray bytes before its XML is never guessed to be UTF-16 text, which would hide its trust payload.
+  const prefixed = Buffer.concat([Buffer.from([0x00, 0x41, 0x01, 0x41]), Buffer.from(plist(payloadOf('com.apple.security.root')))]);
+  const even = prefixed.length % 2 === 0 ? prefixed : Buffer.concat([prefixed, Buffer.from(' ')]);
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(even))).trust, ['com.apple.security.root']);
   // A profile with no trust content is written as before.
   assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'create'), null);
   assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(plain)), 'update'), null);

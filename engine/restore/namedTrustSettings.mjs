@@ -77,6 +77,30 @@ function utf16ZeroByte(bytes) {
   return null;
 }
 
+const BINARY = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+/**
+ * A guess at UTF-16 text without a byte order mark that is mostly not ASCII
+ * (so the zero-byte check misses it), or null. Each ASCII character puts a
+ * zero byte on one side of its pair, so there must be zero bytes, almost all
+ * on one side, which also gives the byte order. A trust name is ASCII, so
+ * bytes with no zero byte cannot hold one. Only a custom setting value uses
+ * this, and only when bytesAsText finds no text: there it can find more
+ * trust, never less. An Apple profile file never does, since a guessed text
+ * would hide its payloads instead of leaving the file unreadable (manual).
+ */
+function utf16Text(bytes) {
+  if (bytes.length < 2 || bytes.length % 2 !== 0) return null;
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < bytes.length; i += 1) if (bytes[i] === 0) i % 2 === 0 ? (even += 1) : (odd += 1);
+  const [high, low] = even > odd ? [even, odd] : [odd, even];
+  if (high === 0 || low * 10 > high) return null;
+  const text = even > odd ? Buffer.from(bytes).swap16().toString('utf16le') : bytes.toString('utf16le');
+  return BINARY.test(text) || LONE_SURROGATE.test(text) ? null : text;
+}
+
 /**
  * The text bytes hold (UTF-8, UTF-16 with or without a byte order mark, or a
  * single-byte encoding such as ISO-8859-1 when they are not UTF-8), or null
@@ -95,7 +119,7 @@ export function bytesAsText(bytes) {
     if (text.includes('\uFFFD')) text = bytes.toString('latin1');
   }
   text = text.replace(/^\uFEFF/, '');
-  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(text) ? null : text;
+  return BINARY.test(text) ? null : text;
 }
 
 /**
@@ -126,7 +150,7 @@ function omaValueHoldsTrust(node) {
   // A StringXml value that is not base64 (older backups hold the XML as written) is read as it is.
   if (!bytes) return type === '#microsoft.graph.omaSettingStringXml' && isTrustSettingName(value);
   if (isCertificateBytes(bytes)) return true;
-  const text = bytesAsText(bytes);
+  const text = bytesAsText(bytes) ?? utf16Text(bytes);
   return text !== null && isTrustSettingName(text);
 }
 

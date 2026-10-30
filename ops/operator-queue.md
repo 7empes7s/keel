@@ -12073,3 +12073,41 @@ item that needs it stays untouched.
   6. Cleanup: no `KEEL-RT-256-*` object left (app creation policies and permission grant policies). Report anything left.
 - **Report:** step 1 before and after; step 2 claim results and directory roles; steps 3 to 5 status, error code and message
   verbatim with request-ids; anything left in the tenant.
+
+### Q257: Live proof that one restore brings back an app and its service principal deleted together (after PR #743, issue #726)
+- Drafted by the "Let dry runs plan objects created earlier in a run" thread (2026-10-30). In Q246 the same-run dry run `dd0068fb`
+  failed the service principal in wave 3 (`no appId known for application:<old appId> in the target or this run`). PR #743 (merge
+  `6d0fe0a1`) makes a dry run give each planned create a placeholder id, and a placeholder appId for an application. The service
+  principal then plans cleanly, and the enforce run writes it with the new app's real appId, read from the create in wave 1.
+- Needs: the deployed build B at or after `6d0fe0a1`. Check: `git -C /opt/keel-live merge-base --is-ancestor 6d0fe0a1 HEAD`.
+  This item does not need PR #740 (the two-run case). Run it even if #740 is not merged yet.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q246. Log every approval id.
+  Grant nothing, consent to nothing, add no secrets or certificates. Global admin not used.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Write down that no `KEEL-RT-257` object exists.
+  2. Create app registration `KEEL-RT-257-app` (single tenant, no secrets or certificates, no API permissions) and its service
+     principal (`POST /servicePrincipals` with the app's appId). Assign it to nobody.
+  3. Take snapshot S. Confirm S holds both `application:<appId>` and `servicePrincipal:<appId>`.
+  4. Delete the service principal and the app, then purge both from deleted items, so restore must create them, not soft-restore.
+  5. Restore from S, selecting **both** the app and the service principal in one dry run. Expect:
+     - dry run status **completed** (not failed, not refused);
+     - a `create` for the app in an earlier wave than a `create` for the service principal;
+     - no `cannot resolve reference` error.
+     Approve, then `--enforce`. Expect `application create succeeded` with a new appId, then `servicePrincipal create succeeded`.
+     Read the new principal back and confirm its `appId` is the **new** app's appId, not the backup's.
+  6. Run a second dry run from S, selecting both. Write down what it plans. A failure that names #726's two-run case is expected
+     until PR #740 deploys, so quote it but don't count it against this item.
+  7. Capture `servicePrincipal.create` from step 5 (natural key as `--fixture`, matched by the `KEEL-RT-` prefix). Run
+     `pseudonymize.mjs check`, the secret scan and `operations.mjs --live-evidence`. Commit to `claude/live-evidence-q257`, branched
+     from `origin/master` (no PR).
+  8. Cleanup: delete and purge the `KEEL-RT-257` principal and app. Report anything left.
+- **Report:**
+  - B and S;
+  - the dry run id, its status and its waves;
+  - the approval id;
+  - the enforce exit code, the new app id and appId, the new principal id, and the principal's appId as read back;
+  - what the second dry run planned;
+  - the capture result and commit;
+  - anything left in the tenant.

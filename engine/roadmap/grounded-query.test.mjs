@@ -813,3 +813,24 @@ test('a change is listed once, in the window since the last backup that read its
   // Users are read once a day: the answer says when the next read is due.
   assert.deepEqual(answer.nextRead, { every: 'day', n: 1, dueAt: new Date(daily.getTime() + DAY).toISOString() });
 });
+
+test('a change to an endpoint security policy made in Intune carries its template family, and is counted apart', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenantRefFor('endpoint-security-family');
+  const now = new Date();
+  const setBy = await person(client, 'collector', [['operator', null]]);
+  const baselineId = await baseline(client, tenantRef, setBy);
+  const at = new Date(now.getTime() - 2 * HOUR);
+  const collectionId = await collection(client, tenantRef, at);
+  const policy = (name, templateFamily) => ({ id: name, name, templateReference: { templateFamily } });
+  await change(client, { tenantRef, baselineId, collectionId, naturalKey: 'configurationPolicy:av', at, after: policy('KEEL-RT-Antivirus', 'endpointSecurityAntivirus') });
+  await change(client, { tenantRef, baselineId, collectionId, naturalKey: 'configurationPolicy:wifi', at, after: policy('KEEL-RT-Wi-Fi', 'none') });
+  await change(client, { tenantRef, baselineId, collectionId, naturalKey: 'group:KEEL-RT-Group', at, after: { displayName: 'KEEL-RT-Group' } });
+
+  const answer = await answerQuestion(client, { tenantRef, scope: CENTRAL, request: { intent: 'changes', params: { period: 'last-7-days' } } });
+  const family = Object.fromEntries(answer.records.map((record) => [record.naturalKey, record.templateFamily ?? null]));
+  assert.deepEqual(family, { 'configurationPolicy:av': 'endpointSecurityAntivirus', 'configurationPolicy:wifi': 'none', 'group:KEEL-RT-Group': null });
+  // The antivirus policy is counted on its own row, so the portal can count it under Defender.
+  const rows = answer.summary.map((row) => [row.resourceType, row.templateFamily ?? null, row.count]);
+  assert.deepEqual(rows, [['configurationPolicy', 'endpointSecurityAntivirus', 1], ['configurationPolicy', 'none', 1], ['group', null, 1]]);
+});

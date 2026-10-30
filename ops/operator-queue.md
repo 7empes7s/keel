@@ -11197,7 +11197,31 @@ item that needs it stays untouched.
   tool, flags and fixtures as those runs; a cloud PR then lands them on master.
 - Needs: nothing. Run at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`), from your own clone checked out at B
   (never `/opt/keel`). If the auto-deploy moves B mid-run, recapture only the workloads whose verify then fails on build mismatch.
-- Status: todo
+- Status: done
+- Result: done (2026-10-30 01:10 UTC, keel-operator). **All six records recaptured; each proves at least what master's record proves**, with new observedAt 2026-10-30, so they expire 2026-11-29.
+  - B = **05a930b5**. Live moved from 53cbe462 before the first capture; the runner refused to start until the checkout matched, so nothing ran at the old build.
+  - Credentials: Collector (87aa77c4…) for reads, Restorer (12f8942f…) for writes, through the per-workload configs (exchange-*, purview-*; Teams: tenant.json and restorer.json). Global admin not used; nothing granted.
+  - Image `keel-powershell:latest`, with the checkout's `ops/powershell` mounted by the tool. `--module-version` left out.
+  - Captures from the operator checkout at B, `--grants /root/keel-wkld/grants.json`; `--allow-tenant-wide-test-writes` for exchange-extended and teams-org-policies only.
+
+    | workload | capture / verify exit | proven | not proven | observedAt (UTC) |
+    |---|---|---|---|---|
+    | exchange-mail-flow | 0 / 0 | **6**: transport-rule, inbound-connector, anti-phish, anti-spam, **anti-malware** (new; failed last time), safe-links `.update` | — | 2026-10-30 00:50:30 |
+    | exchange-extended | 0 / 0 | 2: connection-filter-policy, quarantine-global-settings `.update` (tenant-wide) | — | 00:52:17 |
+    | purview-governance | 0 / 0 | 1: retention-label `.update` | — | 00:54:33 |
+    | purview-retention-dlp | 0 / 0 | 2: retention-rule, dlp-policy `.update` | `retention-policy.update` (1) and `dlp-rule.update` (2), same as last time | 00:58:54 |
+    | teams-org-policies | 0 / 0 | 6: messaging-policy add and update; client, guest meeting, guest messaging, guest calling configuration `.update` | — | 01:01:04 |
+    | teams-voice-policies | 0 / 0 | 20: add and update for the 10 policy families | — | 01:06:27 |
+
+    1. `Set-RetentionCompliancePolicy: |Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy '<id>'…` (KEEL-RT-retention is still in DistributionStatus Error; not redeployed).
+    2. `Set-DlpComplianceRule: A server side error has occurred because of which the operation could not be completed. Please try again af…`.
+  - `needsManualRevert`: [] for all six; no exit 3.
+  - Step 2: `pseudonymize.mjs check` on all 12 files exits 0. Secret scan: domain 0, tenant id 0, JWT 0, key markers 0.
+  - Step 3: all six are supersets of master's records (master: mail-flow 5, extended 2, governance 1, retention-dlp 2, org 6, voice 20). Commit **1d0dbe2d** on `claude/live-evidence-writers-recapture` (12 files, pushed, no PR).
+  - Step 4: `keel-workload-collect.mjs import --dir <branch>/docs/release/qualifications`: exit 0, refused `[]`.
+    - Imported at evidenceBuild 05a930b5: exchange-mail-flow writes 6, exchange-extended 2, teams-org-policies 6, teams-voice-policies 20, purview-retention-dlp 2, purview-governance 1.
+    - The four `workload-reads-{exchange-mail-flow,exchange-extended,purview-retention-dlp,purview-governance}` stay absent, as in Q230.
+  - Created by the tool and kept (assigned to nobody): **1** messaging and **10** voice `KEEL-RT-capture-<random>` policies. Every other value was put back by the tool.
 - **Tenant (test tenant only, covered by the 2026-10-14/-16/-22 standing authorizations; no approval to file, captures only):**
   - `tools/qualification/workloadWritesLive.mjs capture` writes one harmless field (comment, description or a no-effect switch) on the
     first `KEEL-RT-` object of each family, reads it back, **puts the original value back** and reads it back. Restorer for writes,

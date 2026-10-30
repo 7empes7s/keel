@@ -695,7 +695,7 @@ export const WORKLOAD_GUIDE = Object.freeze({
   'exchange-mailbox-settings': Object.freeze({ name: 'Exchange mailbox settings',
     todo: 'Settings KEEL does not restore are changed by hand in the Exchange admin center using the backup.' }),
   'onedrive-site-settings': Object.freeze({ name: 'OneDrive settings',
-    todo: 'KEEL does not restore OneDrive settings. Change them by hand in the SharePoint admin center using the backup.' }),
+    todo: 'KEEL puts back a OneDrive\'s own sharing settings, default link type and permission, and guest and link expiry. A setting the backup shows following the tenant\'s OneDrive default is not pinned on the site. A locked site is never changed or unlocked. The owner, storage quota, sensitivity label and conditional access setting are changed by hand in the SharePoint admin center using the backup. Wider sharing needs a second approver.' }),
   'purview-labels': Object.freeze({ name: 'Purview sensitivity labels',
     todo: 'KEEL only restores label names and tooltips, and adds labels back to a publishing policy. It never weakens a label or unpublishes one: those changes, and new labels, are made by hand in the Purview portal.' }),
   'exchange-mail-flow': Object.freeze({ name: 'Exchange mail flow and protection',

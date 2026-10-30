@@ -6,7 +6,8 @@
  * (PER_ITEM_WORKLOADS) plan one object per dry run, so the page starts one check per
  * chosen mailbox or team. SharePoint site structure (hub sites, site designs, site
  * scripts and named sites' lists and navigation) plans like a policy workload, from its
- * own write declarations. SharePoint settings still take operator input (a tenant host
+ * own write declarations. A OneDrive is one object per person, named by its owner.
+ * SharePoint settings still take operator input (a tenant host
  * and a site) and stay with the operator.
  *
  * Pure: the caller loads the observations (loadWorkloadSource). Nothing here decides
@@ -20,6 +21,8 @@ import { TEAMS_WORKLOAD } from '../../collect/workloads/teams.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, TEMPLATE_STORAGE_FIELDS } from '../../collect/workloads/sharepointStructure.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from './sharepointStructureWrites.mjs';
 import { structureTarget } from './sharepointStructure.mjs';
+import { ONEDRIVE_WORKLOAD } from '../../collect/workloads/onedrive.mjs';
+import { ONEDRIVE_FAMILY } from './onedriveSettings.mjs';
 
 export const PURVIEW_LABELS_WORKLOAD = 'purview-labels';
 
@@ -46,7 +49,7 @@ export const PAGE_RESTORE_WORKLOADS = Object.freeze([
   EXCHANGE_WORKLOAD, TEAMS_WORKLOAD,
   'exchange-mail-flow', 'exchange-extended', 'teams-org-policies', 'teams-voice-policies',
   'purview-retention-dlp', 'purview-governance', PURVIEW_LABELS_WORKLOAD,
-  SHAREPOINT_STRUCTURE_WORKLOAD,
+  SHAREPOINT_STRUCTURE_WORKLOAD, ONEDRIVE_WORKLOAD,
 ]);
 
 // Every write the page plans: the cmdlet workloads' and SharePoint structure's (PnP).
@@ -84,6 +87,12 @@ function sitePath(url) {
 /** The name a person knows an object by; never a key or a Guid when a name exists. */
 function nameOf(observation, workload = null) {
   const fields = observation.fields ?? {};
+  if (workload === ONEDRIVE_WORKLOAD) {
+    // A OneDrive belongs to one person: their sign-in name, else the person part of its address.
+    if (typeof fields.Owner === 'string' && fields.Owner.trim()) return fields.Owner.trim();
+    const person = /\/personal\/([^/]+)/i.exec(String(fields.url ?? ''))?.[1];
+    if (person) return person;
+  }
   if (workload === SHAREPOINT_STRUCTURE_WORKLOAD) {
     // A hub, design or script by its title; a site by its title and path, as two sites can share a title.
     const title = [fields.Title, fields.title].find((value) => typeof value === 'string' && value.trim())?.trim() ?? null;
@@ -101,6 +110,8 @@ function nameOf(observation, workload = null) {
 }
 
 function kindOf(workload, observation) {
+  // The OneDrive backup stores one site per observation, with no kind of its own.
+  if (workload === ONEDRIVE_WORKLOAD) return String(observation.resourceKey).startsWith('onedrive:') ? ONEDRIVE_FAMILY : null;
   if (workload !== PURVIEW_LABELS_WORKLOAD) return observation.kind ?? null;
   return observation.resourceKey.startsWith(PURVIEW_KINDS.labelPolicy.prefix) ? 'labelPolicy' : 'label';
 }

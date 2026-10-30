@@ -48,6 +48,8 @@ import { sharePointStructureRestore } from './sharepointStructure.mjs';
 import { DISTRIBUTION_GROUPS_WORKLOAD, distributionGroupRestore } from './dscDistributionGroups.mjs';
 import { loadWorkloadSource, workloadSettingsRestore } from './cmdletSettings.mjs';
 import { EXCHANGE_ROLES_WORKLOAD, exchangeRoleRestore } from './exchangeRoleDefinitions.mjs';
+import { ONEDRIVE_WORKLOAD } from '../../collect/workloads/onedrive.mjs';
+import { oneDriveSettingsRestore } from './onedriveSettings.mjs';
 
 export const WORKLOAD_CONFIG_PREFIX = 'workload:';
 
@@ -191,6 +193,8 @@ export const WORKLOAD_RESTORES = Object.freeze({
   // Custom Exchange admin roles that no longer exist, from a Graph backup, through Exchange
   // Online PowerShell (exchangeRoleDefinitions.mjs): New-ManagementRole, then trim its entries.
   [EXCHANGE_ROLES_WORKLOAD]: exchangeRoleRestore(),
+  // One named OneDrive site's sharing settings, through Set-PnPTenantSite (onedriveSettings.mjs).
+  [ONEDRIVE_WORKLOAD]: oneDriveSettingsRestore(),
 });
 
 /** The table entry for a workload name, or a usage error naming the ones that exist. */

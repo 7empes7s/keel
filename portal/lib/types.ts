@@ -438,6 +438,10 @@ export interface DriftRecord {
   // the observed or approved copy; null when it has none. The page never shows the key
   // when it holds an object id.
   name?: string | null;
+  // The settings catalog template family (templateReference.templateFamily) of the
+  // observed or approved copy, when it has one: an antivirus or firewall policy made in
+  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind).
+  templateFamily?: string | null;
   // Names of the objects the before/after copies point to by id (users, groups, roles,
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.

@@ -1,4 +1,4 @@
-import { typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { settingArea, settingKind, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { serviceOrder } from "@/lib/services";
 
 // Inside one service, rows sit under the kind of thing they are: "Users and contacts",
@@ -10,6 +10,18 @@ export interface KindPart<T> {
   key: string;
   label: string;
   items: T[];
+}
+
+/** The kind a list files one setting under: its stored type, or the part of it another
+ * service owns (an Intune antivirus or firewall policy is a Defender endpoint security
+ * policy). Restore and approval still use the stored type. */
+export function itemKind(item: { resourceType: string; templateFamily?: string | null }): string {
+  return settingKind(item.resourceType, item.templateFamily ?? null);
+}
+
+/** The area an endpoint security policy covers ("Antivirus"), or null for other settings. */
+export function itemArea(item: { resourceType: string; templateFamily?: string | null }): string | null {
+  return settingArea(item.resourceType, item.templateFamily ?? null);
 }
 
 /** Where a type sorts inside `service`: its group, then its place in that group. A type

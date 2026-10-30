@@ -38,7 +38,7 @@ import {
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
-import { typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
@@ -409,6 +409,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
+    templateFamily: templateFamilyOf(raw.after_payload) ?? templateFamilyOf(raw.before_payload),
   };
 }
 
@@ -1037,6 +1038,9 @@ export interface RestoreResource {
   // The name the backup holds for it (displayName and the like), or null when the
   // object has none; the page never falls back to a bare object id.
   name?: string | null;
+  // The settings catalog template family, when the object has one: endpoint security
+  // policies (antivirus, firewall…) are filed under Defender (taxonomy settingKind).
+  templateFamily?: string | null;
 }
 
 export interface RestoreResourcesData {
@@ -1062,7 +1066,8 @@ export async function getRestoreResources(
     const { rows } = await queryClient.query(
       `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
               CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
-              CASE WHEN rv.resource_type = 'conditionalAccessPolicy' THEN rv.payload END AS rated_payload
+              CASE WHEN rv.resource_type = 'conditionalAccessPolicy' THEN rv.payload END AS rated_payload,
+              CASE WHEN rv.resource_type = 'configurationPolicy' THEN rv.payload->'templateReference'->>'templateFamily' END AS template_family
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
@@ -1085,6 +1090,7 @@ export async function getRestoreResources(
         // Conditional Access is rated by what this backed-up rule does.
         blastRadius: String(itemBlastRadius(String(row.resource_type), row.rated_payload ?? null, row.blast_radius)),
         service: typeInfo(String(row.resource_type)).service,
+        ...(row.template_family ? { templateFamily: String(row.template_family) } : {}),
         name: row.display_name != null
           ? String(row.display_name)
           : lookup && row.payload != null

@@ -111,6 +111,9 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   retentionLabel: "retention label",
   deviceConfiguration: "device configuration",
   deviceManagementSettings: "Intune tenant settings",
+  // Not a stored type: the Intune settings catalog policies made from an Endpoint
+  // security template, which lists file under Defender (taxonomy settingKind).
+  defenderEndpointSecurityPolicy: "endpoint security policy",
 };
 
 // Product names keep their capitals inside an otherwise lower-case label.

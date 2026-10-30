@@ -104,7 +104,8 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
     ? { tone: "neutral", text: "Backup only: Keel cannot put these back yet" }
     : {
       tone: counts.proven ? "fine" : "low",
-      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}`,
+      // Kinds with nothing to restore are not gaps, so they are left out of "of N".
+      text: `${counts.restorable} of ${counted.length - counts.nothingToRestore} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}`,
     };
   const reads = counted.filter((item) => READ.includes(backupHealth(item)) && item.lastCollectedAt)
     .map((item) => item.lastCollectedAt!).sort();

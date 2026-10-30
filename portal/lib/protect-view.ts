@@ -21,8 +21,14 @@ export function typeName(type: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-// The four answers the contract allows for "can Keel put this type back?".
-export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unproven";
+// The answers the contract allows for "can Keel put this type back?". "Nothing to restore"
+// is not a gap: Microsoft or another system owns the kind, so it never counts as manual.
+export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unproven" | "nothing-to-restore";
+
+/** Microsoft or another system owns the kind, so there is nothing to put back. */
+export function hasNothingToRestore(item: CoverageType): boolean {
+  return item.qualification?.nothingToRestore === true;
+}
 
 /**
  * Whether Keel has a tested writer for the type: an automated recovery decision and at
@@ -42,6 +48,7 @@ function provenLive(item: CoverageType): boolean {
 }
 
 export function restoreStanding(item: CoverageType): RestoreStanding {
+  if (hasNothingToRestore(item)) return "nothing-to-restore";
   const declared = item.fidelity.declared;
   if (item.protectionState === "not-covered" || item.protectionState === "unprotectable"
     || declared === "unprotectable" || !item.adapter || item.outcome === "unavailable") {
@@ -58,6 +65,7 @@ export const STANDING_LABEL: Record<RestoreStanding, string> = {
   partial: "Partially protected",
   "cannot-restore": "Cannot be restored",
   unproven: "Restore not yet proven",
+  "nothing-to-restore": "Nothing to restore",
 };
 
 /** One sentence: protected, partially protected, cannot be restored, or no proven restore. */
@@ -73,6 +81,8 @@ export function standingSentence(item: CoverageType): string {
       return item.fidelity.declared === "partial"
         ? "Backed up, but some fields cannot be restored, and no restore has been proven on this tenant yet."
         : "Backed up, but no restore has been proven on this tenant yet.";
+    case "nothing-to-restore":
+      return "Nothing to restore: Microsoft or the system it comes from owns this, so Keel keeps the backup as a record.";
     case "cannot-restore":
       if (item.protectionState === "not-covered" || !item.adapter) return "Keel has no collector for this type, so it is neither backed up nor restorable.";
       if (item.outcome === "unavailable") return "Nothing to restore: this tenant does not have the licence or feature Microsoft needs for this type.";
@@ -175,6 +185,7 @@ export function recoveryDecisionSentence(item: CoverageType): string | null {
   const remapping = remaps.length === 0 ? ""
     : remaps.every(([, proven]) => proven) ? " If it comes back with a new ID, Keel updates what refers to it."
       : " If it would come back with a new ID, Keel stops rather than leave broken references.";
+  if (decision.nothingToRestore) return "Nothing to restore: Microsoft or the system it comes from owns this type. It is not a manual step.";
   if (decision.decision === "automated") return `Keel restores this type on its own.${remapping}`;
   if (decision.decision === "manual") return "Restoring this type is a manual step; Keel lists it for you to do by hand.";
   return "Whether Keel can restore this type on its own is not yet decided.";
@@ -316,6 +327,8 @@ export interface ProtectCounts {
   never: number;
   proven: number;
   restorable: number;
+  // Kinds Microsoft or another system owns: in no restore count, as neither restorable nor manual.
+  nothingToRestore: number;
 }
 
 export function protectCounts(types: CoverageType[]): ProtectCounts {
@@ -328,7 +341,8 @@ export function protectCounts(types: CoverageType[]): ProtectCounts {
     stale: health.filter((value) => value === "stale").length,
     never: health.filter((value) => value === "never").length,
     proven: standing.filter((value) => value === "protected" || value === "partial").length,
-    restorable: standing.filter((value) => value !== "cannot-restore").length,
+    restorable: standing.filter((value) => value !== "cannot-restore" && value !== "nothing-to-restore").length,
+    nothingToRestore: standing.filter((value) => value === "nothing-to-restore").length,
   };
 }
 

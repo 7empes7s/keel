@@ -206,7 +206,7 @@ export function TypeDetails({ item, now, name }: { item: CoverageType; now: stri
       <section aria-label="What a restore brings back" className="pt-details-part">
         <h3>What a restore brings back</h3>
         <ul className="pt-details-facts">
-          {decision ? <li className={`decision-${item.qualification?.decision ?? "unknown"}`}>{decision}</li> : null}
+          {decision ? <li className={`decision-${item.qualification?.nothingToRestore ? "nothing-to-restore" : item.qualification?.decision ?? "unknown"}`}>{decision}</li> : null}
           {operations.map((line) => <li key={line}>{line}</li>)}
           {completeness ? <li>{completeness.why ? `${STATE_SENTENCE[completeness.state]} ${completeness.why}` : STATE_SENTENCE[completeness.state]}</li> : null}
           {irrecoverable > 0 ? <li>{irrecoverable} {irrecoverable === 1 ? "field" : "fields"} Microsoft sets itself and Keel cannot restore.</li> : null}
@@ -229,7 +229,7 @@ export function TypeDetails({ item, now, name }: { item: CoverageType; now: stri
         </ul>
       </section>
       <p className="pt-details-links">
-        {standing !== "cannot-restore" ? <Link className="pt-inline-link" href={`/restore?q=${encodeURIComponent(name)}`}>Restore this kind</Link> : null}
+        {standing !== "cannot-restore" && standing !== "nothing-to-restore" ? <Link className="pt-inline-link" href={`/restore?q=${encodeURIComponent(name)}`}>Restore this kind</Link> : null}
         {standing === "unproven" ? <Link className="pt-inline-link" href="/restore">Plan a test restore</Link> : null}
         {needsGrant ? <Link className="pt-inline-link" href="/setup">Give Keel the permission it needs</Link> : null}
       </p>

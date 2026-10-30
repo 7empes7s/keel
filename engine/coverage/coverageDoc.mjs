@@ -33,13 +33,17 @@ const MS = 'microsoft';
 const KEEL = 'keel';
 // Coverage plan v3: backed up in full, but the best-effort writer is not built yet.
 const NOT_BUILT = 'not-built';
-const LIMIT_WORDS = Object.freeze({ [MS]: 'Microsoft limit', [KEEL]: 'KEEL choice', [NOT_BUILT]: 'not built yet' });
+// Nothing to restore: Microsoft or another system owns it. Not a gap and never counted as by hand.
+const NOTHING = 'nothing';
+const LIMIT_WORDS = Object.freeze({ [MS]: 'Microsoft limit', [KEEL]: 'KEEL choice', [NOT_BUILT]: 'not built yet', [NOTHING]: 'nothing to restore' });
 const STATE_WORDS = Object.freeze({
   full: 'Full', incomplete: 'Incomplete', 'microsoft-managed': 'Microsoft-managed', 'not-readable': 'Not readable',
 });
 
 const auto = (name, { keeps, todo = null, words = null } = {}) => Object.freeze({ decision: 'automated', name, keeps, todo, words });
 const manual = (name, limit, why, todo) => Object.freeze({ decision: 'manual', name, limit, why, todo });
+// Only for the kinds TYPE_DECISIONS marks nothingToRestore; guideFor() checks both ways.
+const nothing = (name, why, todo) => manual(name, NOTHING, why, todo);
 
 /**
  * One entry per configuration type. `limit` says whose limit makes a manual type
@@ -50,16 +54,16 @@ const manual = (name, limit, why, todo) => Object.freeze({ decision: 'manual', n
  */
 export const TYPE_GUIDE = Object.freeze({
   // ---- tenant settings
-  organization: manual('Tenant profile', MS,
+  organization: nothing('Tenant profile',
     'This is the tenant itself. Microsoft does not let any tool recreate or replace it.',
     'Nothing to restore. Use the backup as a record of the tenant details at that time.'),
   domain: manual('Domains', MS,
     'Adding a domain needs proof that you own it, through a DNS record that only you can publish.',
     'Add the domain in the Microsoft 365 admin center, publish the DNS record it asks for, and verify it. Domains must be back before users and mail that use them.'),
-  subscribedSku: manual('Licence subscriptions', MS,
+  subscribedSku: nothing('Licence subscriptions',
     'Licences are bought from Microsoft, not configured.',
     'Use the backup to see which licences you had and how many. Buy or reactivate them before restoring users, because a user restore can only assign licences you hold.'),
-  directorySettingTemplate: manual('Group setting templates', MS,
+  directorySettingTemplate: nothing('Group setting templates',
     'Microsoft publishes these templates. They are the same in every tenant and nobody can edit them.',
     'Nothing to restore.'),
   groupSetting: auto('Tenant-wide group settings', {
@@ -91,7 +95,7 @@ export const TYPE_GUIDE = Object.freeze({
   group: auto('Groups', {
     keeps: 'Recreates groups, puts their settings back, removes groups added since the backup, brings deleted groups back, and restores members and owners.',
   }),
-  contact: manual('Organizational contacts', MS,
+  contact: nothing('Organizational contacts',
     'These contacts come from directory sync, and Microsoft makes them read-only for every tool.',
     'Restore them at their source, usually on-premises Active Directory or Exchange, and let sync bring them back.'),
   application: auto('App registrations', {
@@ -112,14 +116,14 @@ export const TYPE_GUIDE = Object.freeze({
   certificateBasedAuthConfiguration: manual('Certificate sign-in settings', NOT_BUILT,
     'A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.',
     'Restore the certificate authorities by hand in the Entra admin center using the backup, and test sign-in before closing the session.'),
-  directoryRole: manual('Built-in admin roles', MS,
+  directoryRole: nothing('Built-in admin roles',
     'Microsoft provides the built-in roles. They are switched on from Microsoft\'s templates, never written.',
     'Nothing to restore. Who holds each role is restored with role assignments.'),
   roleDefinition: auto('Custom admin roles', {
     keeps: 'Recreates custom roles and puts their permissions back. The dry run lists permissions a restore adds and removes.',
     todo: 'Built-in roles cannot be changed by anyone. Custom roles need an Entra ID P1 or P2 licence. Removing extra custom roles is done by hand.',
   }),
-  directoryRoleTemplate: manual('Admin role templates', MS,
+  directoryRoleTemplate: nothing('Admin role templates',
     'Microsoft publishes these templates. They are the same in every tenant.',
     'Nothing to restore.'),
   roleAssignment: auto('Admin role assignments', {
@@ -136,7 +140,7 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts activation rules back: how long a role lasts, what activation needs, and who approves.',
     todo: 'A restore that would weaken protection is not written: KEEL lists it for a person to decide. Approvers must still exist.',
   }),
-  unifiedRoleManagementPolicyAssignment: manual('Role-to-settings links', MS,
+  unifiedRoleManagementPolicyAssignment: nothing('Role-to-settings links',
     'Entra links exactly one settings policy to each role itself. Nobody writes the link.',
     'Nothing to restore. The settings are restored with admin role activation settings.'),
   accessReviewScheduleDefinition: manual('Access reviews', NOT_BUILT,
@@ -319,7 +323,7 @@ export const TYPE_GUIDE = Object.freeze({
   deviceManagementIntent: manual('Security baselines (older format)', KEEL,
     'This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.',
     'Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.'),
-  managedDevice: manual('Enrolled devices', MS,
+  managedDevice: nothing('Enrolled devices',
     'A device record is created by the device when it enrolls. It is state, not configuration.',
     'Nothing to restore. Devices enroll again on their own once enrollment settings are back.'),
   mobileApp: auto('Apps', {
@@ -636,8 +640,8 @@ export const TYPE_GUIDE = Object.freeze({
   securityZone: manual('Exposure management zones', NOT_BUILT,
     'KEEL backs up each zone\'s name and description but not the environments in it, and does not restore it yet.',
     'Create the zone again in the Microsoft Defender portal, under Exposure management, and add the same environments.'),
-  sharedEmailDomain: manual('Shared email domains', NOT_BUILT,
-    'KEEL backs up which shared email domains the tenant uses. Microsoft sets them up; there is nothing to restore.',
+  sharedEmailDomain: nothing('Shared email domains',
+    'KEEL backs up which shared email domains the tenant uses. Microsoft sets them up, so there is nothing to restore.',
     'Ask Microsoft support if a shared domain is missing.'),
   schemaExtension: manual('Schema extensions', NOT_BUILT,
     'KEEL backs up the schema extensions this tenant\'s own apps defined, but not the values stored in them on users and groups, and does not restore them yet.',
@@ -746,11 +750,14 @@ const cell = (text) => String(text).replace(/\|/g, '\\|');
 const list = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 
 /** The guide entry for a type, checked against the code's current decision. */
-function guideFor(type, decision, guide) {
+function guideFor(type, decision, guide, nothingToRestore = false) {
   const entry = guide[type];
   if (!entry) throw new Error(`docs/coverage.md: no plain-English entry for configuration type ${type}; add one to TYPE_GUIDE`);
   if (entry.decision !== decision) {
     throw new Error(`docs/coverage.md: the text for ${type} was written for '${entry.decision}' but the code now says '${decision}'; review TYPE_GUIDE`);
+  }
+  if ((entry.limit === NOTHING) !== nothingToRestore) {
+    throw new Error(`docs/coverage.md: ${type} is ${nothingToRestore ? '' : 'not '}nothing to restore in TYPE_DECISIONS, but its TYPE_GUIDE text says ${entry.limit === NOTHING ? '' : 'not '}so; review both`);
   }
   return entry;
 }
@@ -784,7 +791,7 @@ function typeRow(ledgerType, entry, { cadence, edges }) {
     restore = `Yes: ${words.join('; ')}`;
     proof = proofText([...supported, ...typeEdges]);
   } else {
-    restore = ledgerType.completeness.state === 'microsoft-managed' ? 'Nothing to restore' : `By hand (${LIMIT_WORDS[entry.limit]})`;
+    restore = ledgerType.nothingToRestore ? 'Nothing to restore' : `By hand (${LIMIT_WORDS[entry.limit]})`;
     proof = 'None';
   }
   const coverage = STATE_WORDS[ledgerType.completeness.state];
@@ -804,7 +811,8 @@ function notesFor(ledgerType, entry) {
     if (entry.todo) lines.push(`  - *You do:* ${entry.todo}`);
     return lines;
   }
-  return [`- **${entry.name}** (${LIMIT_WORDS[entry.limit]}). ${entry.why}`, ...missingLines(ledgerType), `  - *You do:* ${entry.todo}`];
+  const label = entry.limit === NOTHING ? 'Nothing to restore' : LIMIT_WORDS[entry.limit];
+  return [`- **${entry.name}** (${label}). ${entry.why}`, ...missingLines(ledgerType), `  - *You do:* ${entry.todo}`];
 }
 
 /**
@@ -886,10 +894,10 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
   const extraWorkloads = Object.keys(workloadGuide).filter((workload) => !WORKLOADS.includes(workload));
   if (extraWorkloads.length > 0) throw new Error(`docs/coverage.md: WORKLOAD_GUIDE has text for unknown workloads: ${extraWorkloads.join(', ')}`);
 
-  const counts = { automated: 0, manual: 0 };
+  const counts = { automated: 0, manual: 0, nothing: 0 };
   const states = Object.fromEntries(COVERAGE_STATES.map((state) => [state, 0]));
   for (const row of ledger.types) {
-    counts[row.decision] += 1;
+    counts[row.nothingToRestore ? 'nothing' : row.decision] += 1;
     states[row.completeness.state] += 1;
   }
 
@@ -900,7 +908,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '',
     'For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.',
     '',
-    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
+    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part and ${counts.nothing} hold nothing to restore; the other ${counts.manual} are restored by hand from the backup.`,
     '',
     '## How to read this page',
     '',
@@ -910,7 +918,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '  - *Incomplete:* the backup holds everything KEEL can read, but some parts cannot be brought back automatically. It is recreated from the backup, by KEEL or by hand, and the missing parts are listed below the table as follow-up steps. Each backup flags the incomplete objects it holds.',
     '  - *Microsoft-managed:* Microsoft owns it, so there is nothing to restore.',
     '  - *Not readable:* KEEL cannot read it, for the reason given.',
-    '- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.',
+    '- **KEEL can restore:** what a KEEL restore does. "Nothing to restore" means Microsoft or another system owns it, so there is nothing for anyone to put back; it is not counted as by hand. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.',
     '- **Proof:** "Tested against a simulated tenant" means the restore code has passed tests against a fake Microsoft service. It is not yet proven on a live tenant. A failed live test is listed with its date until a fix passes.',
     '- **Microsoft limit:** Microsoft offers no way for any tool to do this. KEEL cannot work around it; the steps say what to do instead.',
     '- **KEEL choice:** KEEL could write it, but leaves it to a person for safety or because part of it is not backed up.',
@@ -925,7 +933,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     lines.push(`## ${heading}`, '', '| Setting | Backed up | Coverage | KEEL can restore | Proof |', '| --- | --- | --- | --- | --- |');
     const notes = [];
     for (const row of rows) {
-      const entry = guideFor(row.resourceType, row.decision, typeGuide);
+      const entry = guideFor(row.resourceType, row.decision, typeGuide, row.nothingToRestore);
       lines.push(typeRow(row, entry, { cadence, edges: ledger.edges }));
       notes.push(...notesFor(row, entry));
     }

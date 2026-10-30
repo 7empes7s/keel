@@ -19,7 +19,9 @@
 // types declare "read-only" only because no drill measured them). "Not covered"
 // types (no collector exists) are a coverage gap reported elsewhere, not a failure,
 // and so are types Microsoft refused for a missing licence or tenant feature
-// (outcome "unavailable").
+// (outcome "unavailable"). Types with nothing to restore (qualification.nothingToRestore:
+// Microsoft or another system owns them) are left out of "of N" restore counts, so they
+// never read as gaps.
 
 const RESTORABLE = new Set(['full', 'partial']);
 const TESTED_CLAIMS = new Set(['fixture-tested', 'live-qualified']);
@@ -57,13 +59,14 @@ function plural(count, one, many) {
  *   fidelity?: { declared?: string | null, verifiedBy?: { at?: string | Date, measuredFidelity?: string | null } | null } }>} types
  * @returns {{ state: 'collection' | 'proven' | 'unproven', tone: 'good' | 'attention' | 'critical', headline: string,
  *   sentence: string, action: { label: string, href: string } | null, counts: { backedUp: number, restorable: number,
- *   failing: number, failed: number, stale: number, neverCollected: number }, lastProvenRestoreAt: string | null, failingSince: string | null }}
+ *   restoreTotal: number, failing: number, failed: number, stale: number, neverCollected: number }, lastProvenRestoreAt: string | null, failingSince: string | null }}
  */
 export function protectionHeadline(types) {
   const failing = types.filter((entry) => (entry.status === 'failed' && entry.outcome !== 'unavailable')
     || entry.status === 'never-collected' || (entry.status === 'covered' && entry.stale === true));
   const backedUp = types.filter((entry) => entry.status === 'covered' && entry.stale !== true);
-  const restorableTypes = backedUp.filter(restorable);
+  const restoreCandidates = backedUp.filter((entry) => entry.qualification?.nothingToRestore !== true);
+  const restorableTypes = restoreCandidates.filter(restorable);
   const drills = types
     .map((entry) => entry.fidelity?.verifiedBy?.at ?? null)
     .filter((at) => at !== null)
@@ -80,7 +83,7 @@ export function protectionHeadline(types) {
     .filter((at) => at && Number.isFinite(at.getTime()));
   const failingSince = staleTimes.length ? new Date(Math.min(...staleTimes.map((at) => at.getTime()))) : null;
   const counts = {
-    backedUp: backedUp.length, restorable: restorableTypes.length, failing: failing.length,
+    backedUp: backedUp.length, restorable: restorableTypes.length, restoreTotal: restoreCandidates.length, failing: failing.length,
     failed: failed.length, stale: stale.length, neverCollected: neverCollected.length,
   };
   const base = { counts, lastProvenRestoreAt: lastProven?.toISOString() ?? null, failingSince: failingSince?.toISOString() ?? null };
@@ -120,7 +123,7 @@ export function protectionHeadline(types) {
       state: 'proven',
       tone: 'good',
       headline: 'Protected',
-      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(backedUp.length, 'configuration type', 'configuration types')} today. Last proven restore: ${formatHeadlineDate(lastProven)}.`,
+      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(restoreCandidates.length, 'configuration type', 'configuration types')} today. Last proven restore: ${formatHeadlineDate(lastProven)}.`,
       action: null,
     };
   }

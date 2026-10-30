@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part and 9 hold nothing to restore; the other 70 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -14,7 +14,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Incomplete:* the backup holds everything KEEL can read, but some parts cannot be brought back automatically. It is recreated from the backup, by KEEL or by hand, and the missing parts are listed below the table as follow-up steps. Each backup flags the incomplete objects it holds.
   - *Microsoft-managed:* Microsoft owns it, so there is nothing to restore.
   - *Not readable:* KEEL cannot read it, for the reason given.
-- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.
+- **KEEL can restore:** what a KEEL restore does. "Nothing to restore" means Microsoft or another system owns it, so there is nothing for anyone to put back; it is not counted as by hand. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.
 - **Proof:** "Tested against a simulated tenant" means the restore code has passed tests against a fake Microsoft service. It is not yet proven on a live tenant. A failed live test is listed with its date until a fix passes.
 - **Microsoft limit:** Microsoft offers no way for any tool to do this. KEEL cannot work around it; the steps say what to do instead.
 - **KEEL choice:** KEEL could write it, but leaves it to a person for safety or because part of it is not backed up.
@@ -25,7 +25,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | --- | --- | --- | --- | --- |
 | Users | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
 | Groups | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant |
-| Organizational contacts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Organizational contacts | Yes (Tier 3, low impact, weekly) | Incomplete | Nothing to restore | None |
 | App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
 | Enterprise apps | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Delegated app consents | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -82,7 +82,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* password (Microsoft never returns it); registered sign-in methods, such as MFA (Microsoft never returns it); details synced from on-premises Active Directory (no tool can write it).
   - *You do:* A recreated user needs a new password or Temporary Access Pass and must register MFA again, because Microsoft never lets anyone read them; KEEL lists these as follow-up items and leaves sign-in off until then. Users synced from on-premises Active Directory are restored there, and guests are invited again.
 - **Groups.** Recreates groups, puts their settings back, removes groups added since the backup, brings deleted groups back, and restores members and owners.
-- **Organizational contacts** (Microsoft limit). These contacts come from directory sync, and Microsoft makes them read-only for every tool.
+- **Organizational contacts** (Nothing to restore). These contacts come from directory sync, and Microsoft makes them read-only for every tool.
   - *You do:* Restore them at their source, usually on-premises Active Directory or Exchange, and let sync bring them back.
 - **App registrations.** Recreates app registrations, puts their settings back, and brings deleted ones back from the recycle bin.
   - *Not brought back:* client secrets (Microsoft never returns it); certificates (Microsoft never returns it).
@@ -97,11 +97,11 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate the provider in the Entra admin center using the settings in the backup, and enter a fresh secret from the provider.
 - **Certificate sign-in settings** (not built yet). A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.
   - *You do:* Restore the certificate authorities by hand in the Entra admin center using the backup, and test sign-in before closing the session.
-- **Built-in admin roles** (Microsoft limit). Microsoft provides the built-in roles. They are switched on from Microsoft's templates, never written.
+- **Built-in admin roles** (Nothing to restore). Microsoft provides the built-in roles. They are switched on from Microsoft's templates, never written.
   - *You do:* Nothing to restore. Who holds each role is restored with role assignments.
 - **Custom admin roles.** Recreates custom roles and puts their permissions back. The dry run lists permissions a restore adds and removes.
   - *You do:* Built-in roles cannot be changed by anyone. Custom roles need an Entra ID P1 or P2 licence. Removing extra custom roles is done by hand.
-- **Admin role templates** (Microsoft limit). Microsoft publishes these templates. They are the same in every tenant.
+- **Admin role templates** (Nothing to restore). Microsoft publishes these templates. They are the same in every tenant.
   - *You do:* Nothing to restore.
 - **Admin role assignments.** Recreates admin role assignments, changes them back and removes ones added since the backup.
 - **Eligible admin roles.** Makes people eligible for an admin role again, keeping the original end date.
@@ -113,7 +113,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Admin role activation settings.** Puts activation rules back: how long a role lasts, what activation needs, and who approves.
   - *Not brought back:* a change that weakens protection (in the backup, but KEEL does not write it yet).
   - *You do:* A restore that would weaken protection is not written: KEEL lists it for a person to decide. Approvers must still exist.
-- **Role-to-settings links** (Microsoft limit). Entra links exactly one settings policy to each role itself. Nobody writes the link.
+- **Role-to-settings links** (Nothing to restore). Entra links exactly one settings policy to each role itself. Nobody writes the link.
   - *You do:* Nothing to restore. The settings are restored with admin role activation settings.
 - **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
   - *Not brought back:* past reviews and their decisions (no tool can write it).
@@ -354,7 +354,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Item insights setting | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Copilot connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Exposure management zones | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Shared email domains | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Shared email domains | Yes (Tier 3, low impact, weekly) | Incomplete | Nothing to restore | None |
 | Schema extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Microsoft Forms settings | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Microsoft To Do settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -367,14 +367,14 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 
 ### Details and what you do
 
-- **Tenant profile** (Microsoft limit). This is the tenant itself. Microsoft does not let any tool recreate or replace it.
+- **Tenant profile** (Nothing to restore). This is the tenant itself. Microsoft does not let any tool recreate or replace it.
   - *You do:* Nothing to restore. Use the backup as a record of the tenant details at that time.
 - **Domains** (Microsoft limit). Adding a domain needs proof that you own it, through a DNS record that only you can publish.
   - *Not brought back:* proof that you own the domain (a DNS record you publish) (stored separately and not in the backup yet).
   - *You do:* Add the domain in the Microsoft 365 admin center, publish the DNS record it asks for, and verify it. Domains must be back before users and mail that use them.
-- **Licence subscriptions** (Microsoft limit). Licences are bought from Microsoft, not configured.
+- **Licence subscriptions** (Nothing to restore). Licences are bought from Microsoft, not configured.
   - *You do:* Use the backup to see which licences you had and how many. Buy or reactivate them before restoring users, because a user restore can only assign licences you hold.
-- **Group setting templates** (Microsoft limit). Microsoft publishes these templates. They are the same in every tenant and nobody can edit them.
+- **Group setting templates** (Nothing to restore). Microsoft publishes these templates. They are the same in every tenant and nobody can edit them.
   - *You do:* Nothing to restore.
 - **Tenant-wide group settings.** Puts changed tenant-wide group settings back, and removes ones added since the backup.
   - *Not brought back:* settings on a single group (stored separately and not in the backup yet); a deleted tenant-wide setting (in the backup, but KEEL does not write it yet).
@@ -402,7 +402,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Exposure management zones** (not built yet). KEEL backs up each zone's name and description but not the environments in it, and does not restore it yet.
   - *Not brought back:* the environments in the zone (stored separately and not in the backup yet).
   - *You do:* Create the zone again in the Microsoft Defender portal, under Exposure management, and add the same environments.
-- **Shared email domains** (not built yet). KEEL backs up which shared email domains the tenant uses. Microsoft sets them up; there is nothing to restore.
+- **Shared email domains** (Nothing to restore). KEEL backs up which shared email domains the tenant uses. Microsoft sets them up, so there is nothing to restore.
   - *You do:* Ask Microsoft support if a shared domain is missing.
 - **Schema extensions** (not built yet). KEEL backs up the schema extensions this tenant's own apps defined, but not the values stored in them on users and groups, and does not restore them yet.
   - *Not brought back:* extensions owned by apps in other tenants (set by Microsoft).
@@ -522,7 +522,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Security baselines (older format)** (KEEL choice). This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.
   - *Not brought back:* the baseline's settings (stored separately and not in the backup yet).
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
-- **Enrolled devices** (Microsoft limit). A device record is created by the device when it enrolls. It is state, not configuration.
+- **Enrolled devices** (Nothing to restore). A device record is created by the device when it enrolls. It is state, not configuration.
   - *You do:* Nothing to restore. Devices enroll again on their own once enrollment settings are back.
 - **Apps.** Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned. Each app is put back in its app categories.
   - *Not brought back:* the app package (the installer file), which must be uploaded before the app is assigned (a file the backup does not hold); an app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there (in the backup, but KEEL does not write it yet).

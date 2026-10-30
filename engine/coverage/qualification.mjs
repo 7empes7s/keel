@@ -51,6 +51,11 @@ const automated = (resource, reason, { view = 'graph-rest-1.0', liveFailures = n
   decision: 'automated', docs: `${DOCS}/resources/${resource}?view=${view}`, reason, ...(liveFailures ? { liveFailures: Object.freeze(liveFailures) } : {}),
 });
 const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra });
+// A kind with nothing to restore: Microsoft or another system owns it (the tenant
+// itself, licences, built-in catalogues, device state, synced contacts). It has no
+// writer, like a manual kind, but it is not a gap, so it is never counted or shown
+// as manual. NOTHING_TO_RESTORE below lists them; tests pin the list.
+const nothingToRestore = (reason) => manual(reason, { nothingToRestore: true });
 // Coverage plan v3 (package INCOMPLETE): read in full and backed up as an
 // incomplete configuration; recreated by hand from the backup until a
 // best-effort writer is registered (Wave 2).
@@ -78,10 +83,10 @@ const STS_SUBSET = 'Wave 2 ENTRA subset: create and update of the name and defin
  * the operation.
  */
 export const TYPE_DECISIONS = Object.freeze({
-  organization: manual('the tenant object itself; it is never recreated'),
+  organization: nothingToRestore('the tenant object itself; it is never recreated'),
   domain: manual('requires DNS ownership verification outside Graph'),
-  subscribedSku: manual('licences are purchased, not configured'),
-  directorySettingTemplate: manual('Microsoft-published template catalogue'),
+  subscribedSku: nothingToRestore('licences are purchased, not configured'),
+  directorySettingTemplate: nothingToRestore('Microsoft-published template catalogue'),
   // Issue #156: basic tenant settings.
   organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; its logos, background image, favicon and custom stylesheet are backed up and uploaded back (fixture-tested, not yet live)'),
   organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; its images and stylesheet are backed up and uploaded back (fixture-tested, not yet live); adding or removing a language is by hand'),
@@ -90,16 +95,16 @@ export const TYPE_DECISIONS = Object.freeze({
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; Wave 2: a permanently deleted user is recreated disabled with a password nobody sees and a credentials checklist'),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
   administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
-  contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
+  contact: nothingToRestore('organizational contacts are directory-synchronised and read-only in Graph'),
   application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
   servicePrincipal: automated('serviceprincipal', 'task-107 subset: create bound to its application by appId; Wave 2: update of reviewed attributes and delete of an application\'s own service principal'),
   // Wave 2 ENTRA: written through engine/restore/directoryPolicyOperations.mjs.
   oauth2PermissionGrant: automated('oauth2permissiongrant', 'Wave 2 ENTRA subset: create and update of a delegated consent (scopes as the backup had them), matched on app, resource, consent type and user so a re-run never adds a second grant; delete is not registered'),
   identityProvider: manual('client secrets are never readable'),
   certificateBasedAuthConfiguration: incomplete('a wrong certificate trust setting can lock every user out, and there is no simulation gate for it yet'),
-  directoryRole: manual('built-in roles are activated from templates, never authored'),
+  directoryRole: nothingToRestore('built-in roles are activated from templates, never authored'),
   roleDefinition: automated('unifiedroledefinition', 'task-151 subset: create and update of custom roles; built-in roles are immutable and refused, delete is not registered'),
-  directoryRoleTemplate: manual('Microsoft-published template catalogue'),
+  directoryRoleTemplate: nothingToRestore('Microsoft-published template catalogue'),
   roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered', {
     liveFailures: {
       update: tenantLimit('2026-10-09', 'tenant limit: the runbook drift planned no write (Q43 step 36); every real field of a role assignment (principalId, roleDefinitionId, directoryScopeId) is immutable, so an update sends an empty body and reports not-remediable, and there is nothing it can change live'),
@@ -108,7 +113,7 @@ export const TYPE_DECISIONS = Object.freeze({
   roleEligibilitySchedule: automated('unifiedroleeligibilityschedule', 'task-151 subset: create through an adminAssign schedule request that keeps the snapshot end date; update and removal are not registered'),
   // Roadmap task-151: PIM role settings, their role bindings and active schedules.
   unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written'),
-  unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
+  unifiedRoleManagementPolicyAssignment: nothingToRestore('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
   roleAssignmentSchedule: incomplete('a time-bound active assignment needs the eligibility expiry contract plus a check that an activation is not replayed'),
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate'),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
@@ -175,7 +180,7 @@ export const TYPE_DECISIONS = Object.freeze({
   termsAndConditions: manual('acceptance by users cannot be recreated: a recreated policy asks every user to accept again'),
   windowsAutopilotDeploymentProfile: automated('intune-enrollment-windowsautopilotdeploymentprofile', 'restore gaps batch 6: create and update of the profile through Graph beta, keeping its kind; the registered devices it applies to are not backed up, and who it is assigned to is written one assignment at a time (batch 15)', { view: 'graph-rest-beta' }),
   deviceManagementIntent: manual('security baseline intents are beta-only and replaced by the settings catalog, and their settings are a separate collection that is not backed up'),
-  managedDevice: manual('device state, enrolled by the device, not configuration'),
+  managedDevice: nothingToRestore('device state, enrolled by the device, not configuration'),
   mobileApp: automated('intune-apps-mobileapp', 'restore gaps batch 18: create and update of store, web, Microsoft 365 Apps, Edge and WinGet apps with their assignments; Win32 and line-of-business apps are recreated without their package and unassigned until it is uploaded; apps synced from Apple, Google or Microsoft are never created'),
   managedAppPolicy: automated('intune-mam-managedapppolicy', 'Wave 2: iOS and Android app protection create, update and delete; a create needs the protected apps in the backup (read per policy from restore gaps batch 13); other kinds stay manual'),
   targetedManagedAppConfiguration: automated('intune-mam-targetedmanagedappconfiguration', 'Wave 2: create, update and delete; a create needs the targeted apps in the backup (read per configuration from restore gaps batch 13)'),
@@ -275,7 +280,7 @@ export const TYPE_DECISIONS = Object.freeze({
   entitlementManagementRoleAssignment: manual('no writer yet; beta only, listed one role at a time'),
   deviceTemplate: manual('no writer yet; beta only'),
   securityZone: manual('no writer yet; beta only'),
-  sharedEmailDomain: manual('no writer yet; beta only'),
+  sharedEmailDomain: nothingToRestore('Microsoft provisions shared email domains; beta only'),
   schemaExtension: manual('no writer yet; only extensions owned by this tenant\'s apps are read'),
   // Remaining kinds, batch 9: read once the Collector holds the read permission; no writer is built yet.
   formsSettings: automated('forms', 'restore gaps batch 20: update in place of the Forms settings through Graph beta; a backup that widens sharing outside the organisation or turns the phishing scan off is withheld for a person', { view: 'graph-rest-beta' }),
@@ -289,6 +294,9 @@ export const TYPE_DECISIONS = Object.freeze({
   teamsCatalogApp: manual('Graph does not return the app package; it is uploaded again from your own copy'),
   engageCommunity: automated('community', 'restore gaps batch 20: update in place of the name, description and privacy; a private community is never made public, and a deleted community is set up by hand (a create makes a Microsoft 365 group and needs owners)'),
 });
+
+/** The kinds with nothing to restore, from TYPE_DECISIONS. Never counted as manual. */
+export const NOTHING_TO_RESTORE = Object.freeze(Object.keys(TYPE_DECISIONS).filter((type) => TYPE_DECISIONS[type].nothingToRestore === true));
 
 // Why a retried operation can never double-apply — each names the mechanism in
 // applyEngine.mjs / relationshipWriter.mjs that makes it so.
@@ -402,6 +410,7 @@ export function buildOperationLedger({ decisions = TYPE_DECISIONS } = {}) {
   if (missing.length > 0) throw new Error(`no explicit qualification decision for: ${missing.join(', ')}`);
   for (const [type, decision] of Object.entries(decisions)) {
     if (!TYPE_DECISION_VALUES.includes(decision.decision)) throw new Error(`${type}: invalid decision ${decision.decision}`);
+    if (decision.nothingToRestore === true && decision.decision !== 'manual') throw new Error(`${type}: nothing to restore, but marked ${decision.decision}`);
   }
   const extraRecords = Object.keys(COMPLETENESS).filter((type) => !types.includes(type));
   if (extraRecords.length > 0) throw new Error(`completeness records for types not in the catalogue: ${extraRecords.join(', ')}`);
@@ -428,12 +437,18 @@ export function buildOperationLedger({ decisions = TYPE_DECISIONS } = {}) {
         throw new Error(`${type}: liveFailures.${operation} needs a failedAt date and a reason`);
       }
     }
+    const completeness = completenessFor(type, decision);
+    // Microsoft-managed means there is nothing to restore; it must never read as manual.
+    if (completeness.state === 'microsoft-managed' && decision.nothingToRestore !== true) {
+      throw new Error(`${type} is Microsoft-managed, so it must be marked nothing to restore, not ${decision.decision}`);
+    }
     return Object.freeze({
       resourceType: type,
       decision: decision.decision,
       reason: decision.reason,
       softRestoreCandidate: decision.softRestoreCandidate === true,
-      completeness: completenessFor(type, decision),
+      nothingToRestore: decision.nothingToRestore === true,
+      completeness,
       source: sourceFor(type, decision),
       operations: Object.freeze(operations),
     });
@@ -467,6 +482,8 @@ export function qualificationFor(resourceType, { decisions = TYPE_DECISIONS } = 
     decision: decision.decision,
     reason: decision.reason,
     softRestoreCandidate: decision.softRestoreCandidate === true,
+    // A kind Microsoft or another system owns: not a gap, never counted as manual.
+    nothingToRestore: decision.nothingToRestore === true,
     remapping: Object.freeze(remapping),
     // Coverage plan v3: the coverage state and the parts a restore cannot bring back.
     completeness: plainCompleteness(resourceType, decision),

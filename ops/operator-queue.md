@@ -11782,8 +11782,15 @@ item that needs it stays untouched.
 - Drafted by the "Speed up the portal" thread (2026-10-29). PR #706 makes the Overview check the audit record
   incrementally. This gives the after numbers for Q241's before numbers. Same read-only rules as Q241.
 - Needs: Q241 done; PR #706 merged and deployed. **Quick (about 5 minutes): fine to take between other items.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 02:03 UTC, keel-operator). Read-only: no tenant calls, no writes. Deployed commit **4e1142e3** (the merge of #736; it includes #706). keel-portal active since 2026-10-30 01:54:59 UTC, used as "since".
+  - Step 2: **still no access log.** `/var/log/caddy` is empty, and `journalctl -u caddy` has 0 `duration` lines since the deploy (logging not turned on). `journalctl -u keel-portal` since 01:54:59 has 12 lifecycle lines only (start, Next.js 16.4.1, "Ready in 98ms", one 110.6M memory peak), so no per-path table is possible.
+  - Step 4: `verifyChainCached` over **386,652** records, in one process with one shared `cache = new Map()`, each run in `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` / `COMMIT`:
+    - run 1 (full walk): **4099 ms**, ok true;
+    - run 2 (cached): **140 ms**, ok true;
+    - run 3 (cached): **139 ms**, ok true.
+  - Before → after: Q241's `verifyChain` took ~3.5 s on every call (3478/3713/3469 ms, 383,653 records). Now only the first call walks the chain; later calls take ~0.14 s, about **25× faster**.
+    - Inference from the code: the remaining 140 ms is mostly the prefix-fingerprint check. A full walk happens again once the cache is older than `CHAIN_FULL_VERIFY_MS`.
 - Do: report the deployed commit, then repeat Q241 step 2 for the time since the deploy (same table shape), and step 4 with
   `verifyChainCached` in place of `verifyChain` (one shared `const cache = new Map()`, each call wrapped in
   `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` / `COMMIT`, three runs; the first is a full walk, the next two should

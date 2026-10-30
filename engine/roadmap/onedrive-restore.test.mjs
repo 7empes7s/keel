@@ -186,6 +186,33 @@ test('a locked site is refused; on the test tenant only a KEEL-RT- person\'s sit
   assert.match(reasons.bob_contoso_test, /^not-a-fixture: /);
 });
 
+test('a site whose lock state was not read, or a value of unknown origin, is never written', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant({ [ALICE]: site(ALICE, 'keel-rt-alice@contoso.test', { DefaultSharingLinkType: 'Direct' }) });
+  const source = await recordSource(client, tenantRef, live);
+  // The backup could not tell where these came from (pre-tracking, or an override that is not a switch).
+  for (const field of ['AnonymousLinkExpirationInDays', 'DefaultSharingLinkType']) {
+    source.observations[0].fieldCoverage[field] = { ...source.observations[0].fieldCoverage[field], inheritance: 'undetermined' };
+  }
+  delete source.observations[0].fieldCoverage.SharingCapability.inheritance;
+  Object.assign(live.state[ALICE], { AnonymousLinkExpirationInDays: 30, DefaultSharingLinkType: 'Internal', SharingCapability: 'Disabled' });
+  const { plan } = await planned(client, tenantRef, { source, live });
+  assert.deepEqual(plan.operations, []);
+  const manual = Object.fromEntries(plan.manual.map((item) => [item.field, item.reason]));
+  for (const field of ['AnonymousLinkExpirationInDays', 'DefaultSharingLinkType', 'SharingCapability']) assert.match(manual[field], /cannot tell whether/, field);
+
+  // The live read did not return a lock state: nothing is planned for the site.
+  const fresh = await recordSource(client, tenantRef, live);
+  live.state[ALICE].AnonymousLinkExpirationInDays = 7;
+  for (const value of [undefined, null, 2]) {
+    if (value === undefined) delete live.state[ALICE].LockState; else live.state[ALICE].LockState = value;
+    const again = await planned(client, tenantRef, { source: fresh, live });
+    assert.deepEqual(again.plan.operations, [], `LockState ${value}`);
+    assert.ok(again.plan.manual.some((item) => /lock state was not read/.test(item.reason)) || again.plan.refusals.some((item) => /^site-locked/.test(item.reason)), `LockState ${value}`);
+  }
+});
+
 test('only personal sites on one -my host are read; the plan names them by resource key', () => {
   assert.deepEqual(oneDriveScope([ALICE]), { sites: [ALICE], myHost: MY_HOST });
   assert.throws(() => oneDriveScope([`https://${MY_HOST}/personal/a`, 'https://other-my.sharepoint.com/personal/b']), /not on one host/);
@@ -207,7 +234,7 @@ test('the OneDrive write: declared sharing fields only, each judged for wider sh
   assert.deepEqual(containerAllowlist('AllowedOneDriveWrites'), { 'Set-PnPTenantSite': writeCmdletParameters()['Set-PnPTenantSite'].parameters });
   // The container checks the site again: one personal site on the tenant's -my host.
   const script = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');
-  assert.match(script, /if \(\$name -eq 'Set-PnPTenantSite'\) \{[\s\S]*?'\/personal\/\[A-Za-z0-9_\.-\]\+\/\?\\z'[\s\S]*?SiteNotAllowed/);
+  assert.match(script, /if \(\$name -eq 'Set-PnPTenantSite'\) \{[\s\S]*?'\/personal\/\[A-Za-z0-9\]\[A-Za-z0-9_\.-\]\*\/\?\\z'[\s\S]*?SiteNotAllowed/);
 
   const effect = (field, before, after) => WORKLOAD_EFFECT_RULES.onedriveSiteSettings.find((item) => item.field === field).when(before, after, {});
   assert.equal(effect('SharingCapability', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly'), false);

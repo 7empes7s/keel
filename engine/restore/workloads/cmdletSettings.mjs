@@ -508,6 +508,9 @@ const fingerprint = (entry) => sha256({ fields: entry.fields, fieldCoverage: ent
 // A OneDrive (SharePoint) site lock: read-only or no access. KEEL never changes or unlocks a locked site.
 const siteLocked = (fields) => typeof fields?.LockState === 'string' && !/^unlock$/i.test(fields.LockState);
 const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked' || siteLocked(entry?.fields);
+// A site is written only when its lock state was read and says Unlock: a lock KEEL could not read counts as one.
+const siteOpen = (entry) => entry?.fieldCoverage?.LockState?.status === 'observed' && typeof entry?.fields?.LockState === 'string'
+  && /^unlock$/i.test(entry.fields.LockState);
 /** The family read failed or was not available, so nothing in it is known now. */
 function familyGap(live, family) {
   const gap = [...(live?.failures ?? []), ...(live?.unavailable ?? [])].find((item) => item.family === family) ?? null;
@@ -668,8 +671,13 @@ function planFields(write, { observation, current, manual }) {
     if (same(before, after)) continue;
     // A value the site took from the tenant default is not the site's own: writing it would
     // pin today's default on the site (OneDrive, onedrive.mjs inheritance).
-    if (observation.fieldCoverage[field]?.inheritance === 'inherited') {
-      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the backup shows the tenant default here, not a value of the site\'s own; KEEL does not pin it on the site, and the tenant default is changed in the SharePoint admin center' });
+    // A OneDrive value is written only when the backup shows it as the site's own; an
+    // undetermined or untracked origin may be the tenant default.
+    const inheritance = observation.fieldCoverage[field]?.inheritance;
+    if (inheritance === 'inherited' || (write.identity === 'url' && writable.has(field) && inheritance !== 'explicit')) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: inheritance === 'inherited'
+        ? 'the backup shows the tenant default here, not a value of the site\'s own; KEEL does not pin it on the site, and the tenant default is changed in the SharePoint admin center'
+        : 'the backup cannot tell whether this is the site\'s own value or the tenant default, so KEEL does not pin it on the site; an administrator applies it' });
       continue;
     }
     if (isTrustField(write.resourceType, field)) {
@@ -808,6 +816,10 @@ export function planWorkloadSettingsRestore({
       refusals.push({ naturalKey: `${workload}:${key}`, reason: siteLocked(current.fields)
         ? `site-locked: ${key} is locked (LockState ${current.fields.LockState}); KEEL never changes or unlocks it`
         : `preservation-locked: ${key} or its policy is under a platform preservation lock; KEEL never changes it` });
+      continue;
+    }
+    if (current && declarations[ops.update]?.identity === 'url' && !siteOpen(current)) {
+      manual.push({ resourceKey: key, field: null, reason: 'the site\'s lock state was not read, so KEEL cannot tell it is unlocked; no change is planned' });
       continue;
     }
     if (current && parentLock(live, current) === 'unknown') {
@@ -979,6 +991,10 @@ export async function executeWorkloadSettingsRestore(client, {
     // The fixture guard again, on what is about to be written: the object read now, or
     // for a re-created policy the name it is created with.
     const write = declarations[op.operationId];
+    if (write?.identity === 'url' && !siteOpen(entry)) {
+      await settle(op, { outcome: 'refused', reasons: ['the site\'s lock state could not be read now; KEEL never writes a site it cannot tell is unlocked'] });
+      continue;
+    }
     const writing = entry ?? { fields: { Identity: `Tag:${op.parameters?.Identity ?? ''}` } };
     const notFixture = write
       ? targetProblem(write, family, [writing], { key: op.resourceKey, tenantRef, testTenantRefs, allowTenantWide: plan.allowTenantWide === true })

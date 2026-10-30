@@ -437,7 +437,7 @@ if ($name -eq 'Set-PnPTenantSite') {
     $adminHost = ([System.Uri][string]$config.sharePointAdminUrl).Host
     $myHost = $adminHost -replace '-admin\.sharepoint\.com$', '-my.sharepoint.com'
     $siteId = [string]$params['Identity']
-    if ($myHost -eq $adminHost -or $siteId -notmatch ('^https://' + [regex]::Escape($myHost) + '/personal/[A-Za-z0-9_.-]+/?\z')) {
+    if ($myHost -eq $adminHost -or $siteId -notmatch ('^https://' + [regex]::Escape($myHost) + '/personal/[A-Za-z0-9][A-Za-z0-9_.-]*/?\z')) {
         Out-Failure -Message "Set-PnPTenantSite takes one OneDrive personal site on this tenant, not $siteId" -ErrorId 'SiteNotAllowed'
     }
 }

@@ -253,7 +253,8 @@ const canonical = (value) => JSON.stringify(value ?? null, (_key, inner) => (inn
 /** A lock an administrator or the platform put on the site. KEEL never changes or unlocks it. */
 export function siteLocked(fields) {
   const state = fields?.LockState;
-  return typeof state === 'string' && state.length > 0 && state.toLowerCase() !== 'unlock';
+  // Anything but a read Unlock counts as locked, as in the restore (cmdletSettings.mjs).
+  return !(typeof state === 'string' && state.toLowerCase() === 'unlock');
 }
 
 // An observation recorded before inheritance was tracked carries none; it reads

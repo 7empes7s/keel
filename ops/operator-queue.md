@@ -12776,3 +12776,31 @@ item that needs it stays untouched.
   6. **After:** if step 1 changed the fixture, put `DefaultLinkPermission` back to P and read it back.
 - **Report:** B; step 1 values (and P if prepped); steps 2 to 5 with exit codes; proven / not proven; `needsManualRevert`; approval id;
   evidence branch and commit; import lines; what is left changed in the tenant (expected: nothing).
+
+### Q273: Live recheck of a named location delete through the sign-in path gate (after PR #783), about 15 minutes
+- Drafted by the "Fix named location delete check" thread (2026-10-30). Q247's namedLocation delete (artifact 444e3411) verified
+  absent but exited 1 with `sign-in-path-gate: sign-in path changed: namedLocations`, because the named location list still
+  returned the deleted location (#774). PR #783 now leaves a verified lockout delete out of the after read too. This item checks
+  that a `keel-remediate --enforce` delete of a named location now exits 0. No evidence capture is needed (Q247 already promoted
+  the record).
+- Needs: PR #783 merged and deployed (build B). Check: `grep -q leftOutOfAfter /opt/keel-live/engine/restore/applyEngine.mjs`.
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
+  account. The fixture is an IP named location, **not trusted**, used by no policy. A named location delete is lockout-sensitive
+  in the checklist: Marouane gave the go for today's lockout steps in Q247 (08:27 UTC, signed in as a second Global Administrator
+  "all day"). If you can't rely on that for this step, set `blocked: waiting on Marouane's second GA session`, write nothing, and
+  say so in the Result.
+- Do, at B, from your own checkout (never `/opt/keel`), as Q247 step 1 delete (Q48 G):
+  1. Break-glass report **ready** (else stop, blocked). Write down that no `KEEL-RT-273` object exists.
+  2. Snapshot S and baseline from it, before the fixture exists (note the active baseline version so you can reinstate it).
+  3. Create `KEEL-RT-273-location-delete` (IP range 198.51.100.0/24, not trusted, no policy). Collect; expect one drift
+     `added` for it.
+  4. `keel-remediate --enforce` on that drift. Expect: exit **0**, journal `delete succeeded, absent`, GET of the location 404,
+     and **no** `sign-in-path-gate` failure. Report the exit code, the artifact id and the full failure lines verbatim if any.
+  5. If the run still fails the gate, quote it, and also list `/identity/conditionalAccess/namedLocations` (Collector) right
+     after, noting whether the deleted id is still listed.
+  6. Cleanup: the fixture is gone (if the delete failed, delete it by hand as the Restorer and read back 404). Reinstate the
+     baseline noted in step 2 as the active one.
+- **Report:** B; break-glass readiness; S and baseline ids; drift id; remediate exit code, artifact id and gate outcome; what is
+  left in the tenant (expected: nothing) and the active baseline.

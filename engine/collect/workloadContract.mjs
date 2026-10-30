@@ -373,6 +373,7 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     ['exchange-org-access.application-access-policies', 'exchange-org-access', 'Which apps may open which mailboxes', 'Get-ApplicationAccessPolicy'],
     ['exchange-org-access.external-in-outlook', 'exchange-org-access', 'The External sender tag in Outlook', 'Get-ExternalInOutlook'],
     ['exchange-org-defaults.transport-config', 'exchange-org-defaults', 'Organization transport settings (SMTP AUTH, TLS, journaling)', 'Get-TransportConfig'],
+    ['exchange-org-defaults.organization-config', 'exchange-org-defaults', 'Mailbox auditing for the whole organization', 'Get-OrganizationConfig'],
     ['exchange-org-defaults.email-address-policies', 'exchange-org-defaults', 'Email address policies', 'Get-EmailAddressPolicy'],
     ['exchange-org-defaults.cas-mailbox-plans', 'exchange-org-defaults', 'Client access defaults for new mailboxes', 'Get-CASMailboxPlan'],
     ['exchange-org-defaults.mailbox-plans', 'exchange-org-defaults', 'Mailbox defaults for new mailboxes', 'Get-MailboxPlan'],

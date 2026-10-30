@@ -11,8 +11,10 @@
  *    assignment policies (what people may change on their own mailbox), application
  *    access policies (which apps may open which mailboxes) and the "External" sender tag.
  *  - `exchange-org-defaults` ("Organization settings"): the transport configuration
- *    (SMTP AUTH, TLS, journaling report address, size limits), email address policies,
- *    and the client access and mailbox plans a new mailbox starts from.
+ *    (SMTP AUTH, TLS, journaling report address, size limits), whether mailbox auditing
+ *    is turned off for the whole organization (Get-OrganizationConfig AuditDisabled,
+ *    which CISA ScubaGear MS.EXO.13.1 checks), email address policies, and the client
+ *    access and mailbox plans a new mailbox starts from.
  *
  * Rules (the same as the other Exchange cmdlet workloads):
  *  - Read only, configuration only. Only the Get cmdlets in EXCHANGE_ORG_POLICIES_CMDLET_PARAMETERS
@@ -23,7 +25,7 @@
  *    check shows any to drop.
  *  - Identity is the Guid (it survives a rename; the name is kept as a field). The two
  *    organisation-wide answers (transport configuration and the External tag) are kept
- *    under `organization`. An application access policy has no Guid; it is kept under
+ *    under `organization`, and so is the organization configuration. An application access policy has no Guid; it is kept under
  *    the Identity Exchange gives it (tenant, app and mailbox scope).
  *  - Errors are structured. A family that fails is `failed` or `denied`, never an empty list.
  *  - Disabled until qualified. Nothing is sent unless the Exchange mailbox workload is
@@ -111,12 +113,17 @@ export const ACCESS_FAMILIES = Object.freeze({
 /** Organisation-wide transport settings, then what a new mailbox or group starts with. */
 export const DEFAULTS_FAMILIES = Object.freeze({
   transportConfig: family('exchange-org-defaults.transport-config', 'Get-TransportConfig', 'transport-config', organization, [
-    'SmtpClientAuthenticationDisabled', 'AllowLegacyTLSClients', 'JournalingReportNdrTo', 'ExternalPostmasterAddress',
+    'Name', 'SmtpClientAuthenticationDisabled', 'AllowLegacyTLSClients', 'JournalingReportNdrTo', 'ExternalPostmasterAddress',
     'ExternalDsnReportingAuthority', 'ExternalDelayDsnEnabled', 'InternalDelayDsnEnabled', 'ExternalDsnSendHtml', 'InternalDsnSendHtml',
     'MaxReceiveSize', 'MaxSendSize', 'MaxRecipientEnvelopeLimit', 'AddressBookPolicyRoutingEnabled', 'ClearCategories',
     'ConvertDisclaimerWrapperToEml', 'Rfc2231EncodingEnabled', 'HeaderPromotionModeSetting', 'VoicemailJournalingEnabled',
     'ReplyAllStormProtectionEnabled', 'ReplyAllStormDetectionMinimumRecipients', 'ReplyAllStormDetectionMinimumReplies',
     'ReplyAllStormBlockDurationHours', WHEN,
+  ]),
+  // Only what a check needs: the exchange-mailbox-settings workload keeps its own
+  // allowlist of organization settings (exchange.mjs ORGANIZATION_FIELDS), qualified apart.
+  organizationConfig: family('exchange-org-defaults.organization-config', 'Get-OrganizationConfig', 'organization-config', organization, [
+    'Name', 'AuditDisabled', WHEN,
   ]),
   emailAddressPolicy: family('exchange-org-defaults.email-address-policies', 'Get-EmailAddressPolicy', 'email-address-policy', byGuid, [
     'Name', 'Priority', 'EnabledPrimarySMTPAddressTemplate', 'EnabledEmailAddressTemplates', 'DisabledEmailAddressTemplates',
@@ -217,14 +224,15 @@ function orgPolicyWorkload({ workload, type, families, label, required = [] }) {
 }
 
 // Every tenant has a default sharing, Outlook on the web and role assignment policy, a
-// transport configuration and mailbox plans, so an empty answer there is a gap.
+// transport configuration, an organization configuration and mailbox plans, so an empty
+// answer there is a gap.
 export const ORG_ACCESS = orgPolicyWorkload({
   workload: EXCHANGE_ORG_ACCESS_WORKLOAD, type: 'exchangeOrgAccess', families: ACCESS_FAMILIES, label: 'sharing and client access settings',
   required: ['sharingPolicy', 'owaMailboxPolicy', 'roleAssignmentPolicy', 'externalInOutlook'],
 });
 export const ORG_DEFAULTS = orgPolicyWorkload({
   workload: EXCHANGE_ORG_DEFAULTS_WORKLOAD, type: 'exchangeOrgDefaults', families: DEFAULTS_FAMILIES, label: 'transport and new mailbox defaults',
-  required: ['transportConfig', 'casMailboxPlan', 'mailboxPlan'],
+  required: ['transportConfig', 'organizationConfig', 'casMailboxPlan', 'mailboxPlan'],
 });
 
 export const readExchangeOrgAccess = (options) => ORG_ACCESS.read(options);

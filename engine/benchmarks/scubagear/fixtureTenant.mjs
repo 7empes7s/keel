@@ -172,6 +172,16 @@ export const FIXTURE_BACKUPS = Object.freeze({
     }),
     mail('safeAttachmentPolicy', 'a5', { Name: 'KEEL-RT-Safe attachments', IsBuiltInProtection: false, Enable: true, Action: 'Block' }),
   ],
+  'exchange-org-access': [
+    {
+      kind: 'sharingPolicy', identity: 'b6a7c1e2-0000-4000-8000-00000000e101', id: 'sharing-policy:b6a7c1e2-0000-4000-8000-00000000e101',
+      Name: 'KEEL-RT-Default Sharing Policy', Enabled: true, Default: true, Domains: ['Anonymous:CalendarSharingFreeBusySimple', '*:CalendarSharingFreeBusySimple'],
+    },
+  ],
+  'exchange-org-defaults': [
+    { kind: 'transportConfig', identity: 'organization', id: 'transport-config:organization', Name: 'Transport Settings', SmtpClientAuthenticationDisabled: true },
+    { kind: 'organizationConfig', identity: 'organization', id: 'organization-config:organization', Name: 'KEEL-RT-contoso.onmicrosoft.com', AuditDisabled: true },
+  ],
   'exchange-extended': [
     mail('safeLinksRule', 'b1', {
       Name: 'KEEL-RT-Safe links', SafeLinksPolicy: 'KEEL-RT-Safe links', State: 'Enabled', Priority: 0,
@@ -255,7 +265,11 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.AAD.8.1v1': 'pass', // guests are restricted
   'MS.AAD.8.2v1': 'fail', // everyone can invite guests
   'MS.EXO.1.1v2': 'pass', // no domain allows automatic forwarding
+  'MS.EXO.5.1v1': 'pass', // SMTP AUTH is turned off for the organization
+  'MS.EXO.6.1v1': 'pass', // no policy shares contacts with every domain
+  'MS.EXO.6.2v1': 'fail', // the default policy shares calendar free/busy with every domain
   'MS.EXO.7.1v1': 'pass', // external senders are flagged
+  'MS.EXO.13.1v1': 'fail', // mailbox auditing is turned off for the organization
   'MS.SECURITYSUITE.1.1v1': 'pass', // the Default malware policy blocks .exe, .cmd and .vbe
   'MS.SECURITYSUITE.1.2v1': 'fail', // zero-hour auto purge is off
   'MS.SECURITYSUITE.1.4v1': 'pass', // Defender scans SharePoint, OneDrive and Teams files

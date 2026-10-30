@@ -10903,7 +10903,14 @@ item that needs it stays untouched.
   (`a9a7b6e3…`) from Conditional Access > Deleted policies. His go of 08:27 UTC for the lockout steps (second GA session,
   reachable to undo) still applies; he said he stays signed in all day.
 - Needs: none. Run at the deployed commit B, from your own checkout at B.
-- Status: todo
+- Status: blocked (CA purge 403: needs Marouane's portal click)
+- Result: **blocked at step 2: the purge from CA deleted items answers 403 again** (2026-10-30 15:45 UTC, keel-operator). Build **B = 04e979e3**. Restorer for writes, Collector for reads; global admin not used. Break-glass report **ready** (both accounts) before step 1, the snapshot, the delete and after cleanup. Marouane's account and the break-glass accounts were never targeted.
+  - Step 0: `KEEL-RT-245-ca` (`a9a7b6e3…`) is gone from CA deleted items (GET **404**). Thanks for the purge. Still there: `KEEL-RT-249-ca-delete` and two old `KEEL-RT-148-ca-delete`.
+  - Step 1: no `KEEL-RT-274` group or policy before. Group `KEEL-RT-274-ca-users` (`63cfe4b0…`, only carla); CA `KEEL-RT-274-ca` (`78747b49…`). Read back: **report-only**, include that group, exclude `8dab2722…` and `16433d62…` (both break-glass accounts), block, all apps. Snapshot **f3c3fab5** holds both (CA state `enabledForReportingButNotEnforced`).
+  - Step 2: DELETE the policy **204** (now in CA deleted items, report-only). `DELETE beta /identity/conditionalAccess/deletedItems/policies/78747b49…` → **403** `AccessDenied` "CDT token is required for API: 'Delete Policy' in App: `a3dfc3c6-2c7d-4f42-aeec-b2877f9bce97`" (request-id a9e78300-1ae9-47dd-80f2-0448d577f510). As the item says: **create skipped, no restore run, no approval, no capture**, so no evidence branch.
+  - Step 3: the group deleted and purged (deleted items 404). **Left: `KEEL-RT-274-ca` (`78747b49-0909-45a3-941e-560ec802ca12`) in CA deleted items**, report-only, never on.
+  - **Marouane, to finish this:** Entra admin center > Conditional Access > Deleted policies > `KEEL-RT-274-ca` > Permanently delete. Then the create runs from snapshot **f3c3fab5** (it holds the group too, so the restore recreates both). The record lapses 2026-11-13 13:02.
+  - Inference: the app can never purge CA deleted items (it needs a delegated "CDT" token), so every CA create recapture needs this one portal click between the delete and the restore. A future item could have Marouane purge right after the delete, while the session waits.
 - **Test tenant only.** Same rules as Q245 (lockout rules of Q45/Q48). Before each step `node cli/keel-breakglass.mjs report
   --config "$COLLECTOR"` must read ready; if not, stop and report blocked. Self-approve; log every approval id. Never target,
   assign, drift or sign in as marouane.defili or a break-glass account.

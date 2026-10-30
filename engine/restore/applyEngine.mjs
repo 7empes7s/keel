@@ -2,7 +2,7 @@ import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
-import { createBodyProjection, immutableDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
+import { createBodyProjection, immutableDrift, namedValueDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
@@ -26,7 +26,7 @@ import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
-  isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
+  changedFields as changedTenantPolicyFields, isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
   crossTenantTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
 import {
@@ -1013,7 +1013,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       if (mode === 'dry-run') {
-        applied.push({ naturalKey: resource.naturalKey, targetId });
+        applied.push({ naturalKey: resource.naturalKey, targetId, changes: plannedUpdateChanges(resource, payload, normalisedDesired) });
         return;
       }
 
@@ -1371,8 +1371,15 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   const crossTenantTrust = crossTenantTrustCompletion(resource, verb);
   const followUp = crossTenantTrust ? { completion: crossTenantTrust } : {};
   const writes = [...methods, ...(root ? [root] : [])];
-  if (writes.length === 0) return { applied: { naturalKey, targetId, ...followUp } };
-  if (mode === 'dry-run') return { applied: { naturalKey, targetId, ...followUp } };
+  // Issue #720: the plan names each field that changes. A PUT sends every
+  // writable field, but only the ones that differ from live are listed.
+  const live = resource.live?.payload ?? null;
+  const changes = {
+    fields: !root ? [] : root.method === 'PUT' && live ? changedTenantPolicyFields(entry, desired, live) : root.fields,
+    ...(methods.length > 0 ? { methods: methods.map((write) => write.methodId) } : {}),
+  };
+  if (writes.length === 0) return { applied: { naturalKey, targetId, changes, ...followUp } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes, ...followUp } };
 
   // A reviewer query names directory objects inside a string, out of reach of
   // reference rewriting: each must still exist before the PUT replaces the policy.
@@ -1408,15 +1415,15 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${verb} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };
   }
-  const live = reRead?.body ?? reRead;
-  const postStateRefusal = tenantPolicyPostStateRefusal(entry, desired, live, written);
+  const after = reRead?.body ?? reRead;
+  const postStateRefusal = tenantPolicyPostStateRefusal(entry, desired, after, written);
   if (postStateRefusal) {
-    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'tenant policy post-state did not verify' });
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: after, detail: 'tenant policy post-state did not verify' });
     return { failed: { naturalKey, error: postStateRefusal } };
   }
-  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
+  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: after });
   return {
-    applied: { naturalKey, targetId: targetId ?? live?.id ?? null, ...followUp },
+    applied: { naturalKey, targetId: targetId ?? after?.id ?? null, changes, ...followUp },
     signInPathSection: entry.signInPathSection,
   };
 }
@@ -2005,6 +2012,25 @@ function withoutPath(value, [head, ...rest]) {
   if (rest.length === 0) delete copy[head];
   else copy[head] = withoutPath(copy[head], rest);
   return copy;
+}
+
+/**
+ * Issue #720: what a dry run of a plain update would change. `fields` names
+ * each field of the PATCH body whose value differs from live (every one when
+ * live was not read); an empty list means the update writes nothing. A
+ * directory setting also names each of its `values` that changes.
+ */
+function plannedUpdateChanges(resource, payload, normalisedDesired) {
+  const sent = Object.keys(payload ?? {}).filter((field) => field !== '@odata.type');
+  const live = resource.live?.payload ?? null;
+  if (!live) return { fields: sent };
+  const liveView = verificationView(forVerification(live, resource), resource.resourceType);
+  const differ = new Set(residualDiff(normalisedDesired, liveView, resource.resourceType).map((path) => path.split('.')[0]));
+  const fields = sent.filter((field) => differ.has(field));
+  if (resource.resourceType === 'groupSetting' && fields.includes('values')) {
+    return { fields, values: namedValueDrift(resource.payload?.values, live.values).changed };
+  }
+  return { fields };
 }
 
 function residualDiff(desired, live, resourceType) {

@@ -511,10 +511,11 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   if (conditions.failed) return { failed: { naturalKey, error: conditions.failed } };
   const conditionWrites = conditions.writes;
 
+  const changes = plannedChanges(body, conditionWrites);
   if (operation === 'update' && Object.keys(body).length === 0 && conditionWrites.length === 0) {
-    return { applied: { naturalKey, targetId, followUp } };
+    return { applied: { naturalKey, targetId, changes, followUp } };
   }
-  if (mode === 'dry-run') return { applied: { naturalKey, targetId, followUp } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes, followUp } };
 
   const journal = await journalBefore(rollbackClient, {
     runId, restoreRef, resource, operation, targetId,
@@ -580,7 +581,24 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
     return { failed: { naturalKey, error: postStateRefusal } };
   }
   await journalOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead.body });
-  return { applied: { naturalKey, targetId, followUp } };
+  return { applied: { naturalKey, targetId, changes, followUp } };
+}
+
+/**
+ * Issue #720: what a write changes, for the dry run and the result. `fields`
+ * names each field sent (a policy's include and exclude rule sets count as
+ * fields when a rule is added or removed); `rules` counts the rules added
+ * and removed per set.
+ */
+function plannedChanges(body, conditionWrites) {
+  const fields = Object.keys(body).filter((field) => field !== 'id' && field !== 'isOrganizationDefault');
+  const rules = {};
+  for (const write of conditionWrites) {
+    rules[write.set] ??= { added: 0, removed: 0 };
+    rules[write.set][write.method === 'DELETE' ? 'removed' : 'added'] += 1;
+  }
+  const sets = CONDITION_SETS.filter((set) => rules[set]);
+  return { fields: [...fields, ...sets], ...(sets.length > 0 ? { rules } : {}) };
 }
 
 /**

@@ -375,6 +375,40 @@ test('dry run sends nothing', async () => {
   assert.equal(graph.bodies.length, 0);
 });
 
+test('issue #720: a dry run lists each tenant policy field it would change', async () => {
+  const consentPolicy = { isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30, reviewers: [] };
+  const cases = [
+    // A PUT sends every writable field; only the one that differs is listed.
+    ['adminConsentRequestPolicy', '/policies/adminConsentRequestPolicy', consentPolicy, { ...consentPolicy, requestDurationInDays: 14 }, ['requestDurationInDays']],
+    ['crossTenantAccessPolicy', '/policies/crossTenantAccessPolicy', { allowedCloudEndpoints: ['microsoftonline.us'] }, { allowedCloudEndpoints: [] }, ['allowedCloudEndpoints']],
+    ['crossTenantAccessPolicyConfigurationDefault', '/policies/crossTenantAccessPolicy/default',
+      { isServiceDefault: false, tenantRestrictions: { usersAndGroups: { accessType: 'blocked', targets: [{ target: 'AllUsers', targetType: 'user' }] } } },
+      { isServiceDefault: false, tenantRestrictions: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } } }, ['tenantRestrictions']],
+    ['authorizationPolicy', '/policies/authorizationPolicy', authorization, { ...authorization, allowInvitesFrom: 'everyone' }, ['allowInvitesFrom']],
+  ];
+  for (const [type, path, desired, live, fields] of cases) {
+    const graph = recordingGraph();
+    const result = await run(graph, [plannedUpdate(graph, type, path, desired, live)], { lockoutGate: ALLOW, mode: 'dry-run' });
+    assert.deepEqual(result.failed, [], type);
+    assert.deepEqual(result.applied[0].changes, { fields }, type);
+    assert.equal(graph.bodies.length, 0, type);
+
+    // The enforce run reports the same fields, and a re-run dry run plans none.
+    const written = await run(graph, [plannedUpdate(graph, type, path, desired, live)], { lockoutGate: ALLOW });
+    assert.deepEqual(written.applied[0].changes, { fields }, type);
+    const again = await run(graph, [plannedUpdate(graph, type, path, desired, graph.objects.get(path))], { lockoutGate: ALLOW, mode: 'dry-run' });
+    assert.deepEqual(again.applied[0].changes, { fields: [] }, `${type}: nothing to write once live matches`);
+  }
+});
+
+test('issue #720: a dry run of the methods policy names each method configuration it would change', async () => {
+  const graph = recordingGraph();
+  const live = { ...methods, authenticationMethodConfigurations: methods.authenticationMethodConfigurations.map((config) => (config.id === 'Sms' ? { ...config, state: 'enabled' } : config)) };
+  const result = await run(graph, [plannedUpdate(graph, 'authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy', methods, live)], { lockoutGate: ALLOW, mode: 'dry-run' });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.applied[0].changes, { fields: [], methods: ['Sms'] });
+});
+
 test('a reference remapped to a different id is refused (remapping is not proven)', async () => {
   const graph = recordingGraph();
   const desired = { ...methods, authenticationMethodConfigurations: [{ id: 'Fido2', state: 'enabled', includeTargets: [{ targetType: 'group', id: 'source-group' }] }] };

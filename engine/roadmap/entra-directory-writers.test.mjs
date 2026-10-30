@@ -623,6 +623,38 @@ test('a consent the backup cannot drive fails before any write', async () => {
   assert.equal(graph.bodies.length, 0);
 });
 
+test('issue #720: a dry run lists the consent fields it would change, and none once live matches', async () => {
+  const graph = directoryGraph();
+  graph.objects.set('/oauth2PermissionGrants/live-grant', { id: 'live-grant', clientId: 'sp-client', consentType: 'AllPrincipals', principalId: null, resourceId: 'sp-graph', scope: 'User.Read' });
+  const resource = consentResource('create');
+  const planned = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(planned.failed, []);
+  assert.deepEqual(planned.applied[0].changes, { fields: ['scope'] });
+  assert.equal(graph.bodies.length, 0);
+
+  const written = await run(graph, [resource]);
+  assert.deepEqual(written.applied[0].changes, { fields: ['scope'] });
+  const again = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(again.applied[0].changes, { fields: [] }, 'a consent that already matches plans no field');
+});
+
+test('issue #720: a dry run of an app consent policy names its changed fields and rule sets', async () => {
+  const graph = directoryGraph();
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'drifted' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ ...mediumInclude, id: 'drifted' }] });
+  graph.objects.set(`${POLICY}/excludes`, { value: [] });
+  const resource = grantResource('update', grantPolicy(), { targetId: 'keel-rt-low-risk', live: { state: 'present', targetId: 'keel-rt-low-risk', payload: graph.objects.get(POLICY) } });
+  const planned = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(planned.failed, []);
+  assert.deepEqual(planned.applied[0].changes, { fields: ['description', 'includes'], rules: { includes: { added: 1, removed: 1 } } });
+  assert.equal(graph.bodies.length, 0);
+
+  await run(graph, [resource]);
+  const settled = { ...resource, live: { state: 'present', targetId: 'keel-rt-low-risk', payload: graph.objects.get(POLICY) } };
+  const again = await run(graph, [settled], { mode: 'dry-run' });
+  assert.deepEqual(again.applied[0].changes, { fields: [] });
+});
+
 // ------------------------------------------------------- best-effort recreate
 
 test('every type that can be incomplete has an admin center path', () => {

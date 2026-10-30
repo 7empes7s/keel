@@ -8,7 +8,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { typeService, plainKind } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { loadServiceChanges, loadServiceReadTotals } from "@/lib/service-changes";
-import { serviceChangeFrom, serviceChangeName, serviceUndo } from "@/lib/service-changes-view";
+import { serviceChangeFrom, serviceChangeName, serviceUndo, undoSource } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
 
 // Service setting changes: a change a service read finds against the read before it
@@ -155,6 +155,91 @@ test("a site template's stored XML never reaches the Changes page", async () => 
     await client.end();
     await database.cleanup();
   }
+});
+
+test("undo restores the active baseline's value, not the one stored with an older change", async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    const now = new Date("2026-10-15T12:00:00.000Z");
+    const mailFlow = async (at: string, fields: Record<string, unknown>, drift = true) => {
+      const { rows: [collection] } = await client.query(
+        `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+         VALUES ($1, 'exchange-mail-flow', 'complete', $2, $2, $2) RETURNING id`,
+        [TENANT, at],
+      );
+      await client.query(
+        `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'transport-rule:KEEL-RT-rule', $2)`,
+        [collection.id, { identity: "KEEL-RT-rule", kind: "transportRule", Name: "KEEL-RT-rule", ...fields }],
+      );
+      if (drift) await detectWorkloadDrift(client, { collectionId: collection.id, hysteresis: undefined });
+      return String(collection.id);
+    };
+    // The first read is the approved setup; the next one switches the rule on.
+    const first = await mailFlow("2026-10-10T03:00:00.000Z", { State: "Disabled", Priority: 1 });
+    await mailFlow("2026-10-11T03:00:00.000Z", { State: "Enabled", Priority: 1 });
+    const [before] = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    assert.equal(before.serviceRead?.previousCollectionId, first);
+    assert.deepEqual(before.serviceRead?.undoFrom, { collectionId: first, readAt: "2026-10-10T03:00:00.000Z", approved: true });
+
+    // A new baseline version is captured later from another read and made active: it
+    // repoints the approved setup (as applyBaselineWorkloads does), with Priority 2.
+    const baselineRead = await mailFlow("2026-10-12T03:00:00.000Z", { State: "Disabled", Priority: 2 }, false);
+    await client.query(
+      `UPDATE workload_approved SET collection_id = $3, fields = (SELECT fields FROM workload_observation WHERE collection_id = $3 AND resource_key = $2)
+        WHERE tenant_ref = $1 AND workload = 'exchange-mail-flow' AND resource_key = $2`,
+      [TENANT, "transport-rule:KEEL-RT-rule", baselineRead],
+    );
+    const [after] = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    // The change still names the read it was compared with, but undo restores from the baseline's read.
+    assert.equal(after.serviceRead?.previousCollectionId, first);
+    assert.deepEqual(after.serviceRead?.undoFrom, { collectionId: baselineRead, readAt: "2026-10-12T03:00:00.000Z", approved: true });
+    assert.deepEqual(after.serviceRead?.undo, { possible: true, reason: null });
+    // The details show the baseline's values, the ones undo puts back, not the ones stored
+    // with the change: the baseline also differs from now in Priority.
+    assert.deepEqual([before.before, before.after], [{ State: "Disabled" }, { State: "Enabled" }]);
+    assert.deepEqual([after.before, after.after], [{ Priority: 2, State: "Disabled" }, { Priority: 1, State: "Enabled" }]);
+    assert.equal(after.serviceRead?.beforeIsApproved, true);
+
+    // A baseline that already holds the newest value leaves nothing to compare or undo.
+    assert.deepEqual(serviceRow({ approved_collection_id: "c3", approved_differences: [] }).serviceRead?.undo.reason?.includes("already matches the active baseline"), true);
+    const matching = serviceRow({ approved_collection_id: "c3", approved_differences: [] });
+    assert.deepEqual([matching.before, matching.after, matching.serviceRead?.beforeIsApproved], [{}, {}, true]);
+
+    // A baseline whose read no longer holds the rule leaves nothing to put back: undo says so
+    // instead of quietly falling back to the older value.
+    const empty = await mailFlow("2026-10-12T04:00:00.000Z", { State: "Disabled" }, false);
+    await client.query("DELETE FROM workload_observation WHERE collection_id = $1", [empty]);
+    await client.query("UPDATE workload_approved SET collection_id = $2 WHERE tenant_ref = $1 AND workload = 'exchange-mail-flow'", [TENANT, empty]);
+    const [gone] = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    assert.equal(gone.serviceRead?.undoFrom.collectionId, empty);
+    assert.equal(gone.serviceRead?.undo.possible, false);
+
+    // An active baseline that does not hold the rule at all (an older version without it was
+    // reinstated) leaves no approved value: undo never falls back to the value stored with the change.
+    await client.query("DELETE FROM workload_approved WHERE tenant_ref = $1 AND workload = 'exchange-mail-flow'", [TENANT]);
+    const [unheld] = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    assert.equal(unheld.serviceRead?.undoFrom.collectionId, null);
+    assert.equal(unheld.serviceRead?.undo.possible, false);
+    assert.match(unheld.serviceRead?.undo.reason ?? "", /active baseline does not hold this setting/);
+    // With no approved value, the details keep the values stored with the change.
+    assert.deepEqual([unheld.before, unheld.after], [{ State: "Disabled" }, { State: "Enabled" }]);
+    assert.equal(unheld.serviceRead?.beforeIsApproved, false);
+  } finally {
+    await client.end();
+    await database.cleanup();
+  }
+});
+
+test("undo falls back to the read the change was compared with only when the service has no approved setup", () => {
+  const row = { previous_collection_id: "c1", previous_observed_to: "2026-10-10T03:00:00.000Z" };
+  assert.deepEqual(undoSource(row), { collectionId: "c1", readAt: "2026-10-10T03:00:00.000Z", approved: false });
+  assert.deepEqual(undoSource({ ...row, approved_collection_id: "c3", approved_observed_to: "2026-10-12T03:00:00.000Z" }),
+    { collectionId: "c3", readAt: "2026-10-12T03:00:00.000Z", approved: true });
+  assert.deepEqual(undoSource({ ...row, has_approved_setup: true }), { collectionId: null, readAt: null, approved: true });
+  assert.match(serviceRow({ has_approved_setup: true }).serviceRead?.undo.reason ?? "", /active baseline does not hold/);
+  assert.equal(serviceRow({ has_approved_setup: true, change_type: "added" }).serviceRead?.undo.reason?.includes("never deletes settings"), true);
 });
 
 const NOW = "2026-10-15T12:00:00.000Z";

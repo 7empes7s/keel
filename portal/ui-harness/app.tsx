@@ -2264,7 +2264,8 @@ const serviceChange = (id: string, workload: string, resourceKey: string, name: 
   detectedAt: "2026-10-02T02:00:00Z", before: null, after: null, name,
   serviceRead: {
     workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", previousReadAt: "2026-09-30T02:00:00Z",
-    comparedWith: "approved", alertId: alert, alertState: "open",
+    undoFrom: { collectionId: "c0110000-0000-4000-8000-0000000000c4", readAt: "2026-09-30T02:00:00Z", approved: true },
+    beforeIsApproved: true, comparedWith: "approved", alertId: alert, alertState: "open",
     undo: serviceUndo({ workload, resourceKey, changeType: over.changeType ?? "modified" }, { restorable: true, reason: null }),
   },
   ...over,

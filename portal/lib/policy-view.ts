@@ -1,7 +1,7 @@
 import type { IconName } from "@/components/shell/icons";
 import { plainError } from "@/lib/error-words";
 import type { BadgeTone } from "@/components/ui/badge";
-import { plainKind, typeService } from "@/lib/baselines-view";
+import { itemKindName, itemService, plainKind, typeService } from "@/lib/baselines-view";
 import type { RiskTone } from "@/lib/menu-status";
 import type { Policy, PolicyAction } from "@/lib/policies";
 import { ago, formatTimestamp } from "@/lib/presentation";
@@ -262,8 +262,9 @@ export function actionName(action: Pick<PolicyAction, "name" | "resource_type">)
 }
 
 /** "Trusted location · Entra ID · changed" */
-export function actionKindLine(action: Pick<PolicyAction, "resource_type" | "change_type">): string {
-  const parts = action.resource_type ? [plainKind(action.resource_type), typeService(action.resource_type).name] : ["Setting"];
+export function actionKindLine(action: Pick<PolicyAction, "resource_type" | "change_type"> & Partial<Pick<PolicyAction, "name" | "template_family">>): string {
+  const item = action.resource_type ? { resourceType: action.resource_type, name: action.name ?? null, templateFamily: action.template_family ?? null } : null;
+  const parts = item ? [itemKindName(item), itemService(item).name] : ["Setting"];
   if (action.change_type) parts.push((CHANGE_WORDS[action.change_type] ?? "Changed").toLowerCase());
   return parts.join(" · ");
 }

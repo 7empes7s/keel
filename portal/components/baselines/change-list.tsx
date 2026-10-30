@@ -122,7 +122,8 @@ function OpenedRecord({ item }: { item: DriftRecord }) {
       <RecordField copy={false} label="Service" value={item.serviceRead.workload} />
       <RecordField label="Service read ID" value={item.serviceRead.collectionId} />
       <RecordField copy={false} label="Compared with" value={item.serviceRead.comparedWith === "approved" ? "The approved setup" : "The read before it"} />
-      <RecordField label={item.serviceRead.comparedWith === "approved" ? "Read holding the approved value" : "Compared with read"} value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Compared with read" value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Undo puts back from read" value={item.serviceRead.undoFrom.collectionId} />
       <RecordField label="Alert ID" value={item.serviceRead.alertId} />
       <RecordField copy={false} label="Seen at" value={item.detectedAt} />
     </>
@@ -450,21 +451,21 @@ export function ChangeList({
       ) : null}
 
 
-      {undoingItem?.serviceRead ? (
+      {undoingItem?.serviceRead?.undoFrom.collectionId ? (
         <DetailsSheet
           kicker={<><RiskChip tone={toneOf(undoingItem)}>{impactWords(undoingItem.blastRadius)}</RiskChip><span>{changeName(undoingItem)}</span></>}
           onClose={() => setUndoing(null)}
           title="Undo this change"
           wide
         >
-          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.comparedWith === "approved" ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.previousReadAt ?? null)}. It checks what would change first and writes nothing until someone else approves. The next read then matches and settles this change.</p>
+          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.undoFrom.approved ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.undoFrom.readAt)}. It checks what would change first and writes nothing until someone else approves. The next read then matches and settles this change.</p>
           <WorkloadRestore
             canApprove={canApprove}
             canRestore={canRestore}
             name={workloadLabel(undoingItem.serviceRead.workload)}
             now={now}
             onClose={() => setUndoing(null)}
-            start={{ collectionId: undoingItem.serviceRead.previousCollectionId, targets: [undoingItem.serviceRead.resourceKey] }}
+            start={{ collectionId: undoingItem.serviceRead.undoFrom.collectionId ?? "", targets: [undoingItem.serviceRead.resourceKey] }}
             workload={undoingItem.serviceRead.workload}
           />
         </DetailsSheet>

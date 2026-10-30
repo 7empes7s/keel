@@ -196,6 +196,23 @@ $AllowedTeamsExtended = @{
     'Get-CsGroupPolicyAssignment'              = @()
 }
 
+# Teams collaboration policies and meeting settings (engine/collect/workloads/
+# teamsCollaboration.mjs), read in the MicrosoftTeams session with no parameters. Reads only.
+$AllowedTeamsCollaboration = @{
+    'Get-CsExternalAccessPolicy'                  = @()
+    'Get-CsTeamsChannelsPolicy'                   = @()
+    'Get-CsTeamsFilesPolicy'                      = @()
+    'Get-CsTeamsTemplatePermissionPolicy'         = @()
+    'Get-CsTeamsShiftsPolicy'                     = @()
+    'Get-CsTeamsUpgradePolicy'                    = @()
+    'Get-CsTeamsUpgradeConfiguration'             = @()
+    'Get-CsTeamsAcsFederationConfiguration'       = @()
+    'Get-CsTeamsEnhancedEncryptionPolicy'         = @()
+    'Get-CsTeamsComplianceRecordingPolicy'        = @()
+    'Get-CsTeamsMeetingTemplatePermissionPolicy'  = @()
+    'Get-CsTeamsMeetingConfiguration'             = @()
+}
+
 # Teams voice network, call flows and device policies
 # (engine/collect/workloads/teamsVoiceNetwork.mjs), read in the MicrosoftTeams session.
 # Only the auto attendant and call queue reads take parameters: -First 100 and -Skip
@@ -449,6 +466,7 @@ elseif ($AllowedOneDriveWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShe
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedTeamsVoiceNetwork.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsVoiceNetwork[$name] }
+elseif ($AllowedTeamsCollaboration.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsCollaboration[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
 elseif ($AllowedExchangeWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeWrites[$name] }
 elseif ($AllowedPurviewWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewWrites[$name] }

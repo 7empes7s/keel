@@ -7,10 +7,11 @@ import { getDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
 import { connect } from "@/lib/db";
 
-import { plainKind, typeService } from "@/lib/baselines-view";
+import { itemKindName, itemService } from "@/lib/baselines-view";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import { recordsNoChange } from "../../engine/store/openDrift.mjs";
+import { templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
@@ -173,13 +174,24 @@ function keyType(naturalKey: string): string {
   return naturalKey.split(":")[0] ?? naturalKey;
 }
 
-function servicesOf(keys: string[]): ApprovalPreview["services"] {
+/** One setting a preview lists: its stored type, and the template family its saved copy
+ * carries (an Intune antivirus policy is a Defender setting). */
+function keyItem(key: string, names: NamedKeys): { resourceType: string; templateFamily: string | null } {
+  return { resourceType: names[key]?.resourceType ?? keyType(key), templateFamily: names[key]?.templateFamily ?? null };
+}
+
+function servicesOf(items: { resourceType: string; templateFamily?: string | null }[]): ApprovalPreview["services"] {
   const counts = new Map<string, number>();
-  for (const key of keys) {
-    const name = typeService(keyType(key)).name;
+  for (const item of items) {
+    const name = itemService(item).name;
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+/** A drift row as a listed setting: its type and the template family either copy carries. */
+function driftItem(row: UnknownRecord): { resourceType: string; templateFamily: string | null } {
+  return { resourceType: String(row.resource_type), templateFamily: templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload) };
 }
 
 // A roll back puts each changed setting back as the approved setup holds it: "now" is
@@ -197,7 +209,7 @@ async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<
   const changes = ordered.slice(0, PREVIEW_CHANGES).map((row) => {
     const key = String(row.natural_key);
     const type = String(row.resource_type);
-    const base = { name: namedResource(key, names, type), kind: plainKind(type) };
+    const base = { name: namedResource(key, names, type), kind: itemKindName(driftItem(row)) };
     if (row.change_type === "added") return { ...base, line: "Removed: it is not in the approved setup", fields: [], moreFields: 0 };
     if (row.change_type === "removed") return { ...base, line: "Put back as the approved setup holds it", fields: [], moreFields: 0 };
     // Only a stored fingerprint differed: approving would put back what is there.
@@ -210,7 +222,7 @@ async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<
     }));
     return { ...base, line: fields.length ? null : "Put back as the approved setup holds it", fields, moreFields: Math.max(0, diff.length - fields.length) };
   });
-  return { total: ordered.length, services: servicesOf(ordered.map((row) => String(row.natural_key))), changes, more: Math.max(0, ordered.length - changes.length) };
+  return { total: ordered.length, services: servicesOf(ordered.map(driftItem)), changes, more: Math.max(0, ordered.length - changes.length) };
 }
 
 // A restore puts back every setting its dry run found it can apply, as the backup holds it.
@@ -220,9 +232,9 @@ async function restorePreview(client: KeelClient, artifactId: string): Promise<A
   if (applied.length === 0) return null;
   const names = await savedNames(client, tenantRef(), applied);
   const changes = applied.slice(0, PREVIEW_CHANGES).map((key) => ({
-    name: namedResource(key, names, keyType(key)), kind: plainKind(keyType(key)), line: "Put back as the backup holds it", fields: [], moreFields: 0,
+    name: namedResource(key, names, keyType(key)), kind: itemKindName(keyItem(key, names)), line: "Put back as the backup holds it", fields: [], moreFields: 0,
   }));
-  return { total: applied.length, services: servicesOf(applied), changes, more: Math.max(0, applied.length - changes.length) };
+  return { total: applied.length, services: servicesOf(applied.map((key) => keyItem(key, names))), changes, more: Math.max(0, applied.length - changes.length) };
 }
 
 /** What approving would change, for a request that waits. A preview Keel cannot read

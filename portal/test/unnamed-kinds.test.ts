@@ -47,7 +47,7 @@ const NAMED_BY_FIELD = new Set([
   "cartToClassAssociation", "windowsManagedAppProtection", "userExperienceAnalyticsBaseline", "externalConnection",
   "simulationAutomation", "attackSimulation", "hardwareConfiguration", "certificateBasedApplicationConfiguration",
   "verifiedIdProfile", "externalOriginResourceConnector", "roleManagementCustomExtension", "securityZone",
-  "defenderDetectionRule", "teamsCatalogApp", "engageCommunity",
+  "defenderDetectionRule", "teamsCatalogApp", "engageCommunity", "defenderIdentitySensor", "secureScoreControlProfile",
 ]);
 
 // Kinds keyed by a value that reads as a name: a domain, a licence's part number, an

@@ -257,6 +257,16 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['teams-voice-policies'],
   },
   {
+    pattern: /\b(?:external access polic(?:y|ies)|private channels?|shared channels?|channels? polic(?:y|ies)|files? polic(?:y|ies)|team templates?|shifts|teams upgrade|coexistence mode|azure communication services|acs federation)\b/i,
+    label: 'Teams external access, channel, files, template, Shifts and upgrade policies',
+    kinds: ['teams-collaboration-policies'],
+  },
+  {
+    pattern: /\b(?:anonymous (?:join|users?)|meeting (?:configuration|settings?|templates?)|end-to-end encryption|enhanced encryption|compliance recording|meeting invit(?:e|ation)s?|quality of service|qos)\b/i,
+    label: 'Teams meeting settings, encryption and compliance recording',
+    kinds: ['teams-meeting-settings'],
+  },
+  {
     pattern: /\b(?:pstn usages?|voice routes?|pstn gateways?|session border controllers?|sbcs?|translation rules?|unassigned numbers?|network (?:regions?|sites?|subnets?)|trusted ips?|location-based routing|auto attendants?|call queues?|dial-in|audio conferencing|call hold|music on hold)\b/i,
     label: 'Teams voice routing, network sites, auto attendants and call queues',
     kinds: ['teams-voice-network'],

@@ -1,0 +1,203 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "cmdlet": "Get-ManagementRole",
+      "role": null,
+      "parameters": [],
+      "outcome": "ok",
+      "at": "2026-10-30T12:47:46.377Z"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-ManagementRoleEntry",
+      "role": "Address Lists",
+      "parameters": [
+        "Identity"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:47:50.442Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Get-ManagementRole",
+      "role": null,
+      "parameters": [],
+      "outcome": "ok",
+      "at": "2026-10-30T12:47:54.077Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "New-ManagementRole",
+      "role": "KEEL-RT-capture-role-95c1aed5",
+      "parameters": [
+        "Description",
+        "EnabledCmdlets",
+        "Name",
+        "Parent"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:47:59.130Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Get-ManagementRoleEntry",
+      "role": "KEEL-RT-capture-role-95c1aed5",
+      "parameters": [
+        "Identity"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:03.384Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-ManagementRoleEntry",
+      "role": "KEEL-RT-capture-role-95c1aed5",
+      "parameters": [
+        "Identity",
+        "Parameters",
+        "RemoveParameter"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:06.590Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Get-ManagementRoleEntry",
+      "role": "KEEL-RT-capture-role-95c1aed5",
+      "parameters": [
+        "Identity"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:10.366Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Get-ManagementRole",
+      "role": null,
+      "parameters": [],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:13.738Z"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-ManagementRoleEntry",
+      "role": "KEEL-RT-capture-role-95c1aed5",
+      "parameters": [
+        "Identity"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:17.295Z"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-ManagementRole",
+      "role": null,
+      "parameters": [],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:21.367Z"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-ManagementRoleEntry",
+      "role": "Address Lists",
+      "parameters": [
+        "Identity"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-30T12:48:24.933Z"
+    }
+  ],
+  "values": {
+    "plan": {
+      "operations": [
+        {
+          "key": "exchangeRoleDefinition:capture-role",
+          "resourceKey": "exchangeRoleDefinition:capture-role",
+          "naturalKey": "exchangeRoleDefinition:capture-role",
+          "kind": "add",
+          "operationId": "exchange-role-definitions.role.add",
+          "name": "KEEL-RT-capture-role-95c1aed5",
+          "parent": "Address Lists",
+          "parentChosen": "the smallest role in the backup that holds every entry",
+          "description": "KEEL-RT capture role 95c1aed5",
+          "entries": {
+            "Get-AddressList": [
+              "Identity"
+            ],
+            "Get-AddressBookPolicy": [
+              "Identity"
+            ]
+          },
+          "parameters": {
+            "Name": "KEEL-RT-capture-role-95c1aed5",
+            "Parent": "Address Lists",
+            "EnabledCmdlets": [
+              "Get-AddressBookPolicy",
+              "Get-AddressList"
+            ],
+            "Description": "KEEL-RT capture role 95c1aed5"
+          },
+          "changes": [
+            {
+              "field": "Name",
+              "before": null,
+              "after": "KEEL-RT-capture-role-95c1aed5"
+            },
+            {
+              "field": "Parent",
+              "before": null,
+              "after": "Address Lists"
+            },
+            {
+              "field": "Entries",
+              "before": null,
+              "after": 2
+            }
+          ]
+        }
+      ],
+      "manual": [
+        {
+          "resourceKey": "exchangeRoleDefinition:capture-role",
+          "field": "Holders",
+          "before": null,
+          "after": null,
+          "reason": "the recreated role has no holders: who held it (role groups, people, apps) is restored separately, after a privilege review"
+        }
+      ],
+      "refusals": []
+    },
+    "result": {
+      "outcome": "verified",
+      "writes": 2,
+      "attempts": 2,
+      "verified": [
+        "Name",
+        "Parent",
+        "Entries",
+        "Description"
+      ],
+      "reasons": [],
+      "trimmed": {
+        "parameters": 1,
+        "entries": 0
+      }
+    },
+    "readBack": {
+      "role": {
+        "name": "KEEL-RT-capture-role-95c1aed5",
+        "parent": "ta036f59837f.onmicrosoft.com\\Address Lists",
+        "description": "KEEL-RT capture role 95c1aed5"
+      },
+      "entries": {
+        "Get-AddressList": [
+          "Identity"
+        ],
+        "Get-AddressBookPolicy": [
+          "Identity"
+        ]
+      }
+    }
+  }
+}

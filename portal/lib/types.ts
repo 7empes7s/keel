@@ -477,11 +477,17 @@ export interface ServiceRead {
   // As stored: "transport-rule:Block forwarding", "site:<id>" or "tenant".
   resourceKey: string;
   collectionId: string;
-  // The read that holds the approved value (or, for a change recorded before the
-  // service had an approved setup, the read before the change): an undo restores from it.
+  // The read the change was compared with when it was recorded: the approved value then
+  // (or, for a change recorded before the service had an approved setup, the read before it).
   previousCollectionId: string;
   // When that read was taken; null when unknown.
   previousReadAt: string | null;
+  // The read an undo restores from, and when it was taken: the active approved setup's
+  // read for this resource, so a newer baseline version's value wins over previousCollectionId.
+  // collectionId is null when the service's approved setup does not hold this resource
+  // (nothing to put back); `approved` is false only when the service has no approved setup
+  // at all and undo falls back to previousCollectionId.
+  undoFrom: { collectionId: string | null; readAt: string | null; approved: boolean };
   // What the read was compared with: the service's approved setup, or (older changes)
   // the read before it.
   comparedWith: "approved" | "previous";

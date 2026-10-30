@@ -177,7 +177,7 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   // Real phrasings: a service with a broad word, a kind's own name, a quoted name, and a
   // word the rules do not know, which is reported instead of dropped.
   const teams = readQuestion('What Teams policies changed this week?', { now, knownEntities: known });
-  assert.deepEqual(teams, { intent: 'changes', params: { resourceTypes: ['teams-device-policies', 'teams-org-policies', 'teams-voice-policies'], period: 'this-week' }, ignored: [] });
+  assert.deepEqual(teams, { intent: 'changes', params: { resourceTypes: ['teams-collaboration-policies', 'teams-device-policies', 'teams-meeting-settings', 'teams-org-policies', 'teams-voice-policies'], period: 'this-week' }, ignored: [] });
   const exchange = readQuestion('Which Exchange admin roles were removed yesterday?', { now, knownEntities: known });
   assert.deepEqual(exchange, { intent: 'changes', params: { resourceType: 'exchangeRoleDefinition', changeType: 'removed', period: 'yesterday' }, ignored: [] });
   const service = readQuestion('What changed in Exchange in the last 7 days?', { now, knownEntities: known });
@@ -469,7 +469,7 @@ test('a Sales reader asking about this week gets only Sales records, each with i
   assert.equal(named.plan.params.name, 'Sales Admins');
   assert.deepEqual(named.ignored, []);
   const teams = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What Teams policies changed this week?' });
-  assert.deepEqual([...teams.plan.params.resourceTypes], ['teams-device-policies', 'teams-org-policies', 'teams-voice-policies']);
+  assert.deepEqual([...teams.plan.params.resourceTypes], ['teams-collaboration-policies', 'teams-device-policies', 'teams-meeting-settings', 'teams-org-policies', 'teams-voice-policies']);
   assert.equal(teams.total, 0, 'group changes are not Teams policies');
   const printers = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What changed with the printers this week?' });
   assert.deepEqual(printers.ignored, ['printers']);
@@ -812,4 +812,25 @@ test('a change is listed once, in the window since the last backup that read its
   assert.deepEqual(ro02.fields, ['jobTitle']);
   // Users are read once a day: the answer says when the next read is due.
   assert.deepEqual(answer.nextRead, { every: 'day', n: 1, dueAt: new Date(daily.getTime() + DAY).toISOString() });
+});
+
+test('a change to an endpoint security policy made in Intune carries its template family, and is counted apart', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenantRefFor('endpoint-security-family');
+  const now = new Date();
+  const setBy = await person(client, 'collector', [['operator', null]]);
+  const baselineId = await baseline(client, tenantRef, setBy);
+  const at = new Date(now.getTime() - 2 * HOUR);
+  const collectionId = await collection(client, tenantRef, at);
+  const policy = (name, templateFamily) => ({ id: name, name, templateReference: { templateFamily } });
+  await change(client, { tenantRef, baselineId, collectionId, naturalKey: 'configurationPolicy:av', at, after: policy('KEEL-RT-Antivirus', 'endpointSecurityAntivirus') });
+  await change(client, { tenantRef, baselineId, collectionId, naturalKey: 'configurationPolicy:wifi', at, after: policy('KEEL-RT-Wi-Fi', 'none') });
+  await change(client, { tenantRef, baselineId, collectionId, naturalKey: 'group:KEEL-RT-Group', at, after: { displayName: 'KEEL-RT-Group' } });
+
+  const answer = await answerQuestion(client, { tenantRef, scope: CENTRAL, request: { intent: 'changes', params: { period: 'last-7-days' } } });
+  const family = Object.fromEntries(answer.records.map((record) => [record.naturalKey, record.templateFamily ?? null]));
+  assert.deepEqual(family, { 'configurationPolicy:av': 'endpointSecurityAntivirus', 'configurationPolicy:wifi': 'none', 'group:KEEL-RT-Group': null });
+  // The antivirus policy is counted on its own row, so the portal can count it under Defender.
+  const rows = answer.summary.map((row) => [row.resourceType, row.templateFamily ?? null, row.count]);
+  assert.deepEqual(rows, [['configurationPolicy', 'endpointSecurityAntivirus', 1], ['configurationPolicy', 'none', 1], ['group', null, 1]]);
 });

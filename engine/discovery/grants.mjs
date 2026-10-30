@@ -68,6 +68,7 @@ export const READ_GRANTS = Object.freeze({
   '/roleManagement/directory': 'RoleManagement.Read.Directory',
   '/security': 'SecurityEvents.Read.All',
   '/security/rules/detectionRules': 'CustomDetection.Read.All',
+  '/security/identities/sensors': 'SecurityIdentitiesSensors.Read.All',
   '/servicePrincipals': 'Application.Read.All',
   '/sites': 'Sites.Read.All',
   '/solutions/bookingBusinesses': 'Bookings.Read.All',

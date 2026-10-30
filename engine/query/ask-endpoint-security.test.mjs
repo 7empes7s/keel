@@ -4,7 +4,8 @@
  * policies (configurationPolicy) and told apart by templateReference.templateFamily
  * (insights/taxonomy.mjs#settingKind). No row is stored under their kind, so Ask has to
  * read the stored type and keep the rows by family: "What changed in Defender" holds
- * them, and a settings catalog question holds the rest.
+ * them, and a settings catalog question holds the rest. Change records keep the stored
+ * type and carry the family, so the portal files each one (settingKind).
  *
  * Every time is fixed (NOW below and backups placed relative to it), so the result does
  * not depend on the day the test runs.
@@ -13,6 +14,7 @@ import { strict as assert } from 'node:assert';
 import { after, before, test } from 'node:test';
 
 import { schemaSql } from '../store/loadSchema.mjs';
+import { settingKind } from '../insights/taxonomy.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { answerQuestion } from './execute.mjs';
 
@@ -72,14 +74,17 @@ after(async () => {
 const ask = (question) => answerQuestion(client, { tenantRef: TENANT, scope: CENTRAL, question, now: NOW });
 const ofRequest = (params) => answerQuestion(client, { tenantRef: TENANT, scope: CENTRAL, request: { intent: 'changes', params: { period: 'this-week', ...params } }, now: NOW });
 const names = (answer) => answer.records.map((record) => record.name).sort();
+// Records keep the stored type and carry the template family; the portal files them by both.
+const kindOf = (row) => settingKind(row.resourceType, row.templateFamily);
 
-test('"What changed in Defender" lists the endpoint security policies, filed under their own kind', async () => {
+test('"What changed in Defender" lists the endpoint security policies', async () => {
   const answer = await ask('What changed in Defender this week?');
   assert.ok(answer.plan.params.resourceTypes.includes('defenderEndpointSecurityPolicy'), JSON.stringify(answer.plan));
   assert.deepEqual(names(answer), ['KEEL-RT-Antivirus', 'KEEL-RT-Firewall']);
   assert.equal(answer.total, 2);
-  assert.ok(answer.records.every((record) => record.resourceType === 'defenderEndpointSecurityPolicy'));
-  assert.deepEqual(answer.summary.map((row) => [row.resourceType, row.count]), [['defenderEndpointSecurityPolicy', 2]]);
+  assert.ok(answer.records.every((record) => kindOf(record) === 'defenderEndpointSecurityPolicy'));
+  assert.deepEqual([...new Set(answer.summary.map(kindOf))], ['defenderEndpointSecurityPolicy']);
+  assert.equal(answer.summary.reduce((sum, row) => sum + row.count, 0), 2);
   // The window still opens at the earlier backup of the stored type.
   assert.ok(answer.records.every((record) => record.window.from && record.window.from < record.window.to));
 });
@@ -94,7 +99,7 @@ test('antivirus and endpoint security questions keep only those policies', async
 test('Intune and settings catalog questions leave the endpoint security policies to Defender', async () => {
   const intune = await ask('What changed in Intune this week?');
   assert.deepEqual(names(intune), ['KEEL-RT-Catalog', 'KEEL-RT-Privilege']);
-  assert.ok(intune.records.every((record) => record.resourceType === 'configurationPolicy'));
+  assert.ok(intune.records.every((record) => kindOf(record) === 'configurationPolicy'));
   const catalog = await ofRequest({ resourceType: 'configurationPolicy' });
   assert.deepEqual(names(catalog), ['KEEL-RT-Catalog', 'KEEL-RT-Privilege']);
   assert.equal(catalog.total, 2);

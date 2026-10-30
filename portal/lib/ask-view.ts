@@ -1,6 +1,7 @@
 import type { AlertItem } from "@/components/ui/alert-list";
 import type { StatTile } from "@/components/ui/stat-tiles";
-import { plainKind, typeService } from "@/lib/baselines-view";
+import { itemKindName, itemService, plainKind, typeService } from "@/lib/baselines-view";
+import { itemKind } from "@/lib/type-groups";
 import { fieldWords } from "@/lib/changes-view";
 import { namedSubject } from "@/lib/job-names";
 import { displayEnum, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
@@ -34,6 +35,9 @@ export interface ChangeRecord {
   kind: "change";
   id: string;
   resourceType: string;
+  // The settings catalog template family, when the change has one: an endpoint security
+  // policy made in Intune is listed under Defender.
+  templateFamily?: string | null;
   naturalKey: string;
   name: string | null;
   changeType: string;
@@ -103,7 +107,8 @@ export interface GroundedAnswer {
   truncated: boolean;
   records: AnswerRecord[];
   // Every matching change counted by kind, change and risk (changes only).
-  summary?: { resourceType: string; changeType: string; impact: string; count: number }[] | null;
+  // templateFamily: set for endpoint security policies made in Intune (Defender settings).
+  summary?: { resourceType: string; templateFamily?: string | null; changeType: string; impact: string; count: number }[] | null;
   // Words of the question the reading did not use.
   ignored?: string[];
   // What the reading filled in or how it read a word: "period" when the question named
@@ -499,7 +504,7 @@ export interface SummaryRow { key: string; label: string; count: number; tone: A
 export function answerSummary(answer: GroundedAnswer): { services: SummaryRow[]; kinds: SummaryRow[]; risks: SummaryRow[]; changes: SummaryRow[] } | null {
   if (answer.intent !== "changes") return null;
   const rows = answer.summary?.length ? answer.summary
-    : answer.records.flatMap((record) => record.kind === "change" ? [{ resourceType: record.resourceType, changeType: record.changeType, impact: record.impact, count: 1 }] : []);
+    : answer.records.flatMap((record) => record.kind === "change" ? [{ resourceType: record.resourceType, templateFamily: record.templateFamily ?? null, changeType: record.changeType, impact: record.impact, count: 1 }] : []);
   if (!rows.length) return null;
   const add = (map: Map<string, SummaryRow>, key: string, make: () => Omit<SummaryRow, "count">, count: number) => {
     const row = map.get(key) ?? { ...make(), count: 0 };
@@ -511,9 +516,10 @@ export function answerSummary(answer: GroundedAnswer): { services: SummaryRow[];
   const risks = new Map<string, SummaryRow>();
   const changes = new Map<string, SummaryRow>();
   for (const row of rows) {
-    const service = typeService(row.resourceType);
+    const service = itemService(row);
+    const kind = itemKind(row);
     add(services, service.code, () => ({ key: service.code, label: service.name, tone: "neutral", icon: service.icon }), row.count);
-    add(kinds, row.resourceType, () => ({ key: row.resourceType, label: plainKind(row.resourceType), tone: "neutral" }), row.count);
+    add(kinds, kind, () => ({ key: kind, label: plainKind(kind), tone: "neutral" }), row.count);
     add(risks, row.impact, () => ({ key: row.impact, label: displayEnum("blastRadius", row.impact), tone: IMPACT_TONES[row.impact] ?? "neutral" }), row.count);
     add(changes, row.changeType, () => ({ key: row.changeType, label: displayEnum("changeType", row.changeType), tone: CHANGE_TONES[row.changeType] ?? "neutral" }), row.count);
   }
@@ -531,13 +537,14 @@ export function answerSummary(answer: GroundedAnswer): { services: SummaryRow[];
 /** Where a record sits: its service. */
 export function recordService(record: AnswerRecord): { code: string; name: string; icon: string } {
   if (record.kind === "job") return { code: "keel", name: "Keel", icon: "service-keel" };
-  return typeService(record.resourceType);
+  if (record.kind === "change") return itemService(record);
+  return typeService(record.resourceType); // kind-level: a coverage row is one whole kind
 }
 
 /** The kind of a record in words, for sorting and grouping. */
 export function recordKind(record: AnswerRecord): string {
   if (record.kind === "job") return displayEnum("jobKind", record.jobKind);
-  return plainKind(record.resourceType);
+  return record.kind === "change" ? itemKindName(record) : plainKind(record.resourceType);
 }
 
 /** A record's time, for sorting: when it was seen or when its window ended. */

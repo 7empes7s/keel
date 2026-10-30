@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 125 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
+KEEL tracks 179 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 127 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 81 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -363,6 +363,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Profile card fields | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Pronouns setting | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Viva Engage communities | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Defender for Identity sensors | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Secure Score action states | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -420,6 +422,12 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Viva Engage communities.** Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.
   - *Not brought back:* a deleted community (in the backup, but KEEL does not write it yet); posts, files and members of the community (stored separately and not in the backup yet).
   - *You do:* A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. Making a private community public waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
+- **Defender for Identity sensors** (not built yet). KEEL backs up which servers have a Defender for Identity sensor and each sensor's settings, such as its description, the domain controllers it covers and delayed updates. It does not restore them yet.
+  - *Not brought back:* the sensor software on each server and its health (stored separately and not in the backup yet).
+  - *You do:* Install the sensor again on any server that lost it, then set the same settings in the Microsoft Defender portal, under Settings, Identities, Sensors, from the backup.
+- **Secure Score action states** (not built yet). KEEL backs up the state an admin set on each Secure Score action, such as resolved through a third party or risk accepted, with the reason given. It does not restore them yet.
+  - *Not brought back:* microsoft's text and score for each action (set by Microsoft).
+  - *You do:* Set the same state and reason on each action in the Microsoft Defender portal, under Exposure management, Secure Score, Recommended actions, from the backup.
 
 ## Intune device management
 
@@ -1024,6 +1032,36 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Teams live event configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 
 **You do:** The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider's API token is never backed up: enter it again.
+
+### Teams external access, channel, files, template, Shifts and upgrade policies
+
+**Backed up:**
+
+- Teams external access policies
+- Teams private and shared channel policies
+- Teams files policies
+- Teams team template policies
+- Teams Shifts policies
+- Teams upgrade (coexistence) policies
+- Teams upgrade configuration
+- Teams federation with Azure Communication Services
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A changed or deleted policy, and the ACS federation and upgrade settings, are put back by hand in the Teams admin center using the backup. Which users a policy is assigned to is kept with the Teams voice policy backup.
+
+### Teams meeting configuration, encryption and compliance recording
+
+**Backed up:**
+
+- Teams end-to-end encryption policies
+- Teams compliance recording policies
+- Teams meeting template policies
+- Teams meeting configuration
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. The meeting configuration, end-to-end encryption, compliance recording and meeting template policies are put back by hand in the Teams admin center using the backup. A compliance recording policy names its recording bot's app, which must still exist.
 
 ### Purview retention labels, auto-labeling and eDiscovery
 

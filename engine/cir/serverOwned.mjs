@@ -117,6 +117,19 @@ SERVER_OWNED.set('servicePrincipalCreationPolicy', new Set(['includes.id', 'excl
 // finds each one in the target by id, by this run's recreate, or by name.
 SERVER_OWNED.set('mobileApp', new Set(['categories.id']));
 
+// Defender XDR beyond email: Microsoft sets these itself. A sensor's health, status
+// and version move with the server it runs on; a Secure Score action's text, score,
+// rank and threat list are Microsoft's and change with its catalogue. Only what an
+// admin sets (a sensor's settings, an action's state and reason) counts as a change.
+SERVER_OWNED.set('defenderIdentitySensor', new Set([
+  'healthStatus', 'deploymentStatus', 'serviceStatus', 'version', 'openHealthIssuesCount',
+]));
+SERVER_OWNED.set('secureScoreControlProfile', new Set([
+  'title', 'actionType', 'actionUrl', 'azureTenantId', 'complianceInformation', 'controlCategory', 'deprecated',
+  'implementationCost', 'maxScore', 'rank', 'remediation', 'remediationImpact', 'service', 'threats', 'tier',
+  'userImpact', 'vendorInformation',
+]));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

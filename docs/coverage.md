@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 41 are full, 129 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 101 at least in part; the other 76 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 44 are full, 126 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 105 at least in part; the other 72 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -62,10 +62,10 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
-| Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; remove ones added since | Tested against a simulated tenant |
 | Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Defender admin role assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender admin role assignments | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Defender app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | App certificate authority trust | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Verified ID profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -173,16 +173,17 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Exchange admin roles** (KEEL choice). KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.
   - *Not brought back:* built-in roles (set by Microsoft).
   - *You do:* For a custom role that still exists but differs from the backup, the restore lists what differs: fix its entries with Exchange Online PowerShell. Then give recreated roles back to their role groups or apps, after a privilege review.
-- **Exchange admin role assignments** (not built yet). KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.
-  - *You do:* Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.
+- **Exchange admin role assignments.** Puts back the Exchange roles held by people, groups and apps, over the same scope. They are found in the target by name.
+  - *Not brought back:* a role held by an Exchange role group (stored separately and not in the backup yet).
+  - *You do:* A restore that adds them waits for a second approver while restore approvals are on. Roles held by an Exchange role group are given again by hand in the Exchange admin center, under Roles, Admin roles.
 - **Exchange app access scopes.** Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).
   - *Not brought back:* the app role assignments that use it (stored separately and not in the backup yet).
   - *You do:* An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.
 - **Defender admin roles.** Recreates custom Defender roles and puts back their name, description and permissions.
   - *Not brought back:* a built-in Defender role (set by Microsoft).
   - *You do:* Who holds each role is not restored: add the assignments again in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, after a privilege review.
-- **Defender admin role assignments** (not built yet). KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.
-  - *You do:* Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.
+- **Defender admin role assignments.** Puts back who holds each Defender role and for which data sources. People and groups are found in the target by name.
+  - *You do:* A restore that changes them waits for a second approver while restore approvals are on.
 - **Defender app access scopes** (Microsoft limit). KEEL backs these up, but Microsoft offers no way for a tool to create or change them.
   - *You do:* Recreate each scope by hand from the backup, before the assignments that use it. There is no admin center page for it.
 - **App certificate authority trust** (not built yet). KEEL backs up which apps have a certificate authority trust list, but not the authorities on it, and does not restore it yet.
@@ -457,7 +458,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Imported administrative template files | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Compliance notification emails | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
-| Intune admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
+| Intune admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Apple push certificate | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Mobile threat defense connectors | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Device management partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -475,7 +476,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Managed Google Play connection | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Multi admin approval policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Intune tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -565,8 +566,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Windows Autopilot devices** (Microsoft limit). Microsoft never returns the hardware hash that registers a device, so no tool can register it again from a backup.
   - *Not brought back:* the device hardware hash (Microsoft never returns it).
   - *You do:* Use the backup as the list of devices. Import each device again from its hardware hash, taken on the device or from your vendor.
-- **Intune admin role assignments** (KEEL choice). These decide who can manage devices, so a change needs a person to review it.
-  - *You do:* Review who held each Intune admin role in the backup and assign the roles again in the Intune admin center.
+- **Intune admin role assignments.** Puts back who holds each Intune admin role, over which groups and scope tags. Groups are found in the target by name.
+  - *You do:* These decide who can manage devices, so a restore that changes them waits for a second approver while restore approvals are on for Intune. Backups made before 2026-10-30 do not say which role an assignment gives: assign those by hand.
 - **Apple push certificate** (Microsoft limit). Apple issues this certificate. No tool can upload it from a backup, and a new certificate from a different Apple ID cuts off every Apple device.
   - *Not brought back:* the certificate file (Microsoft never returns it).
   - *You do:* Use the backup for the Apple ID and expiry date. Renew the certificate at Apple with that same Apple ID and upload it in the Intune admin center before it expires.
@@ -615,8 +616,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Windows hotpatch update policies.** Recreates policies and puts their settings back.
   - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand.
-- **Multi admin approval policies** (not built yet). KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.
-  - *You do:* Recreate each policy in the Intune admin center from the backup, with the same approver groups.
+- **Multi admin approval policies.** Puts back which admin changes need a second admin, and the groups whose members approve them. Groups are found in the target by name.
+  - *You do:* A restore that changes them waits for a second approver while restore approvals are on for Intune. A policy that now covers a different kind of change is made again by hand.
 - **macOS custom attribute scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
   - *You do:* Who a script runs on is put back only when the script is picked for a restore, from backups taken after assignments were read. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Intune tenant settings.** Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.

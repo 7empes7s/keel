@@ -260,7 +260,9 @@ async function withChildReads(reader, entry, items) {
  * Restore gaps batch 13: each object gets the collection at `itemReads.path`
  * (or at `itemReads.byType[its @odata.type]`; other kinds are left as they
  * are), with {item} filled with its id, as its `itemReads.as`, sorted by
- * `itemReads.sortBy` when set (batch 19: Graph promises no order). Any failed
+ * `itemReads.sortBy` when set (batch 19: Graph promises no order). With
+ * `itemReads.single` the read is one related object, kept as an object (only its
+ * `itemReads.fields` when set). Any failed
  * read fails the kind, so a backup never holds a policy without the apps it covers.
  */
 const byText = (left, right) => {
@@ -270,7 +272,7 @@ const byText = (left, right) => {
 };
 
 async function withItemReads(reader, entry, items, { dropWhenNotFound = false } = {}) {
-  const { as, path, byType, sortBy, omitEmpty } = entry.itemReads;
+  const { as, path, byType, sortBy, omitEmpty, single, fields } = entry.itemReads;
   let pages = 0;
   for (const item of [...items]) {
     const template = byType ? byType[item?.['@odata.type']] : path;
@@ -287,6 +289,15 @@ async function withItemReads(reader, entry, items, { dropWhenNotFound = false } 
     // Batch 19: `omitEmpty` leaves an empty list out, so a kind that starts
     // keeping one more collection reads as no change where it holds none.
     if (omitEmpty && result.items.length === 0) continue;
+    // Approval-held kinds, batch 2: `single` reads one related object (an Intune
+    // role assignment's role) and keeps only its `fields`. None is left out (a
+    // restore then reports it cannot tell the role); more than one fails the kind.
+    if (single) {
+      if (result.items.length > 1) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was more than one object` } };
+      const [one] = result.items;
+      if (one) item[as] = fields ? Object.fromEntries(fields.filter((field) => field in one).map((field) => [field, one[field]])) : one;
+      continue;
+    }
     item[as] = sortBy ? [...result.items].sort((left, right) => byText(left?.[sortBy], right?.[sortBy]) || byText(left?.id, right?.id)) : result.items;
   }
   return { pages, error: null };
@@ -578,3 +589,6 @@ export async function collectWithOutcomes(reader, scope = {}) {
   }
   return { collected, coverageDigest };
 }
+
+/** withItemReads, for tests. */
+export const withItemReadsForTest = (reader, entry, items) => withItemReads(reader, entry, items);

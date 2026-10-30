@@ -599,7 +599,9 @@ function remapRecordReferences(record, resource, verb, ctx) {
   if (changed.length > 0 && !remappingFor(resource.resourceType, verb).qualified) {
     return { error: `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation` };
   }
-  return { resource: { ...resource, payload } };
+  // The backup as it was, for the approval gate (approvalHeld.mjs), which judges
+  // the effects the reviewed dry run listed.
+  return { resource: { ...resource, payload, backupPayload: resource.backupPayload ?? resource.payload } };
 }
 
 /**

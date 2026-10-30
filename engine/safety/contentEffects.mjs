@@ -224,7 +224,16 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   deviceRegistrationPolicy: Object.freeze(['userDeviceQuota', 'multiFactorAuthConfiguration', 'azureADRegistration', 'azureADJoin', 'localAdminPassword']),
   tenantAppManagementPolicy: Object.freeze(['isEnabled', 'applicationRestrictions', 'servicePrincipalRestrictions']),
   deviceManagementRoleDefinition: Object.freeze(['rolePermissions']),
+  // Batch 2: who holds an admin role, and who approves admin changes. Each names
+  // users, groups or apps by id; the effect shows them by name (namedAccessValue).
+  // An Intune assignment's role is sent once, on create (its roleDefinition).
+  deviceManagementRoleAssignment: Object.freeze(['roleDefinition', 'members', 'scopeMembers', 'resourceScopes', 'scopeType', 'roleScopeTagIds']),
+  exchangeRoleAssignment: Object.freeze(['principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId']),
+  defenderRoleAssignment: Object.freeze(['principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds']),
+  operationApprovalPolicy: Object.freeze(['approverGroupIds', 'policyType', 'policyPlatform', 'policySet']),
 });
+// The batch 2 kinds: their access values name principals and roles.
+const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'operationApprovalPolicy']);
 // Compared in a canonical form with nulls dropped, so a value that reads back with
 // its keys in another order, or with empty fields Graph adds, is no change.
 const withoutNulls = (value) => {
@@ -244,8 +253,47 @@ const accessValue = (field) => (payload) => {
   return typeof value === 'object' ? canonical(value) : value;
 };
 const accessChanges = (before, after) => before !== after;
+
+// Approval-held kinds, batch 2: a role assignment names who holds the role by id,
+// and those ids differ between tenants. Every id the backup holds a reference for
+// is shown by that reference's name (`group:Helpdesk admins`, `user:ann@contoso.com`)
+// on both sides: the reviewer sees names, and the approval binds the names, so a
+// restore into another tenant writes whoever has those names there. The backup is
+// the resource's own payload (`backupPayload` once a writer has rewritten its ids).
+// A list of names is compared as a set: Graph returns members in no fixed order.
+const fieldPath = (path) => String(path).split(/\.|\[|\]/).filter(Boolean).map((segment) => (/^\d+$/.test(segment) ? Number(segment) : segment));
+const atPath = (value, path) => fieldPath(path).reduce((held, segment) => held?.[segment], value);
+function referenceNames(resource, field) {
+  const backup = resource?.backupPayload ?? resource?.payload;
+  const names = new Map();
+  for (const ref of resource?.references ?? []) {
+    const top = fieldPath(ref?.field ?? '')[0];
+    if (top !== field || typeof ref.symbol !== 'string') continue;
+    const raw = atPath(backup, ref.field);
+    if (typeof raw === 'string' && raw.length > 0) names.set(raw.toLowerCase(), ref.symbol);
+  }
+  return names;
+}
+const named = (value, names) => {
+  if (typeof value === 'string') return names.get(value.toLowerCase()) ?? value;
+  if (Array.isArray(value)) {
+    const items = value.map((item) => named(item, names));
+    return items.every((item) => typeof item === 'string') ? items.sort() : items;
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, named(child, names)]));
+};
+const namedAccessValue = (field) => (payload, resource) => {
+  const value = withoutNulls(payload?.[field]);
+  if (value === null || value === undefined) return null;
+  const shown = named(value, referenceNames(resource, field));
+  // An Intune assignment's role is compared by its id (shown by name), not by the
+  // display name and built-in flag kept beside it.
+  if (field === 'roleDefinition' && shown && typeof shown === 'object' && !Array.isArray(shown)) return shown.id ?? null;
+  return typeof shown === 'object' ? canonical(shown) : shown;
+};
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
-  .map((field) => rule(field, 'access-changing', accessChanges, accessValue(field)));
+  .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field)));
 
 // Restore gaps batch 18: a Win32 app's command lines are plain text; its
 // detection and requirement scripts are base64 inside its rules (each of the
@@ -502,6 +550,9 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   deviceRegistrationPolicy: { reviewed: true, rules: accessRules('deviceRegistrationPolicy') },
   tenantAppManagementPolicy: { reviewed: true, rules: accessRules('tenantAppManagementPolicy') },
   deviceManagementRoleDefinition: { reviewed: true, judgesCreates: true, rules: accessRules('deviceManagementRoleDefinition') },
+  // Batch 2: a role assignment or an approval policy is judged on create too:
+  // recreating it gives access back (or names who approves admin changes).
+  ...Object.fromEntries([...NAMED_ACCESS_KINDS].map((kind) => [kind, { reviewed: true, judgesCreates: true, rules: accessRules(kind) }])),
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to
@@ -594,8 +645,8 @@ export function classifyContentEffects(resources) {
       // 'when-assigned': only when the restore also assigns it to someone.
       if (!before && (!review.judgesCreates || (review.judgesCreates === 'when-assigned' && !reach))) continue;
       for (const entry of review.rules) {
-        const b = entry.read(before ?? {});
-        const a = entry.read(after);
+        const b = entry.read(before ?? {}, resource);
+        const a = entry.read(after, resource);
         const changes = JSON.stringify(b ?? null) !== JSON.stringify(a ?? null) && entry.when(b, a);
         if (!changes && !(reach && entry.when(entry.read({}), a))) continue; // unchanged and reaches no one new: benign
         effects.push({

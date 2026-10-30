@@ -691,8 +691,15 @@ function planFields(write, { observation, current, manual }) {
     if (same(before, after)) continue;
     // A value the site took from the tenant default is not the site's own: writing it would
     // pin today's default on the site (OneDrive, onedrive.mjs inheritance).
-    if (observation.fieldCoverage[field]?.inheritance === 'inherited') {
+    const inheritance = observation.fieldCoverage[field]?.inheritance;
+    if (inheritance === 'inherited') {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the backup shows the tenant default here, not a value of the site\'s own; KEEL does not pin it on the site, and the tenant default is changed in the SharePoint admin center' });
+      continue;
+    }
+    // OneDrive writes only a value the backup shows as the site's own. When the backup cannot
+    // tell, the value may be the tenant default, so it is listed rather than pinned.
+    if (write.resourceType === 'onedriveSiteSettings' && writable.has(field) && inheritance !== 'explicit') {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the backup does not show whether this is the site\'s own value or the tenant default, so KEEL does not pin it on the site; an administrator checks it in the SharePoint admin center' });
       continue;
     }
     if (isTrustField(write.resourceType, field)) {

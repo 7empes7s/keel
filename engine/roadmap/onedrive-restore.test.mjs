@@ -171,6 +171,22 @@ test('without a qualification nothing is sent', async (t) => {
   assert.deepEqual(live.writes, []);
 });
 
+test('a value the backup cannot place as the site\'s own or the tenant default is listed, never pinned', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  // The override switch is missing from the backup, so the guest expiry may be the tenant default.
+  const live = fakeTenant({ [ALICE]: site(ALICE, 'keel-rt-alice@contoso.test', { OverrideTenantExternalUserExpirationPolicy: null }) });
+  const source = await recordSource(client, tenantRef, live);
+  const coverage = source.observations[0].fieldCoverage.ExternalUserExpirationInDays;
+  assert.notEqual(coverage?.inheritance, 'explicit');
+  assert.notEqual(coverage?.inheritance, 'inherited');
+  live.state[ALICE].ExternalUserExpirationInDays = 30;
+  const { plan } = await planned(client, tenantRef, { source, live });
+  assert.deepEqual(plan.operations, []);
+  const manual = plan.manual.find((item) => item.field === 'ExternalUserExpirationInDays');
+  assert.match(manual?.reason ?? '', /does not show whether .* tenant default/);
+});
+
 test('a locked site is refused; on the test tenant only a KEEL-RT- person\'s site is written', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = TEST_TENANT_REFS[0];

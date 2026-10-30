@@ -12285,3 +12285,31 @@ item that needs it stays untouched.
   8. Cleanup: delete and purge the `KEEL-RT-261` principal and app. Report anything left.
 - **Report:** B and S; each dry run id, status and planned verbs; approval ids; enforce exit codes; the new appId and the principal's
   appId as read back; what step 7 planned; anything left in the tenant.
+
+### Q262: Live proof that a recreated app gets api://<new appId>, on create and on restore from deleted items (after PR #755)
+- Drafted by the "Fix old app ID URIs on app recreate" thread (2026-10-30). Before PR #755, a create of an app sent the backup's
+  `identifierUris` `api://<old appId>` before Entra assigned the new appId, and restoring a deleted app that an earlier restore
+  recreated PATCHed `api://<old appId>` back. PR #755 creates without those URIs, then PATCHes `api://<new appId>`; a deleted
+  recreated app is restored with the appId it has.
+- Needs: Q261 done, and the deployed build B at or after PR #755's merge commit. Check:
+  `git -C /opt/keel-live log --oneline -1 --grep "#755"` shows the merge, or `merge-base --is-ancestor <merge sha> HEAD`.
+- Status: todo
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q257 and Q261. Log every
+  approval id. Grant nothing, consent to nothing, add no secrets or certificates. Global admin not used.
+- Do, at B, from your own checkout (never `/opt/keel`):
+  1. Write down that no `KEEL-RT-262` object exists.
+  2. Create app registration `KEEL-RT-262-app` (single tenant, no secrets or certificates, no API permissions, no service
+     principal). Set its Application ID URI to `api://<its appId>` (PATCH `identifierUris`). Write down the appId (old appId).
+  3. Take snapshot S. Confirm `application:<old appId>` holds `identifierUris: ["api://<old appId>"]`.
+  4. Delete and purge the app.
+  5. **Create path:** restore from S selecting only the app. Dry run, approve, `--enforce`. Expect `application create succeeded`
+     (no failure). Read the app back: its appId is new, and `identifierUris` is exactly `["api://<new appId>"]`. Quote the
+     journal's create entry (outcome and postState `identifierUris`).
+  6. **Deleted-items path:** delete the recreated app (do NOT purge). Restore from S selecting the app. Expect the dry run to plan
+     `restore-soft-deleted` for it. Approve, `--enforce`. Expect success, not "residual drift" or "not-remediable". Read the app
+     back: appId still the new one, `identifierUris` exactly `["api://<new appId>"]`.
+  7. One more dry run from S selecting the app. Expect **noop**. Quote what it plans.
+  8. Cleanup: delete and purge `KEEL-RT-262-app`. Report anything left.
+- **Report:** B and S; old and new appId; each dry run id, status and planned verb; approval ids; enforce exit codes; the
+  `identifierUris` read back after steps 5 and 6; what step 7 planned; anything left in the tenant. If Graph refuses a write,
+  quote its error code and message.

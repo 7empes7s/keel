@@ -2048,13 +2048,26 @@ function appRelationshipRefusal(resource, verb) {
   return null;
 }
 
-/** Both apps must be in Intune; on create, a link already set between them is not added again. */
+/**
+ * Both apps must be in Intune, each with its package uploaded (Intune refuses
+ * a link to or from an app that is not published, seen live in Q212); on
+ * create, a link already set between them is not added again.
+ */
 async function appRelationshipPreflight(io, { payload, verb }) {
   const ends = [['the app that has the link', payload.sourceId, payload.sourceDisplayName], ['the app it points to', payload.targetId, payload.targetDisplayName]];
+  const unpublished = [];
   for (const [end, id, name] of ends) {
-    const found = await io.retryOperation(() => io.writer.read('beta', `${appPath(id)}?$select=id,displayName`));
+    const found = await io.retryOperation(() => io.writer.read('beta', `${appPath(id)}?$select=id,displayName,publishingState`));
     if (recordNotFound(found)) return `${end} (${name ?? id}) is not in Intune; add the app again first, then restore`;
     if (found?.ok !== true) return `${end} could not be read (${outcomeDetail(found)})`;
+    // An app with no publishingState (not every kind reports it) is not held back.
+    const state = found.body?.publishingState;
+    if (hasText(state) && lower(state) !== 'published') unpublished.push(name ?? found.body?.displayName ?? id);
+  }
+  if (unpublished.length > 0) {
+    return {
+      skipped: `manual: Intune does not let ${unpublished.join(' or ')} be changed until its package is uploaded, so the link was not written; upload the package in ${APP_PORTAL}, then restore the link again`,
+    };
   }
   // The links the app that holds this one has now are sent again with it, so
   // they must be readable in full before anything is written.

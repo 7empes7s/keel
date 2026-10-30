@@ -396,6 +396,55 @@ test('#642: a link Intune refuses because an app has no package yet is a plain s
   assert.match(outcome.skipped[0].reason, /^manual: Intune does not let KEEL-RT-app-main or KEEL-RT-app-dep be changed until its package is uploaded/);
 });
 
+// Q212 (issue #653 follow-up): Intune answers 400 to a link to or from an app
+// whose package is not uploaded, so that is checked before any write: no call,
+// no journal entry, and the step for a person.
+const shellsInTarget = (states) => Object.fromEntries(Object.entries(states).map(([id, publishingState]) => [`${APPS}/${id}`, {
+  '@odata.type': '#microsoft.graph.win32LobApp', id, displayName: id, ...(publishingState ? { publishingState } : {}),
+}]));
+const journalSpy = () => {
+  const calls = [];
+  return { calls, query: async (text, values) => { calls.push({ text, values }); return { rows: [{ id: calls.length }] }; } };
+};
+
+test('#653: a link between recreated apps with no package is skipped before any write, and nothing is journaled', async () => {
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph({ seed: shellsInTarget({ 'new-main': 'notPublished', 'new-dep': 'notPublished' }) });
+    const rollbackClient = journalSpy();
+    const outcome = await wave(graph, [{ ...linkResource, verb: 'create' }], {
+      mode, rollbackClient, runId: 'run-653',
+      appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main'], ['mobileApp:KEEL-RT-app-dep', 'new-dep']]),
+    });
+    assert.deepEqual(outcome.failed, [], mode);
+    assert.equal(outcome.skipped.length, 1, mode);
+    assert.match(outcome.skipped[0].reason, /^manual: Intune does not let KEEL-RT-app-main or KEEL-RT-app-dep be changed until its package is uploaded, so the link was not written; upload the package in the Intune admin center/, mode);
+    assert.equal(graph.calls.some((call) => call.method !== 'GET'), false, mode);
+    assert.deepEqual(rollbackClient.calls, [], mode);
+  }
+});
+
+test('#653: only the end with no package is named, and an update is held back the same way', async () => {
+  const graph = idoFakeGraph({ seed: shellsInTarget({ [MAIN]: 'published', [DEP]: 'processing' }) });
+  const created = await wave(graph, [{ ...linkResource, verb: 'create' }], { existingTargetIds: new Map([['mobileApp:KEEL-RT-app-main', MAIN], ['mobileApp:KEEL-RT-app-dep', DEP]]) });
+  assert.deepEqual(created.failed, []);
+  assert.match(created.skipped[0].reason, /^manual: Intune does not let KEEL-RT-app-dep be changed until its package is uploaded/);
+  const live = { ...link, sourceId: MAIN, targetId: DEP, dependencyType: 'detect' };
+  const updated = await applyIntuneExtendedWrite(graph, { ...linkResource, live: { state: 'present', targetId: live.id, payload: live } }, 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  assert.match(updated.skipped?.reason ?? '', /^manual: Intune does not let KEEL-RT-app-dep be changed until its package is uploaded/);
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('#653: a link between published apps is still written', async () => {
+  const graph = idoFakeGraph({ seed: shellsInTarget({ 'new-main': 'published', 'new-dep': 'Published' }) });
+  const outcome = await wave(graph, [{ ...linkResource, verb: 'create' }], {
+    appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main'], ['mobileApp:KEEL-RT-app-dep', 'new-dep']]),
+  });
+  assert.deepEqual(outcome.failed, []);
+  assert.equal(outcome.applied.length, 1);
+  assert.deepEqual(graph.calls.filter((call) => call.method === 'POST').map((call) => call.path), [`${APPS}/new-main/updateRelationships`]);
+});
+
 test('#642: when the holding app\'s links cannot be read in full, nothing is written', async () => {
   const graph = idoFakeGraph({ seed: appsInTarget('new-main', 'new-dep') });
   const paged = { ...graph, read: async (version, path) => {

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "build": "dd50b39d4737e6379dd90b0330a8c420287f367f",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-30T00:58:54.209Z",
+  "observedAt": "2026-10-30T07:47:55.879Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -191,15 +191,15 @@
         "identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
         "field": "Comment",
         "type": "text",
-        "before": "KEEL capture 2026-10-16T21:01:51.878Z",
-        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
-        "final": null,
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
+        "final": "KEEL test fixture",
         "contentEffects": [],
-        "ok": false,
-        "readBackVerified": false,
-        "restoredToOriginal": false,
-        "capturedAt": "2026-10-30T00:56:34.679Z",
-        "error": "Set-RetentionCompliancePolicy failed: Set-RetentionCompliancePolicy: |Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-30T07:44:53.304Z",
+        "error": null
       },
       {
         "operationId": "purview.retention-rule.update",
@@ -213,13 +213,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
+        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T00:57:43.826Z",
+        "capturedAt": "2026-10-30T07:45:48.287Z",
         "error": null
       },
       {
@@ -234,13 +234,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
+        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T00:58:31.626Z",
+        "capturedAt": "2026-10-30T07:46:44.993Z",
         "error": null
       },
       {
@@ -255,14 +255,14 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
-        "final": null,
+        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
+        "final": "KEEL test fixture",
         "contentEffects": [],
-        "ok": false,
-        "readBackVerified": false,
-        "restoredToOriginal": false,
-        "capturedAt": "2026-10-30T00:58:54.209Z",
-        "error": "Set-DlpComplianceRule failed: Set-DlpComplianceRule: A server side error has occurred because of which the operation could not be completed. Please try again after some time. If the problem still persists, please reach out to MS support."
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-30T07:47:55.879Z",
+        "error": null
       }
     ],
     "skipped": [],
@@ -292,13 +292,55 @@
         "cmdlet": "Set-RetentionCompliancePolicy",
         "parameters": {
           "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
-          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
+          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
         },
         "outcome": "failed",
         "error": {
           "code": "CMDLET_ERROR",
           "errorId": "[],Write-ErrorMessage"
         }
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-RetentionCompliancePolicy",
+        "parameters": {
+          "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
+          "Comment": "KEEL test fixture"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "[],Write-ErrorMessage"
+        }
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-RetentionCompliancePolicy",
+        "parameters": {
+          "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
+          "Comment": "KEEL test fixture"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "[],Write-ErrorMessage"
+        }
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionPolicy"
+        ],
+        "outcome": "ok"
       },
       {
         "credential": "collector",
@@ -313,7 +355,7 @@
         "cmdlet": "Set-RetentionComplianceRule",
         "parameters": {
           "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
-          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
+          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
         },
         "outcome": "ok"
       },
@@ -355,7 +397,7 @@
         "cmdlet": "Set-DlpCompliancePolicy",
         "parameters": {
           "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
-          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
+          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
         },
         "outcome": "ok"
       },
@@ -397,25 +439,46 @@
         "cmdlet": "Set-DlpComplianceRule",
         "parameters": {
           "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
-          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
+          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
         },
-        "outcome": "failed",
-        "error": {
-          "code": "CMDLET_ERROR",
-          "errorId": "Microsoft.PowerShell.Commands.WriteErrorException,Write-ErrorMessage"
-        }
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "dlpRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-DlpComplianceRule",
+        "parameters": {
+          "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
+          "Comment": "KEEL test fixture"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "dlpRule"
+        ],
+        "outcome": "ok"
       }
     ],
-    "captureLogSha256": "8a9ca0186956049e56d9c51eeb55ae9ecf8ecae3d1bf37026f6330091ea73513"
+    "captureLogSha256": "dd64c8749a83f75b9eb522546e11d5d8195e9f530d026f542fe7efcdfaef85f8"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-purview-retention-dlp-live-acceptance.capture.json",
-      "sha256": "8a9ca0186956049e56d9c51eeb55ae9ecf8ecae3d1bf37026f6330091ea73513"
+      "sha256": "dd64c8749a83f75b9eb522546e11d5d8195e9f530d026f542fe7efcdfaef85f8"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "0b9e71bef9d5b0b7cd729b02bcd968f938230892f4282f0e50e062bc14ca9db2"
+      "signature": "91c41f97b2c3e40546cd65d48deaf8257b3d80affee6e3023142a0179d898e0d"
     }
   }
 }

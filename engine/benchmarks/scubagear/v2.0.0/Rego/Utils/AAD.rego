@@ -1,0 +1,441 @@
+package utils.aad
+import rego.v1
+import data.utils.report.ArraySizeStr
+import data.utils.report.Description
+import data.utils.key.Count
+import data.utils.key.ConvertToSet
+import data.utils.key.FAIL
+import data.utils.key.PASS
+
+
+#############
+# Constants #
+#############
+
+# Set to the maximum number of array items to be
+# printed in the report details section
+REPORTARRAYMAXCOUNT := 20
+
+# License warning string
+P2WARNINGSTR :=
+    "**NOTE: Your tenant does not have a Microsoft Entra ID P2 license, which is required for this feature**"
+
+CAPLINK := "<a href='#caps'>View all CA policies</a>"
+
+ANALYZERURL := "https://github.com/cisagov/ScubaGear/blob/main/docs/configuration/scubaconfiganalyzer.md"
+
+INT_MAX := 2147483647
+
+########################################
+# Specific AAD Report Details Function #
+########################################
+
+# Function returns the string that indicates the number of fails & each item that fails.
+# If the number of items is greater than our REPORTARRAYMAXCOUNT, the item list is
+# truncated for readability purposes.
+ReportFullDetailsArray(Array, String) := Description([ArraySizeStr(Array), String]) if {
+    count(Array) == 0
+}
+
+ReportFullDetailsArray(Array, String) := Details if {
+    count(Array) > 0
+    count(Array) <= REPORTARRAYMAXCOUNT
+    Details := Description([
+        ArraySizeStr(Array),
+        concat(":<br/>", [String, concat(", ", Array)])
+    ])
+}
+
+ReportFullDetailsArray(Array, String) := Details if {
+    count(Array) > REPORTARRAYMAXCOUNT
+
+    TruncationWarning :=
+        "...<br/>Note: The list of matching items has been truncated. Full details are available in the JSON results."
+
+    TruncatedList := concat(", ", array.slice(
+        [x | some x in Array],
+        0,
+        REPORTARRAYMAXCOUNT
+    ))
+    Details := Description([
+        ArraySizeStr(Array),
+        concat(":<br/>", [String, TruncatedList]),
+        TruncationWarning
+    ])
+}
+
+#################################################################################
+# Report Detail Functions for check that required Microsoft Entra ID P2 license #
+#################################################################################
+
+Aad2P2Licenses contains ServicePlan.ServicePlanId if {
+    some ServicePlan in input.service_plans
+    ServicePlan.ServicePlanName == "AAD_PREMIUM_P2"
+}
+
+#################################################################################
+# Microsoft Agent 365 / Microsoft 365 E7 license detection (MS.AAD.9.1v1)       #
+#################################################################################
+
+# SKU part numbers that provide AI agent conditional access. These match the
+# String_Id values in Modules/CreateReport/MicrosoftLicenseToProductNameMappings.csv.
+AGENT_LICENSE_SKUS := {"AGENT_365", "MICROSOFT_365_E7"}
+
+# The subscribed SKUs as an array. A tenant with a single SKU is exported as one
+# object rather than a one-element array.
+default LicenseSkus := []
+
+LicenseSkus := [input.license_information] if {
+    is_object(input.license_information)
+}
+
+LicenseSkus := input.license_information if {
+    is_array(input.license_information)
+}
+
+# True only when SKU data was collected. Missing data does not prove a license is absent.
+default LicenseDataAvailable := false
+
+LicenseDataAvailable if {
+    count(LicenseSkus) > 0
+}
+
+# SKUs that provide agent conditional access and have enabled units. A lapsed
+# subscription remains listed but reports zero enabled units.
+AgentLicenses contains Sku.SkuId if {
+    some Sku in LicenseSkus
+    Sku.SkuPartNumber in AGENT_LICENSE_SKUS
+    object.get(Sku, ["PrepaidUnits", "Enabled"], 0) > 0
+}
+
+# Returns license warning if license not present as results may be wrong,
+# Othewise returns report string with link to table at bottom of report
+ReportDetailsArrayLicenseWarningCap(Array, String) := Description if {
+    count(Aad2P2Licenses) > 0
+    Description := concat(". ", [ReportFullDetailsArray(Array, String), CAPLINK])
+} else := P2WARNINGSTR
+
+# Returns license warning if license not present as results may be wrong,
+# Othewise returns report string
+ReportDetailsArrayLicenseWarning(Array, String) := ReportFullDetailsArray(Array, String) if {
+    count(Aad2P2Licenses) > 0
+} else := P2WARNINGSTR
+
+# Returns license warning if license not present as results may be wrong,
+# Othewise returns basic report string
+ReportDetailsBooleanLicenseWarning(true) := PASS if {
+    count(Aad2P2Licenses) > 0
+}
+
+ReportDetailsBooleanLicenseWarning(false) := FAIL if {
+    count(Aad2P2Licenses) > 0
+}
+
+ReportDetailsBooleanLicenseWarning(_) := P2WARNINGSTR if {
+    count(Aad2P2Licenses) == 0
+}
+
+##########################################
+# User/Group Exclusion support functions #
+##########################################
+
+default UserExclusionsFullyExempt(_, _) := false
+
+# Returns true when all user exclusions present in the conditional
+# access policy are exempted in matching config variable for the
+# baseline policy item.  Undefined if no exclusions AND no exemptions.
+UserExclusionsFullyExempt(Policy, PolicyID) := true if {
+    ExemptedUsers := input.scuba_config.Aad[PolicyID].CapExclusions.Users
+    ExcludedUsers := ConvertToSet(Policy.Conditions.Users.ExcludeUsers)
+    AllowedExcludedUsers := ConvertToSet(ExemptedUsers)
+    count(ExcludedUsers - AllowedExcludedUsers) == 0
+}
+
+# Returns true when user inputs are not defined or user exclusion lists are empty
+UserExclusionsFullyExempt(Policy, PolicyID) := true if {
+    count({x | some x in Policy.Conditions.Users.ExcludeUsers}) == 0
+    count({y | y := input.scuba_config.Aad[PolicyID].CapExclusions.Users}) == 0
+}
+
+default GroupExclusionsFullyExempt(_, _) := false
+
+# Returns true when all group exclusions present in the conditional
+# access policy are exempted in matching config variable for the
+# baseline policy item.  Undefined if no exclusions AND no exemptions.
+GroupExclusionsFullyExempt(Policy, PolicyID) := true if {
+    ExemptedGroups := input.scuba_config.Aad[PolicyID].CapExclusions.Groups
+    ExcludedGroups := ConvertToSet(Policy.Conditions.Users.ExcludeGroups)
+    AllowedExcludedGroups := ConvertToSet(ExemptedGroups)
+    count(ExcludedGroups - AllowedExcludedGroups) == 0
+}
+
+# Returns true when user inputs are not defined or group exclusion lists are empty
+GroupExclusionsFullyExempt(Policy, PolicyID) := true if {
+    count({x | some x in Policy.Conditions.Users.ExcludeGroups}) == 0
+    count({y | y := input.scuba_config.Aad[PolicyID].CapExclusions.Groups}) == 0
+}
+
+default AppExclusionsFullyExempt(_, _) := false
+
+# Returns true when all application exclusions present in the conditional
+# access policy are exempted in matching config variable for the
+# baseline policy item.  Undefined if no exclusions AND no exemptions.
+AppExclusionsFullyExempt(Policy, PolicyID) := true if {
+    ExemptedApps := input.scuba_config.Aad[PolicyID].CapExclusions.Applications
+    ExcludedApps := ConvertToSet(Policy.Conditions.Applications.ExcludeApplications)
+    AllowedExcludedApps := ConvertToSet(ExemptedApps)
+    count(ExcludedApps - AllowedExcludedApps) == 0
+}
+
+# Returns true when both the policy exclusion list and the config list are empty
+AppExclusionsFullyExempt(Policy, PolicyID) := true if {
+    count({x | some x in Policy.Conditions.Applications.ExcludeApplications}) == 0
+    count({y | y := input.scuba_config.Aad[PolicyID].CapExclusions.Applications}) == 0
+}
+
+# Preview exports may contain whitespace-separated IDs; cached exports still need
+# to work after the provider starts normalizing this field to an array.
+AgentExclusionArray(value) := value if {
+    is_array(value)
+} else := [id |
+    some id in regex.split(`\s+`, trim_space(value))
+    id != ""
+] if {
+    is_string(value)
+} else := [] if {
+    value == null
+}
+
+default AgentExclusionsFullyExempt(_, _) := false
+
+AgentExclusionsFullyExempt(Policy, PolicyID) := true if {
+    raw := object.get(Policy, ["Conditions", "ClientApplications", "ExcludeAgentIdServicePrincipals"], null)
+    excluded := ConvertToSet(AgentExclusionArray(raw))
+    allowed := ConvertToSet(object.get(input, ["scuba_config", "Aad", PolicyID, "AgentExclusions", "Agents"], []))
+    count(excluded - allowed) == 0
+}
+
+default GuestUserExclusionsFullyExempt(_, _) := false
+
+# Returns true (pass) when the CAP has no guest user type exclusions configured.
+# The Graph API returns ExcludeGuestsOrExternalUsers as null when no guest types
+# are excluded from the policy, meaning no config exemption is needed.
+GuestUserExclusionsFullyExempt(Policy, _) := true if {
+    Policy.Conditions.Users.ExcludeGuestsOrExternalUsers == null
+}
+
+# Returns true (pass) when the CAP does exclude specific guest user types, but every
+# excluded type appears in the ScubaConfig allowlist for this policy. The Graph API
+# returns the excluded types as a comma-separated string (e.g. "b2bCollaborationGuest,internalGuest"),
+# which is split into individual values and compared against the allowlist. If any
+# excluded type is NOT in the allowlist, this returns false and the policy fails.
+GuestUserExclusionsFullyExempt(Policy, PolicyID) := true if {
+    GuestExclusions := Policy.Conditions.Users.ExcludeGuestsOrExternalUsers
+    GuestExclusions != null
+    ExcludedTypes := ConvertToSet(split(GuestExclusions.GuestOrExternalUserTypes, ","))
+    AllowedTypes := ConvertToSet(input.scuba_config.Aad[PolicyID].CapExclusions.GuestUserTypes)
+    count(ExcludedTypes - AllowedTypes) == 0
+}
+
+#########################
+# General AAD Functions #
+#########################
+
+# Save the Allowed MFA items as a set, check if there are any MFA
+# items allowed besides the acceptable ones & if there is at least
+# 1 MFA item allowed. Return true
+IsPhishingResistantMFA(Policy) := true if {
+    # Strength must be at least one of acceptable with no unacceptable strengths
+    Strengths := ConvertToSet(Policy.GrantControls.AuthenticationStrength.AllowedCombinations)
+    AcceptableMFA := {"windowsHelloForBusiness", "fido2", "x509CertificateMultiFactor"}
+    Count(Strengths - AcceptableMFA) == 0
+    Count(Strengths) > 0
+} else := false
+
+# Returns true if the policy enforces general MFA (either through built-in controls
+# or authentication strength that includes MFA methods)
+IsGeneralMFA(Policy) := true if {
+    # Check for traditional MFA built-in control
+    "mfa" in Policy.GrantControls.BuiltInControls
+} else := true if {
+    # Check for authentication strength that includes MFA methods
+    Strengths := ConvertToSet(Policy.GrantControls.AuthenticationStrength.AllowedCombinations)
+    # Check if any of the allowed combinations contain MFA methods
+    # This includes combinations like "password,microsoftAuthenticatorPush", "password,softwareOath", etc.
+    MFACombinations := {
+        "windowsHelloForBusiness",
+        "fido2", 
+        "x509CertificateMultiFactor",
+        "deviceBasedPush",
+        "temporaryAccessPassOneTime",
+        "temporaryAccessPassMultiUse",
+        "password,microsoftAuthenticatorPush",
+        "password,softwareOath",
+        "password,hardwareOath", 
+        "password,sms",
+        "password,voice",
+        "federatedMultiFactor",
+        "microsoftAuthenticatorPush,federatedSingleFactor",
+        "softwareOath,federatedSingleFactor",
+        "hardwareOath,federatedSingleFactor",
+        "sms,federatedSingleFactor",
+        "voice,federatedSingleFactor"
+    }
+    Count(Strengths & MFACombinations) > 0
+        PRMFA := {"windowsHelloForBusiness", "fido2", "x509CertificateMultiFactor"}
+    # The following computation determines if there are any auth combinations in the CAP 
+    # are not considered MFA combinations
+    Count(Strengths - MFACombinations) == 0
+    # The following computation determines if there is at least one auth strength combination 
+    # in the CAP that is not considered a phishing-resistant MFA combination, this would 
+    # indicate that the CAP allows some form of general MFA even if it has PRMFA combinations
+    Count(Strengths - PRMFA) > 0
+} else := false
+
+# Returns a json object as a list. This is used to future proof against changes microsoft 
+# may make to the input where a field may change from a string to an array of strings. 
+# The function ensures that the output is always an array of strings, whether the input 
+# is null, a string, or an array of strings.
+# Case 1: Input is null -> output is empty array
+# Case 2: Input is an array -> output is the same array
+# Case 3: Input is a string -> output is an array of trimmed items split by commas
+EnsureTrimmedArray(JsonObject) := [] if {
+    JsonObject == null
+} else := JsonObject if {
+    is_array(JsonObject)
+} else := arr if {
+    is_string(JsonObject)
+    parts := split(JsonObject, ",")
+    arr = [trim(y, " ") | some y in parts]
+}
+
+############################################################################
+# Report formatting functions for MS.AAD.6.1v1                             #
+############################################################################
+
+FederatedDomainWarningString := concat(" ", [
+    "ScubaGear is unable to read the user password expiration settings for federated",
+    "domains because it is controlled in a system external to the tenant.",
+    "Check with your identity provider on how to configure this policy in a federated context.",
+])
+
+FailureString := "domain(s) failed"
+
+FederatedDomainWarning(domains) := concat("<br/><br/>", [
+    ReportFullDetailsArray(domains, "federated domain(s) present"),
+    FederatedDomainWarningString
+])
+
+# Case 1: Pass; all valid domains, no federated domains
+# Case 2: Pass; all valid domains, federated domains
+# Case 3: Fail; invalid domains exist, no federated domains
+# Case 4: Fail; invalid domains exist, federated domains
+# Default: Fail
+
+DomainReportDetails(Status, Metadata) := PASS if {
+    Status == true
+    Count(Metadata.FederatedDomains) == 0
+} else := Description if {
+    Status == true
+    Count(Metadata.FederatedDomains) > 0
+    Description := concat("", [
+        PASS, 
+        "; however, there are ", 
+        FederatedDomainWarning(Metadata.FederatedDomains)
+    ])
+} else := Description if {
+    Status == false
+    Count(Metadata.InvalidDomains) > 0
+    Count(Metadata.FederatedDomains) == 0
+    Description := ReportFullDetailsArray(Metadata.InvalidDomains, FailureString)
+} else := Description if {
+    Status == false
+    Count(Metadata.InvalidDomains) > 0
+    Count(Metadata.FederatedDomains) > 0
+    Description := concat("<br/><br/>", [
+        ReportFullDetailsArray(Metadata.InvalidDomains, FailureString),
+        FederatedDomainWarning(Metadata.FederatedDomains)
+    ])
+} else := FAIL
+
+############################################
+# Shared helper functions for identifying near misses in CAP exclusions and reporting them
+############################################
+
+# Returns a list of the labels of the exclusions types that failed
+CapMissingLabels(checks) := [c.label |
+    some c in checks
+    not c.ok
+]
+
+# Sets status to pass if the base check is ok and there are no missing exclusion types
+CapEval(base_ok, checks) := {
+    "status": "pass",
+    "MissingExclusionTypes": missing,
+} if {
+    base_ok == true
+    missing := CapMissingLabels(checks)
+    count(missing) == 0
+}
+
+# Sets status to near_miss if the base check is ok and there are missing exclusion types
+CapEval(base_ok, checks) := {
+    "status": "near_miss",
+    "MissingExclusionTypes": missing,
+} if {
+    base_ok == true
+    missing := CapMissingLabels(checks)
+    count(missing) > 0
+}
+
+# Sets status to fail if the base check is not ok
+CapEval(base_ok, checks) := {
+    "status": "fail",
+    "MissingExclusionTypes": missing,
+} if {
+    base_ok == false
+    missing := CapMissingLabels(checks)
+}
+
+# Generates the near miss messages and returns them as a list of strings
+CapNearMissMessages(near_miss_objects) := [msg |
+    some obj in near_miss_objects
+    msg := sprintf(
+        "%s would pass if the config file is updated to include: %s",
+        [obj.PolicyName, concat(", ", obj.MissingExclusionTypes)],
+    )
+]
+
+# Returns an empty string for the near miss details because the check passed
+CapNearMissDetails(actual_value, _) := NearMissDetails if {
+    count(actual_value) > 0
+    NearMissDetails := ""
+}
+
+# Returns a string with the near miss details because 
+#   the check failed and 
+#   there are some near miss policies
+CapNearMissDetails(actual_value, near_miss_objects) := NearMissDetails if {
+    count(actual_value) == 0
+    count(near_miss_objects) > 0
+    near_miss_messages := CapNearMissMessages(near_miss_objects)
+    NearMissDetails := sprintf("<br/><br/><strong>Near miss: </strong> %s", [concat("; ", near_miss_messages)])
+}
+
+# Returns an empty string for the near miss details because 
+#   the check failed and 
+#   there are no near miss policies
+CapNearMissDetails(actual_value, near_miss_objects) := NearMissDetails if {
+    count(actual_value) == 0
+    count(near_miss_objects) == 0
+    NearMissDetails := ""
+}
+
+ScubaAnalyzerDetails := sprintf(
+    `<a href="%s" target="_blank">Run the Start-SCuBAConfigAnalyzer cmdlet</a> and import your ScubaResults JSON file to determine which specific exclusions to add to the configuration file.`,
+    [ANALYZERURL]
+)
+
+NearMissAnalyzerDetails(near_miss_details) := ScubaAnalyzerDetails if {
+    near_miss_details != ""
+} else := ""

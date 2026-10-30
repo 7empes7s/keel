@@ -1,5 +1,6 @@
 {
   "framework": "CISA SCuBA M365 Secure Configuration Baselines (ScubaGear)",
+  "supersededBy": "engine/benchmarks/scubagear/pin.json (ScubaGear v2.0.0, every product, files and SHA-256 manifest in the repo). This older pin stays only so the task-126 qualification gate can still verify its recorded evidence; new work reads the v2.0.0 pin.",
   "publisher": "Cybersecurity and Infrastructure Security Agency (CISA), part of the U.S. Department of Homeland Security",
   "format": "Open Policy Agent (OPA) Rego policies + Markdown baseline documents + CSV control mappings",
   "sourceUrl": "https://github.com/cisagov/ScubaGear",

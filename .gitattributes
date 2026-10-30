@@ -1,0 +1,2 @@
+# Pinned upstream files: keep their bytes exactly as hashed in MANIFEST.sha256.
+engine/benchmarks/scubagear/v2.0.0/** -text

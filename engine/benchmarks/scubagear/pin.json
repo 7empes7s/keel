@@ -1,0 +1,34 @@
+{
+  "framework": "CISA SCuBA M365 Secure Configuration Baselines (ScubaGear)",
+  "publisher": "Cybersecurity and Infrastructure Security Agency (CISA)",
+  "version": "2.0.0",
+  "tag": "v2.0.0",
+  "commitSha": "6e5a1a421b36c5a1fb3fd983b8c4bcd5b7a6c61d",
+  "sourceUrl": "https://github.com/cisagov/ScubaGear/tree/v2.0.0",
+  "upstreamRoot": "PowerShell/ScubaGear",
+  "localPath": "v2.0.0",
+  "manifest": "v2.0.0/MANIFEST.sha256",
+  "manifestSha256": "1f10d94239ead1a97b85b801779d25a645eb9824bac399292323814cf12fbb6e",
+  "retrievedAt": "2026-10-30T15:30:00Z",
+  "retrievedBy": "git clone --depth 1 --branch v2.0.0 https://github.com/cisagov/ScubaGear; files copied unchanged from PowerShell/ScubaGear (LICENSE from the repository root)",
+  "licensing": {
+    "status": "public domain (CC0-1.0 Universal)",
+    "basis": "U.S. Government work, also dedicated to the public domain with CC0-1.0 (see v2.0.0/LICENSE).",
+    "attributionRequired": false,
+    "commercialUseRestricted": false
+  },
+  "products": {
+    "aad": { "name": "Entra ID", "rego": "Rego/AADConfig.rego", "baseline": "baselines/aad.md" },
+    "exo": { "name": "Exchange Online", "rego": "Rego/EXOConfig.rego", "baseline": "baselines/exo.md" },
+    "securitysuite": { "name": "Security Suite (Defender and Purview)", "rego": "Rego/SecuritySuiteConfig.rego", "baseline": "baselines/securitysuite.md" },
+    "sharepoint": { "name": "SharePoint and OneDrive", "rego": "Rego/SharepointConfig.rego", "baseline": "baselines/sharepoint.md" },
+    "teams": { "name": "Teams", "rego": "Rego/TeamsConfig.rego", "baseline": "baselines/teams.md" },
+    "powerplatform": { "name": "Power Platform", "rego": "Rego/PowerPlatformConfig.rego", "baseline": "baselines/powerplatform.md" },
+    "powerbi": { "name": "Power BI", "rego": "Rego/PowerBIConfig.rego", "baseline": "baselines/powerbi.md" }
+  },
+  "regoUtils": ["Rego/Utils/AAD.rego", "Rego/Utils/KeyFunctions.rego", "Rego/Utils/ReportDetails.rego", "Rego/Utils/SecuritySuite.rego"],
+  "assetPackage": "schemas/ScubaBaselines.json",
+  "nistMapping": "mappings/scuba-to-nist-sp-800-53-r5-fedramp-high.csv",
+  "policyMigrations": "mappings/scuba-baseline-policy-migrations.csv",
+  "note": "v2.0.0 merged the old Defender baseline into Security Suite, so there is no defender product. The baseline Markdown is the authoritative rule list; ScubaBaselines.json is CISA's machine-readable copy of it and is checked against the Markdown on import. The older pin at docs/roadmap/benchmark-content/scubagear-pin.json (commit 8fd29cb) stays only for the task-126 qualification gate's recorded evidence."
+}

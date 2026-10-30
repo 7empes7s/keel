@@ -9,7 +9,9 @@
 //
 // A workload's approved setup is taken once, from a read, the first time drift runs for
 // it. Changes still waiting for review at that moment keep their earlier value, so
-// taking the setup never quietly approves them.
+// taking the setup never quietly approves them. A baseline captured from a backup also
+// holds service settings (baselineWorkloads.mjs); making it active replaces the approved
+// setup of each service it holds with its own rows.
 import { appendEvidence } from './evidence.mjs';
 import { assertDispositionApproval, serviceChangeNeedsReview } from './dispositionReview.mjs';
 
@@ -114,6 +116,36 @@ export async function loadApprovedSide(client, { setup, strip = (value) => value
 }
 
 /**
+ * When the active baseline holds this change's service (baselineWorkloads.mjs), the
+ * accepted state joins it too, as acceptDrift repoints one baseline_resource row: a
+ * removal deletes the baseline's row, anything else points it at the read that found
+ * the change. A baseline that does not hold the service is left alone.
+ */
+async function acceptIntoActiveBaseline(client, { tenantRef, change }) {
+  const { rows: [baseline] } = await client.query(
+    `SELECT id FROM baseline
+      WHERE tenant_ref = $1 AND active AND superseded_at IS NULL
+        AND jsonb_typeof(observation_scope -> 'workloads') = 'array'
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(observation_scope -> 'workloads') entry WHERE entry ->> 'workload' = $2)
+      FOR UPDATE`,
+    [tenantRef, change.workload],
+  );
+  if (!baseline) return;
+  if (change.change_type === 'removed') {
+    await client.query(
+      'DELETE FROM baseline_workload WHERE baseline_id = $1 AND workload = $2 AND resource_key = $3',
+      [baseline.id, change.workload, change.resource_key],
+    );
+    return;
+  }
+  await client.query(
+    `INSERT INTO baseline_workload (baseline_id, workload, resource_key, collection_id) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (baseline_id, workload, resource_key) DO UPDATE SET collection_id = EXCLUDED.collection_id`,
+    [baseline.id, change.workload, change.resource_key, change.collection_id],
+  );
+}
+
+/**
  * Accept one service setting change: the state it found joins the approved setup (or,
  * for a removal, leaves it). Nothing in Microsoft 365 changes. Only the newest change
  * to a resource can be accepted, and only on its own tenant. Records a `disposition`
@@ -183,6 +215,7 @@ export async function acceptServiceChange(client, { tenantRef, changeId, actor, 
       });
       if (written !== 1) throw new ServiceChangeError('the read that found this change no longer holds the setting');
     }
+    await acceptIntoActiveBaseline(client, { tenantRef, change: row });
     await client.query('COMMIT');
     change = row;
   } catch (error) {

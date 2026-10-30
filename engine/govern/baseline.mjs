@@ -7,6 +7,9 @@ import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { refuseSameContentDrift } from '../store/openDrift.mjs';
+import {
+  applyBaselineWorkloads, captureWorkloadReads, copyBaselineWorkloads, nearestWorkloadReads,
+} from './baselineWorkloads.mjs';
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -251,6 +254,19 @@ export function captureFromSnapshot(snapshot) {
   };
 }
 
+/**
+ * Copies the service settings nearest the source backup into a new baseline and
+ * records which reads they came from (and which services had none) in its scope.
+ * Runs inside the caller's transaction.
+ */
+async function captureServiceSettings(client, { tenantRef, baselineId, snapshot, scope }) {
+  const { reads, notRead } = await nearestWorkloadReads(client, { tenantRef, at: snapshot.completed_at });
+  const workloads = await captureWorkloadReads(client, { baselineId, reads });
+  const withServices = { ...scope, workloads, ...(notRead.length ? { workloadsNotRead: notRead } : {}) };
+  await client.query('UPDATE baseline SET observation_scope = $2 WHERE id = $1', [baselineId, withServices]);
+  return withServices;
+}
+
 async function lockEligibleSnapshot(client, { tenantRef, snapshotId, scoped = false }) {
   const { rows: snapshotRows } = await client.query(
     `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
@@ -306,6 +322,8 @@ export async function seedFromSnapshot(client, {
        WHERE snapshot_id = $2`,
       [baselineId, snapshotId],
     );
+    await captureServiceSettings(client, { tenantRef, baselineId, snapshot, scope: capture.scope });
+    await applyBaselineWorkloads(client, { tenantRef, baselineId });
     await client.query('COMMIT');
     return baselineId;
   } catch (error) {
@@ -385,6 +403,8 @@ export async function resnapshotBaseline(client, {
        WHERE snapshot_id = $2`,
       [created.id, snapshotId],
     );
+    await captureServiceSettings(client, { tenantRef, baselineId: created.id, snapshot, scope: capture.scope });
+    if (created.active) await applyBaselineWorkloads(client, { tenantRef, baselineId: created.id });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -426,7 +446,8 @@ export async function listBaselines(client, { tenantRef }) {
     `SELECT b.id, b.label, b.description, b.set_at, b.set_by, b.active,
             b.source_snapshot_id, b.captured_at, b.observation_scope, b.version,
             b.supersedes_id, b.superseded_at,
-            count(br.natural_key)::int AS resource_count
+            count(br.natural_key)::int AS resource_count,
+            (SELECT count(*)::int FROM baseline_workload bw WHERE bw.baseline_id = b.id) AS service_setting_count
      FROM baseline b
      LEFT JOIN baseline_resource br ON br.baseline_id = b.id
      WHERE b.tenant_ref = $1
@@ -488,6 +509,8 @@ export async function activateBaseline(client, { tenantRef, baselineId }) {
     if (rowCount !== 1) {
       throw new Error(`failed to activate baseline: ${baselineId}`);
     }
+    // The service settings it holds become the approved setup service drift compares with.
+    await applyBaselineWorkloads(client, { tenantRef, baselineId });
 
     await client.query('COMMIT');
   } catch (error) {
@@ -574,6 +597,7 @@ export async function reinstateBaseline(client, {
       [created.id, source.id],
     );
     copied = copy.rowCount;
+    await copyBaselineWorkloads(client, { fromBaselineId: source.id, toBaselineId: created.id });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

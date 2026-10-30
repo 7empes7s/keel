@@ -12375,3 +12375,34 @@ item that needs it stays untouched.
 - **Report:** B; step 1 status; capture and verify exit codes; proven / not proven (exact errors); `needsManualRevert`; how long the
   retention put-back waited (count of refused put-backs in the capture log); observedAt; step 3; branch and commit; import lines; what
   is left changed in the tenant (expected: nothing; the retention fixture redeploying).
+
+### Q264: Give the Keel Restorer the Cloud Application Administrator role, then retry Q256's app creation policy calls (about 10 minutes)
+- Drafted by the "Find why service principal creation policy gets 403" thread (2026-10-30). Q256 showed that Graph gates
+  `beta /policies/servicePrincipalCreationPolicies` by Entra directory roles, not by application permissions. PR #752 (merged)
+  made the kind a manual restore step meanwhile.
+- **Marouane approved this role (2026-10-30 08:30 UTC)**, on the decision card "Give Keel Restorer a directory role so it can
+  restore app creation policies?", option "Add Cloud Application Administrator". This item is that approval: add only this role.
+- Needs: nothing (any build). **Quick.**
+- Status: todo
+- Result:
+- **Test tenant only.** Collector for reads. Global admin not used. Never touch CA policies, break-glass or Marouane's account.
+  Never change the built-in `microsoft-verified-publishers` policy. Never print a token. Tenant-wide write covered by the
+  2026-10-22 approval, as in Q256: put the tenant back right after.
+- Do:
+  1. Write down the Restorer's directory roles and the tenant's app creation policies, as in Q256 steps 1 and 2.
+  2. **Assign the role:** add an active, permanent directory role assignment of **Cloud Application Administrator**
+     (template id `158c047a-c907-4556-b7ef-446551a6b5f7`), scope `/`, to the **Keel Restorer** service principal.
+     Use the same route you used to give the Collector Global Reader on 2026-10-28 (`POST v1.0 /roleManagement/directory/roleAssignments`).
+     Report the assignment id. If no KEEL credential may assign it, set `blocked: needs a one-time admin click` and name
+     the exact steps for Marouane (Entra admin center > Roles and administrators > Cloud Application Administrator >
+     Add assignments > Keel Restorer), then stop.
+  3. Wait about 5 minutes, then get a **fresh** Restorer token (role changes can take a few minutes to apply).
+  4. Repeat Q256 steps 3 and 4 as the Restorer: the beta GET and the minimal create `KEEL-RT-264-app-creation`. If the create
+     answers 201: `POST .../{id}/includes` with one condition copied from the built-in policy's first include (without `id`),
+     then `GET .../{id}` (report whether includes and excludes come back expanded), then `DELETE .../{id}/includes/{condition id}`,
+     then `PATCH .../{id}` `{"description":"KEEL-RT test fixture 2"}`, then DELETE the policy. Report each status.
+     If still 403, retry once 15 minutes later with a fresh token, then report.
+  5. Cleanup: no `KEEL-RT-264-*` policy left; the policy list matches step 1. **Keep the role assignment** (approved), whatever
+     the outcome, and say so in the Result.
+- **Report:** the assignment id; step 4 statuses, error codes and request-ids; whether the conditions come back expanded on GET by id;
+  anything left in the tenant.

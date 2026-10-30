@@ -91,6 +91,9 @@ export const TRUST_FIELDS = Object.freeze({
   crossTenantAccessPolicyPartner: CROSS_TENANT_TRUST_FIELDS,
   // The guest invitation allow and block lists: which outside domains guests may come from.
   b2bManagementPolicy: Object.freeze(['definition']),
+  // A lifecycle workflow custom extension: which Logic App it calls (endpointConfiguration)
+  // and how Entra signs in to it (authenticationConfiguration, the app and token it trusts).
+  lifecycleWorkflowCustomTaskExtension: Object.freeze(['authenticationConfiguration', 'endpointConfiguration']),
 });
 // `signin` names a sign-in endpoint or setting, not a device's failed sign-in count or its
 // sign-in options page (Intune passcodeSignInFailureCountBeforeWipe, settingsBlockSignInOptionsPage).

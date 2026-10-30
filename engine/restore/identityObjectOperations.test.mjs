@@ -684,11 +684,10 @@ test('restore gaps batch 3: a federation of another kind has no write route', as
   assert.equal(graph.calls.length, 0);
 });
 
-test('catalogs, app policies and task extensions are created and read back', async () => {
+test('catalogs and app policies are created and read back (task extension creates: recordWriterTrust.test.mjs)', async () => {
   const cases = [
     ['accessPackageCatalog', { id: 'src-cat', displayName: 'KEEL-RT-Catalog', description: 'Fixture', state: 'published', isExternallyVisible: false, createdDateTime: '2026-01-01T00:00:00Z' }],
     ['appManagementPolicy', { id: 'src-pol', displayName: 'KEEL-RT-AppPolicy', description: 'No secrets', isEnabled: true, restrictions: { passwordCredentials: [{ restrictionType: 'passwordAddition', maxLifetime: null }] } }],
-    ['lifecycleWorkflowCustomTaskExtension', { id: 'src-ext', displayName: 'KEEL-RT-Extension', description: 'Logic app', endpointConfiguration: { '@odata.type': '#microsoft.graph.logicAppTriggerEndpointConfiguration', subscriptionId: 's', resourceGroupName: 'r', logicAppWorkflowName: 'w' }, createdBy: { id: 'x' } }],
   ];
   for (const [type, payload] of cases) {
     const graph = idoFakeGraph();

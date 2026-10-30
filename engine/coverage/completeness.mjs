@@ -143,7 +143,7 @@ export const COMPLETENESS = Object.freeze({
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
   // Wave 1 CAT-ENTRA: Entra governance.
   lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only'), part('Switching the workflow on, which a restore leaves to a person', 'not-written')] },
-  lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route')] },
+  lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route'), part('Which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person', 'not-written')] },
   lifecycleManagementSettings: {},
   attributeSet: { missing: [part('An attribute set that no longer exists, which needs a review before it is created', 'not-written')] },
   customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route'), part('An attribute that no longer exists, which needs a review before it is created', 'not-written')] },

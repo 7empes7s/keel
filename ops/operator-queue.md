@@ -12539,3 +12539,26 @@ item that needs it stays untouched.
   `pseudonymize.mjs check` first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
 - **Report:** B and S; per operation promoted / refused (exact message) / skipped; dry run and approval ids; the step A1 gate result;
   Step 0 result; evidence branch, commit and PR; anything left in the tenant.
+
+### Q269: Recapture the multitenant organization partner template update (only `templateApplicationLevel`) before it expires on 2026-11-27
+- Drafted by the "Recapture expiring Entra and Intune records" thread (2026-10-30). Q238 skipped this write as `manual:` because its
+  drift was on `automaticUserConsentSettings`, which commit 22eee59f made a trust field. The writer still writes
+  `templateApplicationLevel`, and the plan's drift now says so. The master record (observed 2026-10-28 07:47 UTC) lapses
+  **2026-11-27 07:47 UTC**.
+- Needs: /opt/keel-live at 22eee59f or later (`grep -q "switch templateApplicationLevel" /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
+  Run it at the deployed commit B.
+- Status: todo
+- Result:
+- **Test tenant only.** Same rules and capture tooling as Q238. Self-approve; log the approval id. Restorer for writes; grant nothing.
+  This changes a tenant-wide setting (2026-10-22 approval): **write down `templateApplicationLevel` first and check it is back at
+  the end.** Never change `inboundTrust`, `automaticUserConsentSettings` or any `b2b*` setting.
+- Do, from your own checkout at B, with `KEEL_QUALIFICATION_HMAC_KEY` set, using the plan's step for this type:
+  1. Write down `templateApplicationLevel` (and, for the report, `automaticUserConsentSettings`). Take snapshot S.
+  2. Switch `templateApplicationLevel` (`newPartners` ↔ `none`). Restore from S selecting only this template, dry run (expect one
+     `update` naming only `templateApplicationLevel`, no `manual:` skip), approve, enforce, capture the `update`. Expect it back as in S.
+  3. Dry run from S again. Expect 0 planned writes.
+  4. Check `templateApplicationLevel` and `automaticUserConsentSettings` equal step 1; put back by hand anything that does not.
+  5. Commit the record and `.capture.json` on `claude/live-evidence-q269`, branched from `origin/master` (secret scan and
+     `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the line.
+- **Report:** B; the values before and after; the dry run's planned fields; approval id; new `observedAt`; the step 3 count; the
+  evidence branch and commit.

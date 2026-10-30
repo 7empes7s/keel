@@ -315,22 +315,22 @@
     {
       "PolicyId": "MS.SHAREPOINT.1.1v1",
       "Criticality": "Shall",
-      "RequirementMet": true
+      "RequirementMet": false
     },
     {
       "PolicyId": "MS.SHAREPOINT.1.2v1",
       "Criticality": "Shall",
-      "RequirementMet": false
+      "RequirementMet": true
     },
     {
       "PolicyId": "MS.SHAREPOINT.1.3v1",
       "Criticality": "Shall",
-      "RequirementMet": false
+      "RequirementMet": true
     },
     {
       "PolicyId": "MS.SHAREPOINT.2.1v1",
       "Criticality": "Shall",
-      "RequirementMet": false
+      "RequirementMet": true
     },
     {
       "PolicyId": "MS.SHAREPOINT.2.2v1",
@@ -340,7 +340,7 @@
     {
       "PolicyId": "MS.SHAREPOINT.3.1v1",
       "Criticality": "Shall",
-      "RequirementMet": false
+      "RequirementMet": true
     },
     {
       "PolicyId": "MS.SHAREPOINT.3.2v1",
@@ -350,7 +350,7 @@
     {
       "PolicyId": "MS.SHAREPOINT.3.3v2",
       "Criticality": "Shall",
-      "RequirementMet": false
+      "RequirementMet": true
     }
   ],
   "teams": [

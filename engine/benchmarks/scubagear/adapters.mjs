@@ -58,7 +58,20 @@ export const PURVIEW_DLP = 'purview-retention-dlp';
 export const TEAMS_POLICIES = 'teams-org-policies';
 export const TEAMS_VOICE = 'teams-voice-policies';
 export const POWER_PLATFORM_SETTINGS = 'power-platform-settings';
-export const SHAREPOINT_SETTINGS = 'sharepoint-site-settings';
+// Keel's Get-PnPTenant read of the SharePoint admin settings (the sharepoint-tenant
+// workload, engine/collect/workloads/sharepointTenant.mjs). Until that read is on and
+// qualified, no backup holds it and the SharePoint rules read "could not check".
+export const SHAREPOINT_TENANT = 'sharepoint-tenant';
+
+// SharePoint's enum names, in number order, as the sharepoint-tenant read stores them
+// (the SharePoint Online tenant administration types). The rules compare the numbers.
+export const SHAREPOINT_ENUMS = Object.freeze({
+  sharing: Object.freeze(['Disabled', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly']),
+  domainMode: Object.freeze(['None', 'AllowList', 'BlockList']),
+  linkType: Object.freeze(['None', 'Direct', 'Internal', 'AnonymousAccess']),
+  linkPermission: Object.freeze(['None', 'View', 'Edit']),
+  anonymousLink: Object.freeze(['None', 'View', 'Edit']),
+});
 
 // ScubaGear's ScubaConfigDefaults.json `privilegedRoles` at the pinned tag.
 export const PRIVILEGED_ROLES = Object.freeze([
@@ -405,27 +418,48 @@ export function allowedDomains(value) {
   return listed.map(domainOf);
 }
 
-// SharePoint's numbers for Graph's named choices (SharingCapabilities and
-// SharingDomainRestrictionModes in the SharePoint admin API).
-export const SHARING_CAPABILITY = Object.freeze({
-  disabled: 0, externalUserSharingOnly: 1, externalUserAndGuestSharing: 2, existingExternalUserSharingOnly: 3,
+// The Get-SPOTenantRest fields the SharePoint rules read, and where Keel's
+// Get-PnPTenant read keeps each one. Both read the same tenant object; only OneDrive's
+// sharing level has another name in PnP. `enum` names the table the reader stores the
+// value's name by (SHAREPOINT_ENUMS); the rules compare the number.
+export const SPO_TENANT_FIELDS = Object.freeze({
+  SharingCapability: { from: 'SharingCapability', enum: 'sharing' },
+  ODBSharingCapability: { from: 'OneDriveSharingCapability', enum: 'sharing' },
+  SharingDomainRestrictionMode: { from: 'SharingDomainRestrictionMode', enum: 'domainMode' },
+  DefaultSharingLinkType: { from: 'DefaultSharingLinkType', enum: 'linkType' },
+  DefaultLinkPermission: { from: 'DefaultLinkPermission', enum: 'linkPermission' },
+  FileAnonymousLinkType: { from: 'FileAnonymousLinkType', enum: 'anonymousLink' },
+  FolderAnonymousLinkType: { from: 'FolderAnonymousLinkType', enum: 'anonymousLink' },
+  RequireAnonymousLinksExpireInDays: { from: 'RequireAnonymousLinksExpireInDays', days: true },
+  EmailAttestationRequired: { from: 'EmailAttestationRequired', boolean: true },
+  EmailAttestationReAuthDays: { from: 'EmailAttestationReAuthDays', days: true },
 });
-export const SHARING_DOMAIN_RESTRICTION = Object.freeze({ none: 0, allowList: 1, blockList: 2 });
 
+/**
+ * The tenant object as Get-SPOTenantRest answers it, from the newest Get-PnPTenant read.
+ * A field the read did not carry, or carried in a shape the rules cannot compare, makes
+ * the whole object "could not check": the rules would read a missing field as a fail.
+ */
 function spoTenant(facts) {
-  const tenant = list(facts, SHAREPOINT_SETTINGS).find((fact) => fact.id === 'tenant');
-  if (!tenant) throw new CouldNotBuild('SPO_tenant', 'the SharePoint backup holds no tenant sharing settings');
-  const number = (table, value, name) => {
-    if (typeof value === 'string' && Object.hasOwn(table, value)) return table[value];
-    throw new CouldNotBuild('SPO_tenant', `the backup does not say how ${name} is set`);
-  };
-  const domains = (value) => (Array.isArray(value) ? value.join(' ') : '');
-  return [{
-    SharingCapability: number(SHARING_CAPABILITY, tenant.sharingCapability, 'external sharing'),
-    SharingDomainRestrictionMode: number(SHARING_DOMAIN_RESTRICTION, tenant.sharingDomainRestrictionMode, 'the sharing domain list'),
-    SharingAllowedDomainList: domains(tenant.sharingAllowedDomainList),
-    SharingBlockedDomainList: domains(tenant.sharingBlockedDomainList),
-  }];
+  const tenants = list(facts, SHAREPOINT_TENANT).filter((fact) => fact.kind === 'tenantSettings');
+  if (tenants.length !== 1) throw new CouldNotBuild('SPO_tenant', 'the SharePoint backup holds no tenant settings read through the admin site');
+  const [tenant] = tenants;
+  const out = {};
+  for (const [name, spec] of Object.entries(SPO_TENANT_FIELDS)) {
+    const value = tenant[spec.from];
+    let built;
+    if (spec.enum) {
+      const index = typeof value === 'string' ? SHAREPOINT_ENUMS[spec.enum].indexOf(value) : -1;
+      built = index >= 0 ? index : undefined;
+    } else if (spec.days) {
+      built = Number.isInteger(value) ? value : undefined;
+    } else if (spec.boolean) {
+      built = typeof value === 'boolean' ? value : undefined;
+    }
+    if (built === undefined) throw new CouldNotBuild('SPO_tenant', `the backup does not say how ${spec.from} is set`);
+    out[name] = built;
+  }
+  return [out];
 }
 
 /**
@@ -614,13 +648,11 @@ export const ADAPTERS = Object.freeze({
     build: () => [{ CertificateBasedAuth: true }],
   }),
 
-  // SharePoint and OneDrive. Keel reads the tenant's sharing settings through Graph
-  // (sharepointSettings), which names its choices; the SharePoint admin API ScubaGear
-  // reads gives the same choices as numbers. Only these settings are in Graph: a rule
-  // that names any other SharePoint admin setting reads "could not check".
+  // SharePoint and OneDrive: the tenant's admin settings from Keel's Get-PnPTenant read
+  // (the sharepoint-tenant workload), as ScubaGear reads them with Get-SPOTenantRest.
   SPO_tenant: Object.freeze({
-    reads: [service(SHAREPOINT_SETTINGS)],
-    fields: Object.freeze(['SharingCapability', 'SharingDomainRestrictionMode', 'SharingAllowedDomainList', 'SharingBlockedDomainList']),
+    reads: [service(SHAREPOINT_TENANT, 'tenantSettings')],
+    fields: Object.freeze(Object.keys(SPO_TENANT_FIELDS)),
     build: spoTenant,
   }),
 

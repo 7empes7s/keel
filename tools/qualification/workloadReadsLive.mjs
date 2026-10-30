@@ -50,8 +50,9 @@ import {
   READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
   knownWorkload, provenReads, readModule, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
-import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
+import { SHAREPOINT_WORKLOAD, SITE_SETTINGS_FIELDS, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, readSharePointStructure } from '../../engine/collect/workloads/sharepointStructure.mjs';
+import { SHAREPOINT_TENANT_WORKLOAD, readSharePointTenant } from '../../engine/collect/workloads/sharepointTenant.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
 
@@ -62,16 +63,31 @@ import { readConfigFile } from '../../engine/config/configFile.mjs';
 export async function readSharePointSiteSharing({ powershell }) {
   try {
     const sites = await readSiteSharing(powershell);
-    return { outcome: 'complete', discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size } } }, failures: [] };
+    // The per-site settings come from the same answer. They count as read only when each
+    // of them is carried by at least one listed site, so a module that leaves one out never
+    // switches them on, and the missing names are reported.
+    const bodies = [...sites.values()];
+    const missing = Object.entries(SITE_SETTINGS_FIELDS)
+      .filter(([, pick]) => !bodies.some((body) => pick(body) !== undefined && pick(body) !== null)).map(([field]) => field);
+    const settings = sites.size === 0 || missing.length === 0;
+    return {
+      outcome: settings ? 'complete' : 'partial',
+      discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size }, 'site-settings': { status: settings ? 'read' : 'partial', objects: sites.size } } },
+      failures: settings ? [] : [{ family: 'site-settings', error: { code: 'NOT_RETURNED', message: `no listed site carried: ${missing.join(', ')}` } }],
+    };
   } catch (error) {
-    return { outcome: 'failed', discovery: { families: { 'site-sharing': { status: 'failed', objects: 0 } } }, failures: [{ family: 'site-sharing', error: structuredFailure(error).error }] };
+    const failed = { status: 'failed', objects: 0 };
+    return {
+      outcome: 'failed', discovery: { families: { 'site-sharing': failed, 'site-settings': failed } },
+      failures: ['site-sharing', 'site-settings'].map((family) => ({ family, error: structuredFailure(error).error })),
+    };
   }
 }
 
 export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
-  [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure, [SHAREPOINT_TENANT_WORKLOAD]: readSharePointTenant,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: readExchangeOrgAccess, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: readExchangeOrgDefaults,
 });
 

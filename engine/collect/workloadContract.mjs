@@ -49,6 +49,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-distribution-groups', 'exchange-recipients',
   'exchange-org-access', 'exchange-org-defaults',
   'sharepoint-structure',
+  'sharepoint-tenant',
   'teams-voice-policies', 'purview-governance',
   'power-platform-settings',
 ]);
@@ -141,6 +142,16 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   },
   {
     id: 'sharepoint.site-sharing', workload: 'sharepoint-site-settings', resource: 'SharePoint per-site sharing settings',
+    operation: cmdlet('Get-PnPTenantSite', 'PnP.PowerShell'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
+    source: Object.freeze({ url: 'https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html', retrievedAt: null }),
+  },
+  {
+    // The same Get-PnPTenantSite answer: each site's lock state, access policy, sensitivity
+    // label, custom script, restricted access and storage quota, proven on its own.
+    id: 'sharepoint.site-settings', workload: 'sharepoint-site-settings', resource: 'SharePoint per-site admin settings',
     operation: cmdlet('Get-PnPTenantSite', 'PnP.PowerShell'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
@@ -421,6 +432,22 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   ].map(([key, resource, name, options]) => ({
     id: `sharepoint-structure.${key}`, workload: 'sharepoint-structure', resource,
     operation: cmdlet(name, 'PnP.PowerShell', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
+    source: Object.freeze({ url: `https://pnp.github.io/powershell/cmdlets/${name}.html`, retrievedAt: null }),
+  })),
+  // SharePoint and OneDrive tenant settings through PnP, on the admin site, no parameters.
+  // engine/collect/workloads/sharepointTenant.mjs holds the fields.
+  ...[
+    ['tenant', 'SharePoint and OneDrive tenant settings: sharing, access, OneDrive, sites, Loop and versions', 'Get-PnPTenant'],
+    ['sync-client-restriction', 'OneDrive sync limits: domain-joined PCs, Mac sync and blocked file types', 'Get-PnPTenantSyncClientRestriction'],
+    ['idle-sign-out', 'SharePoint and OneDrive idle sign-out', 'Get-PnPBrowserIdleSignout'],
+    ['restricted-search-mode', 'Restricted SharePoint Search on or off', 'Get-PnPTenantRestrictedSearchMode'],
+    ['restricted-search-allowed-sites', 'Sites allowed in Restricted SharePoint Search', 'Get-PnPTenantRestrictedSearchAllowedList'],
+  ].map(([key, resource, name]) => ({
+    id: `sharepoint-tenant.${key}`, workload: 'sharepoint-tenant', resource,
+    operation: cmdlet(name, 'PnP.PowerShell'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',

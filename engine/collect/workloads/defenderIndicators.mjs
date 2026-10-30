@@ -30,9 +30,10 @@ import { getToken } from '../../../tools/tenant-probe/auth.mjs';
 
 export const DEFENDER_INDICATORS_WORKLOAD = 'defender-endpoint-indicators';
 export const DEFENDER_INDICATORS_OPERATION = 'defender.endpoint-indicators';
-// The API answers at most 10,000 indicators per page ($top), which is also the tenant limit
-// Microsoft documents for indicators. A full page is treated as possibly cut short.
+// The API answers at most 10,000 indicators per request ($top). A full page with no next link
+// is followed with $skip, up to MAX_PAGES; a full last page is treated as possibly cut short.
 export const PAGE_SIZE = 10000;
+export const MAX_PAGES = 5;
 
 const operation = () => WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === DEFENDER_INDICATORS_OPERATION);
 
@@ -83,7 +84,8 @@ export function assertDefenderIndicatorsRequest(url, init = {}) {
   if (method !== 'GET' || init.body !== undefined) throw new DefenderIndicatorsScopeError(`Defender indicator collection is read-only: refused ${method} ${url}`);
   const parsed = new URL(url);
   const path = decodeURIComponent(parsed.pathname);
-  if (parsed.protocol !== 'https:' || !DEFENDER_INDICATORS_REQUEST_SHAPES.some((shape) => shape.host === parsed.hostname && shape.path.test(path))) {
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || !DEFENDER_INDICATORS_REQUEST_SHAPES.some((shape) => shape.host === parsed.host && shape.path.test(path))) {
     throw new DefenderIndicatorsScopeError(`${parsed.hostname}${path} is not the Defender indicators list; alerts, devices and investigations are never read`);
   }
   for (const key of parsed.searchParams.keys()) {
@@ -101,7 +103,8 @@ export function readOnlyDefenderIndicatorsTransport(tokenFor, fetchImpl = global
   return async (url, init = {}) => {
     assertDefenderIndicatorsRequest(url, init);
     token ??= await tokenFor(operation().operation.audience);
-    const response = await fetchImpl(url, { method: 'GET', headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
+    // A redirect is never followed: it could leave the declared request shape.
+    const response = await fetchImpl(url, { method: 'GET', redirect: 'error', headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
     const text = await response.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = null; }
@@ -176,13 +179,18 @@ function keep(items, { maxObjects }) {
   return { resources, capped, unidentified, conflicts };
 }
 
+// The same read, skipping the first `skip` indicators (the API documents $top and $skip, not next links).
+function withSkip(descriptor, skip) {
+  return Object.freeze({ ...descriptor, operation: Object.freeze({ ...descriptor.operation, endpoint: `${descriptor.operation.endpoint}&$skip=${skip}` }) });
+}
+
 /**
  * Reads the indicators. Pure apart from the injected transport: no database, no gate.
  * `families` is ['indicator'] or []; `skipped` lists what the caller did not read.
  * Callers outside tests use collectDefenderIndicators.
  */
 export async function readDefenderIndicators({
-  transport, families = FAMILY_NAMES, skipped = [], maxObjects = PAGE_SIZE, sleep = async () => {}, now = () => new Date(),
+  transport, families = FAMILY_NAMES, skipped = [], maxObjects = PAGE_SIZE * MAX_PAGES, sleep = async () => {}, now = () => new Date(),
 }) {
   for (const family of families) if (!FAMILIES[family]) throw new TypeError(`unknown Defender indicators family ${family}`);
   const observedFrom = now().toISOString();
@@ -191,9 +199,15 @@ export async function readDefenderIndicators({
   let pageFull = false;
   if (families.includes('indicator')) {
     try {
-      const { items } = await readRestConfiguration(operation(), { transport, sleep });
-      // One page of PAGE_SIZE may have been cut short by the API's limit.
-      pageFull = items.length >= PAGE_SIZE;
+      const items = [];
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const descriptor = page === 0 ? operation() : withSkip(operation(), page * PAGE_SIZE);
+        const { items: answered } = await readRestConfiguration(descriptor, { transport, sleep });
+        items.push(...answered);
+        // Fewer than a full page: that was the last one.
+        pageFull = answered.length >= PAGE_SIZE;
+        if (!pageFull) break;
+      }
       read = keep(items, { maxObjects });
     } catch (error) {
       if (error instanceof DefenderIndicatorsScopeError) throw error;

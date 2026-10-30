@@ -13,7 +13,8 @@
 //    record turns the workload on.
 // Mutation checks (each was run once and made this file fail):
 //  - allow POST in the transport (the read-only assertion fails);
-//  - drop the full-page check (the cap test fails).
+//  - drop the full-page check (the cap test fails);
+//  - compare the hostname instead of the host (the port test fails).
 //
 // Everything runs against the isolated test database and a fake API with KEEL-RT-
 // fixtures. No tenant is touched.
@@ -21,7 +22,7 @@ import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 
 import {
-  DEFENDER_INDICATORS_DESCRIPTOR, DEFENDER_INDICATORS_OPERATION, DEFENDER_INDICATORS_WORKLOAD, DefenderIndicatorsScopeError, PAGE_SIZE,
+  DEFENDER_INDICATORS_DESCRIPTOR, DEFENDER_INDICATORS_OPERATION, DEFENDER_INDICATORS_WORKLOAD, DefenderIndicatorsScopeError, MAX_PAGES, PAGE_SIZE,
   collectDefenderIndicators, defenderIndicatorsActivation, defenderIndicatorsTransportFor, readDefenderIndicators,
   readOnlyDefenderIndicatorsTransport,
 } from '../collect/workloads/defenderIndicators.mjs';
@@ -71,9 +72,10 @@ function fakeApi(answer = { value: [indicator('995'), indicator('996', { indicat
   const sent = [];
   const audiences = [];
   const fetchImpl = async (url, init) => {
-    sent.push({ url, method: init.method, body: init.body, authorization: init.headers.authorization });
+    sent.push({ url, method: init.method, body: init.body, redirect: init.redirect, authorization: init.headers.authorization });
     if (answer.status) return new Response('{}', { status: answer.status });
-    return new Response(JSON.stringify(answer), { status: 200 });
+    const body = typeof answer === 'function' ? answer(new URL(url)) : answer;
+    return new Response(JSON.stringify(body), { status: 200 });
   };
   const transport = readOnlyDefenderIndicatorsTransport(async (audience) => { audiences.push(audience); return 'token'; }, fetchImpl);
   return { sent, audiences, transport };
@@ -127,6 +129,8 @@ test('the transport sends only GETs of the indicators list, with a token for the
     ['https://api.security.microsoft.com/api/indicators?$filter=action eq \'Block\'', {}],
     ['https://graph.microsoft.com/v1.0/users', {}],
     ['http://api.security.microsoft.com/api/indicators', {}],
+    ['https://api.security.microsoft.com:444/api/indicators', {}],
+    ['https://user:pass@api.security.microsoft.com/api/indicators', {}],
   ]) await assert.rejects(api.transport(url, init), DefenderIndicatorsScopeError, `${init.method ?? 'GET'} ${url}`);
   assert.deepEqual(api.sent, [], 'nothing refused was sent');
   assert.deepEqual(api.audiences, [], 'no token was fetched for a refused request');
@@ -134,6 +138,7 @@ test('the transport sends only GETs of the indicators list, with a token for the
   await api.transport(LIST);
   await api.transport(`${LIST}&$skip=10000`);
   assert.deepEqual(api.sent.map((item) => item.method), ['GET', 'GET']);
+  assert.ok(api.sent.every((item) => item.redirect === 'error'), 'a redirect is never followed');
   assert.deepEqual(api.audiences, [AUDIENCE], 'one token, fetched once');
 
   const scopes = [];
@@ -171,8 +176,18 @@ test('a refusal, a disagreeing duplicate, an answer with no id and a full page a
   assert.deepEqual(duplicate.discovery.conflicts, [{ resourceKey: 'indicator:1', fields: ['action'] }]);
   assert.equal(duplicate.discovery.unidentified, 1);
 
-  const full = Array.from({ length: PAGE_SIZE }, (_, index) => indicator(String(index + 1)));
-  const capped = await readDefenderIndicators({ transport: fakeApi({ value: full }).transport });
+  // More than one page: the next ones are read with $skip until a page is not full.
+  const page = (skip, size) => Array.from({ length: size }, (_, index) => indicator(String(skip + index + 1)));
+  const twoPages = fakeApi((url) => ({ value: url.searchParams.get('$skip') === String(PAGE_SIZE) ? page(PAGE_SIZE, 3) : page(0, PAGE_SIZE) }));
+  const read = await readDefenderIndicators({ transport: twoPages.transport });
+  assert.equal(read.outcome, 'complete');
+  assert.equal(read.resources.length, PAGE_SIZE + 3);
+  assert.equal(twoPages.sent.length, 2);
+
+  // Every page full up to the page limit: possibly cut short.
+  const always = fakeApi((url) => ({ value: page(Number(url.searchParams.get('$skip') ?? 0), PAGE_SIZE) }));
+  const capped = await readDefenderIndicators({ transport: always.transport });
+  assert.equal(always.sent.length, MAX_PAGES);
   assert.equal(capped.outcome, 'partial');
   assert.equal(capped.discovery.capped, true);
 });

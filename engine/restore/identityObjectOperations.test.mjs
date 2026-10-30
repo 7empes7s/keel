@@ -66,14 +66,112 @@ test('service principal update fails when a written attribute does not read back
   assert.match(result.failed.error, /post-state: notes did not read back/);
 });
 
-test('a service principal whose only difference is whether it is enabled is reported, never written', async () => {
+// Restore approvals: sign-in on/off is written once its effect is approved (or the
+// customer turned approvals off), and never turned off where that would lock out.
+const spResource = (desired, live) => resourceOf('servicePrincipal', desired, { live: { state: 'present', targetId: SP_ID, payload: live } });
+const spGraph = (live) => idoFakeGraph({ seed: { [`/servicePrincipals/${SP_ID}`]: structuredClone(live) } });
+const signInWrites = (graph) => graph.calls.filter((call) => call.method === 'PATCH' && 'accountEnabled' in (call.body ?? {}));
+
+test('restore approvals: service principal sign-in on and off are effects, each in its own direction', () => {
+  const on = protectionEffects({ ...spResource(servicePrincipal, { ...servicePrincipal, accountEnabled: false }), verb: 'update' });
+  assert.deepEqual(on.map((effect) => [effect.field, effect.effect, effect.before, effect.after]), [['accountEnabled', 'weakens-protection', false, true]]);
+  const off = protectionEffects({ ...spResource({ ...servicePrincipal, accountEnabled: false }, servicePrincipal), verb: 'update' });
+  assert.deepEqual(off.map((effect) => [effect.field, effect.effect, effect.before, effect.after]), [['accountEnabled', 'blocks-sign-in', true, false]]);
+  assert.match(off[0].disclosure, /stops working/);
+  assert.deepEqual(protectionEffects({ ...spResource(servicePrincipal, servicePrincipal), verb: 'update' }), []);
+});
+
+test('restore approvals: a sign-in change with no approval is a step for a person, and nothing is written', async () => {
   const live = { ...servicePrincipal, accountEnabled: false };
-  const graph = idoFakeGraph({ seed: { [`/servicePrincipals/${SP_ID}`]: live } });
-  const result = await applyIdentityObjectWrite(graph, resourceOf('servicePrincipal', servicePrincipal, {
-    live: { state: 'present', targetId: SP_ID, payload: live },
-  }), 'update', FAST);
-  assert.match(result.skipped.reason, /never turns sign-in on or off/);
-  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+  const graph = spGraph(live);
+  const result = await applyIdentityObjectWrite(graph, spResource(servicePrincipal, live), 'update', { ...FAST, deletionGuardOptions: GUARD });
+  assert.match(result.skipped.reason, /second person approves it/);
+  assert.equal(result.skipped.completion[0].requirement, 'servicePrincipalSignIn');
+  assert.match(result.skipped.completion[0].description, /off now and on in the backup/);
+  assert.equal(writesOfAll(graph).length, 0);
+  // An approval of other values does not count.
+  const [effect] = protectionEffects({ ...spResource(servicePrincipal, live), verb: 'update' });
+  const other = await applyIdentityObjectWrite(spGraph(live), spResource(servicePrincipal, live), 'update', {
+    ...FAST, deletionGuardOptions: GUARD, approvedContentEffects: [{ ...effect, before: true }],
+  });
+  assert.ok(other.skipped);
+});
+
+test('restore approvals: an approved sign-in change is written after the other attributes and read back', async () => {
+  for (const [want, now] of [[true, false], [false, true]]) {
+    const live = { ...servicePrincipal, accountEnabled: now, notes: 'changed' };
+    const desired = { ...servicePrincipal, accountEnabled: want };
+    const resource = spResource(desired, live);
+    const effects = protectionEffects({ ...resource, verb: 'update' });
+    const graph = spGraph(live);
+    const result = await applyIdentityObjectWrite(graph, resource, 'update', { ...FAST, deletionGuardOptions: GUARD, approvedContentEffects: effects });
+    assert.equal(result.failed, undefined, result.failed?.error);
+    const patches = graph.calls.filter((call) => call.method === 'PATCH').map((call) => call.body);
+    assert.deepEqual(patches, [{ notes: 'restored notes' }, { accountEnabled: want }], 'sign-in is its own write, last');
+    assert.equal(result.applied.changes.signIn, want ? 'on' : 'off');
+    assert.equal(graph.objects.get(`/servicePrincipals/${SP_ID}`).accountEnabled, want);
+  }
+});
+
+test('restore approvals: an unapproved sign-in change still lets the other attributes be written, with a step', async () => {
+  const live = { ...servicePrincipal, accountEnabled: false, notes: 'changed' };
+  const graph = spGraph(live);
+  const result = await applyIdentityObjectWrite(graph, spResource(servicePrincipal, live), 'update', { ...FAST, deletionGuardOptions: GUARD });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(result.applied.changes.fields, ['notes']);
+  assert.equal(signInWrites(graph).length, 0);
+  assert.deepEqual(result.applied.completion.map((item) => item.requirement), ['servicePrincipalSignIn']);
+});
+
+test('restore approvals: sign-in is never turned off for KEEL\'s own app, a Microsoft app or a managed identity, approved or not', async () => {
+  const cases = [
+    [{ ...servicePrincipal, appId: 'KEEL-APP-ID' }, GUARD, /KEEL's own apps/],
+    [{ ...servicePrincipal, appOwnerOrganizationId: MICROSOFT_OWNER_TENANTS[1] }, GUARD, /Microsoft application/],
+    [{ ...servicePrincipal, servicePrincipalType: 'ManagedIdentity' }, GUARD, /ManagedIdentity service principal/],
+    // Without the list of KEEL's own apps, nothing is turned off.
+    [servicePrincipal, { ...GUARD, keelAppIds: [] }, /cannot tell here which apps are its own/],
+    [servicePrincipal, undefined, /cannot tell here which apps are its own/],
+  ];
+  for (const [live, guard, reason] of cases) {
+    const resource = spResource({ ...live, accountEnabled: false }, live);
+    const effects = protectionEffects({ ...resource, verb: 'update' });
+    assert.equal(effects.length, 1);
+    for (const mode of ['enforce', 'dry-run']) {
+      const graph = spGraph(live);
+      const result = await applyIdentityObjectWrite(graph, resource, 'update', { ...FAST, mode, deletionGuardOptions: guard, approvedContentEffects: effects });
+      assert.match(result.skipped?.reason ?? '', reason, `${live.appId} ${mode}`);
+      assert.equal(writesOfAll(graph).length, 0);
+    }
+  }
+  // Turning KEEL's own app back on is not a lockout: it is written once approved.
+  const keel = { ...servicePrincipal, appId: 'keel-app-id', accountEnabled: false };
+  const resource = spResource({ ...keel, accountEnabled: true }, keel);
+  const graph = spGraph(keel);
+  const result = await applyIdentityObjectWrite(graph, resource, 'update', {
+    ...FAST, deletionGuardOptions: GUARD, approvedContentEffects: protectionEffects({ ...resource, verb: 'update' }),
+  });
+  assert.equal(result.applied?.changes.signIn, 'on', result.failed?.error ?? result.skipped?.reason);
+});
+
+test('restore approvals: a dry run plans the sign-in change and writes nothing', async () => {
+  const live = { ...servicePrincipal, accountEnabled: false };
+  const graph = spGraph(live);
+  const result = await applyIdentityObjectWrite(graph, spResource(servicePrincipal, live), 'update', { ...FAST, mode: 'dry-run', deletionGuardOptions: GUARD });
+  assert.equal(result.applied.changes.signIn, 'on');
+  assert.equal(writesOfAll(graph).length, 0);
+});
+
+test('restore approvals: a sign-in change that does not read back fails', async () => {
+  const live = { ...servicePrincipal, accountEnabled: false };
+  const resource = spResource(servicePrincipal, live);
+  const graph = idoFakeGraph({
+    seed: { [`/servicePrincipals/${SP_ID}`]: structuredClone(live) },
+    failWrites: ({ method, body }) => (method === 'PATCH' && 'accountEnabled' in (body ?? {}) ? { ok: true, status: 204, body: null } : null),
+  });
+  const result = await applyIdentityObjectWrite(graph, resource, 'update', {
+    ...FAST, deletionGuardOptions: GUARD, approvedContentEffects: protectionEffects({ ...resource, verb: 'update' }),
+  });
+  assert.match(result.failed.error, /sign-in did not read back as on/);
 });
 
 test('service principal delete passes the deletion guard, needs a complete observation and verifies absence', async () => {

@@ -137,15 +137,16 @@ function federationAfterWrite(_io, { resource }) {
 // to create one, so a create is a step for a person instead of a POST that would fail.
 const CUSTOM_TASK_EXTENSION_PORTAL_PATH = 'Microsoft Entra admin center > Identity Governance > Lifecycle workflows > Custom extensions';
 
-function customTaskExtensionRefusal(resource, verb) {
-  if (verb !== 'create') return null;
+function customTaskExtensionRefusal(resource, verb, ctx = {}) {
+  // An object with this key already in the target is matched by the record writer, not recreated.
+  if (verb !== 'create' || ctx.existingTargetIds?.get(resource.naturalKey)) return null;
   const fields = TRUST_FIELDS.lifecycleWorkflowCustomTaskExtension.filter((field) => resource.payload?.[field] !== undefined);
   const description = `Recreate this custom extension by hand in ${CUSTOM_TASK_EXTENSION_PORTAL_PATH}. `
     + 'A restore never sets which Logic App it calls or how it signs in, so a changed backup cannot point a workflow at another app: '
     + 'confirm the Logic App with its owner, then copy its other settings from the backup.';
   return {
     outcome: 'skipped', reason: `manual: ${description}`,
-    completion: [{ kind: 'manual-setting', requirement: 'trustFields', fields, description }],
+    completion: [{ kind: 'manual-setting', requirement: 'trustFields', ...(fields.length ? { fields } : {}), description }],
   };
 }
 

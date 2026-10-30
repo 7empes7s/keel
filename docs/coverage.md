@@ -126,9 +126,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Lifecycle workflows.** Recreates workflows with their tasks and puts their settings back. A recreated workflow is always off.
   - *Not brought back:* run history and the users each run processed (no tool can write it); switching the workflow on, which a restore leaves to a person (in the backup, but KEEL does not write it yet).
   - *You do:* A restore never turns a workflow on. Check who it applies to, then turn it on in Entra ID Governance.
-- **Lifecycle workflow extensions.** Recreates extensions and puts their settings back.
-  - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet).
-  - *You do:* Make sure the Logic App each extension calls still exists in its Azure subscription.
+- **Lifecycle workflow extensions.** Puts the settings of existing extensions back, except which Logic App each one calls and how it signs in.
+  - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet); which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person (in the backup, but KEEL does not write it yet).
+  - *You do:* Recreate a missing extension by hand. Check which Logic App each extension calls and how it signs in, and that the Logic App still exists in its Azure subscription.
 - **Lifecycle workflow settings.** Puts the settings back.
 - **Custom security attribute sets.** Puts the description and size limit of an existing set back.
   - *Not brought back:* an attribute set that no longer exists, which needs a review before it is created (in the backup, but KEEL does not write it yet).

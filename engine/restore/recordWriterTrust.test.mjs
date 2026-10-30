@@ -203,3 +203,33 @@ test('a custom extension create is a step for a person, never a POST without its
       [['manual-setting', 'trustFields', ['authenticationConfiguration', 'endpointConfiguration']]]);
   }
 });
+
+test('a custom extension whose only difference is its Logic App or sign-in writes nothing and lists it', async () => {
+  const path = `${IDENTITY_RECORDS[EXTENSION].collection}/ext-2`;
+  const live = extensionPayload({ id: 'ext-2', authenticationConfiguration: { '@odata.type': '#microsoft.graph.azureAdTokenAuthentication', resourceId: 'app-live' } });
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIdentityObjectWrite(graph, resourceOf(EXTENSION, extensionPayload(), { live: { state: 'present', targetId: 'ext-2', payload: live } }), 'update', { ...FAST, mode });
+    assert.equal(result.failed, undefined, result.failed?.error);
+    assert.equal(graph.calls.some((call) => call.method === 'PATCH' || call.method === 'POST'), false, `${mode}: nothing is written`);
+    assert.deepEqual(result.applied.completion.map((step) => step.fields), [['authenticationConfiguration']], mode);
+  }
+});
+
+test('a custom extension create that matches one already in the target is not sent to be recreated by hand', async () => {
+  const resource = resourceOf(EXTENSION, extensionPayload());
+  const graph = idoFakeGraph();
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', { ...FAST, mode: 'dry-run', existingTargetIds: new Map([[resource.naturalKey, 'ext-3']]) });
+  assert.equal(result.skipped, undefined);
+  assert.equal(result.applied.targetId, 'ext-3');
+  assert.equal(graph.calls.some((call) => call.method === 'PATCH' || call.method === 'POST'), false);
+});
+
+test('a custom extension create with no Logic App in the backup still asks for a recreate by hand', async () => {
+  const payload = extensionPayload();
+  delete payload.endpointConfiguration;
+  delete payload.authenticationConfiguration;
+  const result = await applyIdentityObjectWrite(idoFakeGraph(), resourceOf(EXTENSION, payload), 'create', FAST);
+  assert.equal(result.skipped.completion.length, 1);
+  assert.equal('fields' in result.skipped.completion[0], false);
+});

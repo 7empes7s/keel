@@ -249,6 +249,7 @@ function normalizeQualification(raw: unknown): TypeQualification | null {
     decision: record.decision as QualificationDecision,
     reason: typeof record.reason === "string" ? record.reason : null,
     softRestoreCandidate: record.softRestoreCandidate === true,
+    nothingToRestore: record.nothingToRestore === true,
     remapping,
     expansion: normalizeExpansion(record.expansion),
   };

@@ -207,13 +207,15 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
   }];
 
   const { restorable, backedUp } = headline.counts;
+  // Kinds with nothing to restore are not gaps, so they stay out of "of N".
+  const restoreTotal = headline.counts.restoreTotal ?? backedUp;
   tiles.push({
     key: "restore", label: "Restore proven", icon: "restore",
-    value: `${restorable.toLocaleString("en-GB")} of ${backedUp.toLocaleString("en-GB")}`,
+    value: `${restorable.toLocaleString("en-GB")} of ${restoreTotal.toLocaleString("en-GB")}`,
     detail: headline.lastProvenRestoreAt ? `Last test restore ${ago(headline.lastProvenRestoreAt, data.generatedAt)}` : "No test restore yet",
     href: "/resilience",
     tone: headline.lastProvenRestoreAt ? undefined : "soon",
-    meter: [{ tone: "fine", share: backedUp ? restorable / backedUp : 0 }],
+    meter: [{ tone: "fine", share: restoreTotal ? restorable / restoreTotal : 0 }],
   });
 
   const risks = riskRows(data.openDriftByBlastRadius);

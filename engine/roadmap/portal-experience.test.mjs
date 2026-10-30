@@ -74,7 +74,7 @@ test('nothing proven yet: the sentence counts the types the reader says are back
   assert.ok(words(headline.sentence) <= 25);
 });
 
-test('a proven restore: "Protected", restorable of backed-up counts and the drill date, all from the reader', async (t) => {
+test('a proven restore: "Protected", restorable of backed-up counts (nothing-to-restore kinds left out) and the drill date, all from the reader', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = await collectedTenant(client, healthyReader, new Date('2026-10-02T09:00:00Z'));
   await appendEvidence(client, {
@@ -100,6 +100,10 @@ test('a proven restore: "Protected", restorable of backed-up counts and the dril
   assert.equal(restorable.some((entry) => entry.type === 'namedLocation'), false, 'a measured fidelity overrides the declared one');
   assert.equal(restorable.some((entry) => entry.type === 'user'), true, 'a declared read-only type with a tested writer is restorable');
   assert.equal(restorable.some((entry) => entry.type === 'organization'), false, 'a read-only type with no tested writer is not');
+  // Kinds with nothing to restore (Microsoft or another system owns them) are not gaps,
+  // so the headline leaves them out of "of N".
+  const restoreTotal = backedUp.filter((entry) => entry.qualification?.nothingToRestore !== true);
+  assert.ok(restoreTotal.length < backedUp.length, 'nothing-to-restore kinds are backed up but not counted in "of N"');
 
   const headline = protectionHeadline(types);
   const { rows } = await client.query(`SELECT max(occurred_at) AS at FROM evidence WHERE tenant_ref = $1 AND kind = 'fidelity-drill'`, [tenantRef]);
@@ -107,7 +111,7 @@ test('a proven restore: "Protected", restorable of backed-up counts and the dril
   assert.equal(headline.headline, 'Protected');
   assert.equal(headline.tone, 'good');
   assert.equal(headline.sentence,
-    `KEEL can restore ${restorable.length} of ${backedUp.length} configuration types today. Last proven restore: ${formatHeadlineDate(rows[0].at)}.`);
+    `KEEL can restore ${restorable.length} of ${restoreTotal.length} configuration types today. Last proven restore: ${formatHeadlineDate(rows[0].at)}.`);
   assert.equal(headline.action, null);
   assert.ok(words(headline.sentence) <= 25);
   assert.doesNotMatch(headline.sentence, /\d{7,}|[{}[\]"]/);

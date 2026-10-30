@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { backupHealth, backupSentence, protectProblems, protectVerdict, restoreStanding, standingSentence } from "@/lib/protect-view";
+import { backupHealth, backupSentence, protectCounts, protectProblems, protectVerdict, recoveryDecisionSentence, restoreStanding, STANDING_LABEL, standingSentence } from "@/lib/protect-view";
+import { serviceStatus } from "@/lib/setup-services";
 import type { CapabilityClaim, CoverageData, CoverageType, WriteOperationCapability } from "@/lib/types";
 
 const NOW = "2026-10-15T18:00:00.000Z";
@@ -89,4 +90,26 @@ test("a type the tenant cannot have is unavailable, not failed", () => {
 test("a refused read that is not a missing prerequisite still counts as failed", () => {
   const failed = readOnlyType({ reportStatus: "failed", protectionState: "failed", outcome: "failed" });
   assert.equal(backupHealth(failed), "failed");
+});
+
+// Kinds Microsoft or another system owns (the tenant itself, licences, built-in roles)
+// are not gaps: never "Cannot be restored", never manual, and out of every "of N" count.
+test("a nothing-to-restore kind reads as nothing to restore and stays out of restore counts", () => {
+  const nothing = readOnlyType({
+    type: "organization",
+    qualification: { decision: "manual", reason: null, softRestoreCandidate: false, nothingToRestore: true, remapping: {} },
+    writeCapability: null,
+  });
+  const manual = readOnlyType({ type: "domain", qualification: { decision: "manual", reason: null, softRestoreCandidate: false, remapping: {} }, writeCapability: null });
+  assert.equal(restoreStanding(nothing), "nothing-to-restore");
+  assert.equal(STANDING_LABEL[restoreStanding(nothing)], "Nothing to restore");
+  assert.match(standingSentence(nothing), /^Nothing to restore/);
+  assert.doesNotMatch(recoveryDecisionSentence(nothing) ?? "", /manual step;/);
+  assert.match(recoveryDecisionSentence(manual) ?? "", /manual step/);
+
+  const counts = protectCounts([readOnlyType(), nothing, manual]);
+  assert.equal(counts.restorable, 1);
+  assert.equal(counts.nothingToRestore, 1);
+  const status = serviceStatus("entra", [readOnlyType(), nothing, manual], NOW);
+  assert.match(status.restore.text, /^1 of 2 can be put back/);
 });

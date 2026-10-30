@@ -2187,6 +2187,8 @@ test("Incidents · verdict, tiles and rows name the cleared backup, people by na
   const rows = page.locator(".sel-row");
   await expect(rows).toHaveCount(5);
   await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Cleared", "Not checked", "Unsafe"]);
+  // The other services live in the Service view, and this view says where.
+  await expect(page.getByText("backups show when you group by Service")).toBeVisible();
   await expect(rows.nth(0)).toContainText("30 Sept 2026, 06:00 UTC");
   await expect(rows.nth(0)).toContainText("Recommended");
   await expect(rows.nth(0)).toContainText("Checked by Dana Reyes · 24 hours ago");
@@ -2236,7 +2238,7 @@ test("Incidents · every service shows in the one list, each with its backups' s
   await expect(group("Teams").locator(".sel-group-name small")).toHaveText("1 with no good backup");
   await expect(group("Teams").locator(".ir-service-row")).toHaveAttribute("data-tone", "urgent");
   await expect(group("Defender").locator(".sel-group-count")).toHaveText("No backup yet");
-  await expect(group("Defender")).toContainText("KEEL has no backup of Defender yet.");
+  await expect(group("Defender")).toContainText("Keel has no backup of Defender yet.");
   // No stored code on the screen.
   await expect(page.locator(".ir-service-list").first()).not.toContainText("exchange-mail-flow");
   // The find narrows the services too.

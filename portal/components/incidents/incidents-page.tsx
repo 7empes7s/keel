@@ -147,7 +147,7 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
           count: words.count,
           extra: group.entries.length
             ? <ServiceBackupList entries={group.entries} now={now} />
-            : <p className="ir-muted">KEEL has no backup of {service.name} yet.</p>,
+            : <p className="ir-muted">Keel has no backup of {service.name} yet.</p>,
         };
       });
       return [...(items.length || !searching ? [checked] : []), ...others];
@@ -302,11 +302,17 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
                 label="Backups"
                 matches={(item, text) => `${backupName(item)} ${stateChip(item)}`.toLowerCase().includes(text)}
                 noun={{ one: "backup", many: "backups" }}
+                // The engine lists at most 50 checked backups, so the other services after
+                // them always share the first page instead of sliding to the last one.
+                pageSize="50"
                 renderRow={renderRow}
                 rowName={(item) => backupName(item)}
                 toneOf={(item) => (item.stale ? "soon" : STATES[stateOf(item)].risk)}
               />
             )}
+            {view.get("group", "service") !== "service" && serviceBackups?.length ? (
+              <p className="ir-muted">Exchange, SharePoint, Teams, Power Platform, Purview and Defender backups show when you group by <Link href={href({ group: null })} onClick={(event) => follow(event, href({ group: null }))}>Service</Link>.</p>
+            ) : null}
             <p className="ir-muted">{KEPT_HELP} Kept backups are removed by routine clean-up only after you let them go.</p>
           </section>
 

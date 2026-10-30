@@ -369,6 +369,8 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 # cmdlet not found.
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionComplianceRule' -Block { Get-RetentionComplianceRule }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpComplianceRule' -Block { Get-DlpComplianceRule }
+                # Alert policies (configuration): Get-ProtectionAlert never returns a raised alert.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ProtectionAlert' -Block { Get-ProtectionAlert }
                 # Wave 1 READ-TEAMS-PV: retention labels, adaptive scopes, auto-labeling and
                 # eDiscovery cases and holds (configuration only, never case evidence). The
                 # hold reads run against the first case and hold, if there is one.
@@ -439,6 +441,28 @@ if ($Workloads -contains 'teams') {
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingBroadcastConfiguration' -Block { Get-CsTeamsMeetingBroadcastConfiguration }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineUser' -Block { Get-CsOnlineUser -ResultSize 10 }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsGroupPolicyAssignment' -Block { Get-CsGroupPolicyAssignment }
+        # Teams voice network, call flows and device policies (engine/collect/workloads/teamsVoiceNetwork.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlinePstnUsages' -Block { Get-CsOnlinePstnUsages }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineVoiceRoute' -Block { Get-CsOnlineVoiceRoute }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlinePSTNGateway' -Block { Get-CsOnlinePSTNGateway }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsTranslationRule' -Block { Get-CsTeamsTranslationRule }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUnassignedNumberTreatment' -Block { Get-CsTeamsUnassignedNumberTreatment }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantNetworkRegion' -Block { Get-CsTenantNetworkRegion }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantNetworkSite' -Block { Get-CsTenantNetworkSite }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantNetworkSubnet' -Block { Get-CsTenantNetworkSubnet }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantTrustedIPAddress' -Block { Get-CsTenantTrustedIPAddress }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsNetworkRoamingPolicy' -Block { Get-CsTeamsNetworkRoamingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsAutoAttendant -First 100' -Block { Get-CsAutoAttendant -First 100 }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsCallQueue -First 100' -Block { Get-CsCallQueue -First 100 }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineDialInConferencingTenantSettings' -Block { Get-CsOnlineDialInConferencingTenantSettings }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsAudioConferencingPolicy' -Block { Get-CsTeamsAudioConferencingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsCallHoldPolicy' -Block { Get-CsTeamsCallHoldPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsIPPhonePolicy' -Block { Get-CsTeamsIPPhonePolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUpdateManagementPolicy' -Block { Get-CsTeamsUpdateManagementPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMobilityPolicy' -Block { Get-CsTeamsMobilityPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsVdiPolicy' -Block { Get-CsTeamsVdiPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsFeedbackPolicy' -Block { Get-CsTeamsFeedbackPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsWorkLoadPolicy' -Block { Get-CsTeamsWorkLoadPolicy }
         # Teams collaboration policies and meeting settings (teamsCollaboration.mjs): reads only.
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsExternalAccessPolicy' -Block { Get-CsExternalAccessPolicy }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsChannelsPolicy' -Block { Get-CsTeamsChannelsPolicy }

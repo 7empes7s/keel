@@ -40,10 +40,30 @@ function ms(value) {
  * versions came from (the window between the first and last of them). With neither,
  * the age is unknown — it is never filled in from the time of reading.
  */
-function captureOf(baseline, legacyWindow, now) {
+/**
+ * The service settings a baseline holds (baselineWorkloads.mjs): each service read it
+ * captured, with how many settings it holds now (Accept adds and removes them), and the
+ * services no read was found for when it was captured. A baseline captured before
+ * service settings were held lists neither.
+ */
+function servicesOf(scope, counts) {
+  const entries = Array.isArray(scope?.workloads) ? scope.workloads.filter((entry) => typeof entry?.workload === 'string') : [];
+  return {
+    services: entries.map((entry) => ({
+      workload: entry.workload,
+      settings: counts?.get(entry.workload) ?? 0,
+      collectedAt: iso(entry.collectedAt),
+      outcome: typeof entry.outcome === 'string' ? entry.outcome : null,
+    })).sort((a, b) => a.workload.localeCompare(b.workload)),
+    servicesNotRead: Array.isArray(scope?.workloadsNotRead) ? scope.workloadsNotRead.filter((item) => typeof item === 'string').sort() : [],
+  };
+}
+
+function captureOf(baseline, legacyWindow, now, serviceCounts = null) {
   if (baseline.captured_at) {
     const scope = baseline.observation_scope ?? null;
     return {
+      ...servicesOf(scope, serviceCounts),
       basis: 'source-snapshot',
       capturedAt: iso(baseline.captured_at),
       ageMs: now.getTime() - ms(baseline.captured_at),
@@ -173,6 +193,14 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
   if (baselines.length === 0) return [];
   const ids = baselines.map((baseline) => baseline.id);
 
+  const { rows: serviceRows } = await client.query(
+    `SELECT baseline_id, workload, count(*)::int AS settings FROM baseline_workload
+      WHERE baseline_id = ANY($1::uuid[]) GROUP BY baseline_id, workload`,
+    [ids],
+  );
+  const serviceCounts = new Map(ids.map((id) => [String(id), new Map()]));
+  for (const row of serviceRows) serviceCounts.get(String(row.baseline_id))?.set(row.workload, row.settings);
+
   const { rows: resources } = await client.query(
     `SELECT br.baseline_id, rv.id, rv.natural_key, rv.resource_type, rv.payload_hash, rv.hash_version,
             rv.blast_radius, s.started_at, s.completed_at
@@ -209,7 +237,8 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
       supersedesId: baseline.supersedes_id ? String(baseline.supersedes_id) : null,
       supersededById: successor.get(String(baseline.id)) ?? null,
       supersededAt: iso(baseline.superseded_at),
-      capture: captureOf(baseline, legacyWindow, now),
+      serviceSettingCount: [...(serviceCounts.get(String(baseline.id))?.values() ?? [])].reduce((sum, count) => sum + count, 0),
+      capture: captureOf(baseline, legacyWindow, now, serviceCounts.get(String(baseline.id))),
       changesSinceCapture: changesSince(rows, latest, new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type))),
     };
   });

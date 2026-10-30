@@ -21,7 +21,7 @@ import { SemanticDiff } from "@/components/semantic-diff";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  changedBy, decisionWords, impactTone, impactWords, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
+  changedBy, decisionWords, impactTone, impactWords, itemKindName, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { alertCall, alertCallWords } from "@/lib/alert-calls";
 import { changeLabel, changeName, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
@@ -37,7 +37,7 @@ import { typeName } from "@/lib/protect-view";
 import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
-import { kindParts } from "@/lib/type-groups";
+import { itemKind, kindParts } from "@/lib/type-groups";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
 import { readList, useViewState } from "@/lib/use-view-state";
@@ -69,7 +69,7 @@ const SORTS: ListSort<DriftRecord>[] = [
   { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
   { key: "name", label: "Name", compare: (a, b) => byText(changeName(a), changeName(b)) },
 ];
-const changeText = (item: DriftRecord) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
+const changeText = (item: DriftRecord) => `${changeName(item)} ${itemKindName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
 
 const GROUPINGS: Grouping<DriftRecord>[] = [
   {
@@ -80,7 +80,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
       const service = serviceFor(code);
       return { label: service.name, icon: service.icon, about: service.about };
     }).map((group) => {
-      const parts = kindParts(group.items, (item) => item.resourceType, group.key);
+      const parts = kindParts(group.items, itemKind, group.key);
       return { ...group, items: parts.flatMap((part) => part.items), parts };
     }),
   },
@@ -92,7 +92,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
   },
   {
     key: "kind", label: "Kind",
-    groupsOf: (items) => groupBy(items, (item) => item.resourceType, (type, list) => ({
+    groupsOf: (items) => groupBy(items, itemKind, (type, list) => ({
       label: plainKind(type), icon: typeService(type).icon, about: `${typeService(type).name} · ${list.length === 1 ? "1 change" : `${list.length} changes`}`,
     })),
   },
@@ -174,7 +174,7 @@ export function ChangeList({
   // Filters other than the tiles: each one narrows (AND).
   const others = useMemo(() => [
     ...(service ? [(item: DriftRecord) => itemService(item).code === service] : []),
-    ...(kind ? [(item: DriftRecord) => item.resourceType === kind] : []),
+    ...(kind ? [(item: DriftRecord) => itemKind(item) === kind] : []),
     ...(query ? [(item: DriftRecord) => changeText(item).includes(query)] : []),
   ], [service, kind, query]);
   const shown = useMemo(() => applyFilters(open, tiles, pickedKey ? pickedKey.split(",") : [], others), [open, tiles, pickedKey, others]);

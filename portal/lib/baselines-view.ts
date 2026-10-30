@@ -9,6 +9,7 @@ import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { ComplianceScore } from "@/lib/compliance-view";
+import { itemArea, itemKind } from "@/lib/type-groups";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -31,10 +32,11 @@ export function typeService(type: string): CloudService {
   return serviceFor(typeInfo(type).service);
 }
 
-/** The service one setting sits under: its type's, except the sign-in rules SharePoint
- * admin center made, which are SharePoint settings. */
-export function itemService(item: { resourceType: string; name?: string | null }): CloudService {
-  return madeInSharePoint(item.resourceType, item.name) ? serviceFor("SharePoint") : typeService(item.resourceType);
+/** The service one setting sits under: its kind's, except the sign-in rules SharePoint
+ * admin center made, which are SharePoint settings. Endpoint security policies made in
+ * Intune (antivirus, firewall…) are Defender settings. */
+export function itemService(item: { resourceType: string; name?: string | null; templateFamily?: string | null }): CloudService {
+  return madeInSharePoint(item.resourceType, item.name) ? serviceFor("SharePoint") : typeService(itemKind(item));
 }
 
 /** Why a kind of setting matters, from the taxonomy's priority reason. */
@@ -69,9 +71,16 @@ export function changeWord(changeType: DriftRecord["changeType"]): string {
   return changeType === "added" ? "Added" : changeType === "removed" ? "Removed" : "Changed";
 }
 
+/** What one setting is: "Antivirus policy" for an endpoint security policy, else the
+ * plain name of its kind. */
+export function itemKindName(item: { resourceType: string; templateFamily?: string | null }): string {
+  const area = itemArea(item);
+  return area ? `${area} policy` : plainKind(itemKind(item));
+}
+
 /** "Sign-in rule · changed": what the thing is, then what happened to it. */
-export function kindLine(item: Pick<DriftRecord, "resourceType" | "changeType">): string {
-  return `${plainKind(item.resourceType)} · ${changeWord(item.changeType).toLowerCase()}`;
+export function kindLine(item: Pick<DriftRecord, "resourceType" | "changeType"> & Partial<Pick<DriftRecord, "templateFamily">>): string {
+  return `${itemKindName(item)} · ${changeWord(item.changeType).toLowerCase()}`;
 }
 
 /** Who made a change, from the audit log, or null when Keel does not know. */
@@ -98,6 +107,8 @@ export interface ServiceSummary {
   // Kinds Keel backs up that the approved setup does not hold yet; for a service read,
   // the kinds whose latest read failed or has not run.
   notCovered: string[];
+  // Of those, kinds the approved setup holds whose latest read failed or has not run.
+  notRead?: string[];
   tone: RiskTone;
   // Settings that match the approved setup out of every setting judged (matchScore);
   // null when the setting counts are not known.
@@ -157,22 +168,28 @@ export function overallScore(summaries: Pick<ServiceSummary, "score">[]): Compli
 
 /** One line per service: in line, changed, not covered. Services that need action come
  * first, then Microsoft's own order. Service reads (`serviceReads`, and changes that
- * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
+ * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. A
+ * service read the approved setup holds (`capture.services`) is measured against it
+ * like a Graph kind; one it does not hold yet keeps its own setup from Keel's first read. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
-  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name" | "changeType">>)[],
+  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name" | "changeType" | "templateFamily">>)[],
   backedUp: string[],
   serviceReads: ServiceReadKind[] = [],
   // Settings the approved setup holds, per kind (portal-data getBaselineTypeCounts). Without
   // it no service gets a score.
   held: Record<string, number> | null = null,
 ): ServiceSummary[] {
+  // Service settings the approved setup holds, per service read, from its capture.
+  const heldServices = new Map((baseline?.capture?.services ?? []).map((service) => [service.workload, service.settings]));
   const reads = new Set([
     ...serviceReads.map((read) => read.type),
     ...items.filter((item) => item.serviceRead).map((item) => item.resourceType),
-  ]);
+  ].filter((type) => !heldServices.has(type)));
   const captured = new Set(baseline?.capture?.types ?? []);
-  const changedTypes = new Set(items.map((item) => item.resourceType));
+  // A change to an endpoint security policy is a Defender change: it leaves the Intune
+  // settings catalog policies in line when no plain one changed.
+  const changedTypes = new Set(items.filter((item) => itemKind(item) === item.resourceType).map((item) => item.resourceType));
   const byCode = new Map<string, ServiceSummary>();
   const entry = (type: string, service: CloudService = typeService(type)) => {
     let summary = byCode.get(service.code);
@@ -188,7 +205,8 @@ export function serviceSummaries(
   for (const item of items) {
     const summary = entry(item.resourceType, itemService(item));
     summary.changed += 1;
-    if (!summary.changedKinds.includes(item.resourceType)) summary.changedKinds.push(item.resourceType);
+    const kind = itemKind(item);
+    if (!summary.changedKinds.includes(kind)) summary.changedKinds.push(kind);
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;
   }
   for (const type of new Set(backedUp)) {
@@ -199,6 +217,7 @@ export function serviceSummaries(
     const summary = entry(read.type);
     const bucket = read.read ? summary.inLine : summary.notCovered;
     if (!bucket.includes(read.type)) bucket.push(read.type);
+    if (!read.read && heldServices.has(read.type)) summary.notRead = [...(summary.notRead ?? []), read.type];
   }
   if (held) {
     // Each kind is scored on its own, then added up under its service. Kinds not covered
@@ -215,11 +234,11 @@ export function serviceSummaries(
     const counts = new Map<string, MatchCount>();
     for (const type of scored) {
       const basis = reads.has(type) ? "previous-backup" : "approved-setup";
-      const count = basis === "approved-setup" ? held[type] ?? 0 : readCounts.get(type);
+      const count = basis === "approved-setup" ? heldServices.get(type) ?? held[type] ?? 0 : readCounts.get(type);
       // A service read whose size is not known cannot be scored.
       if (count === null || count === undefined) continue;
       // A service read counts its open changes in full; the list of changes may hold only recent ones.
-      const changes = (basis === "previous-backup" ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
+      const changes = (basis === "previous-backup" || heldServices.has(type) ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
       const match = kindMatch(count, changes, basis);
       if (!match.judged) continue;
       const code = entry(type).service.code;
@@ -261,10 +280,24 @@ export function versionState(baseline: BaselineRecord): { label: string; tone: R
   return baseline.active ? { label: "In use", tone: "fine" } : { label: "Not in use", tone: null };
 }
 
-/** "4,812 settings in 6 kinds" */
+/** "4,812 settings in 6 kinds", plus "and 320 service settings" when it holds any. */
 export function coverageWords(baseline: BaselineRecord): string {
   const kinds = baseline.capture?.types.length ?? 0;
-  return `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "kind")}` : ""}`;
+  const graph = `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "kind")}` : ""}`;
+  const services = baseline.capture?.services?.length ?? 0;
+  return services && baseline.serviceSettingCount ? `${graph}, and ${plural(baseline.serviceSettingCount, "service setting")}` : graph;
+}
+
+/** What the setup holds of Exchange, SharePoint, Teams, Purview and Power Platform, in a
+ * sentence, or null for a setup captured before it could hold them. */
+export function serviceSettingsWords(baseline: BaselineRecord): string | null {
+  const services = baseline.capture?.services ?? [];
+  const missing = baseline.capture?.servicesNotRead ?? [];
+  if (!services.length && !missing.length) return null;
+  const head = services.length
+    ? `Includes ${plural(services.length, "service read")} (${kindsWords(services.map((service) => service.workload))}).`
+    : "Holds no service settings: no service read was available.";
+  return missing.length ? `${head} Never read when captured: ${kindsWords(missing)}.` : head;
 }
 
 export function kindsWords(types: string[], limit = 3): string {

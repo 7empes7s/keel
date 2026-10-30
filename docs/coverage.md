@@ -824,6 +824,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Retention rules
 - Data loss prevention (DLP) policies
 - Data loss prevention (DLP) rules
+- Alert policies
 
 **KEEL can restore:**
 
@@ -832,7 +833,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Data loss prevention (DLP) policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Data loss prevention (DLP) rules (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Shorter retention, a deleting retention action and a released hold need a second approver while restore approvals are on; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
+**You do:** Shorter retention, a deleting retention action and a released hold need a second approver while restore approvals are on; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it. Alert policies are backed up but not restored: put a changed or deleted one back by hand in the Purview portal using the backup.
 
 ### Exchange protection rules, address lists, mobile and retention settings
 
@@ -1072,6 +1073,45 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Retention labels (switched on only after the restore of mailbox client access settings is proven)
 
 **You do:** KEEL restores only a retention label's text and duration; a shorter duration needs a second approver while restore approvals are on. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.
+
+### Teams voice routing, network and call flows
+
+**Backed up:**
+
+- Teams PSTN usages
+- Teams voice routes
+- Teams Direct Routing gateways (SBCs)
+- Teams number translation rules
+- Teams unassigned number treatments
+- Teams network regions
+- Teams network sites
+- Teams network subnets
+- Teams trusted IP addresses
+- Teams network roaming policies
+- Teams auto attendants
+- Teams call queues
+- Teams audio conferencing (dial-in) settings
+- Teams audio conferencing policies
+- Teams call hold policies
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted voice route, gateway, network site, auto attendant or call queue is put back by hand in the Teams admin center using the backup. Recorded greetings and hold music are referenced by id, not kept: upload them again. Phone numbers and resource accounts are assigned again by hand.
+
+### Teams device and client policies
+
+**Backed up:**
+
+- Teams IP phone policies
+- Teams update policies
+- Teams mobility policies
+- Teams VDI policies
+- Teams feedback policies
+- Teams workload (app on devices) policies
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. IP phone, update, mobility, VDI, feedback and workload policies are changed back by hand in the Teams admin center using the backup.
 
 ### Power Platform and Power BI settings
 

@@ -230,11 +230,14 @@ test('without qualification nothing is sent; once qualified the run and its obje
   assert.equal(stored.workload, TEAMS_COLLABORATION_WORKLOAD);
 });
 
-test('each workload sits in its own Teams group, after the kinds already there', () => {
+test('each workload sits in its own Teams group, in the portal\'s order', () => {
   assert.equal(TAXONOMY[TEAMS_COLLABORATION_WORKLOAD].service, 'Teams');
   assert.equal(TAXONOMY[TEAMS_COLLABORATION_WORKLOAD].category, 'org');
   assert.equal(TAXONOMY[TEAMS_MEETING_SETTINGS_WORKLOAD].category, 'calling');
   assert.ok(TAXONOMY[TEAMS_COLLABORATION_WORKLOAD].typeRank > TAXONOMY['teams-org-policies'].typeRank);
-  assert.ok(TAXONOMY[TEAMS_MEETING_SETTINGS_WORKLOAD].typeRank > TAXONOMY['teams-voice-policies'].typeRank);
+  // Meeting settings apply to every meeting, so they open Calling and meetings, before the calling policies.
+  assert.ok(TAXONOMY[TEAMS_MEETING_SETTINGS_WORKLOAD].typeRank < TAXONOMY['teams-voice-policies'].typeRank);
   assert.ok(TAXONOMY[TEAMS_COLLABORATION_WORKLOAD].categoryRank < TAXONOMY[TEAMS_MEETING_SETTINGS_WORKLOAD].categoryRank);
+  const portal = readFileSync(new URL('../../../portal/lib/restore-workloads-view.ts', import.meta.url), 'utf8');
+  assert.match(portal, /"teams-org-policies", "teams-collaboration-policies", "teams-meeting-settings", "teams-voice-policies"/);
 });

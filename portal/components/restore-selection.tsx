@@ -54,7 +54,7 @@ import { madeInSharePoint, SERVICES, serviceFor, serviceOrder } from "@/lib/serv
 import { workloadOrder, type RestoreWorkload } from "@/lib/restore-workloads-view";
 import { useViewState } from "@/lib/use-view-state";
 import { typeService } from "@/lib/baselines-view";
-import { kindOrder, kindParts } from "@/lib/type-groups";
+import { itemArea, itemKind, kindOrder, kindParts } from "@/lib/type-groups";
 
 const DRY_RUN_POLL_MS = 3000;
 
@@ -266,7 +266,7 @@ function grouped(items: RestoreItem[], keyOf: (item: RestoreItem) => string, met
 }
 
 function withKinds(group: ListGroup<RestoreItem>, service: string | null): ListGroup<RestoreItem> {
-  const parts = kindParts(group.items, (item) => item.resourceType, service, (x, y) => x.label.localeCompare(y.label));
+  const parts = kindParts(group.items, itemKind, service, (x, y) => x.label.localeCompare(y.label));
   return { ...group, items: parts.flatMap((part) => part.items), parts };
 }
 
@@ -358,7 +358,7 @@ function groupingsFor(kinds: OtherKinds): Grouping<RestoreItem>[] {
       // Service by service, and inside each the same order as the Service view; the kinds
       // backed up on their own follow, each as its own group.
       groupsOf: (items) => [
-        ...grouped(items, (item) => item.resourceType, (type) => ({
+        ...grouped(items, itemKind, (type) => ({
           label: plainType(type),
           icon: typeService(type).icon,
           about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
@@ -1083,12 +1083,14 @@ function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNo
   const change = item.change;
   const tone = changeTone(change);
   const impact = rowImpact(item.blastRadius, compared);
-  const madeBy = madeInSharePoint(item.resourceType, item.name, item.label) ? "made in SharePoint admin center" : service.name;
+  const area = itemArea(item);
+  const madeBy = madeInSharePoint(item.resourceType, item.name, item.label) ? "made in SharePoint admin center"
+    : area ? "set in Intune endpoint security" : service.name;
   return (
     <div className="restore-row" data-changed={change ? change.kind : undefined}>
       <span className="restore-row-name">
         <b>{item.label}</b>
-        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {madeBy}</small>
+        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{area ? `${area} policy` : plainType(item.resourceType)} · {madeBy}</small>
       </span>
       {change ? (
         <span className="restore-row-change">

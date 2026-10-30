@@ -50,6 +50,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-org-access', 'exchange-org-defaults',
   'sharepoint-structure',
   'teams-voice-policies', 'teams-collaboration-policies', 'teams-meeting-settings', 'purview-governance',
+  'teams-voice-network', 'teams-device-policies',
   'power-platform-settings',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
@@ -298,6 +299,8 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     ['purview.retention-rules', 'Retention rules', 'Get-RetentionComplianceRule'],
     ['purview.dlp-policies', 'Data loss prevention (DLP) policies', 'Get-DlpCompliancePolicy'],
     ['purview.dlp-rules', 'Data loss prevention (DLP) rules', 'Get-DlpComplianceRule'],
+    // Returns alert policies, not raised alerts. Optional like the DLP reads.
+    ['purview.alert-policies', 'Alert policies', 'Get-ProtectionAlert'],
   ].map(([id, resource, name]) => ({
     id, workload: 'purview-retention-dlp', resource,
     operation: cmdlet(name, 'ExchangeOnlineManagement'),
@@ -472,6 +475,41 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     rbac: { permissions: [], roles: ['Teams Administrator'] },
     paging, throttle: 'module-managed', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/teams/${name.toLowerCase()}`),
+  })),
+  // Teams voice network, call flows and devices (gap audit section F), in the
+  // MicrosoftTeams session. engine/collect/workloads/teamsVoiceNetwork.mjs holds the
+  // fields and identities. Auto attendants and call queues are paged 100 at a time.
+  ...[
+    ['teams-voice-network.pstn-usages', 'teams-voice-network', 'Teams PSTN usages', 'Get-CsOnlinePstnUsages', 'none'],
+    ['teams-voice-network.voice-routes', 'teams-voice-network', 'Teams voice routes', 'Get-CsOnlineVoiceRoute', 'cmdlet-unbounded'],
+    ['teams-voice-network.pstn-gateways', 'teams-voice-network', 'Teams Direct Routing gateways (SBCs)', 'Get-CsOnlinePSTNGateway', 'cmdlet-unbounded'],
+    ['teams-voice-network.translation-rules', 'teams-voice-network', 'Teams number translation rules', 'Get-CsTeamsTranslationRule', 'cmdlet-unbounded'],
+    ['teams-voice-network.unassigned-number-treatments', 'teams-voice-network', 'Teams unassigned number treatments', 'Get-CsTeamsUnassignedNumberTreatment', 'cmdlet-unbounded'],
+    ['teams-voice-network.network-regions', 'teams-voice-network', 'Teams network regions', 'Get-CsTenantNetworkRegion', 'cmdlet-unbounded'],
+    ['teams-voice-network.network-sites', 'teams-voice-network', 'Teams network sites', 'Get-CsTenantNetworkSite', 'cmdlet-unbounded'],
+    ['teams-voice-network.network-subnets', 'teams-voice-network', 'Teams network subnets', 'Get-CsTenantNetworkSubnet', 'cmdlet-unbounded'],
+    ['teams-voice-network.trusted-ip-addresses', 'teams-voice-network', 'Teams trusted IP addresses', 'Get-CsTenantTrustedIPAddress', 'cmdlet-unbounded'],
+    ['teams-voice-network.network-roaming-policies', 'teams-voice-network', 'Teams network roaming policies', 'Get-CsTeamsNetworkRoamingPolicy', 'cmdlet-unbounded'],
+    ['teams-voice-network.auto-attendants', 'teams-voice-network', 'Teams auto attendants', 'Get-CsAutoAttendant', 'cmdlet-unbounded',
+      { parameters: ['-First 100', '-Skip'], probeName: 'Get-CsAutoAttendant -First 100' }],
+    ['teams-voice-network.call-queues', 'teams-voice-network', 'Teams call queues', 'Get-CsCallQueue', 'cmdlet-unbounded',
+      { parameters: ['-First 100', '-Skip'], probeName: 'Get-CsCallQueue -First 100' }],
+    ['teams-voice-network.dial-in-conferencing', 'teams-voice-network', 'Teams audio conferencing (dial-in) settings', 'Get-CsOnlineDialInConferencingTenantSettings', 'none'],
+    ['teams-voice-network.audio-conferencing-policies', 'teams-voice-network', 'Teams audio conferencing policies', 'Get-CsTeamsAudioConferencingPolicy', 'cmdlet-unbounded'],
+    ['teams-voice-network.call-hold-policies', 'teams-voice-network', 'Teams call hold policies', 'Get-CsTeamsCallHoldPolicy', 'cmdlet-unbounded'],
+    ['teams-device-policies.ip-phone-policies', 'teams-device-policies', 'Teams IP phone policies', 'Get-CsTeamsIPPhonePolicy', 'cmdlet-unbounded'],
+    ['teams-device-policies.update-management-policies', 'teams-device-policies', 'Teams update policies', 'Get-CsTeamsUpdateManagementPolicy', 'cmdlet-unbounded'],
+    ['teams-device-policies.mobility-policies', 'teams-device-policies', 'Teams mobility policies', 'Get-CsTeamsMobilityPolicy', 'cmdlet-unbounded'],
+    ['teams-device-policies.vdi-policies', 'teams-device-policies', 'Teams VDI policies', 'Get-CsTeamsVdiPolicy', 'cmdlet-unbounded'],
+    ['teams-device-policies.feedback-policies', 'teams-device-policies', 'Teams feedback policies', 'Get-CsTeamsFeedbackPolicy', 'cmdlet-unbounded'],
+    ['teams-device-policies.workload-policies', 'teams-device-policies', 'Teams workload (app on devices) policies', 'Get-CsTeamsWorkLoadPolicy', 'cmdlet-unbounded'],
+  ].map(([id, workload, resource, name, paging, options]) => ({
+    id, workload, resource,
+    operation: cmdlet(name, 'MicrosoftTeams', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: [], roles: ['Teams Administrator'] },
+    paging, throttle: 'module-managed', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/microsoftteams/${name.toLowerCase()}`),
   })),
   // Wave 1 READ-TEAMS-PV: Purview retention labels, adaptive scopes, auto-labeling and
   // eDiscovery cases with their holds, in the Security & Compliance session.

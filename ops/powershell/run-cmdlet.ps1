@@ -21,6 +21,7 @@
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
   engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/exchange-recipients.test.mjs,
+  engine/roadmap/teams-voice-network.test.mjs,
   engine/roadmap/exchange-org-policies.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
@@ -82,14 +83,16 @@ $AllowedTeamsPolicy = @{
     'Get-CsTeamsGuestCallingConfiguration'   = @()
 }
 
-# Issue #157: Purview retention and DLP policies and rules, read in the Security &
-# Compliance session with no parameters. Reads only: no Set-, New- or Remove-, and no
-# cmdlet that reads DLP matches, incidents or reports.
+# Issue #157: Purview retention and DLP policies and rules, and alert policies, read in
+# the Security & Compliance session with no parameters. Reads only: no Set-, New- or
+# Remove-, and no cmdlet that reads DLP matches, incidents or reports.
+# Get-ProtectionAlert returns alert policies (configuration), not raised alerts.
 $AllowedPurviewRetentionDlp = @{
     'Get-RetentionCompliancePolicy' = @()
     'Get-RetentionComplianceRule'   = @()
     'Get-DlpCompliancePolicy'       = @()
     'Get-DlpComplianceRule'         = @()
+    'Get-ProtectionAlert'           = @()
 }
 
 # READ-EXO: the Exchange and Defender settings mail flow does not read, in the
@@ -208,6 +211,34 @@ $AllowedTeamsCollaboration = @{
     'Get-CsTeamsComplianceRecordingPolicy'        = @()
     'Get-CsTeamsMeetingTemplatePermissionPolicy'  = @()
     'Get-CsTeamsMeetingConfiguration'             = @()
+}
+
+# Teams voice network, call flows and device policies
+# (engine/collect/workloads/teamsVoiceNetwork.mjs), read in the MicrosoftTeams session.
+# Only the auto attendant and call queue reads take parameters: -First 100 and -Skip
+# (a whole number of pages), which the Node side fixes to page through them. Reads only.
+$AllowedTeamsVoiceNetwork = @{
+    'Get-CsOnlinePstnUsages'                       = @()
+    'Get-CsOnlineVoiceRoute'                       = @()
+    'Get-CsOnlinePSTNGateway'                      = @()
+    'Get-CsTeamsTranslationRule'                   = @()
+    'Get-CsTeamsUnassignedNumberTreatment'         = @()
+    'Get-CsTenantNetworkRegion'                    = @()
+    'Get-CsTenantNetworkSite'                      = @()
+    'Get-CsTenantNetworkSubnet'                    = @()
+    'Get-CsTenantTrustedIPAddress'                 = @()
+    'Get-CsTeamsNetworkRoamingPolicy'              = @()
+    'Get-CsAutoAttendant'                          = @('First', 'Skip')
+    'Get-CsCallQueue'                              = @('First', 'Skip')
+    'Get-CsOnlineDialInConferencingTenantSettings' = @()
+    'Get-CsTeamsAudioConferencingPolicy'           = @()
+    'Get-CsTeamsCallHoldPolicy'                    = @()
+    'Get-CsTeamsIPPhonePolicy'                     = @()
+    'Get-CsTeamsUpdateManagementPolicy'            = @()
+    'Get-CsTeamsMobilityPolicy'                    = @()
+    'Get-CsTeamsVdiPolicy'                         = @()
+    'Get-CsTeamsFeedbackPolicy'                    = @()
+    'Get-CsTeamsWorkLoadPolicy'                    = @()
 }
 
 # Wave 1 READ-TEAMS-PV: Purview retention labels, adaptive scopes, auto-labeling and
@@ -434,6 +465,7 @@ elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.Powe
 elseif ($AllowedOneDriveWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedOneDriveWrites[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
+elseif ($AllowedTeamsVoiceNetwork.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsVoiceNetwork[$name] }
 elseif ($AllowedTeamsCollaboration.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsCollaboration[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
 elseif ($AllowedExchangeWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeWrites[$name] }

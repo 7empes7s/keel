@@ -208,6 +208,8 @@ export interface BaselineRecord {
   setBy: string;
   active: boolean;
   resourceCount: number;
+  // Service settings it holds (Exchange, SharePoint, Teams, Purview, Power Platform).
+  serviceSettingCount?: number;
   // Roadmap task-130: who set it, resolved to a name (absent where not resolved).
   setByRef?: Ref;
   // Roadmap task-87: version chain, what it captured and what changed since.
@@ -230,6 +232,11 @@ export interface BaselineCapture {
   types: string[];
   // Kinds left out because Microsoft kept failing to answer when it was captured (#666).
   leftOut?: { type: string; reason: string }[];
+  // Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform settings it
+  // holds: one entry per service read it captured, with the settings it holds now.
+  services?: { workload: string; settings: number; collectedAt: string | null; outcome: string | null }[];
+  // Services with no read to capture when it was captured.
+  servicesNotRead?: string[];
 }
 
 export interface BaselineChanges {
@@ -438,6 +445,10 @@ export interface DriftRecord {
   // the observed or approved copy; null when it has none. The page never shows the key
   // when it holds an object id.
   name?: string | null;
+  // The settings catalog template family (templateReference.templateFamily) of the
+  // observed or approved copy, when it has one: an antivirus or firewall policy made in
+  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind).
+  templateFamily?: string | null;
   // Names of the objects the before/after copies point to by id (users, groups, roles,
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.

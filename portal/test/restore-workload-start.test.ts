@@ -232,3 +232,40 @@ test("a team plan reads as its settings and one members table, in names", async 
   assert.equal(targetWords("teams:t-1:members", names), "Members");
   assert.equal(targetWords("team:t-1", names), "KEEL-RT Falcon");
 });
+
+test("a backup older than the newest 400 can still be chosen and restored from by its id", async () => {
+  // An undo from the Changes page restores from the approved setup's read, which can be
+  // older than every backup the Restore page lists. 400 newer reads push it off the list.
+  const { rows: fillers } = await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+     SELECT $1, 'exchange-mail-flow', 'complete', t, t, t
+       FROM generate_series(timestamptz '2026-10-03T00:00:00Z', timestamptz '2026-10-03T00:00:00Z' + interval '399 minutes', interval '1 minute') t
+     RETURNING id`,
+    [tenantRef()],
+  );
+  assert.equal(fillers.length, 400);
+  try {
+    const listed = await (await choicesRoute(request("/api/actions/restore/workload?workload=exchange-mail-flow", restorer))).json();
+    assert.equal(listed.choices.backups.length, 400);
+    assert.equal(listed.choices.backups.some((backup: { collectionId: string }) => backup.collectionId === older), false, "off the list");
+
+    const response = await choicesRoute(request(`/api/actions/restore/workload?workload=exchange-mail-flow&collection=${older}`, restorer));
+    assert.equal(response.status, 200);
+    const { choices } = await response.json();
+    assert.equal(choices.chosen.collectionId, older);
+    assert.equal(choices.backups.at(-1).collectionId, older, "offered at the list's end");
+    assert.deepEqual(choices.groups[0].items.map((item: { name: string }) => item.name), ["KEEL-RT a", "KEEL-RT b", "KEEL-RT c"]);
+
+    const body = { workload: "exchange-mail-flow", collectionId: older, targets: ["transportrule:a"] };
+    assert.equal((await workloadDryRunRoute(request("/api/actions/restore/workload/dry-run", { ...restorer, body }))).status, 202);
+    // Still only this tenant's usable backups of this workload, by id.
+    for (const collectionId of [otherTenant, "c0110000-0000-4000-8000-0000000000ff", "not-an-id"]) {
+      const refused = await workloadDryRunRoute(request("/api/actions/restore/workload/dry-run", { ...restorer, body: { ...body, collectionId } }));
+      assert.equal(refused.status, 400, collectionId);
+      const missing = await choicesRoute(request(`/api/actions/restore/workload?workload=exchange-mail-flow&collection=${collectionId}`, restorer));
+      assert.equal(missing.status, 404, collectionId);
+    }
+  } finally {
+    await client.query("DELETE FROM workload_collection WHERE id = ANY($1::uuid[])", [fillers.map((row) => row.id)]);
+  }
+});

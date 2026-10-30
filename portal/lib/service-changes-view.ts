@@ -113,10 +113,16 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
   const changeType = row.change_type as DriftRecord["changeType"];
   const current = record(row.current_fields);
   const previous = record(row.previous_fields);
-  const fields = (Array.isArray(row.fields) ? row.fields : [])
+  const undoFrom = undoSource(row);
+  // The details show the active approved setup's value, the one an undo puts back, when
+  // the loader could compare the resource with it (approved_differences); otherwise the
+  // values stored when the change was found.
+  const againstApproved = Array.isArray(row.approved_differences) && row.approved_differences.length > 0 ? row.approved_differences : null;
+  const approvedCopy = undoFrom.approved && undoFrom.collectionId ? record(row.approved_fields) : null;
+  const beforeIsApproved = againstApproved !== null || (changeType === "removed" && approvedCopy !== null);
+  const fields = (againstApproved ?? (Array.isArray(row.fields) ? row.fields : []))
     .map((field) => record(field))
     .filter((field): field is Record<string, unknown> => field !== null && typeof field.path === "string");
-  const undoFrom = undoSource(row);
   const changed = (side: "before" | "after") => Object.fromEntries(fields.map((field) => [String(field.path), field[side] ?? null]));
   return {
     id: String(row.id),
@@ -125,7 +131,7 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
     changeType,
     blastRadius: String(row.blast_radius),
     detectedAt: new Date(row.observed_to as string | Date).toISOString(),
-    before: changeType === "added" ? null : changeType === "removed" ? previous : changed("before"),
+    before: changeType === "added" ? null : changeType === "removed" ? (approvedCopy ?? previous) : changed("before"),
     after: changeType === "removed" ? null : changeType === "added" ? current : changed("after"),
     name: serviceChangeName(resourceKey, current ?? previous),
     serviceRead: {
@@ -135,6 +141,7 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
       previousCollectionId: String(row.previous_collection_id),
       previousReadAt: row.previous_observed_to ? new Date(row.previous_observed_to as string | Date).toISOString() : null,
       undoFrom,
+      beforeIsApproved,
       comparedWith: row.compared_with === "approved" ? "approved" : "previous",
       alertId: row.alert_id ? String(row.alert_id) : null,
       alertState: row.alert_state ? String(row.alert_state) : null,

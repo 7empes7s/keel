@@ -3,6 +3,7 @@
 // `read` first; only a central administrator sees them, as the settings are tenant-wide.
 import { loadWorkloadSource } from "../../engine/restore/workloads/cmdletSettings.mjs";
 import { workloadChoices } from "../../engine/restore/workloads/restoreChoices.mjs";
+import { approvedDifferences } from "../../engine/govern/workloadDrift.mjs";
 
 import { connect } from "@/lib/db";
 import { PAGE_RESTORE_WORKLOADS } from "@/lib/restore-workloads-view";
@@ -38,7 +39,7 @@ export async function loadServiceChanges(
     `SELECT * FROM (
        SELECT DISTINCT ON (d.workload, d.resource_key)
               d.id, d.workload, d.resource_key, d.change_type, d.fields, d.blast_radius, d.collection_id, d.previous_collection_id, d.compared_with,
-              c.observed_to, pc.observed_to AS previous_observed_to, ap.collection_id AS approved_collection_id, apc.observed_to AS approved_observed_to, aps.workload IS NOT NULL AS has_approved_setup, cur.fields - $5::text[] AS current_fields, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
+              c.observed_to, pc.observed_to AS previous_observed_to, ap.collection_id AS approved_collection_id, apc.observed_to AS approved_observed_to, aps.workload IS NOT NULL AS has_approved_setup, ap.fields - $5::text[] AS approved_fields, ap.field_coverage AS approved_coverage, cur.fields - $5::text[] AS current_fields, cur.field_coverage AS current_coverage, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
          FROM workload_drift d
          JOIN workload_collection c ON c.id = d.collection_id
          LEFT JOIN workload_collection pc ON pc.id = d.previous_collection_id
@@ -57,7 +58,20 @@ export async function loadServiceChanges(
     [tenant, since, LISTED, limit, STORED_ONLY],
   );
   const choices = await undoChoices(client, tenant, rows);
-  return rows.map((row) => serviceChangeFrom(row, choices.get(String(row.id)) ?? null));
+  return rows.map((row) => serviceChangeFrom({ ...row, approved_differences: againstApproved(row) }, choices.get(String(row.id)) ?? null));
+}
+
+/** A changed setting compared with the active approved setup now, rather than with the
+ * value stored when the change was found: after a new baseline repointed the approved
+ * setup, this is what an undo puts back. Null when there is no approved value to compare
+ * with (no approved setup, or one that does not hold the resource) or the resource is gone. */
+function againstApproved(row: Record<string, unknown>): unknown[] | null {
+  if (row.change_type !== "modified" || !row.approved_collection_id || !row.approved_fields || !row.current_fields) return null;
+  return approvedDifferences(
+    String(row.workload),
+    { fields: row.approved_fields, fieldCoverage: row.approved_coverage },
+    { fields: row.current_fields, fieldCoverage: row.current_coverage },
+  ) as unknown[] | null;
 }
 
 interface ChoiceGroup { restorable: boolean; reason: string | null; items: { key: string; restorable: boolean; reason: string | null }[] }

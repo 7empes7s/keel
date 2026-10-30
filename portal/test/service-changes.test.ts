@@ -196,6 +196,11 @@ test("undo restores the active baseline's value, not the one stored with an olde
     assert.equal(after.serviceRead?.previousCollectionId, first);
     assert.deepEqual(after.serviceRead?.undoFrom, { collectionId: baselineRead, readAt: "2026-10-12T03:00:00.000Z", approved: true });
     assert.deepEqual(after.serviceRead?.undo, { possible: true, reason: null });
+    // The details show the baseline's values, the ones undo puts back, not the ones stored
+    // with the change: the baseline also differs from now in Priority.
+    assert.deepEqual([before.before, before.after], [{ State: "Disabled" }, { State: "Enabled" }]);
+    assert.deepEqual([after.before, after.after], [{ Priority: 2, State: "Disabled" }, { Priority: 1, State: "Enabled" }]);
+    assert.equal(after.serviceRead?.beforeIsApproved, true);
 
     // A baseline whose read no longer holds the rule leaves nothing to put back: undo says so
     // instead of quietly falling back to the older value.
@@ -213,6 +218,9 @@ test("undo restores the active baseline's value, not the one stored with an olde
     assert.equal(unheld.serviceRead?.undoFrom.collectionId, null);
     assert.equal(unheld.serviceRead?.undo.possible, false);
     assert.match(unheld.serviceRead?.undo.reason ?? "", /active baseline does not hold this setting/);
+    // With no approved value, the details keep the values stored with the change.
+    assert.deepEqual([unheld.before, unheld.after], [{ State: "Disabled" }, { State: "Enabled" }]);
+    assert.equal(unheld.serviceRead?.beforeIsApproved, false);
   } finally {
     await client.end();
     await database.cleanup();

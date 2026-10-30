@@ -25,7 +25,7 @@ test("each service sums up what is in line, changed and not covered, worst first
 
 test("every service shows: service reads are measured against the previous backup", () => {
   const summaries = serviceSummaries(active, [
-    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, undoFrom: { collectionId: "c1", readAt: null, approved: true }, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, undoFrom: { collectionId: "c1", readAt: null, approved: true }, beforeIsApproved: true, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
   ], ["group"], [
     { type: "exchange-mail-flow", read: true },
     { type: "exchange-mailbox-settings", read: true },
@@ -66,7 +66,7 @@ test("each service and the whole tenant get a match percentage of settings", () 
   const summaries = serviceSummaries(active, [
     { resourceType: "conditionalAccessPolicy", blastRadius: "tenant-lockout", changeType: "modified" },
     { resourceType: "deviceConfiguration", blastRadius: "cosmetic", changeType: "added" },
-    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", changeType: "removed", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, undoFrom: { collectionId: "c1", readAt: null, approved: true }, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", changeType: "removed", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, undoFrom: { collectionId: "c1", readAt: null, approved: true }, beforeIsApproved: true, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
   ], ["namedLocation"], [
     // The full open count (2 removed) wins over the recent list (1 removed).
     { type: "exchange-mail-flow", read: true, itemCount: 9, open: { added: 0, modified: 0, removed: 2 } },
@@ -106,7 +106,7 @@ test("service reads the approved setup holds are measured against it, the rest a
     },
   } as unknown as BaselineRecord;
   const summaries = serviceSummaries(holding, [
-    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, undoFrom: { collectionId: "c1", readAt: null, approved: true }, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, undoFrom: { collectionId: "c1", readAt: null, approved: true }, beforeIsApproved: true, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
   ], ["group"], [
     { type: "exchange-mail-flow", read: true },
     { type: "exchange-mailbox-settings", read: false },

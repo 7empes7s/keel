@@ -34,8 +34,9 @@ function displayPayload(payload: unknown): string {
 // same Technical details, so a change has one record, not two.
 export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactNode }) {
   const changes = diffPayloads(item.before, item.after);
-  // An older service change compares two reads; the rest compare with an approved setup.
-  const read = item.serviceRead?.comparedWith === "previous";
+  // An older service change compares two reads, unless its service has an approved
+  // setup now to compare with; the rest compare with an approved setup.
+  const read = item.serviceRead ? item.serviceRead.comparedWith === "previous" && !item.serviceRead.beforeIsApproved : false;
 
   return (
     <section aria-labelledby={`drift-diff-heading-${item.id}`} className="drift-diff" id={`drift-diff-${item.id}`}>

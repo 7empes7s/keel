@@ -1297,6 +1297,11 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await integration.getByLabel("Evidence reference").fill("CHG-5121");
   await integration.getByRole("button", { name: "Mark verified" }).click();
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
+  // A skipped object had nothing written: it never reads as restored.
+  const skipped = page.locator(".completion-resource").filter({ hasText: "KEEL-RT-Head office" });
+  await expect(skipped.locator(".completion-badge-skipped")).toHaveText("Not restored: set it by hand");
+  await expect(skipped.locator(".completion-mechanism")).toHaveText("KEEL wrote nothing to this item");
+  await expect(skipped).not.toContainText("Configuration restored");
 });
 
 // Task-73 and the Resilience redesign: what needs the reader comes first as alerts that

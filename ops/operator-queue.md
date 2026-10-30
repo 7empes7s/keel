@@ -13411,3 +13411,38 @@ item that needs it stays untouched.
 - **Expected:** the read proven; `complete-empty` if the tenant has no indicators (fine), otherwise `complete`.
 - **Report:** consent yes/no; capture exit code and proven/notProven; evidence branch and commit; import counts; the run line,
   unknown fields and the portal count; anything left in the tenant (expected: nothing, reads only).
+
+### Q287: Recapture the Exchange sharing and client access reads, then turn them on (read-only toward the tenant, after PR #822), about 10 minutes
+- Drafted by the "Fix Exchange app access policy read" thread (2026-10-30). Code: PR #822. In Q280 (build c8de6069)
+  `exchange-org-access.application-access-policies` failed with "object '<organization>\*' couldn't be found": Get-ApplicationAccessPolicy
+  answers that, instead of an empty list, in a tenant that never had an application access policy. PR #822 reads that one answer
+  (a not-found on the wildcard `...\*` object, for that family only) as an empty list. Any other error still fails.
+- Needs: /opt/keel-live at the #822 merge or later (`grep -q noApplicationAccessPolicyYet /opt/keel-live/engine/collect/workloads/exchangeOrgPolicies.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
+  Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** `exchange-org-access` only, with the same Exchange config as Q280 (`/etc/keel/exchange-collector.json`):
+     ```bash
+     w=exchange-org-access
+     node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     ```
+     Report the exit code, `outcome`, `proven` and `notProven` verbatim, and the objects count for application-access-policies.
+     If the pseudonymize check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit the record to `claude/live-evidence-exchange-org-policies` (on top of c0261466, replacing the Q280
+     `exchange-org-access` record, that file only, checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q280 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the `exchange-org-access` outcome, its per-family
+     `discovery.families` statuses, `fieldCounts` and **`unknownFields`** verbatim (field names only, never values).
+  5. `node cli/keel-workload-collect.mjs proof`: confirm all eight `exchange-org-access` reads are listed as current.
+- **Expected:** all eight reads proven (application-access-policies with 0 objects); the workload enabled; the run `complete`, or
+  `partial` only for unknown fields.
+- **Report:** B; capture exit code and proven/notProven; evidence branch and commit; import counts; the run line and unknown fields;
+  anything left in the tenant (expected: nothing, reads only).

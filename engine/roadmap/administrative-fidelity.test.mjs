@@ -302,6 +302,29 @@ test('setting update writes the values only after the template dependencies hold
   assert.deepEqual(namedValueDrift(unifiedSetting.values, undefined).undefinedNames.length, 3, 'a missing list is empty, never a match');
 });
 
+test('issue #720: a dry run lists the unit fields and setting values it would change', async () => {
+  const units = recordingGraph();
+  const unitLive = { ...financeUnit, description: 'changed' };
+  const unit = await run(units, [planned(units, 'administrativeUnit', 'update', financeUnit, unitLive)], { mode: 'dry-run' });
+  assert.deepEqual(unit.failed, []);
+  assert.deepEqual(unit.applied[0].changes, { fields: ['description'] });
+  const unitSettled = await run(units, [planned(units, 'administrativeUnit', 'update', financeUnit, financeUnit)], { mode: 'dry-run' });
+  assert.deepEqual(unitSettled.applied[0].changes, { fields: [] }, 'a unit that already matches plans no field');
+  // A difference in a field the snapshot lacks still makes the enforce run write, so it is listed.
+  const { description: _description, ...nameOnly } = financeUnit;
+  const liveOnly = await run(units, [planned(units, 'administrativeUnit', 'update', nameOnly, financeUnit)], { mode: 'dry-run' });
+  assert.deepEqual(liveOnly.applied[0].changes, { fields: ['description'] });
+
+  const settings = recordingGraph();
+  const settingLive = setValues(unifiedSetting, { EnableGroupCreation: 'true' });
+  const setting = await run(settings, [planned(settings, 'groupSetting', 'update', unifiedSetting, settingLive)], { mode: 'dry-run' });
+  assert.deepEqual(setting.failed, []);
+  assert.deepEqual(setting.applied[0].changes, { fields: ['values'], values: ['EnableGroupCreation'] });
+  const settingSettled = await run(settings, [planned(settings, 'groupSetting', 'update', unifiedSetting, unifiedSetting)], { mode: 'dry-run' });
+  assert.deepEqual(settingSettled.applied[0].changes, { fields: [] });
+  assert.equal(units.bodies.length + settings.bodies.length, 0);
+});
+
 // ------------------------------------------------- partial collection cannot authorise delete
 
 test('mutation check: a delete needs a complete snapshot observation of the collection', async () => {

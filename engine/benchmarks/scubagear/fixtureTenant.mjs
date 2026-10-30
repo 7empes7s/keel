@@ -182,15 +182,18 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.EXO.7.1v1': 'pass', // external senders are flagged
 });
 
+// The time the fixture's PIM eligibilities are judged at, as the tests run it.
+export const FIXTURE_NOW = '2026-06-01T12:00:00.000Z';
+
 /**
  * ScubaGear's whole input document for `product`, built from these backups the way the
  * controls build it (every key the product's rules read that Keel can build).
  */
-export function fixtureDocument(product, { version }) {
+export function fixtureDocument(product, { version, now = FIXTURE_NOW }) {
   const keys = [...new Set(importScubaGearRules().rules.filter((rule) => rule.product === product).flatMap((rule) => rule.inputs))]
     .filter((key) => ADAPTERS[key]?.build).sort();
   const facts = Object.fromEntries(Object.entries(FIXTURE_BACKUPS).map(([type, resources]) => [type, resources.map((resource) => maskedFacts(type, resource))]));
-  const built = buildInput(keys, facts, { version });
+  const built = buildInput(keys, facts, { version, now });
   if (built.couldNotBuild) throw built.couldNotBuild;
   return built.document;
 }

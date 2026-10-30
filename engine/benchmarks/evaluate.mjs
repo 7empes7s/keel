@@ -201,7 +201,7 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
   // which objects it checked, with the value found and the value wanted (the
   // Compliance page shows them as an expected-versus-current table).
   const predicate = predicateFor(control.predicate.name);
-  const answer = predicate(factsArg, control.predicate.args);
+  const answer = predicate(factsArg, control.predicate.args, { now });
   const verdict = typeof answer === 'string' ? answer : answer?.verdict;
   if (verdict === 'unknown' && typeof answer?.reason === 'string' && answer.reason.startsWith(PREDICATE_UNKNOWN_PREFIX)) {
     return freezeResult({ control, verdict, reason: answer.reason, evidenceRefs, observationWindows, now, details: answer.details ?? null });

@@ -12917,8 +12917,17 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the #791 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgPolicies.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedExchangeOrgPolicies`); as in Q266 the scripts are mounted from the checkout, so no
   image rebuild is expected.
-- Status: todo
-- Result:
+- Status: done
+- Result: done, one read not proven (2026-10-30 17:55 UTC, keel-operator). Build **B = c8de6069**. Reads only; no New/Set/Add/Remove/Grant cmdlet; nothing granted or created; global admin not used. Scripts mounted from the checkout at B, no image rebuild. Collector config `/etc/keel/exchange-collector.json` (`powershellConfigs.exchange`).
+  - **Step 1, capture:**
+    - `exchange-org-access`: exit **0**, outcome **partial**, proven authentication-policies, sharing-policies, organization-relationships, intra-organization-connectors, owa-mailbox-policies, role-assignment-policies, external-in-outlook; notProven `[{"operationId":"exchange-org-access.application-access-policies","status":"failed","error":"CMDLET_ERROR:[],Write-ErrorMessage","message":"||The operation couldn't be performed because object 'OU=<tenant>.onmicrosoft.com,OU=Microsoft Exchange Hosted Organizations,DC=EURPR04A012,...\\*' couldn't be found on '<DC>'."}]` (Get-ApplicationAccessPolicy errors when the tenant has no application access policy, it seems, instead of returning empty). verify ok. pseudonymize exit 0.
+    - `exchange-org-defaults`: exit **0**, outcome **complete**, proven transport-config, email-address-policies, cas-mailbox-plans, mailbox-plans; notProven `[]`; verify ok. pseudonymize exit 0.
+  - **Step 2:** `claude/live-evidence-exchange-org-policies` **c0261466** (from origin/master, the 2 records only, secret scan 0). No PR.
+  - **Step 3, import** (one dir with these, Q277/Q279 records and master's records): exit **0**, imported **24**, refused **[]**, absent 6 (older records kept on evidence branches, listed only).
+  - **Step 4, `run`:** exit **3** (partials below). **`exchange-org-access`: disabled (not qualified; nothing was read)**: it stays off while application-access-policies is unproven. `exchange-org-defaults`: **complete**; families mailboxPlan read 4, casMailboxPlan read 4, transportConfig read 1, emailAddressPolicy read 1; fieldCounts `{"observed":111}`; **unknownFields: none**.
+  - **Step 5, `proof`:** both reads listed as current (expire 2026-11-29). Exit 1 only from the four older proofs expiring 2026-11-06.
+  - **For the thread:** make application-access-policies treat this "couldn't be found" error as empty (or optional) so `exchange-org-access` can turn on; then a recapture.
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
   cmdlet. Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -13042,8 +13051,14 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the #795 merge or later (`grep -q "Get-ProtectionAlert'  *= @()" /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
   The cmdlet is added to the existing `$AllowedPurviewRetentionDlp` table; scripts are mounted from the checkout, so no image
   rebuild is expected.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 17:55 UTC, keel-operator). Build **B = c8de6069**. Reads only; no New/Set/Add/Remove/Grant cmdlet; nothing granted or created; global admin not used. Scripts mounted from the checkout at B, no image rebuild. Collector config `/etc/keel/purview-collector.json` (`powershellConfigs.purview`).
+  - **Step 1, capture** `purview-retention-dlp`: exit **0**, outcome **complete**, proven `purview.retention-policies`, `purview.retention-rules`, `purview.dlp-policies`, `purview.dlp-rules`, `purview.alert-policies`; notProven `[]`; verify ok. pseudonymize exit 0. Get-ProtectionAlert allowed for the app.
+  - **Step 2:** `claude/live-evidence-purview-alert-policies` **346c54d5** (that record only, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported 24, refused `[]` (shared run with Q280/Q279).
+  - **Step 4, `run`:** `purview-retention-dlp` **complete**; families retentionPolicy 2, retentionRule 2, dlpPolicy 3, dlpRule 3, **alertPolicy read 53**; fieldCounts `{"observed":1424}`; **unknownFields: none**. "53 new change(s) against the approved setup": the 53 alert policies, new to the approved setup.
+  - **Step 5, `proof`:** `purview-retention-dlp` reads current (expire 2026-11-29).
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential (Compliance Administrator, already held). No `New-`, `Set-` or `Remove-` cmdlet.
   Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -13129,8 +13144,19 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the #800 merge or later (`test -f /opt/keel-live/engine/collect/workloads/teamsVoiceNetwork.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedTeamsVoiceNetwork`); as in Q266 the scripts are mounted from the checkout, so no
   image rebuild is expected.
-- Status: todo
-- Result:
+- Status: done
+- Result: done, one read not proven (2026-10-30 17:55 UTC, keel-operator). Build **B = c8de6069**. Reads only; no New/Set/Add/Remove/Grant cmdlet; nothing granted or created; global admin not used. Scripts mounted from the checkout at B, no image rebuild. Collector config `/etc/keel/tenant.json` (no `powershellConfigs.teams`); MicrosoftTeams 7.9.0.
+  - **Step 1, capture:**
+    - `teams-voice-network`: exit **0**, outcome **partial**, proven voice-routes, pstn-gateways, translation-rules, unassigned-number-treatments, network-regions, network-sites, network-subnets, trusted-ip-addresses, network-roaming-policies, auto-attendants, call-queues, dial-in-conferencing, audio-conferencing-policies, call-hold-policies; notProven `[{"operationId":"teams-voice-network.pstn-usages","status":"failed","error":"CMDLET_ERROR:CommandNotFoundException","message":"The term 'Get-CsOnlinePstnUsages' is not recognized as a name of a cmdlet..."}]`. verify ok. pseudonymize exit 0.
+    - `teams-device-policies`: exit **0**, outcome **partial** (all 6 reads ok: ip-phone 1, update-management 2, mobility 2, vdi 1, feedback 4, workload 1 objects; partial from unknown fields), notProven `[]`; verify ok. pseudonymize exit 0.
+  - **Step 2:** `claude/live-evidence-teams-voice-network` **42889122** (the 2 records only, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported 24, refused `[]`.
+  - **Step 4, `run`:** both **partial**.
+    - `teams-voice-network`: every family `read`: voiceRoute 1, callHoldPolicy 1, dialInConferencing 1, networkRoamingPolicy 1, audioConferencingPolicy 1; callQueue, networkSite, pstnGateway, autoAttendant, networkRegion, networkSubnet, translationRule, trustedIpAddress, unassignedNumberTreatment 0. fieldCounts `{"unknown":1,"observed":34}`; **unknownFields `{"audioConferencingPolicy":{"Description":1}}`**; skipped `[{"family":"pstnUsage","reason":"teams-voice-network.pstn-usages is disabled"}]`.
+    - `teams-device-policies`: all 6 families `read` (counts as above). fieldCounts `{"unknown":5,"observed":76}`; **unknownFields `{"vdiPolicy":{"Description":1},"feedbackPolicy":{"Description":4}}`**.
+  - **Step 5, `proof`:** both proven reads current (expire 2026-11-29).
+  - **For the thread:** `Get-CsOnlinePstnUsages` is not exposed in the app-only MicrosoftTeams 7.9.0 session (CommandNotFound); drop or replace that read. Drop `Description` from audioConferencingPolicy, vdiPolicy and feedbackPolicy.
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential (Teams Administrator, already held). No `New-`, `Set-`, `Grant-` or `Remove-`
   cmdlet. Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -13212,8 +13238,11 @@ item that needs it stays untouched.
   Under the 2026-10-28 rule, keel-operator adds permissions to the app registration; Marouane only clicks "Grant admin consent".
 - Needs: steps 1 and 2 none. Step 3: /opt/keel-live at the #807 merge or later
   (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/defender-xdr.mjs`) and Marouane's consent on KEEL Collector.
-- Status: todo
-- Result:
+- Status: blocked: waiting on Marouane's admin consent on KEEL Collector (step 3 also needs #807 deployed)
+- Result: steps 1–2 done; **waiting on Marouane's "Grant admin consent" on KEEL Collector**, then the #807 deploy for step 3 (2026-10-30 17:58 UTC, keel-operator). Global admin not used.
+  - **Step 1** (Collector token, `/etc/keel/tenant.json`): `SecurityIdentitiesSensors.Read.All` **no**; `SecurityEvents.Read.All` **yes**; securitycenter token issued with 0 roles, so `Ti.Read.All` **no**.
+  - **Step 2, manifest** (Restorer credential, KEEL Collector app object ce48109a, PATCH of `requiredResourceAccess` only): **added** `SecurityIdentitiesSensors.Read.All` (Microsoft Graph, 5f0ffea2) and `Ti.Read.All` (WindowsDefenderATP SP exists, 528ca142), both application permissions. Already held: `SecurityEvents.Read.All`. Skipped: none. Entries 61 → 63, nothing removed (read back 63 after replication lag). No appRoleAssignment, no consent.
+  - **Step 3:** not run (needs consent and #807 deployed).
 - **Tenant:** reads only, plus one app registration PATCH on **KEEL Collector** (as in Q217: as the Restorer, global admin not
   used). Keep every existing resource and entry; remove nothing. Never create an appRoleAssignment or grant consent. Never touch
   break-glass or `marouane.defili`. Never print a token: report role names only.
@@ -13247,8 +13276,11 @@ item that needs it stays untouched.
   passes. Older endpoint security policies (`deviceManagementIntent`) name only a `templateId`; the template's
   `templateSubtype` says which Defender area the policy is. Fields were declared from Microsoft Learn, not a live answer.
 - Needs: none for the read itself (it uses only `tools/tenant-probe/auth.mjs` and `graph.mjs`, present on any build).
-- Status: todo
-- Result:
+- Status: done
+- Result: done, passes (2026-10-30 17:48 UTC, keel-operator). GET only, Collector `/etc/keel/tenant.json`; nothing written; global admin not used. JSON verbatim:
+  `{"selected":{"error":null,"count":16,"pages":1},"unselectedFields":["@odata.type","description","displayName","id","intentCount","isDeprecated","platformType","publishedDateTime","templateSubtype","templateType","versionInfo"],"templateType":{"cloudPC":1,"deviceConfigurationForOffice365":9,"advancedThreatProtectionSecurityBaseline":1,"securityTemplate":3,"microsoftEdgeSecurityBaseline":1,"securityBaseline":1},"templateSubtype":{"none":13,"diskEncryption":1,"endpointDetectionReponse":1,"attackSurfaceReduction":1},"intents":{"error":null,"count":0,"templateFound":0,"bySubtype":{}}}`
+  - Pass: `` ok; every selected field is in the unselected answer (plus `intentCount`); endpoint-security subtypes present (Microsoft spells one `endpointDetectionReponse`); the tenant has **0 intents**, so the templateFound check has nothing to match. `liveGate` can be removed.
+  - Tenant: nothing left.
 - **Tenant:** GET only, Collector credential (`DeviceManagementConfiguration.Read.All`, already held). Grant, assign or
   create nothing.
 - Do, from your clone (any commit), with the Collector config `/etc/keel/tenant.json`:

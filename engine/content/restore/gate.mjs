@@ -50,7 +50,7 @@ export function targetProblems({ tenantRef, names, testTenantRefs }) {
  * written.
  */
 export async function authorizeContentRestore(client, {
-  actor, approvalId, runId, tenantRef, at = new Date(), canFn = can, policyActions = [],
+  actor, approvalId, runId, tenantRef, at = new Date(), canFn = can, policyActions = [], workload = null,
   executionWindowMs = CONTENT_RESTORE_EXECUTION_WINDOW_MS,
 }) {
   if (typeof actor !== 'string' || !actor) throw new ContentRestoreRefusedError('a content restore needs --actor (the principal id running it)');
@@ -75,8 +75,12 @@ export async function authorizeContentRestore(client, {
   if (!request.decided_by || request.decided_by === request.requested_by) {
     throw new ContentRestoreRefusedError(`approval request ${approvalId} was not decided by someone other than the requester`);
   }
+  // The CLI names the workload it runs; a request filed for another one never runs it.
+  if (workload !== null && request.params?.workload !== workload) {
+    throw new ContentRestoreRefusedError(`approval request ${approvalId} was filed for another kind of content restore`);
+  }
   if (request.decided_by === RESTORE_APPROVALS_OFF_DECIDER
-    && (await contentRestoreNeedsApproval(client, { tenantRef, workload: request.params?.workload })).required) {
+    && (await contentRestoreNeedsApproval(client, { tenantRef, workload: workload ?? request.params?.workload })).required) {
     throw new ContentRestoreRefusedError(`approval request ${approvalId} was approved because restore approvals were off, and they are on again; file a new request`);
   }
   const filedAs = Array.isArray(request.policy_actions) ? request.policy_actions : [];

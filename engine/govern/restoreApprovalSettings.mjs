@@ -215,7 +215,8 @@ const ordered = (all, picked) => all.filter((entry) => picked.has(entry));
  * are the services it writes to; `rules` the kinds of restore it is (turning a
  * Conditional Access policy on, a compliance fix, a tenant-wide workload write, a
  * restore into another tenant, objects Keel cannot place in a service). Null when Keel
- * cannot read it (no dry run, no target tenant): then it waits for a person.
+ * cannot read it (no dry run, no target tenant, nothing in its scope): then it waits
+ * for a person.
  */
 export async function restoreApprovalScope(client, artifact) {
   if (!artifact) return null;
@@ -244,7 +245,8 @@ export async function restoreApprovalScope(client, artifact) {
     return { services: ordered(RESTORE_APPROVAL_SERVICES, services), rules: ordered(RESTORE_APPROVAL_RULES, rules) };
   }
   const keys = [...new Set(artifact.closureKeys ?? [])];
-  if (keys.length === 0) rules.add('unplaced');
+  // A dry run that names nothing Keel can read waits for a person.
+  if (keys.length === 0) return null;
   const types = new Map();
   for (const resource of artifact.reconciliationResources ?? []) {
     if (typeof resource?.naturalKey === 'string' && typeof resource?.resourceType === 'string') {
@@ -262,8 +264,15 @@ export async function restoreApprovalScope(client, artifact) {
     // Only a kind Keel has mapped counts as placed; a service guessed from a name does not.
     const type = types.get(key);
     const service = type !== undefined && typeInfo(type).known ? serviceForResourceType(type) : null;
-    if (service) services.add(service);
-    else rules.add('unplaced');
+    if (service) {
+      services.add(service);
+    } else {
+      rules.add('unplaced');
+      // The service its name suggests must have approvals off too, so turning
+      // "unplaced" off never lets an Exchange-like kind past Exchange's setting.
+      const guessed = type !== undefined ? serviceForResourceType(type) : null;
+      if (guessed) services.add(guessed);
+    }
   }
   return { services: ordered(RESTORE_APPROVAL_SERVICES, services), rules: ordered(RESTORE_APPROVAL_RULES, rules) };
 }

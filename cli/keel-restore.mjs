@@ -649,7 +649,7 @@ export async function runRestore({
       }
       // Gap 6: a compliance fix is promoted through the restore path below, but
       // only with an approval decided by someone other than the requester.
-      if (artifact.complianceFix && !(await enforcementApproval(client, artifact.id))) {
+      if (artifact.complianceFix && !(await promotionApproval(client, artifact))) {
         throw new Error('restore promotion refused: a compliance fix needs an approved request from someone other than the requester');
       }
       // Task-152: turning a Conditional Access policy on is promoted here too.
@@ -1944,6 +1944,16 @@ async function enforcementApproval(client, artifactId, { byPerson = false } = {}
   return rows[0] ? { approvedBy: rows[0].decided_by, reason: rows[0].justification ?? `approved restore ${artifactId}` } : null;
 }
 
+/**
+ * The approval that promotes this artifact, with the customer's restore approval
+ * settings read again now: an approval the settings made counts only while every
+ * service and kind of restore the artifact touches still has approvals off.
+ */
+async function promotionApproval(client, artifact) {
+  const byPerson = (await restoreNeedsApproval(client, { artifact })).required;
+  return enforcementApproval(client, artifact.id, { byPerson });
+}
+
 async function executeEnforcementRun({ client, artifact, collectorConfig, targetConfig, logger, deps }) {
   const forward = await deps.getDryRunArtifactByIdFn(client, { id: artifact.conditionalAccessEnforcement.promotes });
   if (!forward) throw new Error(`enforcement promotion refused: the restore ${artifact.conditionalAccessEnforcement.promotes} no longer exists`);
@@ -1957,8 +1967,7 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
   if (!validation.ok) throw new Error(`enforcement promotion refused: ${validation.reason}`);
   // A person approves it unless the customer turned approvals off for turning a
   // Conditional Access policy on and for Entra; read again now, not at request time.
-  const byPerson = (await restoreNeedsApproval(client, { artifact })).required;
-  const approval = await enforcementApproval(client, artifact.id, { byPerson });
+  const approval = await promotionApproval(client, artifact);
   if (!approval) throw new Error('enforcement promotion refused: turning a Conditional Access policy on needs an approved request from someone other than the requester');
 
   const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);
@@ -2135,7 +2144,7 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
   const entry = workloadRestoreFor(plan.workload, deps.workloadRestores);
   // The same approval as turning a Conditional Access policy on: approved, by
   // someone other than the requester. Checked before any credential is read.
-  const approval = await enforcementApproval(client, artifact.id);
+  const approval = await promotionApproval(client, artifact);
   if (!approval) {
     throw new Error('workload restore promotion refused: it needs an approved request from someone other than the requester');
   }

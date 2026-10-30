@@ -145,7 +145,7 @@ export async function teamsCommand(argv, ctx) {
   }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? teamsMessagesRunId(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
-    policyActions: request ? teamsPolicyActions(request) : [],
+    policyActions: request ? teamsPolicyActions(request) : [], workload: TEAMS_MESSAGES_WORKLOAD,
   });
   const fixture = request.fixture ? fixtureFrom(argv, { tenantRef, testTenantRefs, readFile }) : null;
   if (request.fixture && !fixture) throw new ContentRestoreRefusedError('this restore was planned from a fixture file; pass the same --fixture file');

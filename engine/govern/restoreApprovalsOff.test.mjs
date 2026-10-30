@@ -319,7 +319,8 @@ test('each kind of restore that waited for a person is the customer choice: off 
     [fix, 'compliance-fix', ['Entra']],
     [tenantWide, 'tenant-wide', ['SharePoint']],
     [elsewhere, 'other-tenant', ['Entra']],
-    [unplaced, 'unplaced', []],
+    // The service its name suggests counts too (all services are off here).
+    [unplaced, 'unplaced', ['Exchange']],
   ];
   for (const [artifact, rule, services] of cases) {
     const fresh = { ...artifact, ...(artifact === elsewhere ? { targetTenantId: (await client.query('SELECT target_tenant_id FROM restore_dry_run WHERE id = $1', [artifact.id])).rows[0].target_tenant_id } : {}) };
@@ -393,9 +394,14 @@ test('content restores (mail, files, Teams) follow their own setting and their s
   const canFn = async () => true;
   const authorized = await authorizeContentRestore(client, { actor: requester, approvalId: mail.id, runId, tenantRef, canFn });
   assert.equal(authorized.approvedBy, RESTORE_APPROVALS_OFF_DECIDER);
+  // A request filed for one kind of content restore never runs another.
+  await assert.rejects(
+    authorizeContentRestore(client, { actor: requester, approvalId: mail.id, runId, tenantRef, canFn, workload: 'onedrive' }),
+    /filed for another kind of content restore/,
+  );
   await setRestoreApprovalSetting(client, { tenantRef, service: 'Exchange', approvalRequired: true, actor: admin });
   await assert.rejects(
-    authorizeContentRestore(client, { actor: requester, approvalId: mail.id, runId, tenantRef, canFn }),
+    authorizeContentRestore(client, { actor: requester, approvalId: mail.id, runId, tenantRef, canFn, workload: 'mail' }),
     /restore approvals were off, and they are on again/,
   );
 
@@ -404,4 +410,16 @@ test('content restores (mail, files, Teams) follow their own setting and their s
     tenantRef, action: 'content-restore', params: { runId: randomUUID(), tenantRef: tenant(), workload: 'onedrive', request: {} }, requestedBy: requester, executor: 'cli',
   });
   assert.equal(other.status, 'pending');
+});
+
+test('an unmapped kind still needs the service its name suggests to have approvals off', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  const requester = await principal(client);
+  await turnOffRules(client, tenantRef, ['unplaced'], admin);
+  const artifact = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['exchangeNotAKindYet:KEEL-RT-a', 'exchangeNotAKindYet']] });
+  assert.equal((await ask(client, { tenantRef, artifact, requestedBy: requester })).status, 'pending');
+  await turnOff(client, tenantRef, ['Exchange'], admin);
+  assert.equal((await ask(client, { tenantRef, artifact, requestedBy: requester })).status, 'approved');
 });

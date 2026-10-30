@@ -13240,3 +13240,45 @@ item that needs it stays untouched.
 - **Expected:** step 1 `SecurityIdentitiesSensors.Read.All` no; step 3 sensors `complete-empty` if the tenant has no Defender
   for Identity sensor (fine), Secure Score actions complete with a few hundred objects.
 - **Report:** each step as above. Short ids only.
+
+### Q283: Live read check of Intune endpoint security templates (read-only toward the tenant, after PR #812), about 5 minutes
+- Drafted by the "Show older Defender endpoint policies under Defender" thread (2026-10-30). Code: PR #812 adds catalogue
+  kind `deviceManagementTemplate` (`GET /beta/deviceManagement/templates`), switched off with `liveGate` until this check
+  passes. Older endpoint security policies (`deviceManagementIntent`) name only a `templateId`; the template's
+  `templateSubtype` says which Defender area the policy is. Fields were declared from Microsoft Learn, not a live answer.
+- Needs: none for the read itself (it uses only `tools/tenant-probe/auth.mjs` and `graph.mjs`, present on any build).
+- Status: todo
+- Result:
+- **Tenant:** GET only, Collector credential (`DeviceManagementConfiguration.Read.All`, already held). Grant, assign or
+  create nothing.
+- Do, from your clone (any commit), with the Collector config `/etc/keel/tenant.json`:
+  ```bash
+  node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import { getToken } from "./tools/tenant-probe/auth.mjs";
+  import { GraphReader } from "./tools/tenant-probe/graph.mjs";
+  const c = JSON.parse(readFileSync("/etc/keel/tenant.json", "utf8"));
+  const t = await getToken(c);
+  const r = new GraphReader(async () => t.accessToken);
+  const sel = "id,displayName,description,versionInfo,isDeprecated,templateType,templateSubtype,platformType,publishedDateTime";
+  const tpl = await r.collect("beta", `/deviceManagement/templates?$select=${sel}`);
+  const all = await r.collect("beta", "/deviceManagement/templates");
+  const intents = await r.collect("beta", "/deviceManagement/intents?$select=id,templateId");
+  const count = (xs, k) => Object.fromEntries([...xs.reduce((m, x) => m.set(String(x[k]), (m.get(String(x[k])) ?? 0) + 1), new Map())]);
+  const ids = new Set((tpl.items ?? []).map((x) => x.id));
+  console.log(JSON.stringify({
+    selected: { error: tpl.error ?? null, count: tpl.items?.length ?? 0, pages: tpl.pages },
+    unselectedFields: [...new Set((all.items ?? []).flatMap(Object.keys))].sort(),
+    templateType: count(tpl.items ?? [], "templateType"),
+    templateSubtype: count(tpl.items ?? [], "templateSubtype"),
+    intents: { error: intents.error ?? null, count: intents.items?.length ?? 0,
+      templateFound: (intents.items ?? []).filter((i) => ids.has(i.templateId)).length,
+      bySubtype: count((intents.items ?? []).map((i) => ({ s: (tpl.items ?? []).find((x) => x.id === i.templateId)?.templateSubtype ?? "no-template" })), "s") },
+  }, null, 2));'
+  ```
+  Report the JSON verbatim (it holds field names, counts and Microsoft enum values only, no names or ids).
+- **Pass if:** `selected.error` is null; `unselectedFields` holds every selected field; `templateSubtype` shows the
+  endpoint security values (antivirus, firewall, ...); every intent has `templateFound` (or say how many do not).
+  A 400 on `$select` or a 403 is a result: report the Graph code and message.
+- **Report:** the JSON; anything left in the tenant (expected: nothing, reads only). The builder thread then removes
+  `liveGate` in a small PR.

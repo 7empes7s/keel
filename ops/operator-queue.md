@@ -13451,8 +13451,15 @@ item that needs it stays untouched.
   answers that, instead of an empty list, in a tenant that never had an application access policy. PR #822 reads that one answer
   (a not-found on the wildcard `...\*` object, for that family only) as an empty list. Any other error still fails.
 - Needs: /opt/keel-live at the #822 merge or later (`grep -q noApplicationAccessPolicyYet /opt/keel-live/engine/collect/workloads/exchangeOrgPolicies.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 21:52 UTC, keel-operator). Build **B = 34bf9f72**. Reads only, Collector `/etc/keel/exchange-collector.json`; no New/Set/Add/Remove cmdlet; nothing granted or created; global admin not used. Scripts mounted from the checkout, no image rebuild.
+  - **Step 1, capture** `exchange-org-access`: exit **0**, outcome **complete**, proven authentication-policies, sharing-policies, organization-relationships, intra-organization-connectors, owa-mailbox-policies, role-assignment-policies, **application-access-policies**, external-in-outlook; notProven `[]`; verify ok. pseudonymize exit 0. application-access-policies: **0 objects** (status read: #822's not-found handling works).
+  - **Step 2:** `claude/live-evidence-exchange-org-policies` **3bf28eb9** (on top of c0261466, Q280 records replaced, together with Q293's; secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **27**, refused `[]`, absent 7 (older evidence-branch records and defender-endpoint-indicators, listed only).
+  - **Step 4, `run`:** `exchange-org-access` **complete** (now enabled). Families all `read`: sharingPolicy 3, owaMailboxPolicy 2, roleAssignmentPolicy 1, externalInOutlook 1, authenticationPolicy 0, organizationRelationship 0, intraOrganizationConnector 0, applicationAccessPolicy 0. fieldCounts `{"observed":84}`; **unknownFields `{}`**.
+  - **Step 5, `proof`:** all eight reads current (expire 2026-11-29).
+  - Note: my 18:37 and 19:37 polls missed this item (a bug in my listing script); it ran now.
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
   Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -13676,8 +13683,15 @@ item that needs it stays untouched.
   imported. While off, ScubaGear MS.EXO.13.1 (mailbox auditing), 5.1 (SMTP AUTH) and 6.1/6.2 (calendar sharing) read "could not check".
 - Needs: /opt/keel-live at the #830 merge or later (`grep -q organization-config /opt/keel-live/engine/collect/workloads/exchangeOrgPolicies.mjs`).
   As in Q280 the scripts are mounted from the checkout, so no image rebuild is expected.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 21:52 UTC, keel-operator). Build **B = 34bf9f72**. Reads only, Collector `/etc/keel/exchange-collector.json`; no New/Set/Add/Remove cmdlet; nothing granted or created; global admin not used. Scripts mounted from the checkout, no image rebuild.
+  - **Step 1, capture** `exchange-org-defaults`: exit **0**, outcome **complete**, proven transport-config, **organization-config**, email-address-policies, cas-mailbox-plans, mailbox-plans; notProven `[]`; verify ok. pseudonymize exit 0. organization-config: **1 object**.
+  - **Step 2:** `claude/live-evidence-exchange-org-policies` **3bf28eb9** (on top of c0261466, replacing the Q280 record; secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **27**, refused `[]`, absent 7.
+  - **Step 4, `run`:** `exchange-org-defaults` **complete** (enabled). Families all `read`: transportConfig 1, organizationConfig 1, emailAddressPolicy 1, casMailboxPlan 4, mailboxPlan 4. fieldCounts `{"observed":115}`; **unknownFields `{}`**. 1 new change against the approved setup (the new organization-config object). Q287 done in the same run: `exchange-org-access` **complete**; sharing policies `Domains` type: **array of strings** (3 of 3).
+  - **Step 5, `proof`:** all five reads current (expire 2026-11-29).
+  - Run total: compliance checks 118 run (28 pass, 27 fail, 63 could not check).
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
   Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from

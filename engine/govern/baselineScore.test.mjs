@@ -85,8 +85,8 @@ test('a stored point counts open changes, the newest read per service, and each 
     [tenantRef, hoursAgo(48)],
   );
   const { rows: [baseline] } = await client.query(
-    `INSERT INTO baseline (tenant_ref, set_by, active, observation_scope) VALUES ($1, 'fixture', true, $2) RETURNING id`,
-    [tenantRef, { types: ['user', 'deviceCompliancePolicy'] }],
+    `INSERT INTO baseline (tenant_ref, set_by, active, observation_scope, captured_at) VALUES ($1, 'fixture', true, $2, $3) RETURNING id`,
+    [tenantRef, { types: ['user', 'deviceCompliancePolicy'] }, hoursAgo(48)],
   );
   const hold = async (naturalKey, resourceType) => {
     const payload = { displayName: naturalKey };
@@ -149,6 +149,9 @@ test('a stored point counts open changes, the newest read per service, and each 
   const teams = await collection('teams-org-policies', 'complete', hoursAgo(30));
   await client.query('INSERT INTO workload_observation (collection_id, resource_key) VALUES ($1, $2)', [teams, 'policy:KEEL-RT-1']);
   await collection('teams-org-policies', 'failed', hoursAgo(1));
+  // A service Keel no longer reads: its old rows are not scored.
+  const retired = await collection('retired-workload', 'complete', hoursAgo(3));
+  await client.query('INSERT INTO workload_observation (collection_id, resource_key) VALUES ($1, $2)', [retired, 'thing:KEEL-RT-1']);
 
   const score = await computeBaselineScore(client, { tenantRef });
   assert.deepEqual(score.services, {
@@ -159,6 +162,13 @@ test('a stored point counts open changes, the newest read per service, and each 
     Exchange: { matching: 4, judged: 5 },
   });
   assert.deepEqual(score.overall, { matching: 13, judged: 16 });
+
+  // A setup from before scopes were recorded is scoped to the kinds it holds, as the
+  // page does: the Intune kind with no change still counts.
+  await client.query(`UPDATE baseline SET observation_scope = '{"types":["user"]}' WHERE id = $1`, [baseline.id]);
+  assert.deepEqual((await computeBaselineScore(client, { tenantRef })).overall, { matching: 11, judged: 14 }, 'a recorded scope is used');
+  await client.query('UPDATE baseline SET captured_at = NULL WHERE id = $1', [baseline.id]);
+  assert.deepEqual((await computeBaselineScore(client, { tenantRef })).overall, { matching: 13, judged: 16 }, 'no recorded capture: the kinds held');
 
   const first = await recordBaselineScore(client, { tenantRef, trigger: 'service-read', now: hoursAgo(1) });
   assert.equal(first.percent, 81);

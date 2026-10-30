@@ -23,7 +23,7 @@ import { objectNameSql } from '../cir/objectName.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/openDrift.mjs';
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
-import { typeInfo } from './taxonomy.mjs';
+import { settingKind, typeInfo } from './taxonomy.mjs';
 
 export { FEED_GROUPINGS, feedGroupOf, groupChangeFeed } from './feedGroups.mjs';
 
@@ -82,8 +82,10 @@ function priorityOf(info, blastRadius) {
   return { priority: info.priority, priorityReason: info.priorityReason ?? null };
 }
 
-function row({ id, source, occurredAt, type, service = null, blastRadius = null, object, change, activity = null, person = null }) {
-  const info = typeInfo(type, service);
+// `kind` is the kind a list files the object under when it differs from its stored type
+// (an Intune antivirus policy is a Defender endpoint security policy, taxonomy settingKind).
+function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null }) {
+  const info = typeInfo(kind, service);
   const at = iso(occurredAt);
   return {
     id,
@@ -117,7 +119,8 @@ const OBJECT_IDS_SQL = `(ARRAY(SELECT lower(m[1]) FROM regexp_matches(CASE WHEN 
 
 const DRIFT_SQL = `
   SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at,
-         ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors
+         ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors,
+         coalesce(r.after_payload->'templateReference'->>'templateFamily', r.before_payload->'templateReference'->>'templateFamily') AS template_family
     FROM drift r
     JOIN snapshot s ON s.id = r.observed_snapshot
     LEFT JOIN LATERAL (
@@ -234,6 +237,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       source: 'drift',
       occurredAt: entry.detected_at,
       type: String(entry.resource_type),
+      kind: settingKind(String(entry.resource_type), entry.template_family ?? null),
       blastRadius: entry.blast_radius,
       object: shown(String(entry.resource_type), entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' }),
       change: String(entry.change_type),

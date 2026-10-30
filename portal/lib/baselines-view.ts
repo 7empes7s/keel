@@ -9,6 +9,7 @@ import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { ComplianceScore } from "@/lib/compliance-view";
+import { itemArea, itemKind } from "@/lib/type-groups";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -31,10 +32,11 @@ export function typeService(type: string): CloudService {
   return serviceFor(typeInfo(type).service);
 }
 
-/** The service one setting sits under: its type's, except the sign-in rules SharePoint
- * admin center made, which are SharePoint settings. */
-export function itemService(item: { resourceType: string; name?: string | null }): CloudService {
-  return madeInSharePoint(item.resourceType, item.name) ? serviceFor("SharePoint") : typeService(item.resourceType);
+/** The service one setting sits under: its kind's, except the sign-in rules SharePoint
+ * admin center made, which are SharePoint settings. Endpoint security policies made in
+ * Intune (antivirus, firewall…) are Defender settings. */
+export function itemService(item: { resourceType: string; name?: string | null; templateFamily?: string | null }): CloudService {
+  return madeInSharePoint(item.resourceType, item.name) ? serviceFor("SharePoint") : typeService(itemKind(item));
 }
 
 /** Why a kind of setting matters, from the taxonomy's priority reason. */
@@ -69,9 +71,16 @@ export function changeWord(changeType: DriftRecord["changeType"]): string {
   return changeType === "added" ? "Added" : changeType === "removed" ? "Removed" : "Changed";
 }
 
+/** What one setting is: "Antivirus policy" for an endpoint security policy, else the
+ * plain name of its kind. */
+export function itemKindName(item: { resourceType: string; templateFamily?: string | null }): string {
+  const area = itemArea(item);
+  return area ? `${area} policy` : plainKind(itemKind(item));
+}
+
 /** "Sign-in rule · changed": what the thing is, then what happened to it. */
-export function kindLine(item: Pick<DriftRecord, "resourceType" | "changeType">): string {
-  return `${plainKind(item.resourceType)} · ${changeWord(item.changeType).toLowerCase()}`;
+export function kindLine(item: Pick<DriftRecord, "resourceType" | "changeType"> & Partial<Pick<DriftRecord, "templateFamily">>): string {
+  return `${itemKindName(item)} · ${changeWord(item.changeType).toLowerCase()}`;
 }
 
 /** Who made a change, from the audit log, or null when Keel does not know. */

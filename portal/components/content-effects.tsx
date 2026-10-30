@@ -14,7 +14,14 @@ import { refused, toast } from "@/lib/toast";
 // setting later does not bring back what was deleted or disclosed. Promotion
 // needs a separate approval of exactly these effects by someone other than
 // the requester.
-export type ContentEffectName = "retention-reducing" | "hold-releasing" | "externally-sharing" | "irreversible" | "runs-on-devices";
+export type ContentEffectName =
+  | "retention-reducing"
+  | "hold-releasing"
+  | "externally-sharing"
+  | "irreversible"
+  | "runs-on-devices"
+  | "weakens-protection"
+  | "acts-on-accounts";
 
 export interface ContentEffect {
   naturalKey: string;
@@ -36,6 +43,8 @@ const EFFECT_LABELS: Record<ContentEffectName, string> = {
   "externally-sharing": "Widens sharing",
   irreversible: "Destroys content",
   "runs-on-devices": "Runs on devices",
+  "weakens-protection": "Weakens protection",
+  "acts-on-accounts": "Acts on accounts",
 };
 
 export function contentEffectLabel(effect: ContentEffectName): string {
@@ -48,6 +57,8 @@ const EFFECT_ICONS: Record<ContentEffectName, IconName> = {
   "externally-sharing": "show",
   irreversible: "x-circle",
   "runs-on-devices": "alert",
+  "weakens-protection": "hide",
+  "acts-on-accounts": "person",
 };
 
 const show = (value: unknown) => (value === null || value === undefined ? "—" : typeof value === "string" ? value : JSON.stringify(value));

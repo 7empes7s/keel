@@ -18,7 +18,7 @@ import {
 import {
   administrativePatchRefusal, administrativePostStateRefusal, administrativeWriteRefusal, isAdministrativeGoverned,
 } from './administrativeOperations.mjs';
-import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
+import { effectApproved, isPreservationLockFailure, protectionEffects } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome, listJournal } from './rollbackJournal.mjs';
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, recordSignInPath } from '../safety/signInPathGate.mjs';
@@ -721,7 +721,7 @@ export async function applyWave(writer, governor, wave, {
     if (isAdminRoleGoverned(resource.resourceType)) {
       if (resumedGoverned()) return;
       const outcome = await applyAdminRoleWrite(writer, resource, effectiveVerb, {
-        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now: now(),
+        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now: now(), approvedContentEffects,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
       });
       if (outcome.applied) applied.push(outcome.applied);
@@ -1699,7 +1699,7 @@ async function applyIntuneWrite(writer, resource, verb, {
  * needs a remapping proof for the operation, as everywhere else.
  */
 async function applyAdminRoleWrite(writer, resource, verb, {
-  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now, targetId,
+  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now, targetId, approvedContentEffects = [],
 }) {
   const { naturalKey } = resource;
   const scoped = { ...resource, references: writtenReferences(resource) };
@@ -1711,7 +1711,7 @@ async function applyAdminRoleWrite(writer, resource, verb, {
   }
   const remapRefusal = unqualifiedRemapping(scoped, verb, resource.payload, desired);
   if (remapRefusal) return { failed: { naturalKey, error: remapRefusal } };
-  const context = { mode, retryOperation, rollbackClient, runId, restoreRef, now, targetId };
+  const context = { mode, retryOperation, rollbackClient, runId, restoreRef, now, targetId, approvedContentEffects };
   if (resource.resourceType === 'roleDefinition') return applyRoleDefinitionWrite(writer, resource, verb, desired, context);
   if (resource.resourceType === 'roleEligibilitySchedule') return applyEligibilityCreate(writer, resource, desired, context);
   return applyRolePolicyUpdate(writer, resource, desired, context);
@@ -1830,15 +1830,22 @@ async function applyEligibilityCreate(writer, resource, desired, {
 }
 
 async function applyRolePolicyUpdate(writer, resource, desired, {
-  mode, retryOperation, rollbackClient, runId, restoreRef, targetId,
+  mode, retryOperation, rollbackClient, runId, restoreRef, targetId, approvedContentEffects = [],
 }) {
   const { naturalKey } = resource;
   const live = resource.live.payload;
   const policyId = targetId ?? live.id;
   if (!policyId) return { failed: { naturalKey, error: 'update has no targetId' } };
+  // Restore approvals: a rule the backup would weaken is written once its
+  // 'weakens-protection' effect was approved (or the customer turned approvals off).
+  // Judged on the backup as classified, before any id was rewritten.
+  // A rule with no approved effect stays withheld, whatever the rewrite made of it.
+  const approvedRules = new Set(protectionEffects({ ...resource, verb: 'update' })
+    .filter((effect) => effectApproved(effect, approvedContentEffects)).map((effect) => effect.field));
+  const weakeningApproved = (ruleId) => mode === 'dry-run' || approvedRules.has(`rules[${ruleId}]`);
   let plan;
   try {
-    plan = policyRuleWrites(policyId, desired, live);
+    plan = policyRuleWrites(policyId, desired, live, { weakeningApproved });
   } catch (err) {
     return { failed: { naturalKey, error: `refused: ${err.message}` } };
   }

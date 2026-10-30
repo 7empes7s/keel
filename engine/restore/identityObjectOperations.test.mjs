@@ -13,6 +13,9 @@ import {
 import { defineRecord } from './recordWriter.mjs';
 import { TRUST_FIELDS, isTrustField } from './workloads/writeDeclarations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
+import { protectionEffects } from '../safety/contentEffects.mjs';
+
+const writesOfAll = (graph) => graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: ['keel-app-id'], caPolicies: [] };
@@ -219,7 +222,7 @@ test('a user dry run lists the checklist and writes nothing', async () => {
 
 // --------------------------------------------------------------- governance
 
-test('a lifecycle workflow is created switched off, with its tasks, and turning it on is a follow-up', async () => {
+test('a lifecycle workflow is created switched off, with its tasks, and turning it on waits for its approval', async () => {
   const workflow = {
     id: 'src-wf', category: 'leaver', displayName: 'KEEL-RT-Leaver', description: 'Offboard', isEnabled: true, isSchedulingEnabled: true,
     version: 3, createdBy: { id: 'x' }, executionConditions: { '@odata.type': '#microsoft.graph.identityGovernance.onDemandExecutionOnly' },
@@ -234,10 +237,10 @@ test('a lifecycle workflow is created switched off, with its tasks, and turning 
   assert.equal(post.body.tasks[0].id, undefined);
   for (const field of ['id', 'version', 'createdBy']) assert.equal(field in post.body, false, field);
   assert.deepEqual(result.applied.completion.map((item) => item.requirement), ['isEnabled', 'isSchedulingEnabled']);
-  // The best-effort rule: the parts the backup cannot give back are named, with where to do them.
-  const switching = result.applied.followUp.find((step) => /Switching the workflow on/.test(step.part));
-  assert.equal(switching.actionable, true);
-  assert.match(switching.portalPath, /Lifecycle workflows/);
+  // The best-effort rule: the parts the backup cannot give back are named. Turning the
+  // workflow on is no longer one of them: it waits for its approval (restore approvals).
+  assert.equal(result.applied.followUp.some((step) => /Switching the workflow on/.test(step.part)), false);
+  assert.match(result.applied.completion[0].description, /second person approves it/);
   assert.ok(result.applied.followUp.some((step) => step.actionable === false), 'run history is listed as a record only');
 });
 
@@ -260,6 +263,59 @@ test('a lifecycle workflow update never switches it on, and writes changed tasks
   assert.equal(version.body.workflow.tasks.length, 2);
   assert.deepEqual(result.applied.changes.newVersion, ['tasks']);
   assert.equal(result.applied.completion[0].requirement, 'isEnabled');
+});
+
+// Restore approvals: turning a workflow on is an 'acts-on-accounts' effect, written
+// once the promotion checked its approval (or the customer turned approvals off).
+test('restore approvals: an approved lifecycle workflow is turned on after its new version', async () => {
+  const live = {
+    id: 'wf-1', category: 'leaver', displayName: 'KEEL-RT-Leaver', description: 'Offboard', isEnabled: false, isSchedulingEnabled: false,
+    executionConditions: { '@odata.type': '#microsoft.graph.identityGovernance.onDemandExecutionOnly' },
+    tasks: [{ taskDefinitionId: 'def-1', displayName: 'Disable account', continueOnError: false, executionSequence: 1, isEnabled: true, arguments: [] }],
+  };
+  const desired = { ...live, isEnabled: true, isSchedulingEnabled: true, tasks: [...live.tasks, { taskDefinitionId: 'def-2', displayName: 'Remove licences', continueOnError: false, executionSequence: 2, isEnabled: true, arguments: [] }] };
+  const resource = resourceOf('lifecycleWorkflow', desired, { live: { state: 'present', targetId: 'wf-1', payload: live } });
+  const effects = protectionEffects({ ...resource, verb: 'update' });
+  assert.deepEqual(effects.map((effect) => [effect.field, effect.effect]), [['isEnabled', 'acts-on-accounts'], ['isSchedulingEnabled', 'acts-on-accounts']]);
+
+  // Only one switch approved: that one is turned on, the other stays a step.
+  let graph = idoFakeGraph({ seed: { '/identityGovernance/lifecycleWorkflows/workflows/wf-1': structuredClone(live) } });
+  let result = await applyIdentityObjectWrite(graph, resource, 'update', { ...FAST, approvedContentEffects: [effects[0]] });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const order = graph.calls.filter((call) => call.method === 'POST' || call.method === 'PATCH').map((call) => [call.method, call.path.split('/').pop(), call.body]);
+  assert.deepEqual(order.at(-1), ['PATCH', 'wf-1', { isEnabled: true }], 'turned on last, after the new version');
+  assert.ok(order.some(([, path]) => path === 'createNewVersion'));
+  assert.deepEqual(result.applied.changes.turnedOn, ['isEnabled']);
+  assert.deepEqual(result.applied.completion.map((item) => item.requirement), ['isSchedulingEnabled']);
+  assert.match(result.applied.completion[0].description, /second person approves it/);
+
+  // An approval of other values does not count.
+  graph = idoFakeGraph({ seed: { '/identityGovernance/lifecycleWorkflows/workflows/wf-1': structuredClone(live) } });
+  result = await applyIdentityObjectWrite(graph, resource, 'update', { ...FAST, approvedContentEffects: [{ ...effects[0], before: true }] });
+  assert.equal(result.applied.changes.turnedOn, undefined);
+  assert.equal(graph.calls.filter((call) => call.method === 'PATCH' && call.body?.isEnabled === true).length, 0);
+
+  // A dry run writes nothing.
+  graph = idoFakeGraph({ seed: { '/identityGovernance/lifecycleWorkflows/workflows/wf-1': structuredClone(live) } });
+  result = await applyIdentityObjectWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run', approvedContentEffects: effects });
+  assert.equal(writesOfAll(graph).length, 0);
+});
+
+test('restore approvals: a recreated workflow the backup has on is turned on once approved', async () => {
+  const workflow = {
+    id: 'src-wf', category: 'leaver', displayName: 'KEEL-RT-Leaver', description: 'Offboard', isEnabled: true, isSchedulingEnabled: false,
+    executionConditions: { '@odata.type': '#microsoft.graph.identityGovernance.onDemandExecutionOnly' },
+    tasks: [{ taskDefinitionId: 'def-1', displayName: 'Disable account', category: 'leaver', continueOnError: false, executionSequence: 1, isEnabled: true, arguments: [] }],
+  };
+  const resource = resourceOf('lifecycleWorkflow', workflow);
+  const effects = protectionEffects({ ...resource, verb: 'create' });
+  assert.deepEqual(effects.map((effect) => effect.field), ['isEnabled']);
+  const graph = idoFakeGraph();
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', { ...FAST, approvedContentEffects: effects });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(graph.calls.find((call) => call.method === 'POST').body.isEnabled, false, 'created off, as always');
+  assert.deepEqual(graph.calls.filter((call) => call.method === 'PATCH').map((call) => call.body), [{ isEnabled: true }]);
+  assert.deepEqual(result.applied.changes.turnedOn, ['isEnabled']);
 });
 
 test('governance singletons are updated in place and verified', async () => {
@@ -777,13 +833,13 @@ test('restore gaps batch 17: SharePoint tenant settings are updated in place, ne
   assert.deepEqual(writes[0].body, { isLoopEnabled: true }, 'sharing fields stay with the SharePoint workload; read-only paths are never sent');
 });
 
-test('restore gaps batch 17: a SharePoint restore never loosens who can reach files', async () => {
+test('restore gaps batch 17: a SharePoint restore loosens who can reach files only once that is approved', async () => {
   const path = '/admin/sharepoint/settings';
   for (const [field, loose] of [['isLegacyAuthProtocolsEnabled', true], ['isUnmanagedSyncAppForTenantRestricted', false], ['isRequireAcceptingUserToMatchInvitedUserEnabled', false]]) {
     const graph = idoFakeGraph({ seed: { [path]: sharepoint } });
     const backup = { ...sharepoint, [field]: loose, isLoopEnabled: false };
     const result = await applyIdentityObjectWrite(graph, { naturalKey: 'sharepointSettings', resourceType: 'sharepointSettings', payload: backup, references: [], live: { state: 'present', payload: sharepoint } }, 'update', FAST);
-    assert.match(result.skipped?.reason ?? '', /never loosens who can reach files/, field);
+    assert.match(result.skipped?.reason ?? '', /that loosens who can reach files, so a second person approves it/, field);
     assert.deepEqual(result.skipped.completion.fields, [field]);
     assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0, field);
   }
@@ -846,14 +902,14 @@ test('restore gaps batch 20: Forms settings are written back as one settings obj
   assert.deepEqual(result.applied.changes.fields, ['settings']);
 });
 
-test('restore gaps batch 20: a Forms restore never widens sharing outside the organisation or turns the phishing scan off', async () => {
+test('restore gaps batch 20: a Forms restore widens sharing outside the organisation or turns the phishing scan off only once approved', async () => {
   const path = '/admin/forms';
   for (const [field, loose] of [['isExternalSendFormEnabled', true], ['isExternalShareCollaborationEnabled', true],
     ['isExternalShareResultEnabled', true], ['isExternalShareTemplateEnabled', true], ['isInOrgFormsPhishingScanEnabled', false]]) {
     const graph = idoFakeGraph({ seed: { [path]: FORMS } });
     const backup = { settings: { ...FORMS.settings, [field]: loose, isBingImageSearchEnabled: false } };
     const result = await singletonWrite(graph, 'formsSettings', backup, FORMS);
-    assert.match(result.skipped?.reason ?? '', /never loosens/, field);
+    assert.match(result.skipped?.reason ?? '', /loosens this setting, so a second person approves it/, field);
     assert.deepEqual(result.skipped.completion.fields, [`settings.${field}`], field);
     assert.match(result.skipped.completion.portalPath, /Microsoft Forms/);
     assert.equal(writesOf(graph).length, 0, field);
@@ -890,11 +946,11 @@ test('restore gaps batch 20: install options, apps and services, report privacy 
   }
 });
 
-test('restore gaps batch 20: a restore never turns the Office Store on or shows real names in reports again', async () => {
+test('restore gaps batch 20: a restore turns the Office Store on or shows real names in reports again only once approved', async () => {
   const store = { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } };
   let graph = idoFakeGraph({ seed: { '/admin/appsAndServices': store } });
   let result = await singletonWrite(graph, 'appsAndServicesSettings', { settings: { isOfficeStoreEnabled: true, isAppAndServicesTrialEnabled: false } }, store);
-  assert.match(result.skipped?.reason ?? '', /Office Store add-ins; a restore never loosens/);
+  assert.match(result.skipped?.reason ?? '', /Office Store add-ins; that loosens this setting/);
   assert.deepEqual(result.skipped.completion.fields, ['settings.isOfficeStoreEnabled']);
   assert.equal(writesOf(graph).length, 0, 'withheld whole: the trial setting is not written either');
 
@@ -902,6 +958,44 @@ test('restore gaps batch 20: a restore never turns the Office Store on or shows 
   result = await singletonWrite(graph, 'adminReportSettings', { displayConcealedNames: false }, { displayConcealedNames: true });
   assert.match(result.skipped?.reason ?? '', /real user, group and site names/);
   assert.equal(writesOf(graph).length, 0);
+});
+
+test('restore approvals: an approved loosening of SharePoint, Forms, Office Store, reports or a community is written', async () => {
+  const cases = [
+    ['sharepointSettings', '/admin/sharepoint/settings', sharepoint, { ...sharepoint, isLegacyAuthProtocolsEnabled: true }],
+    ['formsSettings', '/admin/forms', FORMS, { settings: { ...FORMS.settings, isExternalShareResultEnabled: true, isInOrgFormsPhishingScanEnabled: false } }],
+    ['appsAndServicesSettings', '/admin/appsAndServices', { settings: { isOfficeStoreEnabled: false } }, { settings: { isOfficeStoreEnabled: true } }],
+    ['adminReportSettings', '/admin/reportSettings', { displayConcealedNames: true }, { displayConcealedNames: false }],
+  ];
+  for (const [type, path, live, backup] of cases) {
+    const resource = { naturalKey: type, resourceType: type, payload: backup, references: [], live: { state: 'present', payload: live } };
+    const effects = protectionEffects({ ...resource, verb: 'update' });
+    assert.ok(effects.length > 0, type);
+    // Half an approval holds the whole object back.
+    if (effects.length > 1) {
+      const graph = idoFakeGraph({ seed: { [path]: structuredClone(live) } });
+      const held = await applyIdentityObjectWrite(graph, resource, 'update', { ...CUSTOMER, approvedContentEffects: effects.slice(1) });
+      assert.match(held.skipped?.reason ?? '', /second person approves it/, type);
+      assert.equal(writesOf(graph).length, 0, type);
+    }
+    const graph = idoFakeGraph({ seed: { [path]: structuredClone(live) } });
+    const result = await applyIdentityObjectWrite(graph, resource, 'update', { ...CUSTOMER, approvedContentEffects: effects });
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    assert.equal(writesOf(graph).length, 1, type);
+    // A dry run simulates it, so the dry run can be approved.
+    const dry = idoFakeGraph({ seed: { [path]: structuredClone(live) } });
+    const planned = await applyIdentityObjectWrite(dry, resource, 'update', { ...CUSTOMER, mode: 'dry-run' });
+    assert.ok(planned.applied, `${type} dry run: ${JSON.stringify(planned)}`);
+    assert.equal(writesOf(dry).length, 0, type);
+  }
+  const community = { id: 'c-1', displayName: 'KEEL-RT-community', privacy: 'private' };
+  const resource = { naturalKey: 'c-1', resourceType: 'engageCommunity', payload: { ...community, privacy: 'public' }, references: [], live: { state: 'present', targetId: 'c-1', payload: community } };
+  const effects = protectionEffects({ ...resource, verb: 'update' });
+  assert.deepEqual(effects.map((effect) => [effect.field, effect.effect]), [['privacy', 'externally-sharing']]);
+  const graph = idoFakeGraph({ seed: { '/employeeExperience/communities/c-1': structuredClone(community) } });
+  const result = await applyIdentityObjectWrite(graph, resource, 'update', { ...FAST, approvedContentEffects: effects });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph)[0].body, { privacy: 'public' });
 });
 
 test('restore gaps batch 20: a dry run plans the changed field and writes nothing', async () => {
@@ -986,7 +1080,7 @@ test('restore gaps batch 20: the loosening refusal still comes first on the test
   const graph = idoFakeGraph({ seed: { '/admin/reportSettings': { displayConcealedNames: true } } });
   const result = await singletonWrite(graph, 'adminReportSettings', { displayConcealedNames: false }, { displayConcealedNames: true },
     { ...TEST_TENANT, allowTenantWide: true });
-  assert.match(result.skipped?.reason ?? '', /never loosens/);
+  assert.match(result.skipped?.reason ?? '', /loosens this setting, so a second person approves it/);
   assert.equal(writesOf(graph).length, 0);
 });
 
@@ -1025,7 +1119,7 @@ test('restore gaps batch 20: the loosening guard fails closed when live does not
     const graph = idoFakeGraph({ seed: { '/admin/forms': live } });
     const backup = { settings: { ...FORMS.settings, isExternalShareResultEnabled: true } };
     const result = await singletonWrite(graph, 'formsSettings', backup, live);
-    assert.match(result.skipped?.reason ?? '', /never loosens/, JSON.stringify(live));
+    assert.match(result.skipped?.reason ?? '', /loosens this setting, so a second person approves it/, JSON.stringify(live));
     assert.equal(writesOf(graph).length, 0);
   }
   const graph = idoFakeGraph({ seed: { '/employeeExperience/communities/c-1': { id: 'c-1', displayName: 'X' } } });

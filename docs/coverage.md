@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 125 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -37,7 +37,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-09) |
 | Eligible admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| Admin role activation settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Admin role activation settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -111,8 +111,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* activations people made themselves (no tool can write it).
   - *You do:* Use the backup to see who held which role until when, then assign it again in Privileged Identity Management.
 - **Admin role activation settings.** Puts activation rules back: how long a role lasts, what activation needs, and who approves.
-  - *Not brought back:* a change that weakens protection (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore that would weaken protection is not written: KEEL lists it for a person to decide. Approvers must still exist.
+  - *You do:* A restore that would weaken protection waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID. Approvers must still exist.
 - **Role-to-settings links** (Microsoft limit). Entra links exactly one settings policy to each role itself. Nobody writes the link.
   - *You do:* Nothing to restore. The settings are restored with admin role activation settings.
 - **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
@@ -124,8 +123,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* internal and external sponsors (stored separately and not in the backup yet).
   - *You do:* Recreate them by hand in Entra ID Governance using the backup.
 - **Lifecycle workflows.** Recreates workflows with their tasks and puts their settings back. A recreated workflow is always off.
-  - *Not brought back:* run history and the users each run processed (no tool can write it); switching the workflow on, which a restore leaves to a person (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never turns a workflow on. Check who it applies to, then turn it on in Entra ID Governance.
+  - *Not brought back:* run history and the users each run processed (no tool can write it).
+  - *You do:* Turning a workflow on runs its tasks on people's accounts, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Check who it applies to before approving.
 - **Lifecycle workflow extensions.** Recreates extensions and puts their settings back.
   - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet).
   - *You do:* Make sure the Logic App each extension calls still exists in its Azure subscription.
@@ -350,17 +349,17 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Company branding per language | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Group expiration policy | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Administrative units | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
-| SharePoint and OneDrive tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| SharePoint and OneDrive tenant settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Item insights setting | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Copilot connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Exposure management zones | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Shared email domains | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Schema extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Microsoft Forms settings | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Microsoft Forms settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Microsoft To Do settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Microsoft 365 Apps installation options | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| User owned apps and services | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
-| Usage report privacy | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| User owned apps and services | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Usage report privacy | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Profile card fields | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Pronouns setting | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Viva Engage communities | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -392,8 +391,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* members and admins scoped to the unit (stored separately and not in the backup yet); dynamic membership rules and a deleted unit (in the backup, but KEEL does not write it yet).
   - *You do:* Members, admins scoped to the unit, dynamic membership rules and a deleted unit are restored by hand from the backup.
 - **SharePoint and OneDrive tenant settings.** Puts back the tenant-wide SharePoint and OneDrive settings, such as site creation, sync app limits, idle session sign-out, Loop and storage limits. The sharing settings are put back by the SharePoint service backup.
-  - *Not brought back:* legacy authentication turned on, unmanaged sync allowed or the guest account match dropped (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never turns legacy authentication on, lets devices outside the domain sync, or lets a guest invitation be accepted by another account: when the backup does, nothing is written and you set those by hand in the SharePoint admin center, under Policies, Access control.
+  - *You do:* Turning legacy authentication on, letting devices outside the domain sync, or letting a guest invitation be accepted by another account waits for a second person to approve it in Approvals, unless you turned restore approvals off for SharePoint.
 - **Item insights setting** (not built yet). KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.
   - *You do:* Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Search and intelligence, from the backup, and pick the same group again.
 - **Copilot connectors** (not built yet). KEEL backs up each connection's name, description and allowed apps but not its schema or the items pushed into it, and does not restore it yet.
@@ -408,23 +406,20 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* extensions owned by apps in other tenants (set by Microsoft).
   - *You do:* Create the extension again with PowerShell, with the same id, owner app and properties from the backup.
 - **Microsoft Forms settings.** Puts back the tenant-wide Forms settings, such as sharing forms outside the organisation, phishing scans and Bing image search. The forms and their answers are not backed up.
-  - *Not brought back:* sharing outside the organisation widened or the phishing scan turned off (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never widens sharing outside the organisation or turns the phishing scan off: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms.
+  - *You do:* Widening sharing outside the organisation or turning the phishing scan off waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
 - **Microsoft To Do settings** (not built yet). KEEL backs up whether To Do lists can be shared with or joined by people outside the organisation, and push notifications, but does not restore them yet.
   - *You do:* Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft To Do, from the backup.
 - **Microsoft 365 Apps installation options.** Puts back which Microsoft 365 apps people can install themselves on Windows and Mac, and the update channel.
 - **User owned apps and services.** Puts back whether people can use the Office Store and start app trials.
-  - *Not brought back:* the Office Store turned on (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never turns the Office Store on: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services.
+  - *You do:* Turning the Office Store on waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
 - **Usage report privacy.** Puts back whether usage reports hide real user, group and site names.
-  - *Not brought back:* real names shown in usage reports again (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never shows real names again: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Reports.
+  - *You do:* Showing real names again waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
 - **Profile card fields** (not built yet). KEEL backs up the extra directory fields shown on profile cards and their labels, but does not restore them yet.
   - *You do:* Add the same fields again with PowerShell (New-MgAdminPeopleProfileCardProperty) from the backup.
 - **Pronouns setting.** Puts back whether people can add pronouns to their profile.
 - **Viva Engage communities.** Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.
-  - *Not brought back:* a deleted community (in the backup, but KEEL does not write it yet); a private community made public (in the backup, but KEEL does not write it yet); posts, files and members of the community (stored separately and not in the backup yet).
-  - *You do:* A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. A restore never makes a private community public: set that by hand if it is wanted.
+  - *Not brought back:* a deleted community (in the backup, but KEEL does not write it yet); posts, files and members of the community (stored separately and not in the backup yet).
+  - *You do:* A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. Making a private community public waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
 
 ## Intune device management
 
@@ -464,7 +459,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Compliance partners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Remote help partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Exchange on-premises connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
-| Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Exchange on-premises access settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -585,8 +580,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the connector installed on the Exchange server (stored separately and not in the backup yet).
   - *You do:* Use the backup for the server and settings. Download the connector from the Intune admin center and install it on that server again.
 - **Exchange on-premises access settings.** Puts back whether Exchange on-premises access control is on and which groups it covers or leaves out.
-  - *Not brought back:* turning it on (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never turns it on, because that could block mail on devices that are not managed: turn it on by hand in the Intune admin center, under Tenant administration, Connectors and tokens, Exchange on-premises access.
+  - *You do:* Turning it on could block mail on devices that are not managed, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Intune.
 - **App categories.** Recreates your own categories and puts their names back. The built-in categories come with every tenant and are never changed.
   - *Not brought back:* built-in categories (set by Microsoft); which apps are in the category (stored separately and not in the backup yet).
   - *You do:* Which apps are in a category is set on each app; add the apps to a recreated category again by hand.
@@ -619,8 +613,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **macOS custom attribute scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
   - *You do:* Who a script runs on is put back only when the script is picked for a restore, from backups taken after assignments were read. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Intune tenant settings.** Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.
-  - *Not brought back:* the Company Portal brand, written as the default branding profile (stored separately and not in the backup yet); marking devices with no compliance policy as compliant (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never marks devices with no compliance policy as compliant: change that by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings. The Company Portal contact details are put back with the default branding profile.
+  - *Not brought back:* the Company Portal brand, written as the default branding profile (stored separately and not in the backup yet).
+  - *You do:* Marking devices with no compliance policy as compliant waits for a second person to approve it in Approvals, unless you turned restore approvals off for Intune. The Company Portal contact details are put back with the default branding profile.
 - **Android Enterprise enrollment profiles.** Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.
   - *Not brought back:* enrollment token, QR code and Wi-Fi password (Microsoft never returns it).
   - *You do:* A recreated profile has a new enrollment token and QR code: make a token in the Intune admin center, under Devices, Enrollment, Android, and hand it out again. Recreate a profile on a secured Wi-Fi network by hand and type the password again.
@@ -664,8 +658,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* built-in baselines (set by Microsoft); the scores taken when it was created (set by Microsoft).
   - *You do:* A recreated baseline takes today's scores to compare against, not the scores it held before; compare against the backup by hand if you need the old ones.
 - **BIOS configurations.** Puts back each BIOS configuration's name, description, scope tags and whether every device gets its own BIOS password.
-  - *Not brought back:* the BIOS settings file, which can hold the BIOS password (Microsoft never returns it); a deleted configuration, and turning per-device BIOS passwords off (in the backup, but KEEL does not write it yet).
-  - *You do:* The settings file is not backed up, because it can hold the BIOS password: a deleted configuration is created again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, with the file from your own copy. KEEL never turns per-device BIOS passwords off; do that there by hand if it is wanted.
+  - *Not brought back:* the BIOS settings file, which can hold the BIOS password (Microsoft never returns it); a deleted configuration (in the backup, but KEEL does not write it yet).
+  - *You do:* The settings file is not backed up, because it can hold the BIOS password: a deleted configuration is created again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, with the file from your own copy. Turning per-device BIOS passwords off waits for a second person to approve it in Approvals, unless you turned restore approvals off for Intune.
 
 ## Microsoft 365 workloads
 

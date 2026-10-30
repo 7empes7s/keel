@@ -478,6 +478,25 @@ export function ruleWeakening(kind, want, have) {
   return null;
 }
 
+/**
+ * Restore approvals: each reviewed rule whose write would weaken protection, as
+ * { ruleId, kind, reason, before, after } (the rule's reviewed fields live and in
+ * the backup). These are the 'weakens-protection' effects of a role policy restore
+ * (safety/contentEffects.mjs): written only once that approval is checked.
+ */
+export function pimRuleWeakenings(desired, live) {
+  const liveRules = new Map((live?.rules ?? []).map((rule) => [rule?.id, rule]));
+  const found = [];
+  for (const rule of desired?.rules ?? []) {
+    const current = liveRules.get(rule?.id);
+    const kind = ruleKind(rule);
+    if (!kind || !current || changedFields(PIM_RULE_KINDS[kind].fields, rule, current).length === 0) continue;
+    const reason = ruleWeakening(kind, rule, current);
+    if (reason) found.push({ ruleId: rule.id, kind, reason, before: ruleFields(kind, current), after: ruleFields(kind, rule) });
+  }
+  return found;
+}
+
 /** One approver, by its kind and id (a user, a group, a manager level). */
 function approverKey(approver) {
   const id = approver?.userId ?? approver?.groupId ?? approver?.managerLevel ?? approver?.id ?? '';
@@ -511,8 +530,10 @@ function approvalWithoutApprovers(rule) {
  * Throws when an approval rule would require approval with a stage that has no
  * approver. A rule is sent with the live rule's target: a rule id's target is
  * fixed by Entra, so the snapshot's copy is never written over it.
+ * `weakeningApproved(ruleId)` says whether a weakening rule's approval was checked
+ * (restore approvals); such a rule is written instead of withheld.
  */
-export function policyRuleWrites(policyId, desired, live) {
+export function policyRuleWrites(policyId, desired, live, { weakeningApproved = () => false } = {}) {
   const liveRules = new Map((live?.rules ?? []).map((rule) => [rule?.id, rule]));
   const writes = [];
   const withheld = [];
@@ -528,7 +549,10 @@ export function policyRuleWrites(policyId, desired, live) {
     const fields = changedFields(PIM_RULE_KINDS[kind].fields, rule, current);
     if (fields.length === 0) continue;
     const weakening = ruleWeakening(kind, rule, current);
-    if (weakening) { withheld.push({ ruleId: rule.id, reason: weakening }); continue; }
+    if (weakening && !weakeningApproved(rule.id)) {
+      withheld.push({ ruleId: rule.id, reason: `${weakening}; it needs a second approval as a high-impact change, or turn restore approvals off for Entra ID` });
+      continue;
+    }
     if (kind === 'approval' && approvalWithoutApprovers(rule)) {
       throw new Error(`${rule.id}: approval would be required with no approver, which blocks every activation`);
     }
@@ -606,7 +630,7 @@ export function buildAdminRoleLedger() {
       'an eligibility held through a group is restored on the group, not per member',
       'an expired eligibility is not restored',
       'an eligibility scoped to anything but the directory ("/") or an administrative unit the snapshot names is not restored',
-      'a PIM rule change that weakens protection is reported, never written',
+      'a PIM rule change that weakens protection is written only once its high-impact approval is checked (or restore approvals are off for Entra ID)',
       'notification and authentication-context rules are reported, never written',
     ]),
   });

@@ -26,6 +26,7 @@ import { OPERATIONS, capabilityFor } from '../coverage/capabilities.mjs';
 import { qualificationFor, remappingFor } from '../coverage/qualification.mjs';
 import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
+import { protectionEffects } from '../safety/contentEffects.mjs';
 import {
   ADMIN_ROLE_RECORDS, ELIGIBILITY_JUSTIFICATION, PIM_RULE_KINDS, buildAdminRoleLedger, durationSeconds, ruleWeakening,
 } from '../restore/adminRoleOperations.mjs';
@@ -557,7 +558,7 @@ test('a rule is sent with the live rule target, never the snapshot copy', async 
   assert.deepEqual(graph.bodies[0].body.target, target('EndUser', 'Assignment'));
 });
 
-test('mutation: a rule change that weakens protection is withheld and reported, never written', async () => {
+test('mutation: a rule change that weakens protection is withheld and reported until its approval is checked', async () => {
   const graph = recordingGraph();
   // The snapshot is weaker than live on every reviewed rule.
   const weaker = policy([enablement(['Justification']), expiration(false, 'P365D'), approval(false)]);
@@ -574,10 +575,25 @@ test('mutation: a rule change that weakens protection is withheld and reported, 
     'Enablement_EndUser_Assignment', 'Expiration_EndUser_Assignment', 'Approval_EndUser_Assignment',
   ]);
   assert.match(result.notRemediable[0].withheld[0].reason, /stop requiring MultiFactorAuthentication/);
-  // The dry run reports the same gap.
-  const dry = await run(recordingGraph(), [plannedPolicyUpdate(recordingGraph(), weaker, live)], { mode: 'dry-run' });
-  assert.deepEqual(dry.applied, []);
-  assert.equal(dry.notRemediable[0].withheld.length, 3);
+  assert.match(result.notRemediable[0].withheld[0].reason, /second approval as a high-impact change, or turn restore approvals off for Entra ID/);
+  // Restore approvals: the dry run plans the writes (each a 'weakens-protection'
+  // effect for review), so the restore can be approved and promoted.
+  const planned = plannedPolicyUpdate(recordingGraph(), weaker, live);
+  const effects = protectionEffects(planned);
+  assert.deepEqual(effects.map((effect) => [effect.field, effect.effect]), [
+    ['rules[Enablement_EndUser_Assignment]', 'weakens-protection'], ['rules[Expiration_EndUser_Assignment]', 'weakens-protection'], ['rules[Approval_EndUser_Assignment]', 'weakens-protection'],
+  ]);
+  assert.deepEqual(effects[0].before, { enabledRules: ['MultiFactorAuthentication', 'Justification'] });
+  const dryGraph = recordingGraph();
+  const dry = await run(dryGraph, [plannedPolicyUpdate(dryGraph, weaker, live)], { mode: 'dry-run' });
+  assert.deepEqual(dry.applied[0].changes.rules, ['Enablement_EndUser_Assignment', 'Expiration_EndUser_Assignment', 'Approval_EndUser_Assignment']);
+  assert.deepEqual(dry.notRemediable, []);
+  assert.equal(dryGraph.bodies.length, 0);
+  // Approved (or waived by the customer's setting): written. Only the approved rules.
+  const approvedGraph = recordingGraph();
+  const approved = await run(approvedGraph, [plannedPolicyUpdate(approvedGraph, weaker, live)], { approvedContentEffects: effects.slice(0, 2) });
+  assert.deepEqual(approvedGraph.bodies.map((write) => write.body.id), ['Enablement_EndUser_Assignment', 'Expiration_EndUser_Assignment']);
+  assert.deepEqual(approved.notRemediable[0].withheld.map((entry) => entry.ruleId), ['Approval_EndUser_Assignment']);
 
   // Mixed: a longer maximum is withheld while MFA is put back.
   const mixed = recordingGraph();

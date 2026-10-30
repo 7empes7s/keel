@@ -558,9 +558,10 @@ const switchedOn = (before, after) => !same(before, after) && after !== false;
 
 /**
  * The changes that would weaken mail protection, by written type. A restore source is
- * a backup, and a tampered or old backup must not be able to open the filters: such a
- * change is listed for an administrator and never written. Only the stricter
- * direction is written, which is the only direction a compliance fix takes.
+ * a backup, and a tampered or old backup must not open the filters unseen: such a
+ * change is a 'weakens-protection' effect, written only once a second person
+ * approved it, or when the customer turned restore approvals off for Exchange
+ * (restore approvals). A compliance fix only ever takes the stricter direction.
  */
 export const WEAKENING_RULES = Object.freeze({
   exchangeAntiPhishPolicy: Object.freeze({
@@ -592,6 +593,28 @@ export function weakensMailProtection(resourceType, field, before, after) {
   return typeof test === 'function' && test(before ?? null, after ?? null) === true;
 }
 
+/**
+ * Restore approvals: the 'weakens-protection' effects of planned operations, one per
+ * field that weakens mail protection. Kept apart from classifyWorkloadEffects, which
+ * judges content (the live capture tool picks its harmless field with that one).
+ */
+export function weakeningEffects(resources) {
+  const effects = [];
+  for (const { naturalKey, resourceType, verb, payload, live } of resources) {
+    if (verb !== 'update') continue;
+    const from = live?.payload ?? {};
+    const to = payload ?? {};
+    for (const field of Object.keys(WEAKENING_RULES[resourceType] ?? {}).sort()) {
+      const before = from[field] ?? null;
+      const after = to[field] ?? null;
+      if (!same(before, after) && weakensMailProtection(resourceType, field, before, after)) {
+        effects.push({ naturalKey, resourceType, field, effect: 'weakens-protection', before, after, disclosure: disclosureFor('weakens-protection') });
+      }
+    }
+  }
+  return effects;
+}
+
 // What each type's trust fields decide, and where an administrator sets them.
 const CONNECTOR_TRUST = ['which senders, certificates, partners or relay hosts the connector trusts', 'the Exchange admin center > Mail flow > Connectors'];
 const TRUST_WHERE = Object.freeze({
@@ -607,7 +630,7 @@ const trustReason = (resourceType) => {
   return `this decides ${what}; a restore never changes it, so a changed backup cannot make it trust someone else. `
     + `An administrator confirms the value and sets it in ${where}`;
 };
-const WEAKENING_REASON = 'this would weaken mail protection; KEEL only writes the stricter direction, so an administrator decides and applies it';
+const WEAKENING_REASON = 'this would weaken mail protection, so it is written only once a second person approves it as a high-impact change (or restore approvals are off for Exchange)';
 
 /** The changes for one present object, and the manual entries it adds. */
 function planFields(write, { observation, current, manual }) {
@@ -639,10 +662,8 @@ function planFields(write, { observation, current, manual }) {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the value is structured, and KEEL only sends text, numbers, switches and lists of text; an administrator applies it' });
       continue;
     }
-    if (weakensMailProtection(write.resourceType, field, before, after)) {
-      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: WEAKENING_REASON, weakensProtection: true });
-      continue;
-    }
+    // A weakening change is planned like any other; classifyWorkloadEffects lists
+    // it as a 'weakens-protection' effect, so it waits for its approval.
     changes.push({ field, before, after });
   }
   return changes;
@@ -808,7 +829,8 @@ export function planWorkloadSettingsRestore({
     operations,
     manual,
     excluded: [],
-    contentEffects: classifyWorkloadEffects(resources),
+    contentEffects: [...classifyWorkloadEffects(resources), ...weakeningEffects(resources)]
+      .sort((left, right) => `${left.naturalKey}|${left.field}|${left.effect}`.localeCompare(`${right.naturalKey}|${right.field}|${right.effect}`)),
     refusals,
     liveFingerprints,
     // Only a plan made with the option carries it, so other plans keep their digest.
@@ -938,8 +960,11 @@ export async function executeWorkloadSettingsRestore(client, {
       await settle(op, { outcome: 'refused', reasons: [notFixture] });
       continue;
     }
-    // The weakening guard again, on the values about to be sent over the object read now.
-    const weakened = entry && write ? op.changes.filter(({ field }) => weakensMailProtection(write.resourceType, field, entry.fields?.[field], op.parameters?.[field])) : [];
+    // The weakening guard again, on the values about to be sent over the object read
+    // now: a weakening change is sent only when the plan lists it as an effect, whose
+    // approval (or waiver) was checked above.
+    const listed = (field) => plan.contentEffects.some((effect) => effect.naturalKey === op.naturalKey && effect.field === field);
+    const weakened = entry && write ? op.changes.filter(({ field }) => weakensMailProtection(write.resourceType, field, entry.fields?.[field], op.parameters?.[field]) && !listed(field)) : [];
     if (weakened.length) {
       await settle(op, { outcome: 'refused', reasons: [`${weakened.map(({ field }) => field).join(', ')}: ${WEAKENING_REASON}`] });
       continue;

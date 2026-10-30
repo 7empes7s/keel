@@ -50,7 +50,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
-import { classifyContentEffects } from '../safety/contentEffects.mjs';
+import { PROTECTION_APPROVAL_STEP, classifyContentEffects, protectionChangeApproved } from '../safety/contentEffects.mjs';
 import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
@@ -1577,13 +1577,15 @@ async function admxUploadAfterWrite(io, { targetId, live }) {
 
 // Batch 11: a BIOS configuration is updated in place. Its settings file is
 // not backed up (it can hold the BIOS password), so a deleted one is imported
-// again by hand. A restore never turns per-device BIOS passwords off.
-function biosPasswordRefusal(resource, verb) {
+// again by hand. Turning per-device BIOS passwords off waits for its approval
+// (restore approvals: a 'weakens-protection' effect).
+function biosPasswordRefusal(resource, verb, ctx = {}) {
   if (verb !== 'update') return null;
   if (resource.payload?.perDevicePasswordDisabled === true && resource.live?.payload?.perDevicePasswordDisabled === false) {
+    if (protectionChangeApproved(resource, verb, ctx)) return null;
     return {
       outcome: 'skipped',
-      reason: 'manual: the backup turns off the per-device BIOS password, which is on now; a restore never weakens BIOS passwords, so change it by hand in the Intune admin center if that is wanted',
+      reason: `manual: the backup turns off the per-device BIOS password, which is on now; that weakens BIOS passwords, so ${PROTECTION_APPROVAL_STEP}, or change it by hand in the Intune admin center`,
     };
   }
   return null;
@@ -1965,8 +1967,8 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     operations: ['update'], writable: ['healthyThreshold', 'unhealthyThreshold'],
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
-  // Exchange on-premises access for managed devices. A restore never turns it
-  // on: that could block mail on every device that is not managed.
+  // Exchange on-premises access for managed devices. Turning it on could block
+  // mail on every device that is not managed, so it waits for its approval.
   onPremisesConditionalAccessSettings: defineRecord({
     resourceType: 'onPremisesConditionalAccessSettings', version: 'v1.0', collection: '/deviceManagement/conditionalAccessSettings', singleton: true,
     operations: ['update'], writable: ['enabled', 'includedGroups', 'excludedGroups', 'overrideDefaultRule'],
@@ -1983,26 +1985,28 @@ const INTUNE_PORTAL = 'Intune admin center';
  * devices with no compliance policy are never turned compliant (Conditional
  * Access reads it). Device cleanup has its own guard (cleanupRuleRefusal).
  */
-export function deviceManagementSettingsRefusal(resource, verb) {
+export function deviceManagementSettingsRefusal(resource, verb, ctx = {}) {
   if (verb !== 'update') return null;
   const want = resource.payload ?? {};
   const now = resource.live?.payload ?? {};
   if (want.settings?.secureByDefault === false && now.settings?.secureByDefault === true) {
+    if (protectionChangeApproved(resource, verb, ctx)) return null;
     return {
       outcome: 'skipped',
-      reason: `manual: the backup marks devices with no compliance policy as compliant, which they are not now; Conditional Access reads that, so a restore never loosens it; change it by hand in the ${INTUNE_PORTAL}, under Endpoint security, Device compliance, Compliance settings`,
+      reason: `manual: the backup marks devices with no compliance policy as compliant, which they are not now; Conditional Access reads that, so ${PROTECTION_APPROVAL_STEP}, or change it by hand in the ${INTUNE_PORTAL}, under Endpoint security, Device compliance, Compliance settings`,
     };
   }
   return null;
 }
 
-/** Exchange on-premises access is never turned on by a restore. */
-export function onPremisesAccessRefusal(resource, verb) {
+/** Exchange on-premises access is turned on by a restore only once that is approved (restore approvals). */
+export function onPremisesAccessRefusal(resource, verb, ctx = {}) {
   if (verb !== 'update') return null;
   if (resource.payload?.enabled === true && resource.live?.payload?.enabled !== true) {
+    if (protectionChangeApproved(resource, verb, ctx)) return null;
     return {
       outcome: 'skipped',
-      reason: `manual: the backup turns on Exchange on-premises access control, which is off now; that could block mail on devices that are not managed, so a restore never turns it on; turn it on by hand in the ${INTUNE_PORTAL}, under Tenant administration, Connectors and tokens, Exchange on-premises access`,
+      reason: `manual: the backup turns on Exchange on-premises access control, which is off now; that could block mail on devices that are not managed, so ${PROTECTION_APPROVAL_STEP}, or turn it on by hand in the ${INTUNE_PORTAL}, under Tenant administration, Connectors and tokens, Exchange on-premises access`,
     };
   }
   return null;

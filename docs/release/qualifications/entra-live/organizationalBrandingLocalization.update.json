@@ -7,23 +7,23 @@
   "resourceType": "organizationalBrandingLocalization",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "build": "e552b30c0162fed7e889f65ca927f0f4a70241e4",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-13T11:53:00.436Z",
-  "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
+  "observedAt": "2026-10-30T00:04:57.883Z",
+  "restoreRef": "bab76dc1-fbd1-8bc4-a617-f5bfc3a48ae3",
   "naturalKey": "organizationalBrandingLocalization:fr-FR",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "e20e92aa4dd55683a2ec475b1101ecf8c7b256bee70ff79f5fed73350defa851",
+  "captureSha256": "4169605445f210682a12e4fd639a6f573de845b1a02d948bd3410bccb5a98417",
   "proofRef": "docs/release/qualifications/entra-live/organizationalBrandingLocalization.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "7ba8cc1c82a539981b63e7c2f61d09645f092ccdb7bf572ca9e2ab3e3c9df078"
+      "signature": "4772d04edf3772c44769b6c868f75f1c6917714da843cd9ee09c6813c94e27e4"
     }
   }
 }

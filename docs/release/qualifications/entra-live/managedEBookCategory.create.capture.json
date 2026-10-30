@@ -1,22 +1,22 @@
 {
-  "restoreRef": "48e91572-fff2-8811-bd96-4ccb17ad39e6",
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
   "entry": {
-    "naturalKey": "managedEBookCategory:83dd9dcf-da11-89be-8983-bab112c117e5",
+    "naturalKey": "managedEBookCategory:d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
     "resourceType": "managedEBookCategory",
     "operation": "create",
-    "targetId": "10571e25-ade3-899a-96fd-dcfc8f998ff9",
+    "targetId": "63aa30e5-69de-8c36-b67b-cbe856828072",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T08:49:05.771Z",
+    "recordedAt": "2026-10-30T01:25:20.527Z",
     "priorState": null,
     "intendedState": {
-      "displayName": "KEEL-RT-books"
+      "displayName": "KEEL-RT-237-books"
     },
     "postState": {
-      "id": "10571e25-ade3-899a-96fd-dcfc8f998ff9",
-      "displayName": "KEEL-RT-books",
+      "id": "63aa30e5-69de-8c36-b67b-cbe856828072",
+      "displayName": "KEEL-RT-237-books",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/managedEBookCategories/$entity",
-      "lastModifiedDateTime": "2026-10-22T08:49:05Z"
+      "lastModifiedDateTime": "2026-10-30T01:25:20Z"
     }
   }
 }

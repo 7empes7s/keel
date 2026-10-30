@@ -163,8 +163,6 @@ const REGISTERED = Object.freeze({
   homeRealmDiscoveryPolicy: ['create', 'update'],
   permissionGrantPolicy: ['create', 'update'],
   oauth2PermissionGrant: ['create', 'update'],
-  // Restore gaps, batch 21.
-  servicePrincipalCreationPolicy: ['create', 'update'],
 });
 
 function governor() {

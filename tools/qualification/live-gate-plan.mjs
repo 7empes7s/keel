@@ -470,12 +470,7 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   },
   // Restore gaps, batch 3: guest and app consent settings. None touches
   // Conditional Access or any account.
-  // Restore gaps, batch 21: an app creation policy and a Defender role.
-  servicePrincipalCreationPolicy: {
-    kind: 'named-object', fixture: `custom app creation policy ${FIXTURE_PREFIX}-app-creation whose include conditions are copies of the built-in policy's (so it allows what the tenant allows today) and no exclude`,
-    select: `${FIXTURE_PREFIX}-app-creation`, drift: 'delete it: the restore recreates it with the same name and conditions; then add an exclude condition (applicationTenantIds: the test tenant id): the restore removes it',
-    note: 'Never change the built-in policy: KEEL refuses to write it. If adding a policy changes which apps can be added in the tenant, record what changed and delete the fixture at the end.',
-  },
+  // Restore gaps, batch 21: a Defender role.
   defenderRoleDefinition: {
     kind: 'named-object', fixture: `custom Microsoft Defender XDR role ${FIXTURE_PREFIX}-defender-role with one read permission (microsoft.xdr/secops/securitydata/read), assigned to nobody`,
     select: `${FIXTURE_PREFIX}-defender-role`, drift: 'delete it: the restore recreates it with the same name and permission; then change its description: the restore puts it back',

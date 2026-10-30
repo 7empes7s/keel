@@ -103,6 +103,7 @@ import {
 import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
+import { recordPlannedCreates } from '../engine/restore/plannedIds.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
   createDryRunArtifact, getDryRunArtifactById, plannedVerbsOf, restoreCandidates, validateArtifactForExecution,
@@ -1258,6 +1259,9 @@ export async function runRestore({
       results.failed.push(...result.failed);
       results.notRemediable.push(...(result.notRemediable ?? []));
       recordAppliedIds(appliedIds, result.applied);
+      // A dry run's planned creates get placeholder ids, so a later write that
+      // references one plans cleanly instead of failing (an enforce run records none).
+      recordPlannedCreates(appliedIds, result.applied, wave, mode);
       recordTrustSkippedLocations(trustSkippedLocations, result.skipped);
       if (result.failed.length) {
         await reportPoliciesThatMayBeOn(result.failed);
@@ -1406,6 +1410,21 @@ export async function runRestore({
           ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
           ...(stepsByKey.has(resource.naturalKey) ? { steps: stepsByKey.get(resource.naturalKey) } : {}),
         }));
+      // A skipped object's manual steps (a trusted named location, a federation
+      // sign-in page, a shorter group lifetime nobody approved) are open items
+      // too, so they outlive the job output. Nothing was written, so the object
+      // opens only those steps, under the mechanism 'skipped'.
+      const appliedKeys = new Set(results.applied.map((entry) => entry.naturalKey));
+      for (const entry of results.skipped) {
+        if (appliedKeys.has(entry.naturalKey)) continue;
+        const steps = [entry.completion ?? []].flat().filter((step) => step?.kind === 'manual-setting');
+        if (steps.length === 0) continue;
+        recovered.push({
+          naturalKey: entry.naturalKey,
+          resourceType: byKey.get(entry.naturalKey)?.resourceType ?? String(entry.naturalKey).split(':')[0],
+          mechanism: 'skipped', steps,
+        });
+      }
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {
           tenantRef: artifact.tenantRef,
@@ -1413,7 +1432,7 @@ export async function runRestore({
           owner: artifact.requestedBy ?? null,
           applied: recovered,
         });
-        logger.log(`completion: ${completionItems.length} item(s) open for recovered objects`);
+        logger.log(`completion: ${completionItems.length} item(s) open for recovered or skipped objects`);
       }
     }
 

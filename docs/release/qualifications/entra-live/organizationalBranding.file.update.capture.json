@@ -1,5 +1,5 @@
 {
-  "restoreRef": "9127a467-bb6b-8140-8c5e-96bb200fa078",
+  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
   "entry": {
     "naturalKey": "organizationalBranding#file:fr-FR/favicon",
     "resourceType": "organizationalBranding#file",
@@ -7,26 +7,26 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T14:22:24.294Z",
+    "recordedAt": "2026-10-30T00:00:13.300Z",
     "priorState": {
       "kind": "branding-file",
       "asset": "favicon",
       "locale": "fr-FR",
-      "sha256": "7d23964a17487d76fd9ccd9ceefab62ec6a2b4c6825e09c84192b064b8fc8b4f"
+      "sha256": "1084d6bf7029b2a01601c9cb90cf6e812d4a832bc4e8c48b1a17736579eb862e"
     },
     "intendedState": {
       "kind": "branding-file",
       "size": 79,
       "asset": "favicon",
       "locale": "fr-FR",
-      "sha256": "68edc125f9925d4f5f0abd2ea2cbb81eef7510a14faf808bbc28c4024acba339",
+      "sha256": "b14c5410be77473c7cc4eb18c92e0a5f68fa7d701645d1ae8994235020657626",
       "contentType": "image/png"
     },
     "postState": {
       "kind": "branding-file",
       "asset": "favicon",
       "locale": "fr-FR",
-      "sha256": "68edc125f9925d4f5f0abd2ea2cbb81eef7510a14faf808bbc28c4024acba339",
+      "sha256": "b14c5410be77473c7cc4eb18c92e0a5f68fa7d701645d1ae8994235020657626",
       "outcome": "present"
     }
   }

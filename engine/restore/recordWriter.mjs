@@ -76,6 +76,7 @@ import { followUpSteps } from './bestEffortRecreate.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './workloads/fixtureGuard.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 import { ENGAGE_RESOURCE_TYPES } from './engageWriter.mjs';
+import { holdsPlannedId } from './plannedIds.mjs';
 import { TRUST_FIELD_PATTERN, isTrustField } from './workloads/writeDeclarations.mjs';
 
 export const RECORD_WRITER_CONTRACT_VERSION = 1;
@@ -681,10 +682,13 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const tenantWide = tenantWideRecordProblem(record, ctx);
     if (tenantWide) return refusalEntry(naturalKey, { outcome: 'skipped', reason: tenantWide });
   }
-  if (record.preflight && writer) {
+  // A dry run never reads the tenant for an object this run only plans to
+  // create: its placeholder id (plannedIds.mjs) is not a Graph id. The enforce
+  // run reads it with the real id before any write.
+  if (record.preflight && writer && !(ctx.mode === 'dry-run' && holdsPlannedId(payload))) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
     // A preflight may also find the write already done another way: { skipped }.
-    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped });
+    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped, ...(reason.completion ? { completion: reason.completion } : {}) });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
   }
   if (verb === 'update' && record.updateGuard && writer && fields.length > 0) {

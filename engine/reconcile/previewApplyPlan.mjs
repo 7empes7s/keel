@@ -1,10 +1,12 @@
 import { applyWave, recordLiveIdentifiers } from '../restore/applyEngine.mjs';
 import { recordTrustSkippedLocations } from '../restore/namedLocationTrust.mjs';
 import { phaseOneResources } from '../restore/wavePlanner.mjs';
+import { recordPlannedCreates } from '../restore/plannedIds.mjs';
 
 /** Evaluate the real apply guards in dry-run mode. No writer, governor or journal
  * is supplied: an accidental attempt to mutate fails closed. Future creates get
- * symbolic IDs only after passing their wave, for later reference resolution. */
+ * placeholder ids only after passing their wave, for later reference resolution
+ * (an application's appId too, plannedIds.mjs). */
 export async function previewApplyPlan({
   resources, waves, deletionWaves, patches, existingTargetIds,
   deletionGuardOptions, signInPathGate, targetTenant, lockoutGate = null,
@@ -26,10 +28,8 @@ export async function previewApplyPlan({
       })));
       for (const { naturalKey, targetId } of result.applied) {
         if (targetId) appliedIds.set(naturalKey, targetId);
-        else if (wave.find((resource) => resource.naturalKey === naturalKey)?.verb === 'create') {
-          appliedIds.set(naturalKey, `preview:${naturalKey}`);
-        }
       }
+      recordPlannedCreates(appliedIds, result.applied, wave, 'dry-run');
     } catch (error) {
       // Missing/incomplete safety evidence is a refusal, never a green preview.
       refusals.push(...keys.map((naturalKey) => ({ naturalKey, reason: error.message })));

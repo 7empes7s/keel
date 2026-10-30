@@ -1,18 +1,18 @@
 {
-  "restoreRef": "e22599b6-1f04-8eb7-a453-82cc44a2f416",
+  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
   "entry": {
-    "naturalKey": "deviceCustomAttributeShellScript:602369fe-a07c-891d-80aa-03d412a1074c",
+    "naturalKey": "deviceCustomAttributeShellScript:4c3c8f4b-97fd-8b04-bcdd-527fbcdfea10",
     "resourceType": "deviceCustomAttributeShellScript",
     "operation": "create",
-    "targetId": "78e24ecc-368d-8194-8e39-465293867ffd",
+    "targetId": "2c7b636d-ff69-8ae5-9dc3-4b9c5c5b2eed",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T11:57:32.899Z",
+    "recordedAt": "2026-10-30T01:10:22.542Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-attr.sh",
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-attribute",
+      "fileName": "keel-rt-236-attr.sh",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-attribute",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -22,20 +22,20 @@
       "customAttributeType": "string"
     },
     "postState": {
-      "id": "78e24ecc-368d-8194-8e39-465293867ffd",
-      "fileName": "keel-rt-attr.sh",
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-attribute",
+      "id": "2c7b636d-ff69-8ae5-9dc3-4b9c5c5b2eed",
+      "fileName": "keel-rt-236-attr.sh",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-attribute",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
-      "createdDateTime": "2026-10-22T11:57:32.9845691Z",
+      "createdDateTime": "2026-10-30T01:10:22.60443Z",
       "roleScopeTagIds": [
         "0"
       ],
       "customAttributeName": null,
       "customAttributeType": "string",
-      "lastModifiedDateTime": "2026-10-22T11:57:32.9845691Z"
+      "lastModifiedDateTime": "2026-10-30T01:10:22.60443Z"
     }
   }
 }

@@ -253,6 +253,18 @@ test('a link to an app that kept its id is written as backed up, and one already
   assert.equal(set.calls.some((call) => call.method !== 'GET'), false);
 });
 
+test('a dry run plans a link between two apps it only plans to create, and never reads a placeholder id', async () => {
+  const graph = idoFakeGraph({ seed: {} });
+  const outcome = await wave(graph, [{ ...linkResource, verb: 'create' }], {
+    mode: 'dry-run',
+    appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'planned:mobileApp:KEEL-RT-app-main'], ['mobileApp:KEEL-RT-app-dep', 'planned:mobileApp:KEEL-RT-app-dep']]),
+  });
+  assert.deepEqual(outcome.failed, []);
+  assert.equal(outcome.applied.length, 1);
+  assert.equal(graph.calls.some((call) => call.path.includes('planned')), false, 'no Graph call names a placeholder');
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+});
+
 test('a link to an app that is neither in the target nor recreated by this run is never written', async () => {
   const graph = idoFakeGraph({ seed: appsInTarget('new-main') });
   const outcome = await wave(graph, [{ ...linkResource, verb: 'create' }], { appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main']]) });

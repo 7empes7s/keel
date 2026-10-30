@@ -1,15 +1,15 @@
 {
-  "restoreRef": "13705905-ae3b-8916-b69c-9ab72a4836f0",
+  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
   "entry": {
-    "naturalKey": "intuneBrandingProfile:19350c62-64b0-8a65-96bb-bf6276d7a6e6",
+    "naturalKey": "intuneBrandingProfile:82e900d1-a179-87e2-b526-6c7c4c44bbf3",
     "resourceType": "intuneBrandingProfile",
     "operation": "update",
-    "targetId": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+    "targetId": "82e900d1-a179-87e2-b526-6c7c4c44bbf3",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T18:25:30.246Z",
+    "recordedAt": "2026-10-30T01:05:21.704Z",
     "priorState": {
-      "id": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+      "id": "82e900d1-a179-87e2-b526-6c7c4c44bbf3",
       "showLogo": false,
       "privacyUrl": null,
       "themeColor": {
@@ -17,22 +17,22 @@
         "g": 42,
         "r": 27
       },
-      "displayName": "KEEL-RT-IT",
-      "profileName": "KEEL-RT-branding",
-      "contactITName": "drift",
+      "displayName": "KEEL-RT drifted",
+      "profileName": "KEEL-RT-236-branding",
+      "contactITName": "KEEL-RT help desk",
       "contactITNotes": null,
       "themeColorLogo": null,
-      "createdDateTime": "2026-10-22T18:22:24.7207406Z",
+      "createdDateTime": "2026-10-30T00:55:07.4459283Z",
       "roleScopeTagIds": [
         "0"
       ],
       "isDefaultProfile": false,
       "showOfficeWebApps": false,
-      "profileDescription": "KEEL restore fixture",
+      "profileDescription": "KEEL-RT drifted",
       "lightBackgroundLogo": null,
       "contactITPhoneNumber": null,
       "customPrivacyMessage": null,
-      "lastModifiedDateTime": "2026-10-22T18:23:40.5796834Z",
+      "lastModifiedDateTime": "2026-10-30T00:59:30.7383078Z",
       "onlineSupportSiteUrl": null,
       "contactITEmailAddress": "keel-rt-helpdesk@example.com",
       "onlineSupportSiteName": null,
@@ -63,15 +63,15 @@
         "g": 42,
         "r": 27
       },
-      "displayName": "KEEL-RT-IT",
-      "profileName": "KEEL-RT-branding",
+      "displayName": "KEEL-RT IT",
+      "profileName": "KEEL-RT-236-branding",
       "contactITName": "KEEL-RT help desk",
       "contactITNotes": null,
       "roleScopeTagIds": [
         "0"
       ],
       "showOfficeWebApps": false,
-      "profileDescription": "KEEL restore fixture",
+      "profileDescription": "KEEL-RT test fixture",
       "contactITPhoneNumber": null,
       "customPrivacyMessage": null,
       "onlineSupportSiteUrl": null,
@@ -96,7 +96,7 @@
       "disableDeviceCategorySelection": false
     },
     "postState": {
-      "id": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+      "id": "82e900d1-a179-87e2-b526-6c7c4c44bbf3",
       "showLogo": false,
       "privacyUrl": null,
       "themeColor": {
@@ -104,23 +104,23 @@
         "g": 42,
         "r": 27
       },
-      "displayName": "KEEL-RT-IT",
-      "profileName": "KEEL-RT-branding",
+      "displayName": "KEEL-RT IT",
+      "profileName": "KEEL-RT-236-branding",
       "contactITName": "KEEL-RT help desk",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/intuneBrandingProfiles/$entity",
       "contactITNotes": null,
       "themeColorLogo": null,
-      "createdDateTime": "2026-10-22T18:22:24.7207406Z",
+      "createdDateTime": "2026-10-30T00:55:07.4459283Z",
       "roleScopeTagIds": [
         "0"
       ],
       "isDefaultProfile": false,
       "showOfficeWebApps": false,
-      "profileDescription": "KEEL restore fixture",
+      "profileDescription": "KEEL-RT test fixture",
       "lightBackgroundLogo": null,
       "contactITPhoneNumber": null,
       "customPrivacyMessage": null,
-      "lastModifiedDateTime": "2026-10-22T18:25:30Z",
+      "lastModifiedDateTime": "2026-10-30T01:05:21Z",
       "onlineSupportSiteUrl": null,
       "contactITEmailAddress": "keel-rt-helpdesk@example.com",
       "onlineSupportSiteName": null,

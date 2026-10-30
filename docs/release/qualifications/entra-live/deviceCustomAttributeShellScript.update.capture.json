@@ -1,33 +1,33 @@
 {
-  "restoreRef": "fa24fe23-716d-8bb5-bcfa-46e42ef7a678",
+  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
   "entry": {
-    "naturalKey": "deviceCustomAttributeShellScript:0857e104-d829-8abb-af3f-bd1d2729f101",
+    "naturalKey": "deviceCustomAttributeShellScript:4c3c8f4b-97fd-8b04-bcdd-527fbcdfea10",
     "resourceType": "deviceCustomAttributeShellScript",
     "operation": "update",
-    "targetId": "0857e104-d829-8abb-af3f-bd1d2729f101",
+    "targetId": "4c3c8f4b-97fd-8b04-bcdd-527fbcdfea10",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T22:49:03.986Z",
+    "recordedAt": "2026-10-30T01:05:21.695Z",
     "priorState": {
-      "id": "0857e104-d829-8abb-af3f-bd1d2729f101",
-      "fileName": "keel-rt-546.sh",
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-546-attr",
+      "id": "4c3c8f4b-97fd-8b04-bcdd-527fbcdfea10",
+      "fileName": "keel-rt-236-attr.sh",
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-236-attribute",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
-      "createdDateTime": "2026-10-22T22:43:28.8338216Z",
+      "createdDateTime": "2026-10-30T00:55:04.3814477Z",
       "roleScopeTagIds": [
         "0"
       ],
       "customAttributeName": null,
       "customAttributeType": "string",
-      "lastModifiedDateTime": "2026-10-22T22:43:28.8338216Z"
+      "lastModifiedDateTime": "2026-10-30T00:59:27.1028019Z"
     },
     "intendedState": {
-      "fileName": "keel-rt-546.sh",
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-546-attr",
+      "fileName": "keel-rt-236-attr.sh",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-attribute",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -37,20 +37,20 @@
       "customAttributeType": "string"
     },
     "postState": {
-      "id": "0857e104-d829-8abb-af3f-bd1d2729f101",
-      "fileName": "keel-rt-546.sh",
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-546-attr",
+      "id": "4c3c8f4b-97fd-8b04-bcdd-527fbcdfea10",
+      "fileName": "keel-rt-236-attr.sh",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-attribute",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
-      "createdDateTime": "2026-10-22T22:43:28.8338216Z",
+      "createdDateTime": "2026-10-30T00:55:04.3814477Z",
       "roleScopeTagIds": [
         "0"
       ],
       "customAttributeName": null,
       "customAttributeType": "string",
-      "lastModifiedDateTime": "2026-10-22T22:43:28.8338216Z"
+      "lastModifiedDateTime": "2026-10-30T01:05:21.8105496Z"
     }
   }
 }

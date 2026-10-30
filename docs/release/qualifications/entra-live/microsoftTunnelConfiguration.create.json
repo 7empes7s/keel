@@ -7,23 +7,23 @@
   "resourceType": "microsoftTunnelConfiguration",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "471cb9b056ea75ee83bdc7c1f25ac31e59f2a3e9",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-22T08:49:06.731Z",
-  "restoreRef": "48e91572-fff2-8811-bd96-4ccb17ad39e6",
-  "naturalKey": "microsoftTunnelConfiguration:28431c3d-6134-8a46-8c1f-6308efe2b23b",
+  "observedAt": "2026-10-30T01:25:32.424Z",
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
+  "naturalKey": "microsoftTunnelConfiguration:ddb535f8-f85c-8575-a7a6-658ff024332d",
   "fixtureKind": "named-object",
-  "captureSha256": "cc8a3249fb952fdf95fdf6a700cb8d561bee9046c100c6c040d2b579dae4b261",
+  "captureSha256": "0b81b537b12f19425bda45ae65c983533996d40cb5911e33d6fb8692c4302513",
   "proofRef": "docs/release/qualifications/entra-live/microsoftTunnelConfiguration.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "73192ce6a0e36044a7549ee903898038d86af17c6f85050ea1cb533fec755044"
+      "signature": "2b5cf535690cb77ce55b02a959511d1706319c9273b502d35bceed6f0b2f2ebc"
     }
   }
 }

@@ -1,13 +1,13 @@
 {
-  "restoreRef": "b259ecf6-2a56-8c8c-b687-8c3e2375d7b5",
+  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
   "entry": {
-    "naturalKey": "intuneBrandingProfile:19350c62-64b0-8a65-96bb-bf6276d7a6e6",
+    "naturalKey": "intuneBrandingProfile:82e900d1-a179-87e2-b526-6c7c4c44bbf3",
     "resourceType": "intuneBrandingProfile",
     "operation": "create",
-    "targetId": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+    "targetId": "f32990da-cb80-8b86-b58e-43d3faff9eb0",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T18:22:24.640Z",
+    "recordedAt": "2026-10-30T01:10:22.545Z",
     "priorState": null,
     "intendedState": {
       "showLogo": false,
@@ -17,15 +17,15 @@
         "g": 42,
         "r": 27
       },
-      "displayName": "KEEL-RT-IT",
-      "profileName": "KEEL-RT-branding",
+      "displayName": "KEEL-RT IT",
+      "profileName": "KEEL-RT-236-branding",
       "contactITName": "KEEL-RT help desk",
       "contactITNotes": null,
       "roleScopeTagIds": [
         "0"
       ],
       "showOfficeWebApps": false,
-      "profileDescription": "KEEL restore fixture",
+      "profileDescription": "KEEL-RT test fixture",
       "contactITPhoneNumber": null,
       "customPrivacyMessage": null,
       "onlineSupportSiteUrl": null,
@@ -50,7 +50,7 @@
       "disableDeviceCategorySelection": false
     },
     "postState": {
-      "id": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+      "id": "f32990da-cb80-8b86-b58e-43d3faff9eb0",
       "showLogo": false,
       "privacyUrl": null,
       "themeColor": {
@@ -58,23 +58,23 @@
         "g": 42,
         "r": 27
       },
-      "displayName": "KEEL-RT-IT",
-      "profileName": "KEEL-RT-branding",
+      "displayName": "KEEL-RT IT",
+      "profileName": "KEEL-RT-236-branding",
       "contactITName": "KEEL-RT help desk",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/intuneBrandingProfiles/$entity",
       "contactITNotes": null,
       "themeColorLogo": null,
-      "createdDateTime": "2026-10-22T18:22:24.7207406Z",
+      "createdDateTime": "2026-10-30T01:10:22.9891093Z",
       "roleScopeTagIds": [
         "0"
       ],
       "isDefaultProfile": false,
       "showOfficeWebApps": false,
-      "profileDescription": "KEEL restore fixture",
+      "profileDescription": "KEEL-RT test fixture",
       "lightBackgroundLogo": null,
       "contactITPhoneNumber": null,
       "customPrivacyMessage": null,
-      "lastModifiedDateTime": "2026-10-22T18:22:24Z",
+      "lastModifiedDateTime": "2026-10-30T01:10:22Z",
       "onlineSupportSiteUrl": null,
       "contactITEmailAddress": "keel-rt-helpdesk@example.com",
       "onlineSupportSiteName": null,

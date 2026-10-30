@@ -44,6 +44,7 @@ import {
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
+import { assertNoPlannedIds, isPlannedId } from './plannedIds.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
   namedLocationTrustKept, namedLocationTrustRefusal, skippedLocationPolicyRefusal, withoutNamedLocationTrust,
@@ -465,6 +466,8 @@ export async function applyWave(writer, governor, wave, {
   // restore run sets it yet.
   allowTenantWide = false,
 }) {
+  // A dry run's placeholder ids (plannedIds.mjs) never reach a write.
+  assertNoPlannedIds(appliedIds, mode);
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
   // purpose and verified; the closing sign-in path comparison skips only these.
@@ -2126,6 +2129,7 @@ export async function applyPatches(writer, governor, patches, {
   readAfterWriteOptions,
   throttleRetryOptions,
 }) {
+  assertNoPlannedIds(appliedIds, mode);
   const applied = [];
   const failed = [];
   const retryOperation = (operation) => retryThrottledGraphOperation(operation, {
@@ -2172,7 +2176,7 @@ export async function applyPatches(writer, governor, patches, {
     if (resourceType === 'conditionalAccessPolicy') body = enforceReportOnly(body);
 
     if (mode === 'dry-run') {
-      applied.push({ naturalKey: patch.naturalKey, targetId: patchId });
+      applied.push({ naturalKey: patch.naturalKey, targetId: isPlannedId(patchId) ? null : patchId });
       continue;
     }
 

@@ -11605,8 +11605,19 @@ item that needs it stays untouched.
   the refusal return a list.
 - Needs: the deployed build B at or after `fd8cd139`. Check: `git -C /opt/keel-live merge-base --is-ancestor fd8cd139 HEAD` (or the
   same from your checkout at B).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 00:58 UTC, keel-operator). **#695 is fixed live: the dry run exits 0 and saves its artifact, with the manual step in the completion list.**
+  - B = **05a930b5** (includes fd8cd139).
+  - Credentials: Restorer for the fixture writes, Collector for reads. Global admin not used; nothing granted. No real domain federated; no guest invited.
+  1. Recreated `KEEL-RT-148-fed` (863fe51e…) for `keel-rt-fed.example` as in Q207 (issuer `/issuer`, sign-in `/sso`, saml, a fresh 30-day self-signed cert). Answered 201.
+     - S = `d8293c5a` holds it with `/sso` and the domain.
+  2. `passiveSignInUri` → `/drifted` via the typed route (204, read back).
+  3. Dry run from S with `--persist-artifact`:
+     - **exit 0**, artifact **`ea3294c7`** (status `refused`: the manual skip is recorded as a guard refusal). **0 planned writes** (applied 0, skipped 1, failed 0).
+     - Completion list: `[{"kind":"manual-setting","fields":["passiveSignInUri"],"requirement":"externalDomainFederationSignIn","description":"Where this guest federation's guests sign in (passiveSignInUri) differs from the backup. A restore never changes it, so a changed backup cannot send guests to another sign-in page: confirm the values with the partner, then set them in Entra admin center > External Identities > All identity providers > SAML/WS-Fed."}]`.
+     - Refusal: `manual: ` followed by the same text.
+  4. `passiveSignInUri` put back to `/sso` by hand (read back). Not enforced.
+  5. Federation deleted (204; 0 federations left). Test key shredded and cert removed. **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, Restorer/Collector split and self-approval as Q207. Never federate a real domain; never invite
   a guest. Nothing to grant.
 - Do, at B, from your own checkout (never `/opt/keel`):

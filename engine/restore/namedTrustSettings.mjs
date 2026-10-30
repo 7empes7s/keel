@@ -19,26 +19,40 @@ import { TRUST_SETTING_PATTERN } from './workloads/writeDeclarations.mjs';
  * The settings catalog's trust setting names (TRUST_SETTING_PATTERN: trust,
  * certificates, sign-in, federation, single sign-on, Kerberos, certificate
  * enrolment), plus the words administrative templates and OMA-URIs use for the
- * same things: the servers a browser sends credentials to, Internet Explorer
- * zone assignment (which sites are trusted), Windows Hello for Business and
- * smart card sign-in.
+ * same things: the servers a browser sends or delegates credentials to,
+ * Internet Explorer zone assignment (which sites are trusted), Windows Hello
+ * for Business and smart card sign-in.
  */
 const NAMED_TRUST_PATTERN = new RegExp(
-  `${TRUST_SETTING_PATTERN.source}|authenticationserver|sitetozone|zoneassignment|passportforwork|windowshello|smartcard`,
+  `${TRUST_SETTING_PATTERN.source}|authenticationserver|delegat[a-z]*credential|credentialsdelegation`
+  + '|sitetozone|zoneassignment|passportforwork|windowshello|smartcard',
   'i',
 );
 
 // The Trusted Platform Module is device hardware, not a trust relationship.
-const NOT_TRUST = /trustedplatformmodule/gi;
+const NOT_TRUST = /trusted[^a-z0-9]*platform[^a-z0-9]*module/gi;
 
-const squeezed = (text) => String(text).replace(/[^a-z0-9]/gi, '').replace(NOT_TRUST, '');
-
-/** Whether a setting name (an OMA-URI, a display name or a category path) is a trust setting. */
+/**
+ * Whether a setting name (an OMA-URI, a display name, a category path or a
+ * custom setting's text) is a trust setting. It is checked as written (the
+ * settings catalog ids with dots, such as com.apple.security.root) and with
+ * punctuation taken out.
+ */
 export function isTrustSettingName(text) {
-  return typeof text === 'string' && NAMED_TRUST_PATTERN.test(squeezed(text));
+  if (typeof text !== 'string') return false;
+  const kept = text.replace(NOT_TRUST, '');
+  return NAMED_TRUST_PATTERN.test(kept) || NAMED_TRUST_PATTERN.test(kept.replace(/[^a-z0-9]/gi, ''));
 }
 
-/** The OMA-URIs anywhere in a payload that name a trust setting, sorted and without repeats. */
+// Custom settings whose value is text Graph returns (a base64 value is left out:
+// random text in it can look like a name, and its OMA-URI says what it is).
+const TEXT_VALUE = /^#microsoft\.graph\.omaSetting(?:String|StringXml)$/;
+
+/**
+ * The OMA-URIs anywhere in a payload that name a trust setting, or whose text
+ * value holds one (a VPN EAP or Wi-Fi XML naming its trusted root
+ * certificates and servers), sorted and without repeats.
+ */
 export function trustOmaUris(payload) {
   const found = new Set();
   const walk = (node) => {
@@ -47,7 +61,10 @@ export function trustOmaUris(payload) {
       return;
     }
     if (!node || typeof node !== 'object') return;
-    if (isTrustSettingName(node.omaUri)) found.add(node.omaUri);
+    if (typeof node.omaUri === 'string') {
+      const text = TEXT_VALUE.test(node['@odata.type'] ?? '') && typeof node.value === 'string' ? node.value : null;
+      if (isTrustSettingName(node.omaUri) || isTrustSettingName(text)) found.add(node.omaUri);
+    }
     Object.values(node).forEach(walk);
   };
   walk(payload);

@@ -212,9 +212,13 @@ export function trustSettingRefusal(resource, verb) {
   const ids = new Set(trustSettingIds(resource?.payload));
   if (verb === 'update') for (const id of trustSettingIds(resource?.live?.payload)) ids.add(id);
   if (ids.size === 0) return null;
+  const fields = [...ids].sort();
+  const description = `this policy holds trust, certificate or sign-in settings (${fields.join(', ')}); a restore never writes them, and the policy is written whole, so restore it by hand in the Intune admin center`;
   return {
     outcome: 'skipped',
-    reason: `manual: this policy holds trust, certificate or sign-in settings (${[...ids].sort().join(', ')}); a restore never writes them, and the policy is written whole, so restore it by hand in the Intune admin center`,
+    reason: `manual: ${description}`,
+    // The same manual step as a whole-replace refusal, so the person sees which settings to set by hand.
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(fields), description })]),
   };
 }
 
@@ -229,6 +233,10 @@ export function trustSettingRefusal(resource, verb) {
 export function omaTrustRefusal(resource, verb) {
   const uris = new Set(trustOmaUris(resource?.payload));
   if (verb === 'update') for (const uri of trustOmaUris(resource?.live?.payload)) uris.add(uri);
+  // Without the live profile nothing shows its custom settings hold no trust setting the list would remove.
+  if (uris.size === 0 && verb === 'update' && Array.isArray(resource?.payload?.omaSettings) && !resource?.live?.payload) {
+    return namedTrustSkip([], () => 'the live profile was not read, so nothing shows its custom settings hold no trust, certificate or sign-in setting the restore would remove; restore the profile by hand in the Intune admin center');
+  }
   if (uris.size === 0) return null;
   return namedTrustSkip(uris, (names) => `this profile holds custom settings for trust, certificates or sign-in (${names}); a restore never writes them, and the custom settings are written as one list, so restore the profile by hand in the Intune admin center`);
 }

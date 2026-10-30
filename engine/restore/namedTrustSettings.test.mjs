@@ -47,6 +47,13 @@ test('trust, certificate and sign-in OMA-URIs are found, ordinary ones are not',
   ]) assert.equal(isTrustSettingName(uri), false, uri);
   assert.deepEqual(trustOmaUris(customProfile([oma(DEFENDER, 1), oma(WEB_SIGN_IN, 1), oma(ROOT_CA, 1), oma(ROOT_CA, 1)])), [ROOT_CA, WEB_SIGN_IN].sort());
   assert.deepEqual(trustOmaUris(customProfile([oma(DEFENDER, 1)])), []);
+  // A VPN EAP or Wi-Fi XML names its trusted root certificates in the value, not the OMA-URI.
+  const eap = './User/Vendor/MSFT/VPNv2/Office/NativeProfile/Authentication/Eap/Configuration';
+  const xml = { '@odata.type': '#microsoft.graph.omaSettingStringXml', omaUri: eap, value: '<EapHostConfig><TrustedRootCA>ab cd</TrustedRootCA></EapHostConfig>' };
+  assert.deepEqual(trustOmaUris(customProfile([xml])), [eap]);
+  assert.deepEqual(trustOmaUris(customProfile([{ ...xml, value: '<EapHostConfig/>' }])), []);
+  // A base64 value is not read as text.
+  assert.deepEqual(trustOmaUris(customProfile([{ '@odata.type': '#microsoft.graph.omaSettingBase64', omaUri: './Vendor/MSFT/x', value: 'dHJ1c3Q=trust' }])), []);
   assert.deepEqual(trustOmaUris(null), []);
 });
 
@@ -72,6 +79,8 @@ test('a custom profile holding a trust OMA-URI is manual on create and update, a
   assert.equal(omaTrustRefusal(resourceOf('deviceConfiguration', plain, live(trusted)), 'create'), null);
   assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(plain)), 'update'), null);
   assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'create'), null);
+  // An update without the live profile cannot show the list removes no trust setting.
+  assert.match(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'update')?.reason ?? '', /^manual: the live profile was not read/);
 });
 
 // ------------------------------------------------- administrative templates
@@ -99,6 +108,11 @@ test('administrative template trust settings are found by display name or catego
     unknown: ['d-bare'],
   });
   assert.equal(isTrustSettingName('Browser sign-in settings'), true);
+  // Credential delegation, and settings catalog ids that need their dots.
+  for (const name of [
+    'Specifies a list of servers that Microsoft Edge can delegate user credentials to', 'Allow delegating default credentials',
+    '\\System\\Credentials Delegation', 'com.apple.security.root',
+  ]) assert.equal(isTrustSettingName(name), true, name);
   assert.equal(isTrustSettingName('\\Windows Components\\Microsoft Defender Antivirus'), false);
 });
 

@@ -488,8 +488,8 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
 const isValue = (loose) => (value) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
 // Admin center settings: the backup holds the loose value and live does not (fails closed when live lacks it).
 const loosensTo = (loose) => (before, after) => isValue(loose)(after) && !isValue(loose)(before);
-// SharePoint settings: only when live holds a value, as the writer always did.
-const loosensFromKnown = (loose) => (before, after) => after === loose && before !== undefined && before !== null && before !== loose;
+// SharePoint settings: whenever live holds the field (null included), exactly as the writer tests it.
+const loosensFromKnown = (loose) => (before, after) => after === loose && before !== undefined && before !== loose;
 const turnsOn = (before, after) => after === true && before !== true;
 const turnsTrueToFalse = (before, after) => after === false && before === true;
 const turnsFalseToTrue = (before, after) => after === true && before === false;

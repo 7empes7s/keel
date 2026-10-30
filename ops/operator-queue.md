@@ -12196,3 +12196,51 @@ item that needs it stays untouched.
   5. Time 5 Overview loads through the portal if you have a way to do it without Playwright on the box (for example `curl`
      with the service's local port and your usual auth bypass for health checks); otherwise skip and say so.
 - **Report:** B; record count; the four timings and `ok`; the event-loop max; step 4 result; step 5 timings or "skipped".
+
+### Q260: Find why Microsoft refuses the retention policy and DLP rule writes, then prove both on KEEL-RT- fixtures (about 30 minutes)
+- Drafted by the "Prove Purview retention and DLP rule updates" thread (2026-10-30). Q234 left two writes unproven:
+  1. `Set-RetentionCompliancePolicy` on `KEEL-RT-retention`: `PolicyDeploymentException` "Policy '<id>' failed to be deployed. To fix
+     this issue, please retry the policy operation after some time". The policy has been in DistributionStatus `Error`
+     (PolicySyncTimeout) since 2026-10-17 (Q176/K16). Microsoft's own fix is `-RetryDistribution`.
+  2. `Set-DlpComplianceRule -Comment` on `KEEL-RT-dlp-rule`: "A server side error has occurred because of which the operation could
+     not be completed". `Set-DlpCompliancePolicy` on its parent `KEEL-RT-dlp` passes with the same Restorer, so this is not the role.
+  This item gets the full errors, tries a few shapes of the same harmless write, and redeploys the retention fixture. The results
+  decide the writer fix (a cloud PR after this).
+- Needs: nothing. **Quick: fine to take between other items.** Any build.
+- Status: todo
+- **Tenant (test tenant only, standing authorizations of 2026-10-14/-16/-22/-27; nothing to approve):** Restorer purview config
+  (`/etc/keel/purview-restorer.json`) for writes, Collector (`/etc/keel/purview-collector.json`) for reads. Only `KEEL-RT-retention`,
+  its rule, `KEEL-RT-dlp` and `KEEL-RT-dlp-rule` are touched. Writes are `Comment` (put back to `KEEL test fixture` right after),
+  same-value writes of an existing field, and `-RetryDistribution` on `KEEL-RT-retention` (redeploys the fixture as it is; no setting
+  changes). No new policy, no grant, no role, no CA, Global admin not used.
+- Do, in the keel-powershell container the way you ran Q179's ad hoc cmdlets (`Connect-IPPSSession` with the config's certificate).
+  For **every** failure record: `$_.Exception.GetType().FullName`, `$_.Exception.Message` (whole, not cut), `$_.FullyQualifiedErrorId`,
+  `$_.CategoryInfo`, `$_.ErrorDetails`, and every `InnerException` message. Also `(Get-Module ExchangeOnlineManagement).Version`.
+  1. **Read (Collector):**
+     - `Get-RetentionCompliancePolicy KEEL-RT-retention -DistributionDetail`: Enabled, Mode, DistributionStatus, WhenChanged,
+       DistributionResults (all of them, `| ConvertTo-Json -Depth 4`, not Format-List), and which locations are set
+       (ExchangeLocation, SharePointLocation, OneDriveLocation, ModernGroupLocation, TeamsChat/ChannelLocation, IsAdaptivePolicy).
+     - `Get-DlpCompliancePolicy KEEL-RT-dlp -DistributionDetail`: Mode, DistributionStatus, Workload, the locations set.
+     - `Get-DlpComplianceRule KEEL-RT-dlp-rule`: every non-empty property name with its value (`ConvertTo-Json -Depth 6`;
+       AdvancedRule as its length plus the first 400 characters), and in particular Disabled, Mode, Priority, IsAdvancedRule,
+       ContentContainsSensitiveInformation, ReportSeverityLevel, NotifyUser, ReadOnly, Workload, ParentPolicyName, Comment.
+  2. **DLP rule shapes (Restorer)**, each followed by a Collector read of `Comment` and, if it changed, a put back
+     (`-Comment 'KEEL test fixture'`) and a read back. Stop the list at the first shape that works, then still run (f):
+     - (a) `Set-DlpComplianceRule -Identity <rule Guid> -Comment 'KEEL diag a'` (Q234's shape).
+     - (b) the same with `-Identity 'KEEL-RT-dlp-rule'` (the name).
+     - (c) `-Identity <Guid> -Comment 'KEEL diag c' -Confirm:$false`.
+     - (d) `-Identity <Guid> -ReportSeverityLevel <its current value>` (same value, different field).
+     - (e) `-Identity <Guid> -Disabled <its current value>` (same value).
+     - (f) wait 5 minutes and run (a) again (is it transient?).
+     Report per shape: ok or the full error, and the time it took.
+  3. **Retention (Restorer):** `Set-RetentionCompliancePolicy -Identity KEEL-RT-retention -RetryDistribution` (alone; this switch
+     takes no other setting). Report the answer. Then read `DistributionStatus` every 5 minutes for up to 30 minutes and report each.
+     As soon as it is not `Error` (Success or Pending), try `Set-RetentionCompliancePolicy -Identity <Guid> -Comment 'KEEL diag r'`,
+     read back, put back `KEEL test fixture`, read back. If it still fails, report the full error and the status at that time.
+  4. If step 3's Comment write worked, and step 2 found a working shape, rerun the Q234 capture for this workload only, same flags
+     (`--workload purview-retention-dlp`, purview configs, `--build` the deployed B, from your clone at B), then its verify.
+     Commit the record and `.capture.json` to a new branch `claude/live-evidence-purview-retention-dlp` from `origin/master` **only if**
+     it proves all four `.update` ops (retention-policy, retention-rule, dlp-policy, dlp-rule). Push, no PR. Skip this step otherwise.
+- **Report:** module version; step 1 values; per shape in step 2 ok or the full error and timing; step 3's RetryDistribution answer,
+  each status read, and the Comment write result; step 4 exit codes, proven list and the branch commit (or "skipped" and why);
+  what is left changed in the tenant (expected: nothing, the retention fixture redeployed).

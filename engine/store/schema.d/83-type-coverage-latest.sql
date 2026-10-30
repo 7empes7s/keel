@@ -94,12 +94,13 @@ BEGIN
   END LOOP;
   -- Rows that pointed at the old version of this snapshot may no longer hold
   -- (deleted, no longer complete, digest or times changed): recompute them.
-  -- An AFTER trigger already sees the new row, so the recompute includes it.
-  IF TG_OP IN ('UPDATE', 'DELETE') THEN
-    FOR stale IN SELECT tenant_ref, resource_type FROM type_coverage_latest WHERE snapshot_id = OLD.id LOOP
-      PERFORM type_coverage_latest_recompute(stale.tenant_ref, stale.resource_type);
-    END LOOP;
-  END IF;
+  -- An INSERT checks its own id too, in case rows were left behind by a bulk
+  -- wipe of snapshot and the id is used again. An AFTER trigger already sees
+  -- the new row, so the recompute includes it.
+  FOR stale IN SELECT tenant_ref, resource_type FROM type_coverage_latest
+                WHERE snapshot_id = CASE WHEN TG_OP = 'INSERT' THEN NEW.id ELSE OLD.id END LOOP
+    PERFORM type_coverage_latest_recompute(stale.tenant_ref, stale.resource_type);
+  END LOOP;
   IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.status = 'complete' AND NEW.completed_at IS NOT NULL
      AND jsonb_typeof(NEW.coverage_digest) = 'object' THEN
     INSERT INTO type_coverage_latest AS t (tenant_ref, resource_type, coverage_entry, snapshot_id, started_at, completed_at)

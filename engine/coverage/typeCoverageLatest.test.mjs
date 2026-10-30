@@ -176,6 +176,20 @@ test('truncating snapshots empties the table; re-applying the schema fills an em
   assert.equal((await assertMatchesFullScan()).length, 2);
 });
 
+test('an id used again after a bulk wipe of snapshot does not bring old rows back', async () => {
+  const { rows: [{ id }] } = await client.query(
+    `INSERT INTO snapshot (tenant_ref, started_at, completed_at, status, coverage_digest)
+     VALUES ('tenant-a', $1, $2, 'complete', $3) RETURNING id`, [at(0.9), at(1), { user: ok(1), group: ok(1) }]);
+  await client.query('TRUNCATE snapshot CASCADE');
+  await client.query(`INSERT INTO snapshot (id, tenant_ref, status) VALUES ($1, 'tenant-a', 'running')`, [id]);
+  assert.deepEqual(await assertMatchesFullScan(), []);
+  await client.query('DELETE FROM snapshot');
+  await client.query(
+    `INSERT INTO snapshot (id, tenant_ref, started_at, completed_at, status, coverage_digest)
+     VALUES ($1, 'tenant-a', $2, $3, 'complete', $4)`, [id, at(0.9), at(1), { user: ok(2) }]);
+  assert.equal((await assertMatchesFullScan()).length, 1);
+});
+
 test('a recovery dump re-inserting rows the triggers already made keeps the newest and does not fail', async () => {
   await snapshot({ hour: 1, digest: { user: ok(1) } });
   const newest = await snapshot({ hour: 2, digest: { user: ok(2) } });

@@ -225,20 +225,33 @@ test('a notification template is created, then its localized messages are added 
 
   // Nothing drifted: the dry run plans nothing and the update writes nothing.
   const same = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
+  const unchanged = resourceOf('notificationMessageTemplate', template, { live: { state: 'present', targetId: templateId, payload: same } });
   graph.calls.length = 0;
-  const idle = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template, {
-    live: { state: 'present', targetId: templateId, payload: same },
-  }), 'update', { ...FAST, mode: 'dry-run' });
+  const idle = await applyIntuneExtendedWrite(graph, unchanged, 'update', { ...FAST, mode: 'dry-run' });
   assert.deepEqual(idle.applied.changes, { fields: [] });
+  const idleUpdate = await applyIntuneExtendedWrite(graph, unchanged, 'update', FAST);
+  assert.equal(idleUpdate.failed, undefined, idleUpdate.failed?.error);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
 });
 
 test('a notification template is created where Graph refuses a defaultLocale sent before its message exists', async () => {
   // Issue #746 (Q253): Graph answers 400 to a create that names a defaultLocale.
+  // Like Graph, the fake then sets defaultLocale itself from the default message,
+  // so the writer reads it back equal and sends no PATCH of its own.
   const graph = idoFakeGraph();
   const write = graph.write.bind(graph);
-  graph.write = async (version, path, options) => (path === '/deviceManagement/notificationMessageTemplates' && 'defaultLocale' in (options.body ?? {})
-    ? { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'An error has occurred' } } }
-    : write(version, path, options));
+  graph.write = async (version, path, options) => {
+    if (path === '/deviceManagement/notificationMessageTemplates' && 'defaultLocale' in (options.body ?? {})) {
+      return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'An error has occurred' } } };
+    }
+    const result = await write(version, path, options);
+    const message = path.match(/^\/deviceManagement\/notificationMessageTemplates\/([^/]+)\/localizedNotificationMessages$/);
+    if (message && result.ok && options.body?.isDefault) {
+      await write(version, `/deviceManagement/notificationMessageTemplates/${message[1]}`, { method: 'PATCH', body: { defaultLocale: options.body.locale } });
+      graph.calls.pop();
+    }
+    return result;
+  };
   const template = {
     id: 'src-tpl', displayName: 'KEEL-RT-notice', defaultLocale: 'en-us', brandingOptions: 'includeCompanyLogo', roleScopeTagIds: ['0'],
     localizedNotificationMessages: [{ id: 'm1', locale: 'en-us', subject: 'KEEL-RT', messageTemplate: 'KEEL-RT test', isDefault: true }],
@@ -247,6 +260,9 @@ test('a notification template is created where Graph refuses a defaultLocale sen
   assert.equal(created.failed, undefined, created.failed?.error);
   const live = (await graph.read('v1.0', `/deviceManagement/notificationMessageTemplates/${created.applied.targetId}`)).body;
   assert.equal(live.defaultLocale, 'en-us');
+  assert.equal(created.applied.changes.defaultLocale, undefined);
+  assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`),
+    ['POST notificationMessageTemplates', 'POST localizedNotificationMessages']);
 });
 
 // ------------------------------------------- restore gaps, batch 1

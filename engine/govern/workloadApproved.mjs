@@ -46,6 +46,30 @@ async function upsertApproved(client, { tenantRef, workload, resourceKey, collec
 }
 
 /**
+ * The changes to a workload, recorded at or before the read `collectionId`, still waiting
+ * for review (their alert is open, reopened or acknowledged, or they raised none): the
+ * newest per resource, with its change type and the read that holds its earlier value.
+ * Taking an approved setup from a read keeps these at their earlier value, so taking it
+ * never quietly approves them.
+ */
+export async function waitingChanges(client, { tenantRef, workload, collectionId }) {
+  const { rows } = await client.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (d.resource_key) d.resource_key, d.change_type, d.previous_collection_id, a.state AS alert_state
+         FROM workload_drift d
+         JOIN workload_collection c ON c.id = d.collection_id
+         JOIN workload_collection base ON base.id = $3
+         LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
+                          AND a.control = 'baseline' AND a.condition = 'drift'
+        WHERE d.tenant_ref = $1 AND d.workload = $2 AND c.created_at <= base.created_at
+        ORDER BY d.resource_key, c.created_at DESC, d.detected_at DESC
+     ) newest WHERE alert_state IS NULL OR alert_state = ANY($4::text[])`,
+    [tenantRef, workload, collectionId, WAITING_ALERT_STATES],
+  );
+  return rows;
+}
+
+/**
  * Takes a workload's approved setup from the read `collectionId`, unless one exists.
  * Every resource of that read is approved as read, except changes still waiting for
  * review (their alert is open, reopened or acknowledged, or they raised none): those
@@ -66,19 +90,7 @@ export async function seedApprovedSetup(client, { tenantRef, workload, collectio
      ON CONFLICT (tenant_ref, workload, resource_key) DO NOTHING`,
     [tenantRef, workload, collectionId],
   );
-  const { rows: waiting } = await client.query(
-    `SELECT * FROM (
-       SELECT DISTINCT ON (d.resource_key) d.resource_key, d.change_type, d.previous_collection_id, a.state AS alert_state
-         FROM workload_drift d
-         JOIN workload_collection c ON c.id = d.collection_id
-         JOIN workload_collection base ON base.id = $3
-         LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
-                          AND a.control = 'baseline' AND a.condition = 'drift'
-        WHERE d.tenant_ref = $1 AND d.workload = $2 AND c.created_at <= base.created_at
-        ORDER BY d.resource_key, c.created_at DESC, d.detected_at DESC
-     ) newest WHERE alert_state IS NULL OR alert_state = ANY($4::text[])`,
-    [tenantRef, workload, collectionId, WAITING_ALERT_STATES],
-  );
+  const waiting = await waitingChanges(client, { tenantRef, workload, collectionId });
   for (const change of waiting) {
     if (change.change_type === 'added') {
       await client.query(
@@ -179,6 +191,8 @@ export async function acceptServiceChange(client, { tenantRef, changeId, actor, 
   let change;
   await client.query('BEGIN');
   try {
+    // Lock the active baseline before the approved setup, in the order activating one does.
+    await client.query('SELECT id FROM baseline WHERE tenant_ref = $1 AND active FOR UPDATE', [tenantRef]);
     const { rows: [row] } = await client.query(
       `SELECT d.*, c.created_at AS collected_at FROM workload_drift d JOIN workload_collection c ON c.id = d.collection_id
         WHERE d.id = $1 AND d.tenant_ref = $2 FOR UPDATE OF d`,

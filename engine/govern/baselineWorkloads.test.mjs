@@ -183,3 +183,24 @@ test('activating a baseline that does not hold a service keeps that service\'s a
   assert.equal(live.size, 1);
   assert.equal(live.get('meeting-policy:Global').fields.Allow, false);
 });
+
+test('capturing a baseline keeps a service change still waiting for review at its earlier value', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const first = await read(client, tenantRef, { at: hoursAgo(40), observations: { [RULE]: rule() } });
+  await detectWorkloadDrift(client, { collectionId: first });
+  const changed = await read(client, tenantRef, { at: hoursAgo(30), observations: { [RULE]: rule({ State: 'Enabled' }), [OTHER]: other() } });
+  const found = await detectWorkloadDrift(client, { collectionId: changed });
+  assert.equal(found.drift.length, 2, 'a change and an addition, both waiting');
+
+  const baselineId = await seedFromSnapshot(client, { tenantRef, snapshotId: await backup(client, tenantRef, hoursAgo(20)), setBy: 'test-operator' });
+  assert.deepEqual(await rowsOf(client, baselineId), new Map([[`${MAIL}|${RULE}`, first]]));
+  assert.equal((await scopeOf(client, baselineId)).workloads[0].settings, 1);
+  assert.equal((await approved(client, tenantRef)).get(RULE).fields.State, 'Disabled');
+
+  // The next read still shows both changes; nothing was approved without a person.
+  const next = await read(client, tenantRef, { at: hoursAgo(10), observations: { [RULE]: rule({ State: 'Enabled' }), [OTHER]: other() } });
+  const again = await detectWorkloadDrift(client, { collectionId: next });
+  assert.equal(again.outstanding, 2);
+  assert.equal(again.resolved, 0);
+});

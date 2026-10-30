@@ -261,7 +261,7 @@ export function captureFromSnapshot(snapshot) {
  */
 async function captureServiceSettings(client, { tenantRef, baselineId, snapshot, scope }) {
   const { reads, notRead } = await nearestWorkloadReads(client, { tenantRef, at: snapshot.completed_at });
-  const workloads = await captureWorkloadReads(client, { baselineId, reads });
+  const workloads = await captureWorkloadReads(client, { tenantRef, baselineId, reads });
   const withServices = { ...scope, workloads, ...(notRead.length ? { workloadsNotRead: notRead } : {}) };
   await client.query('UPDATE baseline SET observation_scope = $2 WHERE id = $1', [baselineId, withServices]);
   return withServices;

@@ -13,7 +13,7 @@ export default Object.freeze({
     { key: 'groups', name: 'Groups and address lists', types: ['exchange-distribution-groups'], match: /distribution|dynamicgroup|unifiedgroup|roomlist|addresslist|addressbook/ },
     { key: 'roles', name: 'Admin roles', types: ['exchange-role-groups', 'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope'], match: /role|scope/ },
     { key: 'mail-flow', name: 'Mail flow and protection', types: ['exchange-mail-flow'], match: /mailflow|transport|connector|connectionfilter|defenderforoffice|journal|accepteddomain|remotedomain|dkim|dmarc|spam|phish|malware|safelink|safeattachment|quarantine|protection|threat/ },
-    { key: 'access', name: 'Sharing and client access', types: ['exchange-org-access'], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|authpolicy|authenticationpolicy|addin/ },
+    { key: 'access', name: 'Sharing and client access', types: ['exchange-org-access'], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|orgaccess|authpolicy|authenticationpolicy|addin/ },
     { key: 'tenant', name: 'Filtering, retention and mobile', types: ['exchange-extended'], match: /extended|filter|hygiene|retention|mobile|activesync|deviceaccess/ },
     { key: 'organization', name: 'Organization settings', types: ['exchange-org-defaults'], match: /organization|orgconfig|setting|config/ },
   ]),

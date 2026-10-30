@@ -4,6 +4,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { FIXTURE_BACKUPS } from '../engine/benchmarks/scubagear/fixtureTenant.mjs';
+import { readOnlyGraphTransport } from '../cli/keel-workload-collect.mjs';
 import { KEEL_READS, SCUBA_READ, comparePim, readPimLive, tokenFailure } from './scubagear-pim-check.mjs';
 
 const facts = {
@@ -128,4 +129,20 @@ test('a token failure keeps only the status and the AADSTS code', () => {
     + '66666666-7777-4888-9999-000000000000 Correlation ID: 12345678-1234-4123-8123-123456789012 Timestamp: 2026-10-30 21:00:00Z');
   assert.equal(tokenFailure(raw).message, 'token request failed (400, AADSTS700016)');
   assert.equal(tokenFailure(new Error('getaddrinfo ENOTFOUND login.microsoftonline.com')).message, 'token request failed before Entra answered');
+});
+
+test('every read sends Accept-Language en-US, which the PIM instances read needs', async () => {
+  // Node's fetch sends `Accept-Language: *` by default; the beta roleAssignmentScheduleInstances read
+  // answers that with 400 CultureNotFoundException (Q294), and en-US with 200.
+  const sent = [];
+  const fetchImpl = async (url, init) => {
+    sent.push({ url, headers: init.headers });
+    const ok = init.headers['accept-language'] === 'en-US';
+    return new Response(JSON.stringify(ok ? { value: [] } : { error: { code: 'CultureNotFoundException' } }), { status: ok ? 200 : 400 });
+  };
+  const transport = readOnlyGraphTransport(async () => 'token', fetchImpl);
+  const read = await readPimLive(transport);
+  assert.deepEqual(read.instances, []);
+  assert.deepEqual(sent.map((request) => new URL(request.url).pathname), [...Object.values(KEEL_READS), SCUBA_READ]);
+  assert.ok(sent.every((request) => request.headers['accept-language'] === 'en-US' && request.headers.authorization === 'Bearer token'));
 });

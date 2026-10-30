@@ -59,6 +59,7 @@ import { listedReasons, progressTracker, progressWriter, reasonsLine } from '../
 import { workloadGapReasons } from '../engine/collect/workloads/gaps.mjs';
 import { INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE } from '../engine/collect/incomplete.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
+import { recordBaselineScore } from '../engine/govern/baselineScore.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
@@ -217,6 +218,14 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
   } catch (error) {
     checks = { status: 'failed', error: String(error?.message ?? error) };
     logger.log(`compliance checks failed: ${checks.error}`);
+  }
+  // One point of the approved setup's match percentage for this run (Baselines page
+  // history). A failure is logged and never fails the collection.
+  try {
+    const point = await recordBaselineScore(client, { tenantRef, trigger: 'service-read', now: now() });
+    if (point) logger.log(`approved setup match: ${point.percent}% (${point.matching} of ${point.judged} settings)`);
+  } catch (error) {
+    logger.log(`approved setup match not recorded: ${error?.message ?? error}`);
   }
   const proof = proofExpiry([...inputs.reads, ...inputs.writes], { now: now() });
   for (const entry of proof.filter((item) => item.status !== 'current')) logger.log(entry.message);

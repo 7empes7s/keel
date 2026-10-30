@@ -96,6 +96,8 @@ import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntent, t
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type PeopleSummary, type SitePermissionsData } from "@/lib/site-permissions-view";
 import type { RestoreWorkload } from "@/lib/restore-workloads-view";
+import { ScoreHistory } from "@/components/baselines/score-history";
+import type { ScorePoint } from "@/lib/baseline-history-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -403,6 +405,36 @@ function assignedUndoArtifact(id: string, choices: Record<string, string> | null
 }
 
 const now = "2026-10-02T09:40:00Z";
+
+// The approved setup's match over 45 days: one point per backup, and some after the
+// other services' reads. It dips when sign-in rules changed, then recovers once those
+// changes were accepted or undone; the newest points use version 3 of the setup.
+const SCORE_HISTORY: ScorePoint[] = (() => {
+  const entra = [96, 96, 95, 95, 94, 92, 88, 71, 64, 66, 74, 83, 90, 91, 92, 93, 93, 94, 92, 91, 90, 89];
+  const intune = [100, 100, 100, 98, 98, 98, 98, 97, 97, 97, 98, 100, 100, 100, 100, 99, 99, 99, 99, 99, 99, 99];
+  const reads = [100, 100, 98, 98, 98, 95, 95, 95, 93, 93, 95, 98, 98, 98, 100, 100, 97, 97, 97, 97, 96, 96];
+  const count = (matching: number, judged: number) => ({ matching, judged, percent: Math.floor((matching / judged) * 100) });
+  return entra.map((_, index) => {
+    const services = {
+      Entra: count(Math.round((entra[index] / 100) * 4_400), 4_400),
+      Intune: count(Math.round((intune[index] / 100) * 412), 412),
+      Exchange: count(Math.round((reads[index] / 100) * 40), 40),
+      Teams: count(40, 40),
+    };
+    const matching = Object.values(services).reduce((sum, entry) => sum + entry.matching, 0);
+    const judged = Object.values(services).reduce((sum, entry) => sum + entry.judged, 0);
+    const hoursAgo = (entra.length - 1 - index) * 49 + 2;
+    return {
+      id: `5c0e0000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      baselineId: index < 16 ? "b1170000-0000-4000-8000-000000000117" : "b1180000-0000-4000-8000-000000000118",
+      recordedAt: new Date(Date.parse("2026-10-02T09:40:00Z") - hoursAgo * 3_600_000).toISOString(),
+      trigger: index % 3 === 2 ? "service-read" : "backup",
+      sourceId: null,
+      ...count(matching, judged),
+      services,
+    } satisfies ScorePoint;
+  });
+})();
 
 // Changes > Every change (IN-FEED): rows from backups, service reads and the audit log.
 const feedRow = (id: string, occurredAt: string, rest: Partial<FeedRow>): FeedRow => ({
@@ -2684,6 +2716,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline held={held} items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
+        <ScoreHistory now={now} points={SCORE_HISTORY} />
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }

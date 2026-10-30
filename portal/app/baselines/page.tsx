@@ -3,13 +3,15 @@ import { headers } from "next/headers";
 
 import { ApprovedSetup } from "@/components/baselines/approved-setup";
 import { RecentWork } from "@/components/baselines/recent-work";
+import { ScoreHistory } from "@/components/baselines/score-history";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
 import { setupStatus, setupVerdict, type ServiceReadKind } from "@/lib/baselines-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
-import { getBaselinesData, getBaselineTypeCounts, getCoverageData, getDriftData } from "@/lib/portal-data";
+import { getBaselineScoreHistory, getBaselinesData, getBaselineTypeCounts, getCoverageData, getDriftData } from "@/lib/portal-data";
+import type { ScorePoint } from "@/lib/baseline-history-view";
 import {
   getRecentJobs,
   getSnapshotOptions,
@@ -56,13 +58,15 @@ export default async function BaselinesPage() {
   // tenant-wide service reads, compared with the previous backup, so only a central
   // administrator sees them (as on the Changes page).
   const active = data.baselines.find((baseline) => baseline.active) ?? null;
-  const [items, coverage, serviceChanges, held, readTotals] = await Promise.all([
+  const [items, coverage, serviceChanges, held, readTotals, history] = await Promise.all([
     getDriftData(access.scope).then((drift) => drift.items as DriftRecord[], () => null),
     getCoverageData().catch(() => null),
     access.scope.central ? getServiceChanges().catch(() => [] as DriftRecord[]) : Promise.resolve([] as DriftRecord[]),
     active ? getBaselineTypeCounts(active.id, access.scope).catch(() => null) : Promise.resolve(null),
     // The base of each service read's match percentage; null leaves those services unscored.
     access.scope.central ? getServiceReadTotals().catch(() => null) : Promise.resolve(null as ServiceReadTotals | null),
+    // The match over time is tenant-wide, so only a central reader sees it; null hides it.
+    access.scope.central ? getBaselineScoreHistory().catch(() => null) : Promise.resolve(null as ScorePoint[] | null),
   ]);
   const backedUp = (coverage?.types ?? []).filter((type) => type.reportStatus === "covered").map((type) => type.type);
   const serviceReads: ServiceReadKind[] = access.scope.central
@@ -89,6 +93,7 @@ export default async function BaselinesPage() {
       />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={backedUp} baselines={data.baselines} canBaseline={canBaseline} held={held} items={items} now={data.generatedAt} serviceChanges={serviceChanges} serviceReads={serviceReads} sources={snapshots} />
+        {active && history ? <ScoreHistory now={data.generatedAt} points={history} /> : null}
         <RecentWork jobs={jobs} now={data.generatedAt} />
         <JobRefresher active={jobsActive} />
       </div>

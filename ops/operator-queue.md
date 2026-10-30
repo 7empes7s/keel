@@ -12313,3 +12313,34 @@ item that needs it stays untouched.
 - **Report:** B and S; old and new appId; each dry run id, status and planned verb; approval ids; enforce exit codes; the
   `identifierUris` read back after steps 5 and 6; what step 7 planned; anything left in the tenant. If Graph refuses a write,
   quote its error code and message.
+
+### Q263: Recapture purview-retention-dlp with the Q260 fixes so all four `.update` writes are proven (after PR #756), up to about 2 hours
+- Drafted by the "Prove Purview retention and DLP rule updates" thread (2026-10-30). PR #756 applies Q260's findings:
+  - run-cmdlet.ps1 sends `-Confirm:$false` with `Set-DlpComplianceRule`.
+  - The capture tool treats Set-RetentionCompliancePolicy's `PolicyDeploymentException` as "saved, read back decides".
+  - A put-back refused with `PolicyLockConflictException` is retried every 5 minutes, up to 18 times (90 minutes).
+  Expect the run to sit about an hour on the retention policy put-back, as in Q260 step 3. That is normal, not a hang.
+- Needs: PR #756 merged and deployed (build B). Check: `grep -q NoConfirmPrompt /opt/keel-live/ops/powershell/run-cmdlet.ps1`.
+- Status: todo
+- **Tenant (test tenant only, standing authorizations; nothing to approve):** same as Q234 for this workload. One Comment write on
+  each of the four `KEEL-RT-` fixtures (retention policy, retention rule, DLP policy, DLP rule), read back, put back, read back.
+  Restorer for writes, Collector for reads, purview configs. Global admin not used. Nothing granted. No CA, no break-glass.
+  Do not redeploy anything by hand; the tool's own put-back is the only extra change.
+- Do, from your clone at B (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it):
+  1. Before: `Get-RetentionCompliancePolicy KEEL-RT-retention -DistributionDetail` (Collector): report DistributionStatus. If
+     `Pending`, wait (every 5 min) until it is not Pending before step 2; the put-back budget is sized for one deployment.
+  2. The Q234 capture for `--workload purview-retention-dlp` only, same flags and configs (`--build "$B"`, `--grants`, purview
+     collector and restorer configs, no `--allow-tenant-wide-test-writes`), output
+     `docs/release/qualifications/workload-writers-purview-retention-dlp-live-acceptance.json`, then its verify
+     (`node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance --evidence <out>`).
+     **Exit 3 = a value may not be back:** set the named object's Comment back to `KEEL test fixture` by hand (wait out a
+     `PolicyLockConflictException`; a `PolicyDeploymentException` on that Set still saves), read it back, and report it.
+  3. `node tools/qualification/pseudonymize.mjs check` on the record and its `.capture.json`, plus the usual secret scan.
+  4. **Only if** it proves all four (`retention-policy`, `retention-rule`, `dlp-policy`, `dlp-rule` `.update`): commit the two files to a
+     new branch `claude/live-evidence-purview-retention-dlp-4` from `origin/master`, push, no PR. Then
+     `node cli/keel-workload-collect.mjs import --dir <that clone>/docs/release/qualifications` and report the
+     `workload-writers-purview-retention-dlp` line and `refused`. If it proves fewer, keep master's file and report each
+     not-proven write with its exact error.
+- **Report:** B; step 1 status; capture and verify exit codes; proven / not proven (exact errors); `needsManualRevert`; how long the
+  retention put-back waited (count of refused put-backs in the capture log); observedAt; step 3; branch and commit; import lines; what
+  is left changed in the tenant (expected: nothing; the retention fixture redeploying).

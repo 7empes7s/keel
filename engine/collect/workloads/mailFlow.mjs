@@ -105,7 +105,7 @@ export const FAMILIES = Object.freeze({
   antiSpamPolicy: Object.freeze({
     operation: 'mailflow.anti-spam-policies', cmdlet: 'Get-HostedContentFilterPolicy', prefix: 'anti-spam-policy', key: 'guid',
     fields: Object.freeze([
-      'Name', 'IsDefault', 'BulkThreshold', 'SpamAction', 'HighConfidenceSpamAction', 'PhishSpamAction', 'HighConfidencePhishAction',
+      'Name', 'IsDefault', 'RecommendedPolicyType', 'BulkThreshold', 'SpamAction', 'HighConfidenceSpamAction', 'PhishSpamAction', 'HighConfidencePhishAction',
       'BulkSpamAction', 'QuarantineRetentionPeriod', 'SpamQuarantineTag', 'HighConfidenceSpamQuarantineTag', 'PhishQuarantineTag',
       'HighConfidencePhishQuarantineTag', 'BulkQuarantineTag', 'AllowedSenders', 'AllowedSenderDomains', 'BlockedSenders',
       'BlockedSenderDomains', 'EnableLanguageBlockList', 'LanguageBlockList', 'EnableRegionBlockList', 'RegionBlockList',

@@ -89,13 +89,13 @@ const SAMPLE = Object.freeze({
     { Name: 'Keep mail 7 years rule', Guid: guid(3), Policy: guid(1), Comment: '', Disabled: false, Mode: 'Enforce', Workload: 'Exchange, SharePoint, OneDriveForBusiness', RetentionDuration: 2555, RetentionDurationDisplayHint: 'Days', RetentionComplianceAction: 'KeepAndDelete', ExpirationDateOption: 'CreationAgeInDays', ApplyComplianceTag: null, PublishComplianceTag: null, ContentMatchQuery: null, ContentContainsSensitiveInformation: null, ExcludedItemClasses: [], WhenChangedUTC: WHEN, ReadOnly: false },
   ],
   'Get-DlpCompliancePolicy': [
-    { Name: 'Card numbers', Guid: guid(4), Comment: '', Mode: 'Enable', Type: 'Dlp', Workload: 'Exchange, SharePoint, OneDriveForBusiness', Priority: 0, ...DLP_LOCATIONS, PolicyTemplateInfo: null, DistributionStatus: 'Success', WhenChangedUTC: WHEN },
+    { Name: 'Card numbers', Guid: guid(4), Comment: '', Enabled: true, Mode: 'Enable', Type: 'Dlp', Workload: 'Exchange, SharePoint, OneDriveForBusiness', Priority: 0, ...DLP_LOCATIONS, PolicyTemplateInfo: null, DistributionStatus: 'Success', WhenChangedUTC: WHEN },
   ],
   'Get-DlpComplianceRule': [
     {
       Name: 'Block card numbers', Guid: guid(5), Policy: guid(4), ParentPolicyName: 'Card numbers', Comment: '', Disabled: false, Mode: 'Enforce', Priority: 0, Workload: 'Exchange, SharePoint, OneDriveForBusiness',
       ContentContainsSensitiveInformation: [{ name: 'Credit Card Number', id: '50842eb7-edc8-4019-85dd-5a5c1f2bb085', mincount: '1', minconfidence: '85' }],
-      ExceptIfContentContainsSensitiveInformation: null, AdvancedRule: null,
+      ExceptIfContentContainsSensitiveInformation: null, IsAdvancedRule: false, AdvancedRule: null,
       ContentPropertyContainsWords: [], SubjectOrBodyContainsWords: ['project falcon'], SubjectOrBodyMatchesPatterns: ['\\bPF-\\d{6}\\b'], DocumentNameMatchesPatterns: [],
       ContentExtensionMatchesWords: [], AccessScope: 'NotInOrganization', From: [], SentToMemberOf: [], SenderDomainIs: [], RecipientDomainIs: [],
       ExceptIfSenderDomainIs: [], ExceptIfRecipientDomainIs: ['partner.test'], BlockAccess: true, BlockAccessScope: 'All', NotifyUser: ['SiteAdmin'], NotifyUserType: 'NotSet',
@@ -339,6 +339,14 @@ test('every policy and rule is one observation keyed by Guid, with its parent po
   assert.equal(orphanOnly.outcome, 'partial');
 
   const clean = await readRetentionDlp({ powershell: fakeCompliance().powershell, now: () => NOW });
+  // ScubaGear's DLP rules (SECURITYSUITE 3.1-3.4) read whether a policy is on and
+  // whether a rule is written in the advanced editor: both are kept.
+  const policy = clean.resources.find((resource) => resource.kind === 'dlpPolicy');
+  const dlpRule = clean.resources.find((resource) => resource.kind === 'dlpRule');
+  assert.equal(policy.fields.Enabled, true);
+  assert.equal(policy.fieldCoverage.Enabled.status, 'observed');
+  assert.equal(dlpRule.fields.IsAdvancedRule, false);
+  assert.equal(dlpRule.fieldCoverage.IsAdvancedRule.status, 'observed');
   assert.equal(clean.outcome, 'complete');
   assert.equal(clean.resources.length, 6);
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read'));

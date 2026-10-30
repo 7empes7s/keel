@@ -13667,3 +13667,51 @@ item that needs it stays untouched.
   `Defender`, `stored_subtype` false, from the tier2 snapshot; coverage lists `defenderEndpointSecurityIntent` with count 1.
 - **Report:** B; the template picked; status codes of create and delete; both collect exit codes and snapshot ids; the step 4
   output verbatim; anything left in the tenant (expected: nothing).
+
+### Q293: Recapture the Exchange org defaults reads with the new organization config read, for ScubaGear MS.EXO.13.1 (read-only toward the tenant, after PR #830), about 10 minutes
+- Drafted by the "Wire ScubaGear Exchange and PIM inputs" thread (2026-10-30). Code: PR #830. It adds a fifth required family to
+  `exchange-org-defaults`: `exchange-org-defaults.organization-config` (Get-OrganizationConfig, no parameters, fields `Name`,
+  `AuditDisabled`, `WhenChanged`), and adds `Name` to transport-config. `run-cmdlet.ps1` allows Get-OrganizationConfig
+  (`$AllowedExchangeOrgPolicies`). The Q280 record does not cover the new read, so the workload stays off until this recapture is
+  imported. While off, ScubaGear MS.EXO.13.1 (mailbox auditing), 5.1 (SMTP AUTH) and 6.1/6.2 (calendar sharing) read "could not check".
+- Needs: /opt/keel-live at the #830 merge or later (`grep -q organization-config /opt/keel-live/engine/collect/workloads/exchangeOrgPolicies.mjs`).
+  As in Q280 the scripts are mounted from the checkout, so no image rebuild is expected.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
+  Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** `exchange-org-defaults` only, with the same Exchange config as Q280 (`/etc/keel/exchange-collector.json`), exactly
+     as Q287 step 1 with `w=exchange-org-defaults`, then the pseudonymize check. Report the exit code, `outcome`, `proven` and
+     `notProven` verbatim, and the objects count for organization-config (expected 1). If the pseudonymize check is not exit 0,
+     stop and file an issue.
+  2. **Evidence:** commit the record to `claude/live-evidence-exchange-org-policies` (on top of its head, replacing the Q280
+     `exchange-org-defaults` record, that file only, checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q280 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the `exchange-org-defaults` outcome, its per-family
+     `discovery.families` statuses, `fieldCounts` and **`unknownFields`** verbatim (field names only, never values). If Q287 is
+     done by then, also report the `exchange-org-access` outcome, and the JSON type of `Domains` on the sharing policies
+     (`array of strings`, `string`, `null` or other; the type only, never the values).
+  5. `node cli/keel-workload-collect.mjs proof`: confirm all five `exchange-org-defaults` reads are listed as current.
+- **Expected:** all five reads proven; the workload enabled; the run `complete`, or `partial` only for unknown fields.
+- **Report:** B; capture exit code and proven/notProven; evidence branch and commit; import counts; the run line and unknown fields;
+  the Domains type; anything left in the tenant (expected: nothing, reads only).
+
+### Q294: Compare Keel's PIM backup with ScubaGear's PIM read on the live tenant, for ScubaGear MS.AAD.7.4 and 7.5 (GET only, after PR #831), about 5 minutes
+- Drafted by the "Wire ScubaGear Exchange and PIM inputs" thread (2026-10-30). Code: PR #831 adds `tools/scubagear-pim-check.mjs`.
+  ScubaGear reads privileged role holders from Graph beta `roleAssignmentScheduleInstances`; Keel backs them up from v1.0
+  `roleDefinitions`, `roleAssignments` and `roleAssignmentSchedules`. This check reads both and says whether they agree on who holds
+  each of the 8 privileged roles and whether each holder has a start and end date. If they agree, a follow-up PR lets Keel check 7.5
+  (permanent active assignments); today it reads "could not check" because Keel does not trust its start dates yet.
+- Needs: /opt/keel-live at the #831 merge or later (`test -f /opt/keel-live/tools/scubagear-pim-check.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** GET only, Collector credential from `/etc/keel/tenant.json` (`RoleManagement.Read.Directory`, already held: the role
+  backup uses it). The tool refuses anything but GET and refuses a next-page link off graph.microsoft.com. Grant, assign, activate,
+  create or change nothing. No PIM change of any kind.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at:
+  `node tools/scubagear-pim-check.mjs --config /etc/keel/tenant.json`
+- **Report:** the exit code (0 agree, 1 differ, 2 error) and the JSON it prints, verbatim. The output holds counts, role names and
+  "set"/"not set" only: no ids, user names or dates. If it exits 2 with a 403, report which read failed and stop; do not grant anything.

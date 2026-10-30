@@ -148,6 +148,7 @@ export function settingValueWords(field: string, value: unknown): string {
 export function refusalWords(reason: string): string {
   if (reason.startsWith("not-a-fixture")) return "On the test tenant KEEL only writes KEEL-RT test settings, and never one that affects the whole tenant.";
   if (reason.startsWith("preservation-locked")) return "A preservation lock protects it, so KEEL never changes it.";
+  if (reason.startsWith("site-locked")) return "The site is locked, so KEEL never changes or unlocks it.";
   return "KEEL refused to change it. The reason is in Technical details.";
 }
 

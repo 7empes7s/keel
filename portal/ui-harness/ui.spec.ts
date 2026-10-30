@@ -789,7 +789,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await open(page, "/restore", theme);
     // Only kinds KEEL can put back from the page get the button.
-    await expect(page.locator(".restore-workload", { hasText: "OneDrive settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
+    await expect(page.locator(".restore-workload", { hasText: "OneDrive settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(1);
     await expect(page.locator(".restore-workload", { hasText: "SharePoint settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
     await page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" }).getByRole("button", { name: "Choose what to put back" }).click();
     const panel = page.locator(".workload-restore");

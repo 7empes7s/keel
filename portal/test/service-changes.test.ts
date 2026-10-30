@@ -173,9 +173,11 @@ test("an undo is offered only where the service restore can write the setting ba
   assert.match(serviceUndo(rule, null).reason ?? "", /no longer has this setting/);
   assert.equal(serviceUndo(rule, { restorable: false, reason: "Deleted since this backup." }).reason, "Deleted since this backup.");
   assert.match(serviceUndo({ ...rule, workload: "exchange-mailbox-settings", resourceKey: "organization" }, { restorable: true, reason: null }).reason ?? "", /together with a mailbox/);
-  for (const workload of ["sharepoint-site-settings", "onedrive-site-settings", "power-platform-settings"]) {
+  for (const workload of ["sharepoint-site-settings", "power-platform-settings"]) {
     assert.equal(serviceUndo({ ...rule, workload }, { restorable: true, reason: null }).possible, false, `${workload} has no portal restore yet`);
   }
+  // OneDrive sharing settings are restored from the page now.
+  assert.equal(serviceUndo({ ...rule, workload: "onedrive-site-settings", resourceKey: "onedrive:https://contoso-my.sharepoint.com/personal/keel-rt-a" }, { restorable: true, reason: null }).possible, true);
 });
 
 test("each service change is named and placed in its service", () => {

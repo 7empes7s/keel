@@ -146,3 +146,18 @@ test('SharePoint site structure: hubs, designs, scripts and sites are offered by
     ['KEEL-RT Finance (/sites/keel-rt-finance)', 'same', true],
   ]);
 });
+
+test('OneDrive: one site per person, named by its owner, never tenant-wide', () => {
+  const url = (who) => `https://contoso-my.sharepoint.com/personal/${who}_contoso_test`;
+  const od = (who, fields) => ({ resourceKey: `onedrive:${url(who)}`, fields: { url: url(who), ...fields } });
+  const chosen = [od('keel-rt-alice', { Owner: 'keel-rt-alice@contoso.test', SharingCapability: 'Disabled' }), od('keel-rt-bob', { SharingCapability: 'Disabled' })];
+  const newest = [od('keel-rt-alice', { Owner: 'keel-rt-alice@contoso.test', SharingCapability: 'ExternalUserSharingOnly' }), chosen[1]];
+  const [sites, ...rest] = workloadChoices('onedrive-site-settings', chosen, newest);
+  assert.equal(rest.length, 0);
+  assert.equal(sites.kind, 'onedriveSite');
+  assert.equal(sites.restorable, true);
+  assert.deepEqual(sites.items.map((item) => [item.name, item.change, item.restorable, item.tenantWide]), [
+    ['keel-rt-alice@contoso.test', 'changed', true, false],
+    ['keel-rt-bob_contoso_test', 'same', true, false],
+  ]);
+});

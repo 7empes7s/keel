@@ -328,7 +328,8 @@ const NEVER_SENT = new Set([
 export function recreateBody(resourceType, payload, { fields = null, exclude = [] } = {}) {
   let projected;
   try {
-    projected = createBodyProjection(payload ?? {}, resourceType);
+    // A person recreates this by hand, so the trust fields a restore never writes stay in the values shown.
+    projected = createBodyProjection(payload ?? {}, resourceType, { withTrust: true });
   } catch {
     projected = { ...(payload ?? {}) };
   }

@@ -192,7 +192,9 @@ test('application create writes no credential or Entra-assigned field, verifies 
 });
 
 test('application create that does not verify is failed, never applied', async () => {
-  const drifted = recordingGraph({ readOverride: (body) => ({ ...body, signInAudience: 'AzureADMultipleOrgs' }) });
+  // signInAudience is a trust field a create never sends, so it is not verified;
+  // a written field that reads back different is.
+  const drifted = recordingGraph({ readOverride: (body) => ({ ...body, tags: ['other'] }) });
   const result = await run(drifted, [appResource('create')]);
   assert.equal(result.applied.length, 0);
   assert.match(result.failed[0]?.error ?? '', /verification hash mismatch/);

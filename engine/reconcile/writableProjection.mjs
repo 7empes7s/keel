@@ -1,6 +1,31 @@
 import { isDeepStrictEqual } from 'node:util';
 import { fieldClass } from '../cir/serverOwned.mjs';
 import { classifyForOperation, reviewStateFor } from '../contracts/fieldProjection.mjs';
+import { isTrustField } from '../restore/workloads/writeDeclarations.mjs';
+
+/**
+ * CLAUDE.md restore-writer rule for the generic Entra writer (applyEngine.mjs's
+ * built-in create, update and restore paths): a trust, federation, certificate
+ * or sign-in field (isTrustField: an application's signInAudience, a named
+ * location's isTrusted, a token signing key, ...) is never sent. The PATCH and
+ * POST bodies below leave every top-level one out, and verificationView leaves
+ * them out too, so a write is checked only on what it sent. The caller reports
+ * a difference in one as a step for a person (recordWriter.mjs#trustFieldStep).
+ * `keepTrust` names the one field an approved compliance fix may change.
+ */
+export function trustFieldsOf(payload, resourceType, { keepTrust = [] } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  return Object.keys(payload)
+    .filter((key) => !key.includes('@odata.') && !keepTrust.includes(key) && isTrustField(resourceType, key));
+}
+
+function withoutTrust(body, resourceType, options) {
+  const trust = trustFieldsOf(body, resourceType, options);
+  if (trust.length === 0) return body;
+  const kept = { ...body };
+  for (const key of trust) delete kept[key];
+  return kept;
+}
 
 /** Spec M2.3/M2.4.2 (roadmap task-51). Leaves only what Graph accepts in a PATCH
  * body: drops serverOwned and immutable fields via classifyForOperation('update', ...),
@@ -22,12 +47,12 @@ import { classifyForOperation, reviewStateFor } from '../contracts/fieldProjecti
  */
 export const UPDATE_KEEPS_ODATA_TYPE = Object.freeze(new Set(['namedLocation']));
 
-export function writableProjection(payload, resourceType) {
+export function writableProjection(payload, resourceType, { keepTrust = [] } = {}) {
   // Validate the type even for an empty payload: unknown types must not be
   // allowed to reach Graph with a pass-through PATCH body.
   fieldClass('', resourceType);
 
-  return project(payload, resourceType);
+  return withoutTrust(project(payload, resourceType), resourceType, { keepTrust });
 }
 
 function project(value, resourceType, path = '') {
@@ -58,11 +83,13 @@ function project(value, resourceType, path = '') {
  * countryNamedLocation) and is kept, as intuneOperations.mjs already does.
  * Unlike createProjection() this never throws for an unreviewed type and
  * never drops an 'unknown' field: it narrows nothing, it only removes what
- * the server owns.
+ * the server owns and the top-level trust fields a restore never writes.
  */
-export function createBodyProjection(payload, resourceType) {
+export function createBodyProjection(payload, resourceType, { withTrust = false } = {}) {
   fieldClass('', resourceType);
-  return withoutServerOwned(payload, resourceType, '');
+  const body = withoutServerOwned(payload, resourceType, '');
+  // `withTrust` is only for values shown to a person (a recreate-by-hand step), never a write body.
+  return withTrust ? body : withoutTrust(body, resourceType);
 }
 
 function withoutServerOwned(value, resourceType, path) {
@@ -92,13 +119,14 @@ function withoutServerOwned(value, resourceType, path) {
  *   - null values at any depth: a read without $select returns uncaptured
  *     properties as null, and for a write a null property is an unset one.
  * Server-owned fields (`id`, `createdDateTime`, a group's `securityIdentifier`,
- * `expirationDateTime`, ...) are gone; immutable and writable fields stay, so
+ * `expirationDateTime`, ...) and top-level trust fields (never written, see
+ * trustFieldsOf) are gone; immutable and writable fields stay, so
  * a real mismatch of a written value still fails verification. Not used for
  * hashing: stored payload hashes are unchanged.
  */
-export function verificationView(value, resourceType) {
+export function verificationView(value, resourceType, { keepTrust = [] } = {}) {
   fieldClass('', resourceType);
-  return toVerificationView(value, resourceType, '');
+  return withoutTrust(toVerificationView(value, resourceType, ''), resourceType, { keepTrust });
 }
 
 function toVerificationView(value, resourceType, path) {
@@ -155,7 +183,7 @@ export function createProjection(payload, resourceType) {
     if (cls === 'writable') body[key] = payload[key];
     else if (cls === 'unknown') unknown.push(key);
   }
-  return { body, unknown };
+  return { body: withoutTrust(body, resourceType), unknown };
 }
 
 /**

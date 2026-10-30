@@ -48,7 +48,7 @@ test('a namedLocation PATCH body keeps @odata.type at every depth and drops othe
   assert.deepEqual(writableProjection(snapshot, 'namedLocation'), {
     '@odata.type': '#microsoft.graph.ipNamedLocation',
     displayName: 'HQ',
-    isTrusted: true,
+    // isTrusted is a trust field: never in a PATCH body (writableProjection.mjs#trustFieldsOf).
     ipRanges: [{ '@odata.type': '#microsoft.graph.iPv4CidrRange', cidrAddress: '203.0.113.0/24' }],
   });
   const country = writableProjection({

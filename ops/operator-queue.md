@@ -11083,7 +11083,23 @@ item that needs it stays untouched.
   those workloads switch to `disabled`. This item captures fresh records with the same reads and configs as those items; a cloud
   PR then lands them on master.
 - Needs: nothing (independent of Q230). Run it at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`).
-- Status: todo
+- Status: done
+- Result: done (2026-10-30 01:40 UTC, keel-operator). **All four recaptured; proven as before, notProven `[]`.** B = **05a930b5**. Tenant reads only, Collector (87aa77c4…). Nothing granted, assigned or created.
+  1. Captures from the operator checkout at B. Configs per `/etc/keel/workload-scope.json`: Teams → `/etc/keel/tenant.json` (no `powershellConfigs.teams`), exchange → `exchange-collector.json`, sharepoint → `purview-collector.json`.
+
+     | workload | exit | outcome | proven | notProven | observedAt (UTC) | expires |
+     |---|---|---|---|---|---|---|
+     | teams-org-policies | 0 | complete | **9**: meeting, messaging, app setup and app permission policies; federation, client, guest meeting, guest messaging and guest calling configuration | [] | 2026-10-30 01:29:10 | **2026-11-29** |
+     | teams-voice-policies | 0 | complete | **13**: calling, voice routing, dial plans, emergency calling, emergency call routing, call park, caller id, voicemail, live events, events, live events configuration, user and group policy assignments | [] | 01:30:18 | **2026-11-29** |
+     | exchange-role-groups | 0 | complete | **1**: role groups | [] | 01:30:25 | **2026-11-29** |
+     | sharepoint-site-settings | 0 | complete | **1**: site sharing | [] | 01:30:27 | **2026-11-29** |
+
+     - `pseudonymize.mjs check` on the 4 files exits 0. Secret scan: domain 0, tenant id 0, JWT 0.
+  2. Commit **d1ed0f85** on `claude/live-evidence-service-settings-recapture` (4 files, pushed, no PR).
+  3. `keel-workload-collect.mjs import --dir <branch>/docs/release/qualifications`: exit 0, **imported 19** (the four at evidenceBuild 05a930b5: reads 1, 9, 13, 1), refused `[]`. Absent: `workload-reads-{exchange-mail-flow,exchange-extended,purview-retention-dlp,purview-governance}` (not among these four; absent as in Q230).
+  4. `keel-workload-collect.mjs run`: exit 0. All four `complete`, **none disabled**, none partial.
+     - exchange-role-groups and sharepoint-site-settings: 0 new changes.
+     - **teams-voice-policies 10 new and teams-org-policies 1 new change(s)**: the 11 `KEEL-RT-capture-*` policies that Q234's writer capture created (1 messaging, 10 voice; kept by design).
 - **Tenant:** reads only. The workloads' declared `Get-` cmdlets (`Get-Cs*` Teams reads, `Get-RoleGroup`, `Get-PnPTenantSite`)
   with the Collector credential. No `New-`, `Set-`, `Grant-`, `Add-` or `Remove-` cmdlet. Grant, assign or create nothing.
 - Do, from your clone checked out at B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it)

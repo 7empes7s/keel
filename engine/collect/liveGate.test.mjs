@@ -43,3 +43,12 @@ test('the gated kind already has its name and group, so switching it on needs no
   assert.equal(info.service, 'Intune');
   assert.equal(info.category, 'configuration');
 });
+
+test('the coverage doc never says a live-gated kind is backed up', async () => {
+  const { readFileSync } = await import('node:fs');
+  const doc = readFileSync(new URL('../../docs/coverage.md', import.meta.url), 'utf8');
+  const row = doc.split('\n').find((line) => line.startsWith('| Endpoint security templates |'));
+  assert.ok(row, 'the kind has a row');
+  assert.match(row, /^\| Endpoint security templates \| Not yet \(waiting for a live read check\) \|/);
+  assert.match(doc, /one kind waits for a live read check first/);
+});

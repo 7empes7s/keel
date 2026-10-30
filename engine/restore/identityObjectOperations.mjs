@@ -643,8 +643,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
   }),
   // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
-  // description and permissions. Microsoft's own roles (isBuiltIn true, or
-  // no flag at all) are never written. Who holds the role is a separate kind
+  // description and permissions. The API has no isBuiltIn and lists only
+  // custom roles, so only a role marked isBuiltIn true is skipped (#742).
+  // Who holds the role is a separate kind
   // (defenderRoleAssignment), restored by hand after a privilege review.
   // Graph documents the create; the update uses the same PATCH as the other
   // role providers and is confirmed by the live proof.

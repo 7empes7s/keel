@@ -12980,3 +12980,51 @@ item that needs it stays untouched.
   5. `node cli/keel-workload-collect.mjs proof`: confirm the workload's reads are listed as current.
 - **Report:** capture exit code and proven/notProven; evidence branch and commit; import counts; the run table; unknown
   fields per family; anything left in the tenant (expected: nothing, reads only).
+
+### Q275: Live read check of the SharePoint and OneDrive tenant settings and the extra per-site fields, then turn them on (read-only toward the tenant, after PR #797), about 15 minutes
+- Drafted by the "Back up SharePoint tenant settings" thread (2026-10-30). Code: PR #797. Both parts ship `disabled` until a live
+  read record is imported:
+  - new workload `sharepoint-tenant`: Get-PnPTenant, Get-PnPTenantSyncClientRestriction, Get-PnPBrowserIdleSignout,
+    Get-PnPTenantRestrictedSearchMode, Get-PnPTenantRestrictedSearchAllowedList, no parameters, on the admin site;
+  - `sharepoint-site-settings` gains a second PnP family `site-settings` (row `sharepoint.site-settings`): lock state, access
+    policy, sensitivity label, custom script, restricted access, storage quota and guest expiry per site, from the same
+    `Get-PnPTenantSite` call the sharing field already uses. It counts as read only if at least one site carries one of them.
+  The declared fields come from documentation, not a live answer; this item tells us which to drop.
+- Needs: /opt/keel-live at the #797 merge or later (`test -f /opt/keel-live/engine/collect/workloads/sharepointTenant.mjs`).
+  `run-cmdlet.ps1` has a new table (`$AllowedPnPTenant`); as in Q266 the scripts are mounted from the checkout, so no image
+  rebuild is expected.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Sites.FullControl.All + SharePoint Administrator, already held, as Q158). No
+  `Set-`, `New-`, `Add-` or `Remove-` cmdlet. Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** both workloads with the PnP config the workloads use (`powershellConfigs.sharepoint` in
+     `/etc/keel/workload-scope.json`), as in Q158 step 2:
+     ```bash
+     for w in sharepoint-tenant sharepoint-site-settings; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <that config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+       node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     done
+     ```
+     Report each exit code, `outcome`, `proven` and `notProven` verbatim, and the diagnostics of any read not proven. If a
+     pseudonymize check is not exit 0, stop and file an issue. The sharepoint-site-settings record replaces the Q158 one; it
+     must still prove `sharepoint.site-sharing`.
+  2. **Evidence:** commit both records to `claude/live-evidence-sharepoint-tenant` (from `origin/master`, those files only,
+     checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding these records and the other read records (as Q266 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and:
+     - for `sharepoint-tenant`: per-family `discovery.families` statuses, `fieldCounts` and **`unknownFields`** verbatim (field
+       names only, never values);
+     - for `sharepoint-site-settings`: per new field (lockState, conditionalAccessPolicy, sensitivityLabel,
+       denyAddAndCustomizePages, restrictedAccessControl, restrictedAccessControlGroups, storageQuota,
+       externalUserExpirationInDays) how many sites are `observed` vs `unknown`, and that `sharingCapability` is still observed
+       as in Q158.
+     Unknown fields are expected on the first run; the thread trims them in a follow-up PR.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm the new reads are listed as current.
+- **Report:** B; capture exit codes and proven/notProven; evidence branch and commit; import counts; the run table; unknown
+  fields per family; per-site field counts; anything left in the tenant (expected: nothing, reads only).

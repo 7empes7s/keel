@@ -431,6 +431,7 @@ export function controlService(finding: ComplianceFinding): CloudService {
 
 const STANDARD_WORDS: Record<string, string> = {
   "keel-custom": "Keel checks",
+  "cisa-scuba": "CISA SCuBA",
   "nist-800-53": "NIST SP 800-53",
 };
 
@@ -519,7 +520,23 @@ export function coverageSentence(standard: KnownStandard, coverage: Coverage): s
 
 export const COVERAGE_WORDS: Record<"full" | "partial", string> = { full: "Checks this", partial: "Checks part of this" };
 
-export const KNOWN_STANDARDS_NOTE = "Keel's own reading of which checks cover which policy. Meeting it is not a certification. CIS Benchmarks are not included: their licence does not allow Keel to ship them.";
+export const KNOWN_STANDARDS_NOTE = "Meeting a standard here is not a certification. CIS Benchmarks are not included: their licence does not allow Keel to ship them.";
+
+/** A known standard's checked policies, worst first (fails, then could not check, then
+ * passes), and in the standard's own order within each result. */
+export function orderCoverageRows(rows: CoverageRow[]): CoverageRow[] {
+  const rank = (row: CoverageRow) => (row.result === "not-checked" ? 99 : RESULTS[row.result].rank);
+  return rows.map((row, index) => ({ row, index })).sort((left, right) => rank(left.row) - rank(right.row) || left.index - right.index).map((entry) => entry.row);
+}
+
+/** Why a checked policy has no pass or fail, in plain words: the reason of its first
+ * check that could not be run, or that the check has not run yet. */
+export function coverageReason(row: CoverageRow): string | null {
+  if (row.result !== "unknown") return null;
+  const stuck = row.mapped.find((item) => !item.finding || resultOf(item.finding) === "unknown");
+  if (!stuck) return null;
+  return stuck.finding ? reasonWords(stuck.finding) : "It runs after the next backup.";
+}
 
 // The four states a control can be in (Fails, Not set up yet, Passes, Accepted exception),
 // plus two that say Keel could not judge it: no usable backup, or nothing to check here.

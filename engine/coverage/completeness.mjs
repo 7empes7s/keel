@@ -255,8 +255,8 @@ export const COMPLETENESS = Object.freeze({
   // Remaining kinds, batch 4.
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},
-  // Restore gaps batch 21: custom policies written with their condition sets.
-  servicePrincipalCreationPolicy: { missing: [part('The include and exclude rules of a custom policy', 'other-route', heldUnless(['includes', 'excludes'])), part('A built-in app creation policy', 'microsoft-managed', builtInFlag)] },
+  // Q256: Graph refuses app writes without a directory role, so none is written.
+  servicePrincipalCreationPolicy: { whole: 'not-written' },
   permissionGrantPreApprovalPolicy: { missing: [part('Which app it is assigned to', 'other-route')] },
   accessReviewPolicy: {},
   directoryRoleAccessReviewPolicy: {},

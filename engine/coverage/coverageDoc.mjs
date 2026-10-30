@@ -467,10 +467,9 @@ export const TYPE_GUIDE = Object.freeze({
   b2bManagementPolicy: manual('Guest invitation domain restrictions', KEEL,
     'KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.',
     'Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.'),
-  servicePrincipalCreationPolicy: auto('App creation policies', {
-    keeps: 'Recreates custom app creation policies and puts their name and description back, with their include and exclude conditions, and removes conditions added since the backup.',
-    todo: 'Microsoft\'s built-in policies cannot be changed by anyone. There is no admin center page for these policies.',
-  }),
+  servicePrincipalCreationPolicy: manual('App creation policies', MS,
+    'KEEL backs up each policy with its include and exclude conditions, but Microsoft only lets a signed-in admin change these policies, not an app like KEEL.',
+    'Recreate a custom policy and its conditions with PowerShell from the backup, signed in as an Entra admin. There is no admin center page for it. Built-in policies are Microsoft\'s and cannot be changed.'),
   permissionGrantPreApprovalPolicy: auto('App permission pre-approval policies', {
     keeps: 'Puts back which app permissions are pre-approved, and where (chats, teams or the whole organization).',
     todo: 'A policy only works once it is assigned to its app. Assign a recreated policy to the app again with PowerShell.',

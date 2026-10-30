@@ -66,7 +66,7 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
       ...base, powershell, sites: scope.onedriveSites ?? [], myHost: scope.onedriveHost }) },
   // powerPlatform.mjs: its own admin API transport, not the Graph one.
   { workload: POWER_PLATFORM_WORKLOAD, powershellFamily: null, record: recordPowerPlatformRun,
-    collect: (client, { base, config, sleep }) => collectPowerPlatform(client, { ...base, sleep, transport: powerPlatformTransportFor(config) }) },
+    collect: (client, { base, config, sleep }) => collectPowerPlatform(client, { ...base, sleep, transport: powerPlatformTransportFor(config), tenantId: config?.tenantId }) },
   // purview.mjs
   { workload: 'purview-labels', powershellFamily: 'purview', record: recordPurviewRun,
     collect: (client, { base, powershell }) => collectPurview(client, { ...base, powershell }) },

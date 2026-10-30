@@ -110,7 +110,7 @@ test('every rule of every product is a control, and each gets an answer on the f
   // Every rule Keel can check has a worked-out answer, and gets exactly it.
   const checked = Object.fromEntries(Object.entries(verdicts).filter(([, verdict]) => verdict !== 'unknown'));
   assert.deepEqual(checked, { ...FIXTURE_EXPECTED });
-  assert.equal(Object.keys(checked).length, 64);
+  assert.equal(Object.keys(checked).length, 72);
 });
 
 test('a rule Keel cannot check says why, and is never a pass', () => {
@@ -126,10 +126,8 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.SECURITYSUITE.3.1v1'), 'scubagear:field-not-read:dlp_compliance_policies.Enabled');
   assert.equal(reason('MS.SECURITYSUITE.6.1v1'), 'scubagear:field-not-read:hosted_content_filter_policies.RecommendedPolicyType');
   assert.equal(reason('MS.SHAREPOINT.1.2v1'), 'scubagear:field-not-read:SPO_tenant.ODBSharingCapability');
-  assert.equal(reason('MS.TEAMS.5.1v2'), 'scubagear:not-read:tenant_app_settings');
-  assert.equal(reason('MS.POWERPLATFORM.1.1v1'), 'scubagear:not-read:environment_creation');
   const unchecked = scuba().filter((control) => control.unchecked);
-  assert.equal(unchecked.length, 45);
+  assert.equal(unchecked.length, 37);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 
@@ -287,6 +285,54 @@ test('Power Platform rules are could not check when no default environment is li
   const result = run(id('MS.POWERPLATFORM.2.2v1'), backups);
   assert.equal(result.verdict, 'unknown');
   assert.equal(result.reason, 'scubagear:incomplete:environment_list');
+});
+
+test('Power Platform tenant settings and isolation: a setting not read is could not check, never set up is a fail', () => {
+  const platform = (kind, change) => ({
+    ...FIXTURE_BACKUPS,
+    'power-platform-settings': FIXTURE_BACKUPS['power-platform-settings'].flatMap((fact) => (fact.kind === kind ? change(fact) : [fact])),
+  });
+  // No tenant settings or isolation object: could not check, not ScubaGear's "PowerShell Error" fail.
+  for (const rule of ['MS.POWERPLATFORM.1.1v1', 'MS.POWERPLATFORM.1.2v1', 'MS.POWERPLATFORM.5.1v1', 'MS.POWERPLATFORM.6.1v1']) {
+    const result = run(id(rule), platform('tenantSettings', () => []));
+    assert.equal(result.verdict, 'unknown', rule);
+    assert.equal(result.reason, 'scubagear:incomplete:environment_creation', rule);
+  }
+  assert.equal(run(id('MS.POWERPLATFORM.3.1v1'), platform('tenantIsolation', () => [])).reason, 'scubagear:incomplete:tenant_isolation');
+
+  // One setting missing or not on/off: only its rule is could not check.
+  const noTrial = platform('tenantSettings', (fact) => [{ ...fact, disableTrialEnvironmentCreationByNonAdminUsers: 'false' }]);
+  assert.equal(run(id('MS.POWERPLATFORM.1.2v1'), noTrial).verdict, 'unknown');
+  assert.equal(run(id('MS.POWERPLATFORM.1.2v1'), noTrial).reason, 'scubagear:no-result');
+  assert.equal(run(id('MS.POWERPLATFORM.1.1v1'), noTrial).verdict, 'pass');
+  const noShare = platform('tenantSettings', (fact) => [{ ...fact, powerPlatform: { powerApps: {} } }]);
+  assert.equal(run(id('MS.POWERPLATFORM.6.1v1'), noShare).verdict, 'unknown');
+  assert.equal(run(id('MS.POWERPLATFORM.5.1v1'), noShare).verdict, 'pass');
+
+  // Isolation turned off, never set up, or of an unknown shape.
+  assert.equal(run(id('MS.POWERPLATFORM.3.1v1'), platform('tenantIsolation', (fact) => [{ ...fact, isDisabled: true }])).verdict, 'fail');
+  const never = run(id('MS.POWERPLATFORM.3.1v1'), platform('tenantIsolation', (fact) => [{ kind: fact.kind, identity: fact.identity, id: fact.id, neverConfigured: true }]));
+  assert.equal(never.verdict, 'fail');
+  assert.match(never.details[0].value, /never been configured/);
+  const odd = run(id('MS.POWERPLATFORM.3.1v1'), platform('tenantIsolation', (fact) => [{ ...fact, isDisabled: 'no' }]));
+  assert.equal(odd.reason, 'scubagear:incomplete:tenant_isolation');
+});
+
+test('Teams app rules judge the app permission policies, as ScubaGear does with a certificate', () => {
+  const teams = (change) => ({ ...FIXTURE_BACKUPS, 'teams-org-policies': FIXTURE_BACKUPS['teams-org-policies'].flatMap(change) });
+  const result = run(id('MS.TEAMS.5.1v2'));
+  assert.equal(result.verdict, 'fail');
+  assert.match(result.details[0].value, /certificate authentication/);
+  assert.deepEqual(scuba().find((control) => control.controlId === id('MS.TEAMS.5.1v2')).requiredObservations,
+    [{ resourceType: 'teams-org-policies', maxAgeMs: 36 * HOUR, parts: ['appPermissionPolicy'] }]);
+  // Every policy limited to a list of Microsoft apps: a pass.
+  const limited = teams((fact) => [fact.kind === 'appPermissionPolicy' ? { ...fact, DefaultCatalogAppsType: 'AllowedAppList' } : fact]);
+  assert.equal(run(id('MS.TEAMS.5.1v2'), limited).verdict, 'pass');
+  // No app permission policy read, or the choice as a number: could not check.
+  const none = teams((fact) => (fact.kind === 'appPermissionPolicy' ? [] : [fact]));
+  for (const rule of ['MS.TEAMS.5.1v2', 'MS.TEAMS.5.2v2', 'MS.TEAMS.5.3v2']) assert.equal(run(id(rule), none).reason, 'scubagear:incomplete:app_policies', rule);
+  const numbered = teams((fact) => [fact.kind === 'appPermissionPolicy' ? { ...fact, GlobalCatalogAppsType: 1 } : fact]);
+  assert.equal(run(id('MS.TEAMS.5.2v2'), numbered).verdict, 'unknown');
 });
 
 test('SharePoint sharing settings become the admin API\'s numbers, and a setting not read is could not check', () => {

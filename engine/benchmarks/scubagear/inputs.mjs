@@ -97,14 +97,19 @@ export const SCUBA_INPUT_SOURCES = Object.freeze({
   client_configuration: entry('teams', 'Get-CsTeamsClientConfiguration', 'read', ['teams.client-configuration']),
   app_policies: entry('teams', 'Get-CsTeamsAppPermissionPolicy', 'read', ['teams.app-permission-policies']),
   broadcast_policies: entry('teams', 'Get-CsTeamsMeetingBroadcastPolicy', 'read', ['teams.live-events-policies']),
-  tenant_app_settings: entry('teams', 'Teams org-wide app settings (unified app management API)', 'not-read', [],
-    'Keel does not read the org-wide Teams app settings. ScubaGear itself can only read them with an interactive sign-in.'),
+  // ScubaGear reads the org-wide app settings only with an interactive sign-in; with a
+  // certificate it records that it could not, and its rules judge the app permission
+  // policies instead. Keel signs in with a certificate, so it does the same.
+  tenant_app_settings: entry('teams', 'Teams org-wide app settings (unified app management API)', 'run-status', [],
+    'Microsoft offers no app-only read of these settings. Keel signs in with a certificate, so, like ScubaGear run with a certificate, it says so and the rules judge the app permission policies instead.'),
 
   // Power Platform
   dlp_policies: entry('powerplatform', 'Get-PowerPlatformDlpPoliciesRest', 'read', ['powerplatform.dlp-policies']),
   environment_list: entry('powerplatform', 'Get-PowerPlatformEnvironmentsRest', 'read', ['powerplatform.environments']),
-  environment_creation: entry('powerplatform', 'Get-PowerPlatformTenantSettingsRest', 'not-read', [], 'Keel does not read the Power Platform tenant settings.'),
-  tenant_isolation: entry('powerplatform', 'Get-PowerPlatformTenantIsolationRest', 'not-read', [], 'Keel does not read Power Platform tenant isolation.'),
+  environment_creation: entry('powerplatform', 'Get-PowerPlatformTenantSettingsRest', 'read', ['powerplatform.tenant-settings'],
+    'An optional read: until it runs, its rules read "could not check".'),
+  tenant_isolation: entry('powerplatform', 'Get-PowerPlatformTenantIsolationRest', 'read', ['powerplatform.tenant-isolation'],
+    'An optional read: until it runs, its rule reads "could not check".'),
 
   // Power BI
   powerbi_tenant_settings: entry('powerbi', 'Fabric admin API: tenant settings', 'read', ['powerbi.tenant-settings'],

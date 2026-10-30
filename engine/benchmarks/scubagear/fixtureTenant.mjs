@@ -199,7 +199,8 @@ export const FIXTURE_BACKUPS = Object.freeze({
       AllowTeamsConsumer: true, AllowTeamsConsumerInbound: false,
     }),
     teams('clientConfiguration', 'Global', { AllowGuestUser: true, AllowEmailIntoChannel: true }),
-    teams('appPermissionPolicy', 'Global', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'BlockedAppList', PrivateCatalogAppsType: 'BlockedAppList' }),
+    teams('appPermissionPolicy', 'Global', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'AllowedAppList', PrivateCatalogAppsType: 'AllowedAppList' }),
+    teams('appPermissionPolicy', 'Tag:KEEL-RT-Makers', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'AllowedAppList', PrivateCatalogAppsType: 'BlockedAppList' }),
   ],
   'teams-voice-policies': [
     teams('liveEventsPolicy', 'Global', { AllowBroadcastScheduling: true, BroadcastRecordingMode: 'AlwaysEnabled' }),
@@ -217,6 +218,11 @@ export const FIXTURE_BACKUPS = Object.freeze({
       displayName: 'KEEL-RT-Default only', environmentType: 'OnlyEnvironments',
       environments: [{ id: `/providers/admin/environment/Default-${TENANT_ID}`, name: `Default-${TENANT_ID}`, type: 'Microsoft.BusinessAppPlatform/scopes/environments' }],
     }),
+    platform('tenantSettings', 'tenant', {
+      disableEnvironmentCreationByNonAdminUsers: true, disableTrialEnvironmentCreationByNonAdminUsers: false,
+      disablePortalsCreationByNonAdminUsers: true, powerPlatform: { powerApps: { disableShareWithEveryone: true } },
+    }),
+    platform('tenantIsolation', 'tenant', { isDisabled: false, allowedTenants: [] }),
     ...[['PublishToWeb', false], ['AllowGuestUserToAccessSharedContent', true], ['ExternalSharingV2', false], ['ServicePrincipalAccessPermissionAPIs', true],
       ['AllowServicePrincipalsCreateAndUseProfiles', false], ['BlockResourceKeyAuthentication', true], ['RScriptVisual', true], ['EimInformationProtectionEdit', true]]
       .map(([settingName, enabled]) => platform('powerBiSetting', settingName, { title: `KEEL-RT-${settingName}`, enabled, enabledSecurityGroups: [] })),
@@ -280,8 +286,17 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.TEAMS.2.2v2': 'pass', // personal Teams accounts cannot start a chat
   'MS.TEAMS.2.3v2': 'fail', // users can still chat with personal Teams accounts
   'MS.TEAMS.4.1v1': 'fail', // email into channels is on
+  // The org-wide app settings cannot be read with a certificate, so the app permission policies are judged.
+  'MS.TEAMS.5.1v2': 'fail', // every Microsoft app is allowed unless blocked
+  'MS.TEAMS.5.2v2': 'pass', // third-party apps are allowed only from a list, in both policies
+  'MS.TEAMS.5.3v2': 'fail', // the Makers policy allows every custom app
+  'MS.POWERPLATFORM.1.1v1': 'pass', // only admins create production and sandbox environments
+  'MS.POWERPLATFORM.1.2v1': 'fail', // anyone can create a trial environment
   'MS.POWERPLATFORM.2.1v1': 'pass', // a DLP policy covers the default environment
   'MS.POWERPLATFORM.2.2v1': 'fail', // the Sales environment has no DLP policy
+  'MS.POWERPLATFORM.3.1v1': 'pass', // tenant isolation is on
+  'MS.POWERPLATFORM.5.1v1': 'pass', // only admins create Power Pages sites
+  'MS.POWERPLATFORM.6.1v1': 'pass', // apps cannot be shared with everyone
   'MS.POWERBI.1.1v1': 'pass', // publish to web is off
   'MS.POWERBI.2.1v1': 'fail', // every guest can open shared content
   'MS.POWERBI.3.1v1': 'pass',

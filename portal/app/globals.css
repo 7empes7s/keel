@@ -10161,6 +10161,59 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-empty .btn { margin-left: 0; }
 .cp-help { display: inline-grid; flex: none; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-pill); color: var(--text-soft); cursor: help; }
 
+/* Intune security baselines: alerts, one card per baseline with a bar of its results,
+   and setting rows with Microsoft's value beside what each policy sets. `.ib-` prefix. */
+.ib-link-card { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; text-decoration: none; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
+.ib-link-card:hover { border-color: var(--line-strong); background: var(--surface-raised); }
+.ib-link-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ib-link-card > span:nth-child(2) { display: grid; flex: 1; gap: 0.125rem; min-width: 0; line-height: 1.35; }
+.ib-link-card small { color: var(--text-soft); font-size: 0.8125rem; }
+.ib-link-card > .icon { width: 1rem; height: 1rem; flex: none; color: var(--text-soft); }
+.ib-heading { margin: 0; font-size: 1rem; font-weight: 650; }
+.ib-alert { display: flex; align-items: flex-start; gap: var(--space-xs); margin: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); font-size: 0.875rem; line-height: 1.45; }
+.ib-alert .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; }
+.ib-alert[data-tone="urgent"] { border-color: var(--urgent); background: var(--urgent-bg); }
+.ib-alert[data-tone="urgent"] .icon { color: var(--urgent); }
+.ib-alert[data-tone="soon"] { border-color: var(--check-soon); background: var(--check-soon-bg); }
+.ib-alert[data-tone="soon"] .icon { color: var(--check-soon); }
+.ib-cards { display: grid; gap: var(--space-sm); grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+.ib-cards > * { min-width: 0; }
+.ib-card { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
+.ib-card:hover { border-color: var(--line-strong); background: var(--surface-raised); }
+.ib-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ib-card[aria-pressed="true"] { border-color: var(--text-soft); box-shadow: inset 0 0 0 1px var(--text-soft); background: var(--surface-raised); }
+.ib-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); line-height: 1.3; }
+.ib-card-head b { overflow-wrap: anywhere; }
+.ib-card-head .icon { width: 1rem; height: 1rem; flex: none; }
+.ib-card > small { color: var(--text-soft); font-size: 0.8125rem; }
+.ib-bar { display: flex; gap: 2px; height: 0.5rem; margin-top: var(--space-2xs); overflow: hidden; border-radius: var(--radius-pill); background: var(--neutral-bg); }
+.ib-bar > span { flex-basis: 0; min-width: 3px; }
+.ib-bar > [data-result="conflict"], .ib-bar > [data-result="different"] { background: var(--urgent); }
+.ib-bar > [data-result="not-configured"] { background: var(--check-soon); }
+.ib-bar > [data-result="unknown"] { background: var(--text-soft); }
+.ib-bar > [data-result="match"] { background: var(--fine); }
+.ib-card-counts { display: flex; flex-wrap: wrap; gap: 0 var(--space-sm); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.ib-card-counts [data-result="conflict"], .ib-card-counts [data-result="different"] { color: var(--urgent); font-weight: 600; }
+.ib-card-counts [data-result="not-configured"] { color: var(--check-soon); }
+.ib-card-counts [data-result="match"] { color: var(--fine); }
+.ib-card-counts [data-result="unknown"] { color: var(--text-soft); }
+.ib-controls { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-sm) var(--space-md); }
+.ib-row { display: grid; grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.2fr) auto; align-items: start; gap: var(--space-md); min-width: 0; }
+.ib-row > * { min-width: 0; }
+.ib-row > .cp-kind { margin-top: 0.125rem; }
+.ib-values { display: grid; gap: var(--space-2xs); font-size: 0.8125rem; line-height: 1.35; }
+.ib-value, .ib-setby li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-xs); min-width: 0; }
+.ib-values small { color: var(--text-soft); font-size: 0.75rem; overflow-wrap: anywhere; }
+.ib-values .cp-miss-now, .ib-values .cp-miss-want { overflow-wrap: anywhere; }
+.ib-any { color: var(--text-soft); font-style: italic; }
+.ib-setby { display: grid; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; }
+.ib-tech .technical-details { margin: 0; }
+.sel-row:has(> .sel-row-body > .ib-row) { align-items: start; }
+@media (max-width: 46rem) {
+  .ib-row { grid-template-columns: auto minmax(0, 1fr); gap: var(--space-xs) var(--space-sm); }
+  .ib-row > .cp-row-mid, .ib-row > .ib-values, .ib-row > .ib-tech { grid-column: 2; }
+}
+
 /* The control panel and the exception sheet. */
 .cp-sheet-kicker { display: inline-flex; align-items: center; gap: 0.375rem; }
 .cp-sheet-kicker .icon { width: 0.875rem; height: 0.875rem; }

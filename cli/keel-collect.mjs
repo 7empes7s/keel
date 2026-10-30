@@ -12,6 +12,7 @@ import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { progressWriter } from '../engine/jobs/progress.mjs';
 import { ingestCollectorAudit } from '../engine/identity/auditSources.mjs';
+import { refreshBaselineTemplates } from '../engine/benchmarks/intuneBaselines.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
 import { parseCliArgs } from './args.mjs';
 import {
@@ -144,12 +145,14 @@ export async function runCollect({
   dependencies = {},
   logger = console,
   readAudit = false,
+  readBaselines = false,
 }) {
   const {
     connect: connectFn = connect,
     getToken: getTokenFn = getToken,
     GraphReader: GraphReaderClass = GraphReader,
     collectSnapshot: collectSnapshotFn = collectSnapshot,
+    refreshBaselineTemplates: refreshBaselinesFn = refreshBaselineTemplates,
   } = dependencies;
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
 
@@ -184,6 +187,12 @@ export async function runCollect({
     const incomplete = incompleteTypesOf(coverageDigest);
     if (incomplete.length) logger.log(`${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(incomplete)}`);
     if (readAudit) await readAuditLogs(client, { tenantRef, reader, logger });
+    // Intune security baselines: when this backup read the settings catalog policies,
+    // read Microsoft's baseline templates too (at most once a day), so every baseline
+    // setting can be matched against them. Never changes the backup's outcome.
+    if (readBaselines && coverageDigest?.configurationPolicy) {
+      await refreshBaselinesFn(client, { tenantRef, reader, logger });
+    }
     return { snapshotId, coverageDigest, exitCode: exitCodeForDigest(coverageDigest) };
   } finally {
     await client.end();
@@ -207,7 +216,7 @@ export async function main({
   }
   const config = readConfigFile(arg(opts, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   const dbUrl = arg(opts, 'db-url', process.env.KEEL_DB_URL);
-  const { exitCode } = await runCollect({ config, dbUrl, tier, dependencies, logger, readAudit: true });
+  const { exitCode } = await runCollect({ config, dbUrl, tier, dependencies, logger, readAudit: true, readBaselines: true });
   return exitCode;
 }
 

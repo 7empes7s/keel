@@ -268,6 +268,12 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Pagination evidence": support("Pages read", "How many pages of results Keel read."),
   "Query plan": support("How it was looked up", "The lookup Keel ran, for support."),
   "Read with": support("Read with", COMMAND),
+  // Intune security baselines (intune-baselines-page.tsx).
+  "Setting ID": support("Setting ID", "Microsoft's name for this setting in Intune, for support."),
+  "Baseline template": support("Baseline template", "The Intune template this baseline version comes from, for support."),
+  "Templates read from": support("Templates read from", COMMAND),
+  "Matched by": fact("Matched by", "How Keel finds the same setting in your policies."),
+  "Set by policies": fact("Set by policies", "Each policy that sets this, with its value."),
   "Grant with": support("Grant with", COMMAND),
   "Add with": support("Add with", COMMAND),
   "Checked with": support("Checked with", COMMAND),

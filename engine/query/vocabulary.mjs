@@ -247,6 +247,16 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['teams-voice-policies'],
   },
   {
+    pattern: /\b(?:pstn usages?|voice routes?|pstn gateways?|session border controllers?|sbcs?|translation rules?|unassigned numbers?|network (?:regions?|sites?|subnets?)|trusted ips?|location-based routing|auto attendants?|call queues?|dial-in|audio conferencing|call hold|music on hold)\b/i,
+    label: 'Teams voice routing, network sites, auto attendants and call queues',
+    kinds: ['teams-voice-network'],
+  },
+  {
+    pattern: /\b(?:ip phones?|teams phones?|teams devices?|desk phones?|hot desking|update (?:management )?polic(?:y|ies)|teams updates?|mobility polic(?:y|ies)|vdi|feedback polic(?:y|ies)|workload polic(?:y|ies))\b/i,
+    label: 'Teams device and client policies',
+    kinds: ['teams-device-policies'],
+  },
+  {
     pattern: /\b(?:microsoft tunnel|tunnel gateway|vpn)\b/i,
     label: 'Microsoft Tunnel settings',
     kinds: ['microsoftTunnelConfiguration', 'microsoftTunnelHealthThreshold'],

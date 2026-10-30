@@ -32,6 +32,9 @@ import { SHAREPOINT_STRUCTURE_WORKLOAD, collectSharePointStructure, recordShareP
 import { collectTeams, recordTeamsRun } from './teams.mjs';
 import { collectTeamsExtended, recordTeamsExtendedRun } from './teamsExtended.mjs';
 import { collectTeamsPolicies, recordTeamsPolicyRun } from './teamsPolicies.mjs';
+import {
+  collectTeamsDevicePolicies, collectTeamsVoiceNetwork, recordTeamsDevicePoliciesRun, recordTeamsVoiceNetworkRun,
+} from './teamsVoiceNetwork.mjs';
 
 export const WORKLOAD_COLLECTORS = Object.freeze([
   // exchange.mjs
@@ -89,4 +92,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // teamsPolicies.mjs
   { workload: 'teams-org-policies', powershellFamily: 'teams', record: recordTeamsPolicyRun,
     collect: (client, { base, powershell }) => collectTeamsPolicies(client, { ...base, powershell }) },
+  // teamsVoiceNetwork.mjs: voice routing, network and call flows, then device policies.
+  { workload: 'teams-voice-network', powershellFamily: 'teams', record: recordTeamsVoiceNetworkRun,
+    collect: (client, { base, powershell }) => collectTeamsVoiceNetwork(client, { ...base, powershell }) },
+  { workload: 'teams-device-policies', powershellFamily: 'teams', record: recordTeamsDevicePoliciesRun,
+    collect: (client, { base, powershell }) => collectTeamsDevicePolicies(client, { ...base, powershell }) },
 ]);

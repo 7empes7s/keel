@@ -49,6 +49,9 @@ import {
 } from './workloadReadsAcceptance.mjs';
 import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, readSharePointStructure } from '../../engine/collect/workloads/sharepointStructure.mjs';
+import {
+  TEAMS_DEVICE_POLICIES_WORKLOAD, TEAMS_VOICE_NETWORK_WORKLOAD, readTeamsDevicePolicies, readTeamsVoiceNetwork,
+} from '../../engine/collect/workloads/teamsVoiceNetwork.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
 
@@ -69,6 +72,7 @@ export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
+  [TEAMS_VOICE_NETWORK_WORKLOAD]: readTeamsVoiceNetwork, [TEAMS_DEVICE_POLICIES_WORKLOAD]: readTeamsDevicePolicies,
 });
 
 /**

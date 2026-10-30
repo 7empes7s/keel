@@ -13,6 +13,9 @@ import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/pur
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../engine/collect/workloads/teamsExtended.mjs';
 import { FAMILIES as TEAMS_POLICIES } from '../../engine/collect/workloads/teamsPolicies.mjs';
+import {
+  DEVICE_POLICY_FAMILIES, TEAMS_DEVICE_POLICIES_WORKLOAD, TEAMS_VOICE_NETWORK_MODULE, TEAMS_VOICE_NETWORK_WORKLOAD, VOICE_NETWORK_FAMILIES,
+} from '../../engine/collect/workloads/teamsVoiceNetwork.mjs';
 import { SHAREPOINT_WORKLOAD, SITE_SHARING_FAMILIES, SITE_SHARING_MODULE } from '../../engine/collect/workloads/sharepoint.mjs';
 import {
   FAMILIES as SHAREPOINT_STRUCTURE, SHAREPOINT_STRUCTURE_MODULE, SHAREPOINT_STRUCTURE_WORKLOAD,
@@ -37,6 +40,8 @@ export const READ_FAMILIES = Object.freeze({
   [EXCHANGE_RECIPIENTS_WORKLOAD]: RECIPIENT_FAMILIES,
   'teams-org-policies': TEAMS_POLICIES,
   'teams-voice-policies': TEAMS_EXTENDED,
+  [TEAMS_VOICE_NETWORK_WORKLOAD]: VOICE_NETWORK_FAMILIES,
+  [TEAMS_DEVICE_POLICIES_WORKLOAD]: DEVICE_POLICY_FAMILIES,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
   // Not a written workload: only its per-site sharing read runs through PowerShell.
@@ -50,6 +55,7 @@ const READ_ONLY_MODULES = Object.freeze({
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE, [EXCHANGE_RECIPIENTS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
+  [TEAMS_VOICE_NETWORK_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE, [TEAMS_DEVICE_POLICIES_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

@@ -5,6 +5,7 @@ import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { createBodyProjection, immutableDrift, namedValueDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
+import { withLiveAppId } from '../reconcile/liveAppId.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
@@ -1026,6 +1027,9 @@ export async function applyWave(writer, governor, wave, {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         return;
       }
+      // Issue #726: an app an earlier restore recreated has a new appId. The
+      // body carries the live one (an `api://<appId>` URI), never the backup's.
+      desired = withLiveAppId(desired, resource.resourceType, resource.live);
       // Verification compares what a write can set: server-owned fields, OData
       // annotations and nulls are left out on both sides (verificationView).
       const normalisedDesired = verificationView(desired, resource.resourceType);

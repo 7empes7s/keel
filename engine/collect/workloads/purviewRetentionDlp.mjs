@@ -1,5 +1,6 @@
 /**
- * Issue #157: Purview retention policies and rules, and DLP policies and rules.
+ * Issue #157: Purview retention policies and rules, DLP policies and rules, and alert
+ * policies.
  *
  * A workload of its own (`purview-retention-dlp`), beside the task-106 sensitivity
  * label workload (`purview-labels`), which it does not change. Four families, each
@@ -7,7 +8,10 @@
  * Security & Compliance session (Connect-IPPSSession):
  *  - retention policies (Get-RetentionCompliancePolicy) and their rules
  *    (Get-RetentionComplianceRule);
- *  - DLP policies (Get-DlpCompliancePolicy) and their rules (Get-DlpComplianceRule).
+ *  - DLP policies (Get-DlpCompliancePolicy) and their rules (Get-DlpComplianceRule);
+ *  - alert policies (Get-ProtectionAlert). Despite its name this cmdlet returns the
+ *    alert policies (what raises an alert, its severity and who is told), which are
+ *    configuration. It never returns an alert that was raised.
  * Every object becomes one observation, keyed by its Guid (see FAMILIES).
  *
  * Rules:
@@ -15,8 +19,8 @@
  *    parameters. No write capability exists for this workload. Restore is a separate
  *    task, and any write there that shortens retention must go through the content
  *    effect guard (engine/safety/contentEffects.mjs).
- *  - Policy configuration only. No cmdlet that reads DLP matches, incidents, alerts or
- *    reports runs (RETENTION_DLP_EXCLUDED_CMDLETS), and no item is listed to see which
+ *  - Policy configuration only. No cmdlet that reads DLP matches, incidents, raised
+ *    alerts or reports runs (RETENTION_DLP_EXCLUDED_CMDLETS), and no item is listed to see which
  *    policy applies to it. Anything an answer carries beyond a family's declared
  *    fields is dropped unread. Sensitive information type definitions, keyword lists
  *    and custom patterns in a DLP rule are configuration and are kept; a value shaped
@@ -39,7 +43,9 @@
  *  - Disabled until qualified. collectRetentionDlp() sends nothing unless the Exchange
  *    mailbox workload is qualified (as for Purview labels and mail flow) AND both
  *    retention reads are live-qualified and enabled. Each DLP read runs only when its
- *    own row is enabled, and is otherwise listed as skipped.
+ *    own row is enabled, and is otherwise listed as skipped. The alert policy read
+ *    is optional the same way (`optional`), so adding it does not turn off a
+ *    workload whose retention reads are already qualified.
  */
 import { registerWorkload } from '../registry.mjs';
 import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
@@ -110,12 +116,26 @@ export const FAMILIES = Object.freeze({
       'IncidentReportContent', 'ReportSeverityLevel', 'StopPolicyProcessing', WHEN,
     ]),
   }),
+  // Alert policies: Microsoft's built-in ones (IsSystemRule) and the tenant's own.
+  // Fields follow New-ProtectionAlert's settings. Filter and Operation say which audited
+  // activity raises the alert; they are conditions, not activity records.
+  alertPolicy: Object.freeze({
+    operation: 'purview.alert-policies', cmdlet: 'Get-ProtectionAlert', prefix: 'alert-policy', rule: false, optional: true,
+    fields: Object.freeze([
+      'Name', 'Comment', 'Category', 'Severity', 'Disabled', 'IsSystemRule', 'ThreatType', 'Operation', 'Filter',
+      'AggregationType', 'AlertBy', 'AlertFor', 'Threshold', 'TimeWindow', 'NotificationEnabled', 'NotifyUser',
+      'NotifyUserOnFilterMatch', 'NotifyUserSuppressionExpiryDate', 'NotifyUserThrottleThreshold', 'NotifyUserThrottleWindow',
+      'NotificationCulture', WHEN,
+    ]),
+  }),
 });
 export const FAMILY_NAMES = Object.freeze(Object.keys(FAMILIES));
 export const RETENTION_DLP_OPERATIONS = Object.freeze(FAMILY_NAMES.map((name) => FAMILIES[name].operation));
 /** Families that need a licence: optional for activation, a gap once qualified and lost. */
 export const LICENSED_FAMILIES = Object.freeze(FAMILY_NAMES.filter((name) => FAMILIES[name].license));
-export const CORE_OPERATIONS = Object.freeze(FAMILY_NAMES.filter((name) => !FAMILIES[name].license).map((name) => FAMILIES[name].operation));
+/** Families that run only once their own row is enabled: the licensed ones and those marked optional. */
+export const OPTIONAL_FAMILIES = Object.freeze(FAMILY_NAMES.filter((name) => FAMILIES[name].license || FAMILIES[name].optional));
+export const CORE_OPERATIONS = Object.freeze(FAMILY_NAMES.filter((name) => !OPTIONAL_FAMILIES.includes(name)).map((name) => FAMILIES[name].operation));
 
 /** The registry descriptor. `enabledByDefault: false` until live qualification. */
 export const RETENTION_DLP_DESCRIPTOR = Object.freeze({
@@ -131,13 +151,14 @@ export const RETENTION_DLP_DESCRIPTOR = Object.freeze({
 // ops/powershell/run-cmdlet.ps1 ($AllowedPurviewRetentionDlp) holds the same list and checks it again.
 export const RETENTION_DLP_CMDLET_PARAMETERS = Object.freeze(Object.fromEntries(FAMILY_NAMES.map((name) => [FAMILIES[name].cmdlet, Object.freeze([])])));
 export const RETENTION_DLP_CMDLETS = new Set(Object.keys(RETENTION_DLP_CMDLET_PARAMETERS));
-// Never run: they read matches, incidents, alerts, searches or holds on content.
+// Never run: they read matches, incidents, searches or holds on content.
 // This list is documentation and a test fixture. What actually blocks them is the
 // allowlist: RETENTION_DLP_CMDLET_PARAMETERS here and $AllowedPurviewRetentionDlp in
-// the container, which admit only the four reads above.
+// the container, which admit only the reads above. Get-ProtectionAlert is not here:
+// it returns alert policies (configuration), not raised alerts.
 export const RETENTION_DLP_EXCLUDED_CMDLETS = Object.freeze([
   'Get-DlpDetailReport', 'Get-DlpIncidentDetailReport', 'Get-DlpDetectionsReport', 'Get-DlpSiDetectionsReport',
-  'Get-ComplianceSearch', 'Get-ComplianceSearchAction', 'Get-CaseHoldPolicy', 'Get-ProtectionAlert',
+  'Get-ComplianceSearch', 'Get-ComplianceSearchAction', 'Get-CaseHoldPolicy',
 ]);
 
 export class RetentionDlpScopeError extends Error {
@@ -344,8 +365,8 @@ export async function readRetentionDlp({ powershell = {}, families = FAMILY_NAME
 /**
  * Whether live collection may run, and which families. The Exchange mailbox workload
  * must be qualified first, and both retention reads must be live-qualified and
- * enabled. Each DLP read runs only when its own row is enabled; otherwise it is
- * skipped with the row's reason.
+ * enabled. Each DLP read, and the alert policy read, runs only when its own row is
+ * enabled; otherwise it is skipped with the row's reason.
  */
 export function retentionDlpActivation(ledger) {
   const rows = new Map((ledger?.rows ?? []).map((row) => [row.id, row]));
@@ -357,8 +378,8 @@ export function retentionDlpActivation(ledger) {
   const exchange = exchangeActivation(ledger);
   if (!exchange.enabled) reasons.push(`Exchange is not qualified yet, and retention and DLP follow it: ${exchange.reasons.join('; ')}`);
   for (const id of CORE_OPERATIONS) if (!rows.get(id)?.enabled) reasons.push(describe(id));
-  const families = FAMILY_NAMES.filter((name) => !FAMILIES[name].license || rows.get(FAMILIES[name].operation)?.enabled);
-  const skipped = LICENSED_FAMILIES.filter((name) => !families.includes(name))
+  const families = FAMILY_NAMES.filter((name) => !OPTIONAL_FAMILIES.includes(name) || rows.get(FAMILIES[name].operation)?.enabled);
+  const skipped = OPTIONAL_FAMILIES.filter((name) => !families.includes(name))
     .map((name) => ({ family: name, operation: FAMILIES[name].operation, reason: describe(FAMILIES[name].operation) }));
   return { enabled: reasons.length === 0, reasons, families, skipped };
 }

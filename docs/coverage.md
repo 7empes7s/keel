@@ -824,6 +824,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Retention rules
 - Data loss prevention (DLP) policies
 - Data loss prevention (DLP) rules
+- Alert policies
 
 **KEEL can restore:**
 
@@ -832,7 +833,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Data loss prevention (DLP) policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Data loss prevention (DLP) rules (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Shorter retention, a deleting retention action and a released hold need a second approver while restore approvals are on; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
+**You do:** Shorter retention, a deleting retention action and a released hold need a second approver while restore approvals are on; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it. Alert policies are backed up but not restored: put a changed or deleted one back by hand in the Purview portal using the backup.
 
 ### Exchange protection rules, address lists, mobile and retention settings
 

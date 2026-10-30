@@ -298,6 +298,8 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     ['purview.retention-rules', 'Retention rules', 'Get-RetentionComplianceRule'],
     ['purview.dlp-policies', 'Data loss prevention (DLP) policies', 'Get-DlpCompliancePolicy'],
     ['purview.dlp-rules', 'Data loss prevention (DLP) rules', 'Get-DlpComplianceRule'],
+    // Returns alert policies, not raised alerts. Optional like the DLP reads.
+    ['purview.alert-policies', 'Alert policies', 'Get-ProtectionAlert'],
   ].map(([id, resource, name]) => ({
     id, workload: 'purview-retention-dlp', resource,
     operation: cmdlet(name, 'ExchangeOnlineManagement'),

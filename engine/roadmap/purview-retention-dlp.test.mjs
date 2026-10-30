@@ -9,7 +9,9 @@
 //  - each policy and rule is one observation keyed by its Guid, with declared fields
 //    only, its parent policy kept on each rule, and nothing credential-shaped stored;
 //  - a DLP read that stops being available is labelled not-licensed and makes the run
-//    partial: its policies are no longer backed up.
+//    partial: its policies are no longer backed up;
+//  - alert policies (Get-ProtectionAlert) are read as configuration, keyed by Guid,
+//    and only once their own row is qualified, so they never turn the workload off.
 // Mutation checks (each was run once and made this file fail):
 //  - key objects by Name instead of Guid (the rename assertion fails);
 //  - stop counting rules with no parent policy (the unparented assertion fails);
@@ -26,7 +28,7 @@ import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import {
-  CORE_OPERATIONS, FAMILIES, FAMILY_NAMES, RETENTION_DLP_CMDLET_PARAMETERS, RETENTION_DLP_DESCRIPTOR, RETENTION_DLP_EXCLUDED_CMDLETS,
+  CORE_OPERATIONS, FAMILIES, FAMILY_NAMES, OPTIONAL_FAMILIES, RETENTION_DLP_CMDLET_PARAMETERS, RETENTION_DLP_DESCRIPTOR, RETENTION_DLP_EXCLUDED_CMDLETS,
   RETENTION_DLP_OPERATIONS, RETENTION_DLP_WORKLOAD, RetentionDlpScopeError, assertRetentionDlpCmdlet, collectRetentionDlp,
   readRetentionDlp, retentionDlpActivation,
 } from '../collect/workloads/purviewRetentionDlp.mjs';
@@ -101,6 +103,16 @@ const SAMPLE = Object.freeze({
       GenerateIncidentReport: ['dlp-team@contoso.test'], IncidentReportContent: ['All'], ReportSeverityLevel: 'High', StopPolicyProcessing: false, WhenChangedUTC: WHEN,
       // What a careless reader would keep: match counts and incident detail are not configuration.
       MatchCount: 42, LastIncident: 'mail from a@contoso.test matched 3 card numbers',
+    },
+  ],
+  'Get-ProtectionAlert': [
+    {
+      Name: 'Elevation of Exchange admin privilege', Guid: guid(8), Comment: 'Built in', Category: 'Permissions', Severity: 'Low', Disabled: false,
+      IsSystemRule: true, ThreatType: 'Activity', Operation: ['AddRoleGroupMember'], Filter: null, AggregationType: 'None', AlertBy: [], AlertFor: [],
+      Threshold: null, TimeWindow: null, NotificationEnabled: true, NotifyUser: ['TenantAdmins'], NotifyUserOnFilterMatch: false,
+      NotifyUserSuppressionExpiryDate: null, NotifyUserThrottleThreshold: null, NotifyUserThrottleWindow: null, NotificationCulture: 'en-US', WhenChangedUTC: WHEN,
+      // Internal state a careless reader would keep.
+      RuleXml: '<rule/>', ObjectState: 'Unchanged',
     },
   ],
 });
@@ -187,7 +199,7 @@ const OTHER_READS = Object.freeze(ALL_READS.filter((id) => !RETENTION_DLP_OPERAT
 test('each retention and DLP read is declared, in scope, probed, read-only and ships disabled', async () => {
   const declared = WORKLOAD_DESCRIPTORS.filter((descriptor) => descriptor.workload === RETENTION_DLP_WORKLOAD);
   assert.deepEqual(declared.map((descriptor) => descriptor.operation.cmdlet), [
-    'Get-RetentionCompliancePolicy', 'Get-RetentionComplianceRule', 'Get-DlpCompliancePolicy', 'Get-DlpComplianceRule',
+    'Get-RetentionCompliancePolicy', 'Get-RetentionComplianceRule', 'Get-DlpCompliancePolicy', 'Get-DlpComplianceRule', 'Get-ProtectionAlert',
   ]);
   assert.deepEqual(declared.map((descriptor) => descriptor.id), [...RETENTION_DLP_OPERATIONS]);
   for (const descriptor of declared) {
@@ -274,7 +286,7 @@ test('every policy and rule is one observation keyed by Guid, with its parent po
 
   assert.deepEqual(result.resources.map((resource) => resource.resourceKey), [
     `retention-policy:${guid(1)}`, `retention-policy:${guid(2)}`, `retention-rule:${guid(3)}`, `dlp-policy:${guid(4)}`,
-    `dlp-rule:${guid(5)}`, `dlp-rule:${guid(6)}`, `dlp-rule:${guid(7)}`,
+    `dlp-rule:${guid(5)}`, `dlp-rule:${guid(6)}`, `dlp-rule:${guid(7)}`, `alert-policy:${guid(8)}`,
   ]);
   const rule = result.resources.find((resource) => resource.resourceKey === `dlp-rule:${guid(5)}`);
   assert.equal(rule.fields.Name, 'Block card numbers (renamed)', 'the first answer for a Guid is kept; a rename does not change the key');
@@ -310,7 +322,7 @@ test('every policy and rule is one observation keyed by Guid, with its parent po
     assert.ok(Object.keys(resource.fields).every((field) => declared.includes(field)), resource.resourceKey);
   }
   const stored = JSON.stringify(result.resources);
-  for (const dropped of ['MatchCount', 'LastIncident', 'matched 3 card numbers', 'ObjectVersion', 'ExoObjectId', 'ReadOnly']) {
+  for (const dropped of ['MatchCount', 'LastIncident', 'matched 3 card numbers', 'ObjectVersion', 'ExoObjectId', 'ReadOnly', 'RuleXml', 'ObjectState']) {
     assert.ok(!stored.includes(dropped), dropped);
   }
   assert.ok(!stored.includes('abcdefghijklmnopqrstuvwxyz0123456789'), 'a credential-shaped keyword is never stored');
@@ -328,7 +340,7 @@ test('every policy and rule is one observation keyed by Guid, with its parent po
 
   const clean = await readRetentionDlp({ powershell: fakeCompliance().powershell, now: () => NOW });
   assert.equal(clean.outcome, 'complete');
-  assert.equal(clean.resources.length, 5);
+  assert.equal(clean.resources.length, 6);
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read'));
 });
 
@@ -341,7 +353,7 @@ test('a DLP family that is no longer available is labelled, and is a gap; other 
   assert.match(result.unavailable[0].reason, /Microsoft Purview Data Loss Prevention is not licensed/);
   assert.equal(result.unavailable[0].error.errorId, 'CommandNotFoundException');
   assert.equal(result.discovery.families.dlpPolicy.status, 'not-licensed');
-  assert.equal(result.resources.length, 3, 'the retention policies and rules are still backed up');
+  assert.equal(result.resources.length, 4, 'the retention policies, rules and alert policies are still backed up');
 
   // Nothing read at all is a failure, even when some families say not-licensed.
   const nothing = Object.fromEntries(FAMILY_NAMES.map((family) => [FAMILIES[family].cmdlet, { error: NOT_FOUND(FAMILIES[family].cmdlet) }]));
@@ -396,10 +408,11 @@ test('collection stays off until Exchange and both retention reads are qualified
   const core = ledgerWith(tenantRef, [...OTHER_READS, ...CORE_OPERATIONS]);
   const activation = retentionDlpActivation(core);
   assert.equal(activation.enabled, true);
-  assert.deepEqual(activation.skipped.map((item) => item.family), ['dlpPolicy', 'dlpRule']);
+  assert.deepEqual(activation.skipped.map((item) => item.family), ['dlpPolicy', 'dlpRule', 'alertPolicy']);
   const partial = await collectRetentionDlp(client, { tenantRef, ledger: core, powershell: compliance.powershell, now: () => NOW });
   assert.equal(partial.run.outcome, 'partial');
   assert.ok(!compliance.calls.some((call) => call.cmdlet.startsWith('Get-Dlp')), 'an unqualified DLP read is never sent');
+  assert.ok(!compliance.calls.some((call) => call.cmdlet === 'Get-ProtectionAlert'), 'an unqualified alert policy read is never sent');
   assert.match(partial.run.digest.skipped[0].reason, /purview\.dlp-policies is fixture-tested/);
 
   // Everything live: complete, one stored observation per object.
@@ -408,7 +421,7 @@ test('collection stays off until Exchange and both retention reads are qualified
   assert.equal(full.run.outcome, 'complete');
   assert.equal(compliance.calls.length, FAMILY_NAMES.length);
   const { rows } = await client.query(`SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key`, [full.run.id]);
-  assert.equal(rows.length, 5);
+  assert.equal(rows.length, 6);
   const dlpRule = rows.find((row) => row.resource_key === `dlp-rule:${guid(5)}`);
   assert.equal(dlpRule.fields.identity, guid(5));
   assert.equal(dlpRule.fields.kind, 'dlpRule');
@@ -484,6 +497,7 @@ test('a run that kept no object is failed when nothing usable came back', async 
         'Get-RetentionComplianceRule': 'crash',
         'Get-DlpCompliancePolicy': { error: NOT_FOUND('Get-DlpCompliancePolicy') },
         'Get-DlpComplianceRule': { error: NOT_FOUND('Get-DlpComplianceRule') },
+        'Get-ProtectionAlert': 'crash',
       },
     }).powershell,
   });
@@ -502,7 +516,7 @@ test('DLP rules enabled while DLP policies are not: rules run, their parents are
   const activation = retentionDlpActivation(ledger);
   assert.equal(activation.enabled, true);
   assert.deepEqual(activation.families, ['retentionPolicy', 'retentionRule', 'dlpRule']);
-  assert.deepEqual(activation.skipped.map((item) => item.family), ['dlpPolicy']);
+  assert.deepEqual(activation.skipped.map((item) => item.family), ['dlpPolicy', 'alertPolicy']);
   const { run, result } = await collectRetentionDlp(client, { tenantRef, ledger, powershell: compliance.powershell, now: () => NOW });
   assert.ok(!compliance.calls.some((call) => call.cmdlet === 'Get-DlpCompliancePolicy'), 'the unqualified policy read is never sent');
   assert.equal(result.resources.find((resource) => resource.kind === 'dlpRule').parentStatus, 'unchecked');
@@ -510,4 +524,54 @@ test('DLP rules enabled while DLP policies are not: rules run, their parents are
   assert.equal(run.outcome, 'partial');
   const { rows } = await client.query(`SELECT fields FROM workload_observation WHERE collection_id = $1 AND resource_key = $2`, [run.id, `dlp-rule:${guid(5)}`]);
   assert.equal(rows[0].fields.parentStatus, 'unchecked');
+});
+
+test('alert policies are configuration: read once qualified, keyed by Guid, never required to turn the workload on', async (t) => {
+  // Get-ProtectionAlert returns alert policies, not raised alerts.
+  assert.ok(!RETENTION_DLP_EXCLUDED_CMDLETS.includes('Get-ProtectionAlert'));
+  assert.ok('Get-ProtectionAlert' in RETENTION_DLP_ALLOWED);
+  assert.equal(FAMILIES.alertPolicy.cmdlet, 'Get-ProtectionAlert');
+  assert.equal(FAMILIES.alertPolicy.operation, 'purview.alert-policies');
+  assert.ok(OPTIONAL_FAMILIES.includes('alertPolicy'));
+  assert.ok(!CORE_OPERATIONS.includes('purview.alert-policies'));
+  assert.doesNotThrow(() => assertRetentionDlpCmdlet({ cmdlet: 'Get-ProtectionAlert' }));
+  assert.throws(() => assertRetentionDlpCmdlet({ cmdlet: 'Get-ProtectionAlert', parameters: { IncludeRuleXml: true } }), /does not take IncludeRuleXml/);
+  for (const write of ['New-ProtectionAlert', 'Set-ProtectionAlert', 'Remove-ProtectionAlert']) {
+    assert.throws(() => assertRetentionDlpCmdlet({ cmdlet: write }), RetentionDlpScopeError, write);
+  }
+
+  // Read alone: one observation per policy, declared fields only.
+  const compliance = fakeCompliance();
+  const result = await readRetentionDlp({ powershell: compliance.powershell, families: ['alertPolicy'], now: () => NOW });
+  assert.deepEqual(compliance.calls, [{ cmdlet: 'Get-ProtectionAlert', parameters: {} }]);
+  assert.equal(result.outcome, 'complete');
+  const [policy] = result.resources;
+  assert.equal(policy.resourceKey, `alert-policy:${guid(8)}`);
+  assert.equal(policy.kind, 'alertPolicy');
+  assert.equal(policy.fields.Severity, 'Low');
+  assert.deepEqual(policy.fields.NotifyUser, ['TenantAdmins']);
+  assert.ok(!('parentPolicy' in policy), 'an alert policy has no parent');
+  assert.deepEqual(Object.keys(policy.fieldCoverage).sort(), [...FAMILIES.alertPolicy.fields].sort());
+  assert.ok(!('RuleXml' in policy.fields));
+
+  // Retention reads qualified, alert policy read not: the workload still runs and the read is skipped.
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const withoutAlerts = ledgerWith(tenantRef, ALL_READS.filter((id) => id !== 'purview.alert-policies'));
+  const activation = retentionDlpActivation(withoutAlerts);
+  assert.equal(activation.enabled, true, 'a new alert policy read never turns off a qualified workload');
+  assert.deepEqual(activation.skipped.map((item) => item.family), ['alertPolicy']);
+  const skipped = fakeCompliance();
+  const run = await collectRetentionDlp(client, { tenantRef, ledger: withoutAlerts, powershell: skipped.powershell, now: () => NOW });
+  assert.equal(run.run.outcome, 'partial', 'alert policies not backed up is a gap');
+  assert.ok(!skipped.calls.some((call) => call.cmdlet === 'Get-ProtectionAlert'));
+
+  // Qualified: read and stored.
+  const qualified = fakeCompliance();
+  const full = await collectRetentionDlp(client, { tenantRef, ledger: ledgerWith(tenantRef, ALL_READS), powershell: qualified.powershell, now: () => NOW });
+  assert.equal(full.run.outcome, 'complete');
+  const { rows } = await client.query(`SELECT fields FROM workload_observation WHERE collection_id = $1 AND resource_key = $2`, [full.run.id, `alert-policy:${guid(8)}`]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].fields.kind, 'alertPolicy');
+  assert.equal(rows[0].fields.Category, 'Permissions');
 });

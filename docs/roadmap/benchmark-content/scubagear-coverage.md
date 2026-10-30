@@ -2,7 +2,7 @@
 
 Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node tools/scubagear-rules.mjs report --write`. Do not edit by hand: a test fails when this file and the generator differ.
 
-**109 rules** across 7 products. For each rule this lists what ScubaGear reads to check it and whether Keel reads the same data. Nothing here has run a rule yet; this is what will be possible when the rules run on Keel's backups.
+**109 rules** across 7 products. For each rule this lists what ScubaGear reads to check it and whether Keel reads the same data. The Entra ID and Exchange Online rules run unchanged on Keel's backups as Compliance page checks (engine/benchmarks/scubagear/controls.mjs); a rule that also names a field Keel's read does not keep shows there as could not check, even when this table lists its inputs as read.
 
 ## Summary
 

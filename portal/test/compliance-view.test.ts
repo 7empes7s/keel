@@ -90,6 +90,13 @@ test("Compliance words: plain titles, results, reasons, owners and the verdict",
   assert.equal(resultLine(ACCEPTED, NOW), "Accepted until 30 Nov 2026");
   assert.equal(reasonWords(STALE), "The newest group backup is too old for this check.");
   assert.equal(reasonWords(finding("e8", ROLE, "unknown", { reason: "roleAssignment:no-observation" })), "No backup of admin role assignments has been made yet.");
+  // A CISA ScubaGear rule Keel cannot run says why, never with the code behind it.
+  const scuba = (reason: string) => reasonWords(finding("e9", ROLE, "unknown", { reason }));
+  assert.equal(scuba("scubagear:check-by-hand"), "CISA lists this as a check to do by hand.");
+  assert.equal(scuba("scubagear:not-read:dmarc_records"), "Keel does not back up the settings this rule reads yet.");
+  assert.equal(scuba("scubagear:field-not-read:org_config.AuditDisabled"), "A setting this rule reads is not in Keel's backup yet.");
+  assert.equal(scuba("scubagear:incomplete:privileged_users"), "The backup cannot answer what this rule asks.");
+  assert.equal(scuba("scubagear:no-result"), "Keel could not run this rule.");
   assert.equal(ownerName(ENDED), "Secops");
   assert.equal(ownerName(ACCEPTED), "Amara Okafor");
   assert.deepEqual(exceptionChip(ENDED, NOW), { tone: "urgent", label: "Ended 2 days ago" });

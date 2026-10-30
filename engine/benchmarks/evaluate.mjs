@@ -11,7 +11,9 @@
  *    completed read makes the whole control 'unknown' — the predicate is
  *    never invoked in that case (mutation check: treat missing observation
  *    as pass). Every one of a control's requiredObservations must be usable
- *    before any predicate runs.
+ *    before any predicate runs. A control registered as `unchecked` is always
+ *    'unknown'; a predicate may itself answer 'unknown' only with a reason
+ *    under PREDICATE_UNKNOWN_PREFIX (an outside rule it could not run).
  * 2. A different framework edition or evaluatorVersion between two
  *    evaluations is never treated as tenant drift: compareEvaluationsAcrossEditions()
  *    refuses to compare (comparable: false) whenever either differs, exactly
@@ -34,7 +36,11 @@
 import { CrossTenantObservationError } from '../contracts/observation.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
-import { controlFor, predicateFor, semanticFacts, NOT_CONFIGURED, PREDICATE_VERDICTS } from './registry.mjs';
+import {
+  controlFor, maskedFacts, predicateFor, semanticFacts, NOT_CONFIGURED, PREDICATE_UNKNOWN_PREFIX, PREDICATE_VERDICTS,
+} from './registry.mjs';
+// CISA ScubaGear's rules register as controls when this module loads (after the registry).
+import './scubagear/controls.mjs';
 
 export const EVALUATION_CONTRACT_VERSION = 1;
 
@@ -152,9 +158,15 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
   // A registered id always evaluates as registered: a passed control may stand in only for one the registry does not hold.
   if (given && controlFor(controlId) && controlFor(controlId) !== given) throw new TypeError(`${controlId}: a registered control cannot be replaced`);
 
+  // A control Keel lists but knows it cannot check reads nothing and is never a pass.
+  if (control.unchecked) {
+    return freezeResult({ control, verdict: 'unknown', reason: control.unchecked.reason, evidenceRefs: [], observationWindows: [], now });
+  }
+
   const factsByType = {};
   const evidenceRefs = [];
   const observationWindows = [];
+  const factsOf = control.facts === 'masked' ? maskedFacts : semanticFacts;
 
   for (const required of control.requiredObservations) {
     const entry = observations[required.resourceType];
@@ -168,7 +180,7 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
       });
     }
     const resources = Array.isArray(entry.resources) ? entry.resources : [];
-    factsByType[required.resourceType] = resources.map((resource) => semanticFacts(required.resourceType, resource));
+    factsByType[required.resourceType] = resources.map((resource) => factsOf(required.resourceType, resource));
     for (const resource of resources) {
       evidenceRefs.push({ resourceType: required.resourceType, id: resource?.id ?? null });
     }
@@ -191,6 +203,9 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
   const predicate = predicateFor(control.predicate.name);
   const answer = predicate(factsArg, control.predicate.args);
   const verdict = typeof answer === 'string' ? answer : answer?.verdict;
+  if (verdict === 'unknown' && typeof answer?.reason === 'string' && answer.reason.startsWith(PREDICATE_UNKNOWN_PREFIX)) {
+    return freezeResult({ control, verdict, reason: answer.reason, evidenceRefs, observationWindows, now, details: answer.details ?? null });
+  }
   if (!PREDICATE_VERDICTS.includes(verdict)) {
     throw new TypeError(`${controlId}: predicate must return one of ${PREDICATE_VERDICTS.join(', ')}, got ${JSON.stringify(answer)}`);
   }

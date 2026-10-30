@@ -626,6 +626,7 @@ export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
 /** Why a control could not be checked, from the engine's reason code ("group:stale-observation"). */
 export function reasonWords(finding: ComplianceFinding): string {
   const reason = finding.reason ?? "";
+  if (reason.startsWith("scubagear:")) return scubaReasonWords(reason.slice("scubagear:".length));
   const split = reason.indexOf(":");
   const type = split > 0 ? reason.slice(0, split) : controlTypes(finding)[0] ?? null;
   const code = split > 0 ? reason.slice(split + 1) : reason;
@@ -636,6 +637,15 @@ export function reasonWords(finding: ComplianceFinding): string {
   if (code.startsWith("observation-")) return `The newest ${one} backup did not finish.`;
   if (code) return `The ${one} backup it needs cannot be used.`;
   return "Keel could not check it.";
+}
+
+/** Why a CISA ScubaGear rule could not be checked, in plain words. */
+function scubaReasonWords(code: string): string {
+  if (code === "check-by-hand") return "CISA lists this as a check to do by hand.";
+  if (code.startsWith("not-read:")) return "Keel does not back up the settings this rule reads yet.";
+  if (code.startsWith("field-not-read:")) return "A setting this rule reads is not in Keel's backup yet.";
+  if (code.startsWith("incomplete:")) return "The backup cannot answer what this rule asks.";
+  return "Keel could not run this rule.";
 }
 
 /** The second line of a row and of a phone tile: the result in a few words. */

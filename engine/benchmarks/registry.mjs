@@ -54,7 +54,19 @@ export const PREDICATE_VERDICTS = Object.freeze(['pass', 'fail', 'not-applicable
 // exception can still be granted and every reader that counts fails still counts it.
 export const NOT_CONFIGURED = 'not-configured';
 export const CONTROL_VERDICTS = Object.freeze(['pass', 'fail', 'unknown', 'not-applicable', 'exception']);
-export const PROVENANCE_SOURCES = Object.freeze(['original', 'licensed']);
+// 'public-domain': a published standard whose text carries no rights at all (CISA's
+// ScubaGear, CC0). It must name its licence and where it comes from.
+export const PROVENANCE_SOURCES = Object.freeze(['original', 'licensed', 'public-domain']);
+// A predicate that runs an outside rule set (scubagear/controls.mjs) may say it could
+// not reach a verdict even though every backup it needs is complete: an input it could
+// not build from the backup, or a rule that gave no result. It returns
+// { verdict: 'unknown', reason } with a reason starting with this prefix, never a guess.
+export const PREDICATE_UNKNOWN_PREFIX = 'scubagear:';
+// How a control's predicate sees a field the type's review marks sensitive: 'semantic'
+// leaves it out (every control so far); 'masked' keeps only whether it is set, as
+// SENSITIVE_MASK, for rules that ask "is this set?" (an on-premises identity).
+export const FACT_MODES = Object.freeze(['semantic', 'masked']);
+export const SENSITIVE_MASK = '(hidden)';
 
 // Service reads (engine/collect/workloads) a control may rest on. Their stored fields
 // are already the read's declared fields only, with credential-shaped values redacted
@@ -191,7 +203,7 @@ function frozenFrameworkRef(ref) {
 export function registerControl({
   controlId, title, description, framework, edition, profile, evaluatorVersion,
   requiredObservations, predicate, frameworkRefs = [], provenance = { source: 'original' }, severity = 'medium',
-  fix = null,
+  fix = null, unchecked = null, facts = 'semantic',
 }) {
   if (typeof controlId !== 'string' || controlId.length === 0) {
     throw new TypeError('control requires a non-empty controlId');
@@ -210,10 +222,18 @@ export function registerControl({
   if (!Number.isInteger(evaluatorVersion) || evaluatorVersion < 1) {
     throw new TypeError(`${controlId}: evaluatorVersion must be a positive integer`);
   }
-  if (!Array.isArray(requiredObservations) || requiredObservations.length === 0) {
+  // `unchecked`: a control Keel registers so the standard is listed in full, but that it
+  // knows it cannot check (a manual check, or data Keel does not read). It is always
+  // recorded as 'unknown' with this reason and reads nothing.
+  if (unchecked !== null) {
+    if (typeof unchecked?.reason !== 'string' || !unchecked.reason.startsWith(PREDICATE_UNKNOWN_PREFIX)) {
+      throw new TypeError(`${controlId}: unchecked.reason must start with ${PREDICATE_UNKNOWN_PREFIX}`);
+    }
+  } else if (!Array.isArray(requiredObservations) || requiredObservations.length === 0) {
     throw new TypeError(`${controlId}: requiredObservations must name at least one resourceType`);
   }
-  const frozenRequired = requiredObservations.map((req) => {
+  if (!FACT_MODES.includes(facts)) throw new TypeError(`${controlId}: facts must be one of ${FACT_MODES.join(', ')}`);
+  const frozenRequired = (requiredObservations ?? []).map((req) => {
     if (typeof req?.resourceType !== 'string' || req.resourceType.length === 0) {
       throw new TypeError(`${controlId}: requiredObservations entries need a resourceType`);
     }
@@ -247,6 +267,10 @@ export function registerControl({
     && (typeof provenance.rightsEvidence !== 'string' || provenance.rightsEvidence.length === 0)) {
     throw new TypeError(`${controlId}: a licensed-source control requires provenance.rightsEvidence — never embed licensed benchmark text without recorded rights`);
   }
+  if (provenance.source === 'public-domain'
+    && (typeof provenance.license !== 'string' || !provenance.license || typeof provenance.sourceUrl !== 'string' || !provenance.sourceUrl)) {
+    throw new TypeError(`${controlId}: a public-domain control must name its licence and source`);
+  }
 
   CONTROLS.set(controlId, Object.freeze({
     contractVersion: BENCHMARK_REGISTRY_CONTRACT_VERSION,
@@ -263,6 +287,8 @@ export function registerControl({
     provenance: Object.freeze({ ...provenance }),
     severity,
     fix: frozenFix(controlId, fix, frozenRequired),
+    unchecked: unchecked === null ? null : Object.freeze({ reason: unchecked.reason }),
+    facts,
   }));
 }
 
@@ -287,6 +313,22 @@ export function listControls({ framework, edition, profile } = {}) {
 export function semanticFacts(resourceType, rawResource) {
   if (WORKLOAD_FACT_TYPES.has(resourceType)) return structuredClone(rawResource);
   return exportProjection(rawResource, resourceType);
+}
+
+/**
+ * semanticFacts(), except that each top-level field the type's review marks sensitive
+ * stays as SENSITIVE_MASK when it holds a value (null and absent stay as they are). A
+ * predicate learns only whether it is set, never what it holds.
+ */
+export function maskedFacts(resourceType, rawResource) {
+  const facts = semanticFacts(resourceType, rawResource);
+  if (WORKLOAD_FACT_TYPES.has(resourceType) || !rawResource || typeof rawResource !== 'object') return facts;
+  for (const [field, value] of Object.entries(rawResource)) {
+    if (!(field in facts) && classifyForOperation('sensitiveExport', field, resourceType) === 'sensitive') {
+      facts[field] = value === null || value === undefined ? value ?? null : SENSITIVE_MASK;
+    }
+  }
+  return facts;
 }
 
 // --- Original custom-control fixtures --------------------------------------

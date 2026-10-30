@@ -232,9 +232,12 @@ test('each name the rules build themselves is a string in that product\'s pinned
 test('Teams external access domains are read as a list, and an unknown shape is never guessed at', () => {
   assert.deepEqual(allowedDomains({ AllowedDomain: [{ Domain: 'a.example' }, { Domain: 'b.example' }] }), ['a.example', 'b.example']);
   assert.deepEqual(allowedDomains({ AllowedDomain: { Domain: 'a.example' } }), ['a.example']);
-  assert.deepEqual(allowedDomains({}), []);
   assert.deepEqual(allowedDomains({ AllowAllKnownDomains: {} }), []);
   assert.deepEqual(allowedDomains(['a.example']), ['a.example']);
+  // An empty list blocks every domain in Teams but means every domain to the rules.
+  assert.throws(() => allowedDomains({}), CouldNotBuild);
+  assert.throws(() => allowedDomains({ AllowedDomain: [] }), CouldNotBuild);
+  assert.throws(() => allowedDomains([]), CouldNotBuild);
   assert.throws(() => allowedDomains(null), CouldNotBuild);
   assert.throws(() => allowedDomains('Domain=a.example'), CouldNotBuild);
   assert.throws(() => allowedDomains({ AllowedDomain: [{ Name: 'a.example' }] }), CouldNotBuild);
@@ -244,10 +247,46 @@ test('Teams external access domains are read as a list, and an unknown shape is 
     ...FIXTURE_BACKUPS,
     'teams-org-policies': FIXTURE_BACKUPS['teams-org-policies'].map((fact) => (fact.kind === 'federationConfiguration' ? { ...fact, AllowedDomains } : fact)),
   });
-  assert.equal(run(id('MS.TEAMS.2.1v2'), federation({})).verdict, 'fail');
+  assert.equal(run(id('MS.TEAMS.2.1v2'), federation({ AllowAllKnownDomains: {} })).verdict, 'fail');
+  assert.equal(run(id('MS.TEAMS.2.1v2'), federation({})).verdict, 'unknown');
   const unreadable = run(id('MS.TEAMS.2.1v2'), federation('everything'));
   assert.equal(unreadable.verdict, 'unknown');
   assert.equal(unreadable.reason, 'scubagear:incomplete:federation_configuration');
+});
+
+test('Teams rules are could not check without the Global policy, or with a setting of another type', () => {
+  const teams = (change) => ({ ...FIXTURE_BACKUPS, 'teams-org-policies': FIXTURE_BACKUPS['teams-org-policies'].flatMap(change) });
+  // An empty read of meeting policies would otherwise pass: no policy lets anyone in.
+  const noMeetings = teams((fact) => (fact.kind === 'meetingPolicy' ? [] : [fact]));
+  for (const rule of ['MS.TEAMS.1.1v1', 'MS.TEAMS.1.2v2', 'MS.TEAMS.1.3v1']) {
+    const result = run(id(rule), noMeetings);
+    assert.equal(result.verdict, 'unknown', rule);
+    assert.equal(result.reason, 'scubagear:incomplete:meeting_policies', rule);
+  }
+  const noFederation = teams((fact) => (fact.kind === 'federationConfiguration' ? [] : [fact]));
+  assert.equal(run(id('MS.TEAMS.2.2v2'), noFederation).verdict, 'unknown');
+  const noClient = teams((fact) => (fact.kind === 'clientConfiguration' ? [] : [fact]));
+  assert.equal(run(id('MS.TEAMS.4.1v1'), noClient).verdict, 'unknown');
+  const noBroadcast = { ...FIXTURE_BACKUPS, 'teams-voice-policies': [] };
+  assert.equal(run(id('MS.TEAMS.1.7v2'), noBroadcast).verdict, 'unknown');
+
+  // An enum handed over as a number is not read as "not Everyone".
+  const numbered = teams((fact) => [fact.kind === 'meetingPolicy' ? { ...fact, AutoAdmittedUsers: 0 } : fact]);
+  const result = run(id('MS.TEAMS.1.3v1'), numbered);
+  assert.equal(result.verdict, 'unknown');
+  assert.equal(result.reason, 'scubagear:incomplete:meeting_policies');
+  const unset = teams((fact) => [fact.kind === 'clientConfiguration' ? { ...fact, AllowEmailIntoChannel: null } : fact]);
+  assert.equal(run(id('MS.TEAMS.4.1v1'), unset).verdict, 'unknown');
+});
+
+test('Power Platform rules are could not check when no default environment is listed', () => {
+  const backups = {
+    ...FIXTURE_BACKUPS,
+    'power-platform-settings': FIXTURE_BACKUPS['power-platform-settings'].filter((fact) => fact.kind !== 'environment' || !fact.isDefault),
+  };
+  const result = run(id('MS.POWERPLATFORM.2.2v1'), backups);
+  assert.equal(result.verdict, 'unknown');
+  assert.equal(result.reason, 'scubagear:incomplete:environment_list');
 });
 
 test('SharePoint sharing settings become the admin API\'s numbers, and a setting not read is could not check', () => {

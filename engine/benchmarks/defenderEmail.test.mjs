@@ -185,6 +185,24 @@ test('a kind the newest read missed falls back to an older full read; Safe Links
   assert.equal(byControl[LINKS].verdict, 'not-applicable');
 });
 
+test('a partial read with a kind that came back empty, two answers for one object, or orphaned children counts for nothing', async (t) => {
+  const client = await schemaClient(t);
+  const controls = listControls().filter((control) => control.controlId === SPAM);
+  const families = { antiSpamPolicy: { status: 'read' } };
+  for (const discovery of [{ empty: ['antiSpamPolicy'] }, { conflicts: [{ resourceKey: 'x', fields: ['Name'] }] }, { unparented: 2 }]) {
+    const tenantRef = tenant();
+    // Read as empty, the kind would hold no weak policy and pass.
+    await mailRun(client, tenantRef, { at: new Date(Date.now() - HOUR), outcome: 'partial', families, discovery, objects: discovery.empty ? [] : [['antiSpamPolicy', spam()]] });
+    const [evaluation] = (await runComplianceChecks(client, { tenantRef, actor: 'scheduler', controls })).evaluations;
+    assert.deepEqual([evaluation.verdict, evaluation.reason], ['unknown', 'exchange-mail-flow:observation-partial'], JSON.stringify(discovery));
+  }
+  // The same partial run without those gaps is used.
+  const tenantRef = tenant();
+  await mailRun(client, tenantRef, { at: new Date(Date.now() - HOUR), outcome: 'partial', families, discovery: { empty: [], conflicts: [], unparented: 0 }, objects: [['antiSpamPolicy', spam()]] });
+  const [used] = (await runComplianceChecks(client, { tenantRef, actor: 'scheduler', controls })).evaluations;
+  assert.equal(used.verdict, 'pass');
+});
+
 test('no mail protection read yet, only refused runs, or a read too old: could not check', async (t) => {
   const client = await schemaClient(t);
   const controls = listControls().filter((control) => control.controlId === MALWARE);

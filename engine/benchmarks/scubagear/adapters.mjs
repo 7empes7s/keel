@@ -247,14 +247,47 @@ function authenticationMethod(facts) {
  * Input keys that are one family of a service read, as its cmdlet returns them. With
  * `identity` (the Exchange families), Identity is added from the Name.
  */
-function cmdletKeys(resourceType, families, keys, { identity = true, lacks = {}, nested = {} } = {}) {
+function cmdletKeys(resourceType, families, keys, { identity = true, lacks = {}, nested = {}, check = () => (value) => value } = {}) {
   return Object.fromEntries(Object.entries(keys).map(([key, kind]) => [key, Object.freeze({
     reads: [service(resourceType, kind)],
     fields: Object.freeze([...(identity ? namedFields(families[kind]) : families[kind].fields), ...(nested[key] ?? [])]),
     lacks: lacks[key] ?? [],
-    build: (facts) => (identity ? named(facts, kind, resourceType) : ofKind(facts, kind, resourceType)),
+    build: (facts) => check(key)(identity ? named(facts, kind, resourceType) : ofKind(facts, kind, resourceType)),
   })]));
 }
+
+// The Teams settings the rules compare, with the type each must have. The Teams module
+// can hand an enum over as a number, which the rules would read as "not Everyone" and
+// pass, so a value of any other type is not guessed at.
+export const TEAMS_SETTING_TYPES = Object.freeze({
+  meeting_policies: Object.freeze({
+    AllowAnonymousUsersToStartMeeting: 'boolean', AllowCloudRecording: 'boolean', AllowExternalParticipantGiveRequestControl: 'boolean',
+    AllowPSTNUsersToBypassLobby: 'boolean', AutoAdmittedUsers: 'string',
+  }),
+  federation_configuration: Object.freeze({ AllowFederatedUsers: 'boolean', AllowTeamsConsumer: 'boolean', AllowTeamsConsumerInbound: 'boolean' }),
+  client_configuration: Object.freeze({ AllowEmailIntoChannel: 'boolean' }),
+  app_policies: Object.freeze({ DefaultCatalogAppsType: 'string', GlobalCatalogAppsType: 'string', PrivateCatalogAppsType: 'string' }),
+  broadcast_policies: Object.freeze({ BroadcastRecordingMode: 'string' }),
+});
+
+/**
+ * Teams policies as the rules read them. Every tenant has a Global policy of each kind,
+ * and the rules judge the tenant by it, so a backup without one is not a tenant with
+ * nothing set: it cannot be checked.
+ */
+export const teamsChecked = (key) => (policies) => {
+  if (!policies.some((policy) => policy.Identity === 'Global')) {
+    throw new CouldNotBuild(key, 'the backup holds no Global Teams policy, which every tenant has');
+  }
+  for (const policy of policies) {
+    for (const [field, type] of Object.entries(TEAMS_SETTING_TYPES[key] ?? {})) {
+      if (typeof policy[field] !== type) {
+        throw new CouldNotBuild(key, `the backup does not hold ${field} as ${type === 'boolean' ? 'on or off' : 'a named choice'}`);
+      }
+    }
+  }
+  return policies;
+};
 
 /**
  * The domains Teams external access is limited to, as a list (ScubaGear's REST read
@@ -264,11 +297,15 @@ function cmdletKeys(resourceType, families, keys, { identity = true, lacks = {},
  */
 export function allowedDomains(value) {
   const domainOf = (entry) => (typeof entry === 'string' ? entry : entry?.Domain);
+  const isObject = value && typeof value === 'object' && !Array.isArray(value);
+  // An empty list of allowed domains blocks every domain, but an empty list means
+  // "every domain" to the rules, so only AllowAllKnownDomains is passed on as one.
   const listed = Array.isArray(value) ? value
-    : value && typeof value === 'object' && !Array.isArray(value) && Object.hasOwn(value, 'AllowedDomain') ? [value.AllowedDomain].flat()
-      : value && typeof value === 'object' && Object.keys(value).every((key) => key === 'AllowAllKnownDomains') ? []
+    : isObject && Object.hasOwn(value, 'AllowedDomain') ? [value.AllowedDomain].flat().filter((entry) => entry != null)
+      : isObject && Object.keys(value).length === 1 && Object.hasOwn(value, 'AllowAllKnownDomains') ? []
         : null;
-  if (!listed || listed.some((entry) => typeof domainOf(entry) !== 'string')) {
+  const allowsAll = isObject && Object.hasOwn(value, 'AllowAllKnownDomains');
+  if (!listed || (listed.length === 0 && !allowsAll) || listed.some((entry) => typeof domainOf(entry) !== 'string')) {
     throw new CouldNotBuild('federation_configuration', 'the backup does not say which domains Teams external access allows');
   }
   return listed.map(domainOf);
@@ -408,13 +445,13 @@ export const ADAPTERS = Object.freeze({
   // Teams
   ...cmdletKeys(TEAMS_POLICIES, TEAMS, {
     meeting_policies: 'meetingPolicy', client_configuration: 'clientConfiguration', app_policies: 'appPermissionPolicy',
-  }, { identity: false }),
+  }, { identity: false, check: teamsChecked }),
   federation_configuration: Object.freeze({
     reads: [service(TEAMS_POLICIES, 'federationConfiguration')], fields: TEAMS.federationConfiguration.fields,
-    build: (facts) => ofKind(facts, 'federationConfiguration', TEAMS_POLICIES)
-      .map((configuration) => ({ ...configuration, AllowedDomains: allowedDomains(configuration.AllowedDomains) })),
+    build: (facts) => teamsChecked('federation_configuration')(ofKind(facts, 'federationConfiguration', TEAMS_POLICIES)
+      .map((configuration) => ({ ...configuration, AllowedDomains: allowedDomains(configuration.AllowedDomains) }))),
   }),
-  ...cmdletKeys(TEAMS_VOICE, TEAMS_EXTENDED, { broadcast_policies: 'liveEventsPolicy' }, { identity: false }),
+  ...cmdletKeys(TEAMS_VOICE, TEAMS_EXTENDED, { broadcast_policies: 'liveEventsPolicy' }, { identity: false, check: teamsChecked }),
 
   // SharePoint and OneDrive. Keel reads the tenant's sharing settings through Graph
   // (sharepointSettings), which names its choices; the SharePoint admin API ScubaGear
@@ -433,8 +470,15 @@ export const ADAPTERS = Object.freeze({
   }),
   environment_list: Object.freeze({
     reads: [service(POWER_PLATFORM_SETTINGS, 'environment')], fields: Object.freeze(['EnvironmentName', 'IsDefault']),
-    build: (facts) => list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === 'environment')
-      .map((environment) => ({ EnvironmentName: environment.identity ?? null, IsDefault: environment.isDefault ?? null })),
+    build: (facts) => {
+      const environments = list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === 'environment')
+        .map((environment) => ({ EnvironmentName: environment.identity ?? null, IsDefault: environment.isDefault ?? null }));
+      // Every tenant has one default environment; without it the rules would find none to judge.
+      if (!environments.some((environment) => environment.IsDefault === true && typeof environment.EnvironmentName === 'string')) {
+        throw new CouldNotBuild('environment_list', 'the backup lists no default Power Platform environment, which every tenant has');
+      }
+      return environments;
+    },
   }),
   // The default environment is named Default-<tenant id>; the rules look for it by name.
   tenant_id: Object.freeze({

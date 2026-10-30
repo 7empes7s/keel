@@ -5,6 +5,7 @@ import { after, test } from 'node:test';
 import { APPROVAL_DECISION_EVIDENCE_KIND, ApprovalClosedError, approveRequest, requestApproval } from './approvals.mjs';
 import { setApprovalPolicy } from './approvalPolicy.mjs';
 import {
+  HIGH_RISK_RESTORE_APPROVAL_RULES,
   RESTORE_APPROVALS_OFF_BASIS,
   RESTORE_APPROVALS_OFF_DECIDER,
   WORKLOAD_RESTORE_SERVICES,
@@ -12,6 +13,8 @@ import {
   restoreApprovalScope,
   restoreArtifactServices,
   restoreNeedsApproval,
+  RestoreApprovalSettingError,
+  getRestoreApprovalRules,
   setRestoreApprovalRule,
   setRestoreApprovalSetting,
 } from './restoreApprovalSettings.mjs';
@@ -88,7 +91,7 @@ async function turnOff(client, tenantRef, services, actor) {
 }
 
 async function turnOffRules(client, tenantRef, rules, actor) {
-  for (const rule of rules) await setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired: false, actor });
+  for (const rule of rules) await setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired: false, actor, riskAcknowledged: true });
 }
 
 const ALL_SERVICES = ['Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender'];
@@ -422,4 +425,33 @@ test('an unmapped kind still needs the service its name suggests to have approva
   assert.equal((await ask(client, { tenantRef, artifact, requestedBy: requester })).status, 'pending');
   await turnOff(client, tenantRef, ['Exchange'], admin);
   assert.equal((await ask(client, { tenantRef, artifact, requestedBy: requester })).status, 'approved');
+});
+
+test('a high-risk kind of restore turns off only once the admin confirms the risk warning, and the record says so', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  assert.deepEqual([...HIGH_RISK_RESTORE_APPROVAL_RULES], ['turn-on-conditional-access', 'tenant-wide', 'other-tenant']);
+  for (const rule of HIGH_RISK_RESTORE_APPROVAL_RULES) {
+    await assert.rejects(
+      setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired: false, actor: admin }),
+      RestoreApprovalSettingError,
+    );
+  }
+  // Nothing changed and nothing was recorded for the refused attempts.
+  assert.ok((await getRestoreApprovalRules(client, { tenantRef })).every((row) => row.approvalRequired));
+  const none = await client.query("SELECT count(*)::int AS n FROM evidence WHERE tenant_ref = $1 AND kind = 'restore-approval-setting'", [tenantRef]);
+  assert.equal(none.rows[0].n, 0);
+
+  // The customer decides: confirmed, it turns off; turning it back on needs no confirmation.
+  await setRestoreApprovalRule(client, { tenantRef, rule: 'tenant-wide', approvalRequired: false, actor: admin, riskAcknowledged: true });
+  await setRestoreApprovalRule(client, { tenantRef, rule: 'tenant-wide', approvalRequired: true, actor: admin });
+  // A kind that is not high risk needs no confirmation either.
+  await setRestoreApprovalRule(client, { tenantRef, rule: 'compliance-fix', approvalRequired: false, actor: admin });
+  const { rows } = await client.query("SELECT subject FROM evidence WHERE tenant_ref = $1 AND kind = 'restore-approval-setting' ORDER BY seq", [tenantRef]);
+  assert.deepEqual(rows.map((row) => row.subject), [
+    { rule: 'tenant-wide', approvalRequired: false, previous: true, highRisk: true, riskAcknowledged: true },
+    { rule: 'tenant-wide', approvalRequired: true, previous: false },
+    { rule: 'compliance-fix', approvalRequired: false, previous: true },
+  ]);
 });

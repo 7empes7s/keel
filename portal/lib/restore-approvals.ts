@@ -9,7 +9,7 @@ import { resolvePrincipals } from "../../engine/govern/references.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
 import { connect } from "@/lib/db";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
-import { isRestoreApprovalRule, type RestoreApprovalRule } from "@/lib/restore-approval-rules";
+import { isHighRiskRule, isRestoreApprovalRule, type RestoreApprovalRule } from "@/lib/restore-approval-rules";
 import type { EngineRef } from "@/lib/sentences";
 
 // Restore approvals as a customer setting. Per service, whether a high-impact restore
@@ -96,7 +96,7 @@ export function guardedRestoreApprovalsRead(deps: GuardDeps = {}) {
 }
 
 /**
- * POST /api/restore-approvals { service, approvalRequired } or { rule, approvalRequired }:
+ * POST /api/restore-approvals { service, approvalRequired } or { rule, approvalRequired, riskAcknowledged? }:
  * turn one service's or one kind of restore's approval on or off. One person with
  * `policies` decides; a two-person rule set up for restores still applies to them.
  */
@@ -107,8 +107,11 @@ export function guardedRestoreApprovalsUpdate(deps: GuardDeps = {}) {
     if (typeof body.approvalRequired !== "boolean") throw new InvalidActionRequest();
     let changed: boolean;
     if (body.rule !== undefined && body.service === undefined && isRestoreApprovalRule(body.rule)) {
+      // A high-risk kind turns off only with the risk warning confirmed ({ riskAcknowledged: true }).
+      const riskAcknowledged = body.riskAcknowledged === true;
+      if (isHighRiskRule(body.rule) && body.approvalRequired === false && !riskAcknowledged) throw new InvalidActionRequest("confirm the risk warning to turn this off");
       ({ changed } = (await setRestoreApprovalRule(client, {
-        tenantRef: tenant, rule: body.rule, approvalRequired: body.approvalRequired, actor: principalId,
+        tenantRef: tenant, rule: body.rule, approvalRequired: body.approvalRequired, actor: principalId, riskAcknowledged,
       })) as { changed: boolean });
     } else if (body.service !== undefined && body.rule === undefined && typeof body.service === "string" && services.includes(body.service)) {
       ({ changed } = (await setRestoreApprovalSetting(client, {

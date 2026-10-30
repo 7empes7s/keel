@@ -233,8 +233,18 @@ export const CONCEPT_WORDS = Object.freeze([
   },
   {
     pattern: /\b(?:activesync|mobile device access|owa polic(?:y|ies)|outlook on the web)\b/i,
-    label: 'Exchange filtering, retention and mobile settings',
-    kinds: ['exchange-extended'],
+    label: 'Exchange filtering, retention, mobile and Outlook on the web settings',
+    kinds: ['exchange-extended', 'exchange-org-access'],
+  },
+  {
+    pattern: /\b(?:calendar sharing|sharing polic(?:y|ies)|free\/?busy|organi[sz]ation relationships?|authentication polic(?:y|ies)|basic auth(?:entication)?|legacy auth(?:entication)?|application access polic(?:y|ies)|role assignment polic(?:y|ies)|external (?:sender )?tag|external in outlook)\b/i,
+    label: 'Exchange sharing and client access policies',
+    kinds: ['exchange-org-access'],
+  },
+  {
+    pattern: /\b(?:smtp auth|transport config(?:uration)?|email address polic(?:y|ies)|mailbox plans?|cas mailbox plans?|reply-?all storm)\b/i,
+    label: 'Exchange transport settings and new mailbox defaults',
+    kinds: ['exchange-org-defaults'],
   },
   {
     pattern: /\b(?:meeting polic(?:y|ies)|messaging polic(?:y|ies)|app setup polic(?:y|ies)|teams apps?|external access|federation with teams|teams federation)\b/i,

@@ -7,7 +7,7 @@ import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { typeService, plainKind } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
-import { loadServiceChanges } from "@/lib/service-changes";
+import { loadServiceChanges, loadServiceReadTotals } from "@/lib/service-changes";
 import { serviceChangeFrom, serviceChangeName, serviceUndo } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
 
@@ -204,5 +204,38 @@ test("the Changes verdict counts service setting changes apart from approved-set
       const items = Array.from({ length: waiting }, (_, index) => serviceRow({ id: `id-${index}` }));
       assert.ok(changesVerdict(items, baseline, NOW).text.split(/\s+/).length <= 25);
     }
+  }
+});
+
+test("the read totals give each service its newest read's settings and every open change", async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    assert.deepEqual(await loadServiceReadTotals(client, TENANT), { held: {}, open: {} });
+    const record = async (tenantRef: string, at: string, sites: ReturnType<typeof site>[]) => {
+      const stored = await recordSharePointRun(client, { tenantRef, result: run(at, sites) });
+      await detectWorkloadDrift(client, { collectionId: stored.id, hysteresis: undefined });
+    };
+    // Archive's grant changed a year ago and was never put back: it still counts.
+    await record(TENANT, "2025-10-01T02:00:00.000Z", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [])]);
+    await record(TENANT, "2025-10-02T02:00:00.000Z", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [GRANT])]);
+    // Only the newest read's size counts: Finance is gone from it.
+    await record(TENANT, "2026-10-14T02:00:00.000Z", [site(ARCHIVE, "Archive", [GRANT])]);
+    await record("other-tenant", "2026-10-14T02:00:00.000Z", [site(FINANCE, "Elsewhere", []), site(ARCHIVE, "Other", [])]);
+    const totals = await loadServiceReadTotals(client, TENANT);
+    const newestSize = async (at: string) => (await client.query(
+      `SELECT count(*)::int AS n FROM workload_observation o JOIN workload_collection c ON c.id = o.collection_id
+        WHERE c.tenant_ref = $1 AND c.observed_to = $2`, [TENANT, at],
+    )).rows[0].n;
+    assert.deepEqual(Object.keys(totals.held), ["sharepoint-site-settings"]);
+    assert.equal(totals.held["sharepoint-site-settings"], await newestSize("2026-10-14T02:00:00.000Z"));
+    assert.ok(totals.held["sharepoint-site-settings"] < await newestSize("2025-10-02T02:00:00.000Z"));
+    const open = totals.open["sharepoint-site-settings"];
+    assert.ok(open.modified >= 1, "the year-old grant change is still open");
+    assert.ok(open.removed >= 1, "Finance going is open");
+  } finally {
+    await client.end();
+    await database.cleanup();
   }
 });

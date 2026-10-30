@@ -164,6 +164,44 @@ test("reject shows the spinner on Reject only", async ({ page }) => {
   await expect(page.locator(".toast").first()).toContainText("Request rejected");
 });
 
+// Restore approvals stay the customer's choice, but a high-risk kind is flagged: a red
+// notice while one is off (who and when), a "High risk" badge, and turning one off
+// spells out what can go wrong and needs a tick before it is sent.
+test("Approvals settings · high-risk kinds warn, and turning one off needs the risk confirmed", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === "/api/restore-approvals").map((call) => JSON.parse(call.body ?? "{}"));
+  await open(page, "/approvals/settings", "light");
+  const notice = page.locator(".ra-risk");
+  await expect(notice).toContainText("Approvals are off for 1 high-risk kind of restore");
+  await expect(notice).toContainText("Organization-wide changes: turned off by");
+  const kinds = page.getByRole("list", { name: "Restore approvals by kind of restore" });
+  await expect(kinds.locator(".ra-row[data-high-risk]")).toHaveCount(3);
+  await expect(kinds.locator(".ra-row:not([data-high-risk])").getByText("High risk")).toHaveCount(0);
+
+  const row = kinds.locator(".ra-row", { hasText: "Restores into another tenant" });
+  await row.getByRole("button", { name: "Turn off" }).click();
+  const dialog = page.getByRole("dialog", { name: "Turn off approvals for Restores into another tenant?" });
+  await expect(dialog).toContainText("Keel recommends keeping approvals on for this.");
+  await expect(dialog).toContainText("Choosing the wrong target tenant can overwrite its settings");
+  const confirm = dialog.getByRole("button", { name: "Turn off" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /I understand a restore can write into another tenant/ }).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(page.locator(".toast").first()).toContainText("Approvals off for Restores into another tenant");
+  expect(await posts()).toEqual([{ rule: "other-tenant", approvalRequired: false, riskAcknowledged: true }]);
+
+  // Reopening starts unticked; a kind that is not high risk has no tick box.
+  await row.getByRole("button", { name: "Turn off" }).click();
+  await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Keep approvals" }).click();
+  await kinds.locator(".ra-row", { hasText: "Compliance fixes" }).getByRole("button", { name: "Turn off" }).click();
+  const plain = page.getByRole("dialog", { name: "Turn off approvals for Compliance fixes?" });
+  await expect(plain.getByRole("checkbox")).toHaveCount(0);
+  await expect(plain.getByRole("button", { name: "Turn off" })).toBeEnabled();
+});
+
 // The page's done-test (portal audit, Approvals, pick B): tiles filter in the address,
 // a request opens in place and Back closes it, the decision is made from what will
 // change, a two-person request says how far along it is, and one amber action at most.
@@ -2873,8 +2911,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(current).toContainText("Post-migration golden state");
     await expect(current).toContainText("4,812 settings in 6 kinds");
     await expect(current.getByRole("link", { name: "Compare with the latest backup" })).toHaveAttribute("href", /compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d6/);
+    // The overall match: settings that match the approved setup out of every setting judged.
+    const score = page.locator(".bl-score");
+    await expect(score.getByRole("img", { name: /^Overall: \d+% match\. [\d,]+ of [\d,]+ settings match\.$/ })).toBeVisible();
+    await expect(score).toContainText(/\d+% of settings match the approved setup/);
+    await expect(score).toContainText(/settings? differs?/);
     const entra = page.locator(".bl-service", { hasText: "Entra ID" });
     await expect(entra).toContainText(/Changed\s*3\s*kinds/);
+    // Each service has its own ring.
+    await expect(entra.getByRole("img", { name: /^Entra ID: \d+% match\./ })).toBeVisible();
     // A service with changes links to them, filtered to that service.
     await expect(entra).toHaveAttribute("href", /drift\?service=/);
     await entra.click();

@@ -2,14 +2,15 @@ import Link from "next/link";
 
 import { ActivateBaseline } from "@/components/activate-baseline";
 import { RiskChip, SectionHead } from "@/components/baselines/parts";
+import { ScoreRing } from "@/components/compliance/score-ring";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ResnapshotBaseline } from "@/components/resnapshot-baseline";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  coverageWords, kindsWords, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
+  coverageWords, kindsWords, overallScore, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
 } from "@/lib/baselines-view";
-import { captureScope, changesSentence, leftOutWords, resnapshotSource } from "@/lib/compliance-view";
+import { captureScope, changesSentence, leftOutWords, resnapshotSource, scoreTone, type ComplianceScore } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
@@ -102,6 +103,40 @@ function serviceNote(summary: ServiceSummary) {
     : `Not in the approved setup yet: ${kindsWords(summary.notCovered)}.`;
 }
 
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
+}
+
+/** "1,180 of 1,204 settings match" */
+function matchSentence(score: ComplianceScore): string {
+  if (score.percent === null) return "No settings to compare yet";
+  return `${score.passed.toLocaleString("en-GB")} of ${plural(score.evaluated, "setting")} match`;
+}
+
+/** The overall match: one big ring, how many settings match, and what is left out. */
+function MatchScore({ score, summaries }: { score: ComplianceScore; summaries: ServiceSummary[] }) {
+  const differ = score.evaluated - score.passed;
+  const unscored = summaries.filter((summary) => !summary.score).map((summary) => summary.service.name);
+  const tone = scoreTone(score);
+  return (
+    <div className="bl-card bl-score" data-tone={tone}>
+      <ScoreRing label="Overall" score={score} sentence={matchSentence(score)} size="lg" unit="match" />
+      <div className="bl-score-words">
+        <h3>{score.percent === null ? "Nothing to compare yet" : `${score.percent}% of settings match the approved setup`}</h3>
+        <p>
+          <b>{matchSentence(score)}</b>
+          {differ > 0 ? <> · <RiskChip tone={tone === "urgent" || tone === "soon" ? tone : "low"}>{plural(differ, "setting differs", "settings differ")}</RiskChip></> : null}
+        </p>
+        <p className="bl-help">
+          Every setting Keel compares counts once. A setting that was changed, removed or added since counts as not matching.
+          {" "}Kinds not covered or not read are left out.
+          {unscored.length ? ` No percentage yet for ${unscored.join(", ")}: Keel has no count of the settings it compares there.` : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ServiceCard({ summary }: { summary: ServiceSummary }) {
   const total = summary.inLine.length + summary.changedKinds.length + summary.notCovered.length || 1;
   const words = STAT_WORDS[summary.basis];
@@ -110,6 +145,7 @@ function ServiceCard({ summary }: { summary: ServiceSummary }) {
       <div className="bl-service-head">
         <Icon name={summary.service.icon} />
         <span className="bl-service-name"><b>{summary.service.name}</b><small>{summary.service.about}</small></span>
+        {summary.score ? <ScoreRing label={summary.service.name} score={summary.score} sentence={matchSentence(summary.score)} size="sm" unit="match" /> : null}
       </div>
       <div aria-hidden="true" className="bl-bar">
         <span data-part="changed" data-tone={summary.tone} style={{ flexGrow: summary.changedKinds.length / total }} />
@@ -215,27 +251,32 @@ export function ApprovedSetup({
   serviceReads = [],
   backedUp,
   canBaseline,
+  held = null,
   now,
   sources,
 }: {
   baselines: BaselineRecord[];
   // Open changes against the setup in use; null when they could not be read.
-  items: Pick<DriftRecord, "resourceType" | "blastRadius">[] | null;
+  items: Pick<DriftRecord, "resourceType" | "blastRadius" | "changeType">[] | null;
   // Open changes to Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform
   // settings, each compared with the previous backup (lib/service-changes.ts).
-  serviceChanges?: Pick<DriftRecord, "resourceType" | "blastRadius" | "serviceRead">[];
+  serviceChanges?: Pick<DriftRecord, "resourceType" | "blastRadius" | "serviceRead" | "changeType">[];
   // Those services' kinds on What's protected, and whether the latest backup read them.
   serviceReads?: ServiceReadKind[];
   // Kinds of setting Keel backs up today, to show what the setup does not cover.
   backedUp: string[];
   canBaseline: boolean;
+  // Settings the setup in use holds, per kind; null when they could not be counted, and
+  // then no score shows. A score also needs the open changes.
+  held?: Record<string, number> | null;
   now: string;
   // Complete backups, newest first: the source for a new version.
   sources: CaptureSource[];
 }) {
   const active = baselines.find((baseline) => baseline.active) ?? null;
   const others = baselines.filter((baseline) => baseline !== active);
-  const summaries = active ? serviceSummaries(active, [...(items ?? []), ...serviceChanges], backedUp, serviceReads) : [];
+  const summaries = active ? serviceSummaries(active, [...(items ?? []), ...serviceChanges], backedUp, serviceReads, items === null ? null : held) : [];
+  const overall = overallScore(summaries);
   const anyRead = summaries.some((summary) => summary.basis === "previous-backup");
   return (
     <div className="bl-page">
@@ -263,6 +304,7 @@ export function ApprovedSetup({
             id="bl-services-heading"
             title="By service"
           />
+          {overall ? <MatchScore score={overall} summaries={summaries} /> : null}
           <ul className="bl-services">
             {summaries.map((summary) => <ServiceCard key={summary.service.code} summary={summary} />)}
           </ul>

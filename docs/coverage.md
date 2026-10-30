@@ -929,6 +929,36 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** KEEL does not restore these yet. A deleted shared, room or equipment mailbox, a contact, Full Access, Send As and Send on behalf rights, and room booking rules are put back by hand in the Exchange admin center using the backup. Mail in the mailboxes comes back from the content backup.
 
+### Exchange sharing and client access
+
+**Backed up:**
+
+- Authentication policies (legacy sign-in blocks)
+- Calendar sharing policies
+- Organization relationships (free/busy with other organizations)
+- Hybrid organization connectors
+- Outlook on the web policies
+- What people may change on their own mailbox
+- Which apps may open which mailboxes
+- The External sender tag in Outlook
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Authentication, sharing, Outlook on the web, role assignment and application access policies, organization relationships and the External sender tag are put back by hand in the Exchange admin center or Exchange Online PowerShell using the backup. Trust and federation details of an organization relationship are always set by hand.
+
+### Exchange transport and new mailbox defaults
+
+**Backed up:**
+
+- Organization transport settings (SMTP AUTH, TLS, journaling)
+- Email address policies
+- Client access defaults for new mailboxes
+- Mailbox defaults for new mailboxes
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Transport settings (such as SMTP AUTH), email address policies and mailbox plans are put back by hand in the Exchange admin center or Exchange Online PowerShell using the backup.
+
 ### SharePoint site structure
 
 **Backed up:**

@@ -10723,8 +10723,34 @@ item that needs it stays untouched.
   `homeRealmDiscoveryPolicy` c and u (all from Q67/Q74). Q235 (consent records, same deadline) uses different fixtures; run them
   back to back. Finish by **2026-11-12**.
 - Needs: Q247 done or blocked. Run at the deployed commit B, from your own checkout at B.
-- Status: todo
-- Result:
+- Status: done in part (6 promoted; HRD waits on second GA session)
+- Result: done in part (2026-10-30 00:45 UTC, keel-operator). **6 of 8 promoted**: claimsMappingPolicy, tokenIssuancePolicy and tokenLifetimePolicy, create and update. **homeRealmDiscoveryPolicy c and u: blocked, not run.** HRD is lockout-sensitive in the checklist (steps 180/181), so it waits on the same second-GA precondition as Q245 and Q247.
+  - B = **53cbe462**.
+  - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted. Self-approved: requester Gmail, approver Entra.
+  - Before: no KEEL-RT-248 policy of any of the 4 types.
+  - Fixtures: `KEEL-RT-248-claims` (IncludeBasicClaimSet true, empty schema), `KEEL-RT-248-issuance` (rsa-sha256, TokenOnly, SAML 2.0) and `KEEL-RT-248-lifetime` (AccessTokenLifetime 8:00:00). All `isOrganizationDefault` false and **assigned to nothing**.
+  - S = `7e9282a3`.
+  - Update: renamed each `-drifted` (display name only). Dry run `4a33ea67`, approval **157d8e74**, exit 0, 3× `update succeeded`. Names read back as in S; isOrganizationDefault false.
+  - Create: deleted and purged all three.
+    - Dry run `53cff78a`, approval **d1c10d5f**, exit 0, 3× `create succeeded`.
+    - New ids: claims abeb34fe…, issuance 3458097d…, lifetime 7043c8b0…. Definitions equal to S; isOrganizationDefault false.
+  - Re-run: dry run `4d8115d8`: 0 with changes, 0 skipped, 0 failed (#720 caveat applies: these writers don't list fields).
+  - Cleanup: the 3 recreated policies deleted and purged; 0 KEEL-RT-248 policies left. **Left in the tenant: nothing.**
+  - Evidence:
+    - Checks: `pseudonymize.mjs check` passes on 12 files; secret scan 0; no raw ids.
+    - Commit **eba59043** on `claude/live-evidence-q248` (pushed, no PR).
+    - Each of the 6 prints `fixture-tested -> live-qualified`:
+
+      | record | observedAt (2026-10-30, UTC) |
+      |---|---|
+      | claimsMappingPolicy.update | 00:38:03 |
+      | tokenIssuancePolicy.update | 00:38:03 |
+      | tokenLifetimePolicy.update | 00:38:03 |
+      | claimsMappingPolicy.create | 00:41:59 |
+      | tokenIssuancePolicy.create | 00:41:59 |
+      | tokenLifetimePolicy.create | 00:41:59 |
+
+  - HRD (lapses 2026-11-14 10:40) runs with Q245/Q247 once Marouane confirms the second GA session.
 - **Test tenant only.** Same rules and tooling as Q67. Restorer only; self-approve; log every approval id; grant nothing.
 - **Fixtures** (write down that none with the `KEEL-RT-248` prefix existed before): one each of `KEEL-RT-248-claims`,
   `KEEL-RT-248-issuance`, `KEEL-RT-248-lifetime`, `KEEL-RT-248-hrd`, minimal valid definitions (Graph docs examples),

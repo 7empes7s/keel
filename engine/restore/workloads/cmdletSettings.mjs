@@ -414,6 +414,21 @@ export class WorkloadWriteScopeError extends Error {
   }
 }
 
+/**
+ * Purview saved the change but reports that deploying the policy to its locations failed
+ * (PolicyDeploymentException). The value lands all the same (operator queue Q260: every
+ * Set-RetentionCompliancePolicy on a policy whose deployment times out errors after saving),
+ * so the outcome is read back, never assumed and never resent.
+ */
+export function isSavedButNotDeployed(detail) {
+  return /PolicyDeploymentException/.test(`${detail?.message ?? ''} ${detail?.errorId ?? ''}`);
+}
+
+/** Purview refuses a change while an earlier one to the same policy is still deploying (Q260). */
+export function isPolicyStillDeploying(detail) {
+  return /PolicyLockConflictException|Previous changes to the policy .* are being deployed/s.test(`${detail?.message ?? ''} ${detail?.errorId ?? ''}`);
+}
+
 /** Runs one declared write cmdlet through the bounded job transport; anything else is refused unsent. */
 export async function workloadWriteCmdlet({ cmdlet, parameters = {} }, powershell = {}) {
   const allowed = WRITE_CMDLETS[cmdlet];
@@ -978,8 +993,19 @@ async function runOperation(op, context) {
   try {
     await workloadWriteCmdlet({ cmdlet: op.cmdlet, parameters: op.parameters }, context.powershell);
   } catch (error) {
+    if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR' && isSavedButNotDeployed(error.detail)) {
+      await verify(op, context, { ambiguous: true, cause: 'Microsoft saved the change but reported that deploying the policy failed' });
+      return;
+    }
     if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') {
       const failed = structuredFailure(error);
+      if (isPolicyStillDeploying(error.detail)) {
+        await context.settle(op, {
+          outcome: 'failed', writes: 1, attempts: 1,
+          reasons: ['Microsoft is still deploying an earlier change to this policy and refused this one; run the restore again once that finishes'], error: failed.error,
+        });
+        return;
+      }
       if (isPreservationLockFailure({ error: error.detail })) {
         await context.settle(op, { outcome: 'refused', writes: 1, attempts: 1, reasons: ['the platform refused the change because of a preservation lock; KEEL never retries or works around it'], error: failed.error });
         return;

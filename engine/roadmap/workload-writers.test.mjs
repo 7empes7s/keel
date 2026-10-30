@@ -591,6 +591,51 @@ test('a write with no answer that did not apply is failed once and never resent'
   assert.equal(live.state['Get-AddressList'][0].DisplayName, 'renamed');
 });
 
+test('Purview: a retention policy saved while its deployment fails is read back; one still deploying fails with a plain reason', async (t) => {
+  // Q260, live: on a policy whose deployment times out, Set-RetentionCompliancePolicy saves the
+  // value and then throws PolicyDeploymentException; while that change deploys, the next Set is
+  // refused with PolicyLockConflictException.
+  const client = await schemaClient(t);
+  const restoreWith = async (error, applies) => {
+    const tenantRef = nextTenant();
+    const live = fakeTenant('purview-retention-dlp');
+    const source = await recordSource(client, tenantRef, 'purview-retention-dlp', live);
+    const policy = live.state['Get-RetentionCompliancePolicy'][0];
+    const original = policy.Comment;
+    policy.Comment = 'changed';
+    const { artifact } = await planned(client, tenantRef, 'purview-retention-dlp', { source, live });
+    const tenant = fakeTenant('purview-retention-dlp', {
+      state: live.state,
+      hooks: {
+        cmdlet({ cmdlet, parameters, state }) {
+          if (cmdlet !== 'Set-RetentionCompliancePolicy') return null;
+          if (applies) state['Get-RetentionCompliancePolicy'].find((body) => body.Guid === parameters.Identity).Comment = parameters.Comment;
+          return { error };
+        },
+      },
+    });
+    const result = await execute(client, tenantRef, 'purview-retention-dlp', artifact, tenant);
+    return { result, tenant, policy, original };
+  };
+
+  const saved = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'x' failed to be deployed. To fix this issue, please retry the policy operation after some time.", category: 'ConnectionError', errorId: '[],Write-ErrorMessage' }, true);
+  assert.deepEqual(saved.result.operations.map((op) => [op.outcome, op.writes]), [['verified', 1]]);
+  assert.match(saved.result.operations[0].reasons[0], /saved the change but reported that deploying the policy failed.*re-read shows it applied, so it was not resent/);
+  assert.equal(saved.tenant.writes.length, 1);
+  assert.equal(saved.policy.Comment, saved.original);
+
+  const deploying = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyLockConflictException|Previous changes to the policy 'x' are being deployed. Once deployed, additional actions can be performed.", category: 'InvalidOperation', errorId: '[],Write-ErrorMessage' }, false);
+  assert.deepEqual(deploying.result.operations.map((op) => [op.outcome, op.writes]), [['failed', 1]]);
+  assert.match(deploying.result.operations[0].reasons[0], /still deploying an earlier change to this policy.*run the restore again/);
+  assert.equal(deploying.tenant.writes.length, 1);
+  assert.equal(deploying.policy.Comment, 'changed');
+
+  // Saved-but-not-deployed that did not land is not reported as restored.
+  const notLanded = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'x' failed to be deployed.", category: 'ConnectionError', errorId: '[],Write-ErrorMessage' }, false);
+  assert.deepEqual(notLanded.result.operations.map((op) => [op.outcome, op.writes]), [['failed', 1]]);
+  assert.match(notLanded.result.operations[0].reasons[0], /re-read does not show it; it was not resent/);
+});
+
 test('a rule whose policy was not read, or a read stopped at its limit, plans nothing', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();

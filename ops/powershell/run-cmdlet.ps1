@@ -200,6 +200,12 @@ $AllowedPurviewWrites = @{
     'Set-RetentionComplianceRule'   = @('Identity', 'Comment', 'ContentMatchQuery', 'ExpirationDateOption', 'RetentionComplianceAction', 'RetentionDuration', 'RetentionDurationDisplayHint')
 }
 
+# Writes that ask for confirmation. An app-only session cannot answer the prompt, and
+# Set-DlpComplianceRule then fails with a generic "server side error" (operator queue
+# Q260: 3 of 3 without -Confirm:$false, 2 of 2 with it). Only -Confirm:$false is added;
+# the job still cannot pass Confirm itself.
+$NoConfirmPrompt = @('Set-DlpComplianceRule')
+
 $AllowedTeamsWrites = @{
     'New-CsCallingLineIdentity'                = @('Identity', 'BlockIncomingPstnCallerID', 'CallingIDSubstitute', 'CompanyName', 'Description', 'EnableUserOverride', 'ResourceAccount', 'ServiceNumber')
     'New-CsOnlineVoicemailPolicy'              = @('Identity', 'Description', 'EnableEditingCallAnswerRulesSetting', 'EnableTranscription', 'EnableTranscriptionProfanityMasking', 'EnableTranscriptionTranslation', 'PrimarySystemPromptLanguage', 'SecondarySystemPromptLanguage')
@@ -360,6 +366,8 @@ if ($null -ne $job['parameters']) {
         $params[$key] = $value
     }
 }
+
+if ($NoConfirmPrompt -contains $name) { $params['Confirm'] = $false }
 
 $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPath'] } else { '/etc/keel/tenant.json' }
 try {

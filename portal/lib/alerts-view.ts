@@ -2,7 +2,7 @@
 // server imports, so the inbox component and the UI harness can use it.
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
-import { typeService } from "@/lib/baselines-view";
+import { itemService, typeService } from "@/lib/baselines-view";
 import { workloadLabel, WORKLOAD_LABELS } from "@/lib/compare-view";
 import { holdsObjectId, namedResource } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
@@ -52,6 +52,9 @@ export interface AlertItem {
   escalated: boolean;
   escalationError: string | null;
   cause: { changeType: string | null; resourceType: string | null; snapshotId: string | null };
+  // The settings catalog template family the newest backup holds for the resource, when
+  // it has one: an endpoint security policy made in Intune is a Defender setting.
+  templateFamily?: string | null;
   lastEventId: string;
   history: AlertHistoryEntry[];
 }
@@ -356,7 +359,7 @@ export function alertService(alert: AlertItem): CloudService {
   if (workload) return typeService(workload);
   const index = alert.resourceKey.indexOf(":");
   const type = alert.cause.resourceType ?? (index > 0 ? alert.resourceKey.slice(0, index) : alert.resourceKey);
-  return typeService(type);
+  return itemService({ resourceType: type, name: alert.name, templateFamily: alert.templateFamily ?? null });
 }
 
 /** Where to see the change behind the alert. Never a write: undo starts on Changes. */

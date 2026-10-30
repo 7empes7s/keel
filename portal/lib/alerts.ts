@@ -60,16 +60,20 @@ const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "DisplayName", "name", "Na
  * Names, not ids: the name each alerted resource carries. A backup key reads the name
  * the newest backup holding one saved; a workload key (`<workload>:<key>`, such as a
  * SharePoint site) reads the newest workload read that named it. A failed read leaves
- * the resource unnamed, never the page down.
+ * the resource unnamed, never the page down. `families` gets the template family each
+ * backup key's saved copy carries, when it has one.
  */
-export async function alertResourceNames(client: QueryClient, tenantRef: string, keys: string[]): Promise<Map<string, string>> {
+export async function alertResourceNames(client: QueryClient, tenantRef: string, keys: string[], families: Map<string, string> = new Map()): Promise<Map<string, string>> {
   const names = new Map<string, string>();
   const unique = [...new Set(keys)];
   const workloadKeys = unique.filter((key) => alertWorkload(key) !== null);
   const backupKeys = unique.filter((key) => alertWorkload(key) === null);
   try {
     const saved = await savedNames(client, tenantRef, backupKeys);
-    for (const [key, entry] of Object.entries(saved)) if (entry.name?.trim()) names.set(key, entry.name.trim());
+    for (const [key, entry] of Object.entries(saved)) {
+      if (entry.name?.trim()) names.set(key, entry.name.trim());
+      if (entry.templateFamily) families.set(key, entry.templateFamily);
+    }
   } catch (error) {
     console.error("[keel-portal] alert resource names unavailable", error);
   }
@@ -141,7 +145,8 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
     }
     const namer = people.size ? await peopleNamer(client as QueryClient) : null;
     const keys = rows.map((row) => String(row.resource_key));
-    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, keys);
+    const families = new Map<string, string>();
+    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, keys, families);
     const objects = await alertObjects(client as QueryClient, tenantRef, keys);
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
@@ -171,6 +176,7 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
           resourceType: (detail.resourceType as string | undefined) ?? null,
           snapshotId: (detail.snapshotId as string | undefined) ?? null,
         },
+        ...(families.has(String(row.resource_key)) ? { templateFamily: families.get(String(row.resource_key))! } : {}),
         lastEventId: String(row.last_event_id),
         history: (histories.get(String(row.id)) ?? []).map((entry) => ({
           id: String(entry.id),

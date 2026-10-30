@@ -9,7 +9,9 @@ import { resourceTypeLabel } from "@/lib/presentation";
 
 export { holdsObjectId };
 
-export type NamedKeys = Record<string, { name: string | null; resourceType: string }>;
+// templateFamily: the settings catalog template family the saved copy carries, when it
+// has one; an endpoint security policy made in Intune is listed under Defender.
+export type NamedKeys = Record<string, { name: string | null; resourceType: string; templateFamily?: string | null }>;
 
 const FAMILY_WORDS: Record<string, string> = { member: "member", owner: "owner" };
 

@@ -13559,3 +13559,21 @@ item that needs it stays untouched.
 - **Expected:** 8 verdicts of pass, fail or N/A, none "could not check". If any is `scubagear:incomplete:SPO_tenant`, report
   the field from step 3 that is missing or odd; that is the fix for the thread.
 - **Report:** the run line; the 8 rows; the 10 values; match or mismatch per rule.
+
+### Q287: Recheck the Teams voice network and device policy reads after the trims (read-only toward the tenant, after PR #825), about 10 minutes
+- Drafted by the "Fix Teams voice and device reads" thread (2026-10-30), from the Q279 Result. Code: PR #825 drops the
+  `teams-voice-network.pstn-usages` read (Get-CsOnlinePstnUsages is not exposed in the app-only session) and drops
+  `Description` from audioConferencingPolicy, vdiPolicy and feedbackPolicy.
+- Needs: /opt/keel-live at the #825 merge or later (`! grep -q Get-CsOnlinePstnUsages /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
+  Scripts are mounted from the checkout, so no image rebuild is expected.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Teams Administrator, already held). No `New-`, `Set-`, `Grant-` or `Remove-`
+  cmdlet. Grant, assign or create nothing.
+- Do: repeat Q279 steps 1 to 5 exactly (same commands, same evidence branch `claude/live-evidence-teams-voice-network`,
+  replacing the two records), at the commit `/opt/keel-live` is deployed at.
+- **Expected:** `teams-voice-network` capture outcome **complete** with notProven `[]` and no `pstn-usages` in `proven`;
+  `teams-device-policies` capture **complete**; in the `run`, both workloads **complete**, `unknownFields` `{}` for both, and
+  no `skipped` reads. If any unknown field or unproven read remains, report it verbatim (field names only); that is the next fix.
+- **Report:** B; capture exit codes, outcome, proven/notProven; evidence branch and commit; import counts; the run outcome,
+  fieldCounts and unknownFields per workload; proof status; anything left in the tenant (expected: nothing).

@@ -511,6 +511,10 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // Trust fields are never sent: a difference in one is a step for a person.
   const trustStep = recordTrustFieldStep(record, payload, before, verb);
   const trustCompletion = trustStep ? { completion: [trustStep] } : {};
+  // A skipped write sends nothing either, so it lists the same trust step after its own.
+  const skip = (refusal) => refusalEntry(naturalKey, {
+    outcome: 'skipped', ...refusal, ...(trustStep ? { completion: [...(refusal.completion ?? []), trustStep] } : {}),
+  });
 
   // A recreate lists the parts the backup cannot give back (ENTRA's
   // best-effort rule), worked out before anything is written.
@@ -535,17 +539,17 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // fixture guard first, in the dry run and again before the write.
   if (fields.length > 0 || record.afterWrite) {
     const tenantWide = tenantWideRecordProblem(record, ctx);
-    if (tenantWide) return refusalEntry(naturalKey, { outcome: 'skipped', reason: tenantWide });
+    if (tenantWide) return skip({ reason: tenantWide });
   }
   if (record.preflight && writer) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
     // A preflight may also find the write already done another way: { skipped }.
-    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped });
+    if (reason?.skipped) return skip({ reason: reason.skipped });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
   }
   if (verb === 'update' && record.updateGuard && writer && fields.length > 0) {
     const held = await record.updateGuard(io, { resource, payload, targetId, before, fields, ctx });
-    if (held) return refusalEntry(naturalKey, { outcome: 'skipped', ...held });
+    if (held) return skip(held);
   }
   if (ctx.mode === 'dry-run') {
     const planned = record.planChanges && writer ? await record.planChanges(io, { resource, payload, verb, targetId, before, ctx }) : null;
@@ -559,7 +563,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // A failed write: Graph's answer, or the record's plain reason nothing could be written.
   const writeFailed = async (result) => {
     await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: result.skipped });
+    if (typeof result?.skipped === 'string') return skip({ reason: result.skipped });
     return { failed: writeFailure(record, naturalKey, result) };
   };
 

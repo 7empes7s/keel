@@ -157,3 +157,82 @@ test('a create that finds the same object already there still lists a trust fiel
     assert.deepEqual(result.applied.completion?.[0]?.fields, ['trustedRootCertificate'], mode);
   }
 });
+
+// Skipped writes: nothing is sent, and the trust step a write would have listed is
+// listed on the skip too, after the skip's own steps.
+const fixtureRecord = (extra) => defineRecord({
+  resourceType: 'keelFixtureSetting', version: 'v1.0', collection: '/fixture/settings', operations: ['create', 'update'], ...extra,
+});
+const skipLive = { id: 'set-1', displayName: 'KEEL-RT-Setting', description: 'Live', issuerUri: 'https://live.example.test' };
+const skipDesired = { id: 'set-src', displayName: 'KEEL-RT-Setting', description: 'Backup', issuerUri: 'https://backup.example.test' };
+const skipResource = () => resourceOf('keelFixtureSetting', skipDesired, { live: { state: 'present', targetId: 'set-1', payload: skipLive } });
+const sentNothing = (graph) => graph.calls.every((call) => call.method === 'GET' || call.method === undefined);
+const trustSteps = (entry) => (entry.completion ?? []).filter((step) => step.requirement === 'trustFields').map((step) => step.fields);
+
+test('a tenant-wide setting skipped by the test tenant guard still lists its trust fields', async () => {
+  const record = fixtureRecord({ tenantWide: true });
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph({ seed: { '/fixture/settings/set-1': skipLive } });
+    const result = await applyRecordWrite(graph, record, skipResource(), 'update', {
+      ...FAST, mode, tenantRef: 'tenant-test', testTenantRefs: ['tenant-test'],
+    });
+    assert.ok(result.skipped, `${mode}: skipped`);
+    assert.match(result.skipped.reason, /tenant-wide/);
+    assert.equal(sentNothing(graph), true, `${mode}: nothing is written`);
+    assert.deepEqual(trustSteps(result.skipped), [['issuerUri']], mode);
+  }
+});
+
+test('a write a preflight skips still lists its trust fields', async () => {
+  const record = fixtureRecord({ preflight: async () => ({ skipped: 'live already holds this setting' }) });
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph({ seed: { '/fixture/settings/set-1': skipLive } });
+    const result = await applyRecordWrite(graph, record, skipResource(), 'update', { ...FAST, mode });
+    assert.equal(result.skipped?.reason, 'live already holds this setting', mode);
+    assert.equal(sentNothing(graph), true, `${mode}: nothing is written`);
+    assert.deepEqual(trustSteps(result.skipped), [['issuerUri']], mode);
+  }
+});
+
+test('an update its guard holds back keeps the guard\'s own step and adds the trust step after it', async () => {
+  const own = { kind: 'manual-setting', requirement: 'fixtureGuard', description: 'Check the setting by hand.' };
+  const record = fixtureRecord({ updateGuard: async () => ({ reason: 'manual: held by the guard', completion: [own] }) });
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph({ seed: { '/fixture/settings/set-1': skipLive } });
+    const result = await applyRecordWrite(graph, record, skipResource(), 'update', { ...FAST, mode });
+    assert.equal(result.skipped?.reason, 'manual: held by the guard', mode);
+    assert.equal(sentNothing(graph), true, `${mode}: nothing is written`);
+    assert.deepEqual(result.skipped.completion.map((step) => step.requirement), ['fixtureGuard', 'trustFields'], mode);
+    assert.deepEqual(trustSteps(result.skipped), [['issuerUri']], mode);
+  }
+});
+
+test('a write its route reports as not possible still lists its trust fields', async () => {
+  const record = fixtureRecord({
+    writeVia: async () => ({ ok: false, status: 409, skipped: 'the route cannot write this setting' }),
+    readVia: async () => ({ ok: true, status: 200, body: skipLive }),
+  });
+  const graph = idoFakeGraph({ seed: { '/fixture/settings/set-1': skipLive } });
+  const result = await applyRecordWrite(graph, record, skipResource(), 'update', FAST);
+  assert.equal(result.skipped?.reason, 'the route cannot write this setting');
+  assert.deepEqual(trustSteps(result.skipped), [['issuerUri']]);
+});
+
+test('a skip with no trust difference adds no trust step, and keeps the skip\'s own steps as they were', async () => {
+  const own = { kind: 'manual-setting', requirement: 'fixtureGuard', description: 'Check the setting by hand.' };
+  const sameTrust = { ...skipDesired, issuerUri: skipLive.issuerUri };
+  const resource = resourceOf('keelFixtureSetting', sameTrust, { live: { state: 'present', targetId: 'set-1', payload: skipLive } });
+  const graph = idoFakeGraph({ seed: { '/fixture/settings/set-1': skipLive } });
+  const guarded = await applyRecordWrite(graph, fixtureRecord({ updateGuard: async () => ({ reason: 'manual: held', completion: [own] }) }), resource, 'update', FAST);
+  assert.deepEqual(guarded.skipped.completion, [own]);
+  const preflighted = await applyRecordWrite(graph, fixtureRecord({ preflight: async () => ({ skipped: 'already there' }) }), resource, 'update', FAST);
+  assert.equal(preflighted.skipped.completion, undefined);
+});
+
+test('a record with its own writable list adds no trust step to a skip', async () => {
+  const record = fixtureRecord({ writable: ['description'], preflight: async () => ({ skipped: 'already there' }) });
+  const graph = idoFakeGraph({ seed: { '/fixture/settings/set-1': skipLive } });
+  const result = await applyRecordWrite(graph, record, skipResource(), 'update', FAST);
+  assert.equal(result.skipped?.reason, 'already there');
+  assert.equal(result.skipped.completion, undefined);
+});

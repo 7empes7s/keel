@@ -12791,8 +12791,14 @@ item that needs it stays untouched.
   that a `keel-remediate --enforce` delete of a named location now exits 0. No evidence capture is needed (Q247 already promoted
   the record).
 - Needs: PR #783 merged and deployed (build B). Check: `grep -q leftOutOfAfter /opt/keel-live/engine/restore/applyEngine.mjs`.
-- Status: todo
-- Result:
+- Status: done
+- Result: done, **PR #783 works live** (2026-10-30 12:50 UTC, keel-operator), relying on Marouane's all-day second-GA go (08:27 UTC). Build **B = 1c571efa**. Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's account.
+  - Break-glass report **ready** (both) before the snapshot and before the remediate. No `KEEL-RT-273` object before (named locations: the 3 KEEL-RT-20260908/CoreView ones only).
+  - S **8cc6166d**; active baseline was **v8 `433bd979`**; new baseline **v9 `3a5eb29c`** from S, activated.
+  - Created `KEEL-RT-273-location-delete` (`0ce2ed11…`, 198.51.100.0/24, untrusted, no policy). Drift detect: **`cf88cd66`** `namedLocation:KEEL-RT-273-location-delete added tenant-lockout`.
+  - `keel-remediate --enforce`: **exit 0**, artifact **010a5068**, delete wave applied 1, failed 0, **no `sign-in-path-gate` failure**. Journal `delete | succeeded | absent`.
+  - Graph: the first GET right after answered 200 (the same lag as #774); 15/31/47 s later **404**, and the list no longer has it.
+  - Cleanup: nothing left (the delete removed the fixture). Baseline v8 reinstated as **v10 `35d665e7`** (active).
 - **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
   account. The fixture is an IP named location, **not trusted**, used by no policy. A named location delete is lockout-sensitive
   in the checklist: Marouane gave the go for today's lockout steps in Q247 (08:27 UTC, signed in as a second Global Administrator

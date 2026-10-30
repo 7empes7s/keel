@@ -20,6 +20,8 @@ import {
   dryRunsAwaitingContentEffectApproval,
   loadContentEffectReview,
 } from '../safety/contentEffects.mjs';
+import { CONTENT_EFFECT_RULES } from '../safety/contentEffects.mjs';
+import { WORKLOAD_EFFECT_RULES } from '../restore/workloads/cmdletSettings.mjs';
 import { createSnapshot } from '../store/db.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -79,6 +81,18 @@ test('restored kinds land in their service; a kind Keel cannot place has none', 
   assert.equal(serviceForResourceType(undefined), null);
   // Every effect sample is placed, so none falls back to "always needs approval" by accident.
   for (const effect of [...purviewEffects(), ...sharepointEffects()]) assert.ok(serviceForResourceType(effect.resourceType));
+});
+
+test('every kind with a high-impact rule lands in the service its name says, so a setting never lifts the wrong service', () => {
+  const expected = (type) => (/^exchange/.test(type) ? 'Exchange'
+    : /^teams/.test(type) ? 'Teams'
+      : /^(purview|retentionLabel$|ediscovery)/.test(type) ? 'Purview'
+        : /^sharepoint/.test(type) ? 'SharePoint'
+          : /^(device|configurationPolicy$|windowsManagedAppProtection$|managedAppPolicy$|mobileApp)/.test(type) ? 'Intune'
+            : 'Entra');
+  const types = [...Object.keys(CONTENT_EFFECT_RULES), ...Object.keys(WORKLOAD_EFFECT_RULES)];
+  assert.ok(types.length > 40);
+  for (const type of types) assert.equal(serviceForResourceType(type), expected(type), type);
 });
 
 test('approvals are on for every service until someone turns one off; each change is in the audit record', async (t) => {

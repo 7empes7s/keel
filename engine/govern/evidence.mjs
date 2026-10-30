@@ -187,8 +187,11 @@ const sameFingerprint = (a, b) => a?.count === b?.count && a?.versions === b?.ve
 // a check that started before the break never writes a stale "ok" back; and the full
 // walk in progress per tenant, so callers that find no entry share one walk instead of
 // each walking the whole chain (the portal's warm-up at start and the first page loads).
-const generations = new WeakMap();
-const fullWalks = new WeakMap();
+// Kept on globalThis like the portal's cache: a bundler may load this module more than
+// once (the portal's start-up timer and its pages are separate bundles), and every copy
+// must see the same state.
+const generations = (globalThis[Symbol.for('keel.evidenceChain.generations')] ??= new WeakMap());
+const fullWalks = (globalThis[Symbol.for('keel.evidenceChain.fullWalks')] ??= new WeakMap());
 
 function perCache(store, cache) {
   let map = store.get(cache);
@@ -221,7 +224,10 @@ async function checkChain(client, { tenantRef, cache, now, fullEveryMs, pageSize
   if (!start) fingerprint = await rangeFingerprint(client, tenantRef, null, tip.seq);
   else if (tip.seq === start.seq) fingerprint = entry.fingerprint;
   else fingerprint = addFingerprints(entry.fingerprint, await rangeFingerprint(client, tenantRef, start.seq, tip.seq));
-  cache.set(tenantRef, { tip, fingerprint, fullAt: start ? entry.fullAt : now });
+  // Never move the full-walk time backwards: a full walk that finished while this check
+  // ran (the timer's) already wrote a newer one.
+  const fullAt = start ? Math.max(entry.fullAt, cache.get(tenantRef)?.fullAt ?? 0) : now;
+  cache.set(tenantRef, { tip, fingerprint, fullAt });
   return result;
 }
 
@@ -231,7 +237,15 @@ export async function verifyChainCached(client, {
   const walks = perCache(fullWalks, cache);
   const cold = !cache.has(tenantRef);
   const running = walks.get(tenantRef);
-  if (cold && running) return running;
+  if (cold && running) {
+    // Wait for the walk already running, then check in this caller's own snapshot: the
+    // cache is warm by then, so that costs one fingerprint plus any new records, and an
+    // edit committed after the shared walk began is still caught. A broken result stands
+    // (a chain does not mend itself); a failed walk leaves this caller to check alone.
+    const shared = await running.catch(() => null);
+    if (shared && !shared.ok) return shared;
+    return checkChain(client, { tenantRef, cache, now, fullEveryMs, pageSize });
+  }
   const check = checkChain(client, { tenantRef, cache, now, fullEveryMs, pageSize });
   if (!cold) return check;
   walks.set(tenantRef, check);

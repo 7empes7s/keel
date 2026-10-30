@@ -50,7 +50,7 @@ before(async () => {
 });
 
 after(async () => {
-  stopEvidenceChainRefresh();
+  await stopEvidenceChainRefresh();
   await client?.end();
   await database?.cleanup();
 });
@@ -89,7 +89,7 @@ test("the server start begins the background check once", async () => {
     }
     assert.equal((evidenceChainCache.get(ref) as CacheEntry | undefined)?.tip.count, "4", "the first check runs at start, before any page load");
   } finally {
-    stopEvidenceChainRefresh();
+    await stopEvidenceChainRefresh();
     if (previous === undefined) delete process.env.NEXT_RUNTIME;
     else process.env.NEXT_RUNTIME = previous;
   }

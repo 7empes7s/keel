@@ -11,7 +11,7 @@ import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 
 interface RefreshState {
   timer: ReturnType<typeof setInterval>;
-  running: boolean;
+  running: Promise<void> | null;
   failing: boolean;
 }
 
@@ -30,33 +30,33 @@ export async function refreshEvidenceChainOnce(): Promise<void> {
 export function startEvidenceChainRefresh(everyMs: number = CHAIN_REFRESH_MS): void {
   if (globalRefresh.__keelEvidenceChainRefresh) return;
   const state: RefreshState = {
-    running: false,
+    running: null,
     failing: false,
     timer: setInterval(() => void tick(), everyMs),
   };
   state.timer.unref?.();
   globalRefresh.__keelEvidenceChainRefresh = state;
 
-  async function tick() {
-    if (state.running) return;
-    state.running = true;
-    try {
-      await refreshEvidenceChainOnce();
-      state.failing = false;
-    } catch (error) {
-      // Logged once per failing spell; page loads still check the record themselves.
-      if (!state.failing) console.error("[keel-portal] background audit check failed", error);
-      state.failing = true;
-    } finally {
-      state.running = false;
-    }
+  function tick() {
+    if (state.running) return state.running;
+    state.running = refreshEvidenceChainOnce()
+      .then(() => { state.failing = false; })
+      .catch((error) => {
+        // Logged once per failing spell; page loads still check the record themselves.
+        if (!state.failing) console.error("[keel-portal] background audit check failed", error);
+        state.failing = true;
+      })
+      .finally(() => { state.running = null; });
+    return state.running;
   }
   void tick();
 }
 
-export function stopEvidenceChainRefresh(): void {
+// Stops the timer and waits for a check already running, so its connection is closed.
+export async function stopEvidenceChainRefresh(): Promise<void> {
   const state = globalRefresh.__keelEvidenceChainRefresh;
   if (!state) return;
   clearInterval(state.timer);
   delete globalRefresh.__keelEvidenceChainRefresh;
+  await state.running;
 }

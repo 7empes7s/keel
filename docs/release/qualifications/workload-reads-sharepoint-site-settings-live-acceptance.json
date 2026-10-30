@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "3010d22c68a8c667b13d37fff0e2686ba7520a01",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-22T21:15:45.731Z",
+  "observedAt": "2026-10-30T01:30:27.524Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,10 +25,10 @@
         "family": "site-sharing",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-22T21:15:45.731Z",
+        "capturedAt": "2026-10-30T01:30:27.524Z",
         "ok": true,
         "status": "read",
-        "objects": 20,
+        "objects": 21,
         "error": null
       }
     ]
@@ -36,7 +36,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "9e1b138a7626b275d387b16693a905ad1fca01d5de52f3580529a89a6d621900"
+      "signature": "3aa3aeeea3823a527cb2043da6142fb760ba83faa2f122bb02ecf350d1899992"
     }
   }
 }

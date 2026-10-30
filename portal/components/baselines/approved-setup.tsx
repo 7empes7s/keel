@@ -8,7 +8,7 @@ import { ResnapshotBaseline } from "@/components/resnapshot-baseline";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  coverageWords, kindsWords, overallScore, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
+  coverageWords, kindsWords, overallScore, serviceSettingsWords, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
 } from "@/lib/baselines-view";
 import { captureScope, changesSentence, leftOutWords, resnapshotSource, scoreTone, type ComplianceScore } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
@@ -58,7 +58,7 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
       </div>
       <dl className="bl-facts">
         <Fact label="Captured" note={captureScope(active.capture)} value={captured ? ago(captured, now) : "Not recorded"} />
-        <Fact label="Holds" note="Every setting it holds is checked after each backup." value={coverageWords(active)} />
+        <Fact label="Holds" note={serviceSettingsWords(active) ?? "Every setting it holds is checked after each backup."} value={coverageWords(active)} />
         <Fact label="Approved by" note={`On ${formatTimestamp(active.setAt)}`} value={active.setByRef?.name ?? "an unknown account"} />
         <Fact label="Version" note={active.version && active.version > 1 ? "Earlier versions are kept below." : "The first version of this setup."} value={String(active.version ?? 1)} />
       </dl>
@@ -81,9 +81,9 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
   );
 }
 
-// The three counts on a service card. A service read is measured against its own
-// approved setup, taken from Keel's first read, so a kind it could not read is "not
-// read" rather than "not covered".
+// The three counts on a service card. A service read the approved setup does not hold
+// yet is measured against its own setup, taken from Keel's first read, so a kind it
+// could not read is "not read" rather than "not covered".
 const STAT_WORDS: Record<ServiceSummary["basis"], { inLine: string; notCovered: string }> = {
   "approved-setup": { inLine: "In line", notCovered: "Not covered" },
   "previous-backup": { inLine: "In line", notCovered: "Not read" },
@@ -235,6 +235,7 @@ function Record({ baselines }: { baselines: BaselineRecord[] }) {
           <RecordField copy={false} key={`${baseline.id}-basis`} label={`Capture basis · ${name}`} value={capture?.basis ?? "unknown"} />,
           capture?.sourceSnapshotId ? <RecordField key={`${baseline.id}-src`} label={`Source snapshot ID · ${name}`} usage={<>use with <code>keel-baseline-create --snapshot-id</code></>} value={capture.sourceSnapshotId} /> : null,
           <RecordField copy={false} key={`${baseline.id}-types`} label={`Types captured · ${name}`} value={capture?.types.length ? capture.types.join(", ") : null} />,
+          <RecordField copy={false} key={`${baseline.id}-services`} label={`Service reads captured · ${name}`} value={capture?.services?.length ? capture.services.map((service) => `${service.workload} (${service.settings}, read ${service.collectedAt ?? "unknown"})`).join(", ") : null} />,
           <RecordField copy={false} key={`${baseline.id}-cmp`} label={`Comparison · ${name}`} value={changes ? `${changes.state} · added ${changes.added} · modified ${changes.modified} · removed ${changes.removed}${changes.reason ? ` · ${changes.reason}` : ""}${changes.comparedSnapshotId ? ` · snapshot ${changes.comparedSnapshotId}` : ""}` : null} />,
         ];
       })}
@@ -259,7 +260,7 @@ export function ApprovedSetup({
   // Open changes against the setup in use; null when they could not be read.
   items: Pick<DriftRecord, "resourceType" | "blastRadius" | "changeType">[] | null;
   // Open changes to Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform
-  // settings, each compared with the previous backup (lib/service-changes.ts).
+  // settings, each compared with the approved setup (lib/service-changes.ts).
   serviceChanges?: Pick<DriftRecord, "resourceType" | "blastRadius" | "serviceRead" | "changeType">[];
   // Those services' kinds on What's protected, and whether the latest backup read them.
   serviceReads?: ServiceReadKind[];
@@ -299,7 +300,7 @@ export function ApprovedSetup({
             about={items === null
               ? "Open changes could not be read just now, so every service shows as in line."
               : anyRead
-                ? "Entra ID and Intune against the approved setup; the other services against the previous backup, since an approved setup cannot hold their settings yet. Services that need a look come first."
+                ? "Each Microsoft service against the approved setup. Some service settings are not in this version yet, so they are measured against Keel's first read of them; capture a new version to add them. Services that need a look come first."
                 : "Each Microsoft service against the approved setup. Services that need a look come first."}
             id="bl-services-heading"
             title="By service"
@@ -310,8 +311,8 @@ export function ApprovedSetup({
           </ul>
           <dl className="bl-legend">
             <div><dt data-part="changed">Changed</dt><dd>Kinds of setting that differ from the approved setup. The colour shows the worst risk among them.</dd></div>
-            <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup. Exchange, SharePoint, Teams, Purview and Power Platform each have their own, taken from Keel&apos;s first read and kept up to date by Accept.</dd></div>
-            <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet. Capture a new version to add it.</dd></div>
+            <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup, including Exchange, SharePoint, Teams, Purview and Power Platform settings. Accept keeps it up to date.</dd></div>
+            <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet, or the latest read of it failed. Capture a new version to add it.</dd></div>
             {anyRead ? (
               <>
                 <div><dt data-part="not-covered">Not read</dt><dd>The latest backup could not read it, or has not read it yet. <Link href="/protect">What&apos;s protected</Link> says why.</dd></div>

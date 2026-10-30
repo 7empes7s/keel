@@ -157,7 +157,9 @@ export function overallScore(summaries: Pick<ServiceSummary, "score">[]): Compli
 
 /** One line per service: in line, changed, not covered. Services that need action come
  * first, then Microsoft's own order. Service reads (`serviceReads`, and changes that
- * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
+ * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. A
+ * service read the approved setup holds (`capture.services`) is measured against it
+ * like a Graph kind; one it does not hold yet keeps its own setup from Keel's first read. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
   items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name" | "changeType">>)[],
@@ -167,10 +169,12 @@ export function serviceSummaries(
   // it no service gets a score.
   held: Record<string, number> | null = null,
 ): ServiceSummary[] {
+  // Service settings the approved setup holds, per service read, from its capture.
+  const heldServices = new Map((baseline?.capture?.services ?? []).map((service) => [service.workload, service.settings]));
   const reads = new Set([
     ...serviceReads.map((read) => read.type),
     ...items.filter((item) => item.serviceRead).map((item) => item.resourceType),
-  ]);
+  ].filter((type) => !heldServices.has(type)));
   const captured = new Set(baseline?.capture?.types ?? []);
   const changedTypes = new Set(items.map((item) => item.resourceType));
   const byCode = new Map<string, ServiceSummary>();
@@ -215,11 +219,11 @@ export function serviceSummaries(
     const counts = new Map<string, MatchCount>();
     for (const type of scored) {
       const basis = reads.has(type) ? "previous-backup" : "approved-setup";
-      const count = basis === "approved-setup" ? held[type] ?? 0 : readCounts.get(type);
+      const count = basis === "approved-setup" ? heldServices.get(type) ?? held[type] ?? 0 : readCounts.get(type);
       // A service read whose size is not known cannot be scored.
       if (count === null || count === undefined) continue;
       // A service read counts its open changes in full; the list of changes may hold only recent ones.
-      const changes = (basis === "previous-backup" ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
+      const changes = (basis === "previous-backup" || heldServices.has(type) ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
       const match = kindMatch(count, changes, basis);
       if (!match.judged) continue;
       const code = entry(type).service.code;
@@ -261,10 +265,24 @@ export function versionState(baseline: BaselineRecord): { label: string; tone: R
   return baseline.active ? { label: "In use", tone: "fine" } : { label: "Not in use", tone: null };
 }
 
-/** "4,812 settings in 6 kinds" */
+/** "4,812 settings in 6 kinds", plus "and 320 service settings" when it holds any. */
 export function coverageWords(baseline: BaselineRecord): string {
   const kinds = baseline.capture?.types.length ?? 0;
-  return `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "kind")}` : ""}`;
+  const graph = `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "kind")}` : ""}`;
+  const services = baseline.capture?.services?.length ?? 0;
+  return services ? `${graph}, and ${plural(baseline.serviceSettingCount ?? 0, "service setting")}` : graph;
+}
+
+/** What the setup holds of Exchange, SharePoint, Teams, Purview and Power Platform, in a
+ * sentence, or null for a setup captured before it could hold them. */
+export function serviceSettingsWords(baseline: BaselineRecord): string | null {
+  const services = baseline.capture?.services ?? [];
+  const missing = baseline.capture?.servicesNotRead ?? [];
+  if (!services.length && !missing.length) return null;
+  const head = services.length
+    ? `Includes ${plural(services.length, "service read")} (${kindsWords(services.map((service) => service.workload))}).`
+    : "Holds no service settings: no service read was available.";
+  return missing.length ? `${head} Never read when captured: ${kindsWords(missing)}.` : head;
 }
 
 export function kindsWords(types: string[], limit = 3): string {

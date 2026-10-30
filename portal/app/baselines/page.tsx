@@ -53,7 +53,7 @@ export default async function BaselinesPage() {
   // The per-service summary is a convenience on top of the page: if the changes or the
   // backup inventory cannot be read, the page still shows the approved setup.
   // Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform settings are
-  // tenant-wide service reads, compared with the previous backup, so only a central
+  // tenant-wide service reads, compared with the approved setup, so only a central
   // administrator sees them (as on the Changes page).
   const active = data.baselines.find((baseline) => baseline.active) ?? null;
   const [items, coverage, serviceChanges, held, readTotals] = await Promise.all([

@@ -792,7 +792,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Anti-malware policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Safe Links policies (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments policies, a rule turned on or off, and a deleted rule or connector are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
+**You do:** Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 
 ### Teams organization policies
 

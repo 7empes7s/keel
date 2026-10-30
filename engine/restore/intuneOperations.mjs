@@ -211,9 +211,13 @@ export function trustSettingRefusal(resource, verb) {
   const ids = new Set(trustSettingIds(resource?.payload));
   if (verb === 'update') for (const id of trustSettingIds(resource?.live?.payload)) ids.add(id);
   if (ids.size === 0) return null;
+  const fields = [...ids].sort();
+  const description = `this policy holds trust, certificate or sign-in settings (${fields.join(', ')}); a restore never writes them, and the policy is written whole, so restore it by hand in the Intune admin center`;
   return {
     outcome: 'skipped',
-    reason: `manual: this policy holds trust, certificate or sign-in settings (${[...ids].sort().join(', ')}); a restore never writes them, and the policy is written whole, so restore it by hand in the Intune admin center`,
+    reason: `manual: ${description}`,
+    // The same manual step as a whole-replace refusal, so the person sees which settings to set by hand.
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(fields), description })]),
   };
 }
 

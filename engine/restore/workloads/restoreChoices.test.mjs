@@ -100,3 +100,49 @@ test('teams: named by display name, keys outside team: are not offered', () => {
   assert.deepEqual(teams.items.map((item) => [item.name, item.change, item.restorable]), [['KEEL-RT Falcon', null, true]]);
   assert.deepEqual(perItemRequest('teams-settings', `team:${id}`), { teamId: id });
 });
+
+test('SharePoint site structure: hubs, designs, scripts and sites are offered by title, and a site template\'s blob is not a change', () => {
+  const id = (n) => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${n.repeat(12)}`;
+  const site = (path, fields) => ({
+    resourceKey: `site-template:https://contoso.sharepoint.com${path}`, kind: 'siteTemplate',
+    fields: { url: `https://contoso.sharepoint.com${path}`, title: 'KEEL-RT Finance', lists: [{ Url: 'Shared Documents' }], templateXml: 'a', templateSha256: 'a', templateBytes: 1, ...fields },
+  });
+  const chosen = [
+    { resourceKey: `hub-site:${id('1')}`, kind: 'hubSite', fields: { Title: 'KEEL-RT Hub', SiteUrl: 'https://contoso.sharepoint.com/sites/keel-rt-hub' } },
+    { resourceKey: `site-design:${id('2')}`, kind: 'siteDesign', fields: { Title: 'KEEL-RT Design', IsDefault: false } },
+    { resourceKey: `site-design:${id('3')}`, kind: 'siteDesign', fields: { Title: 'KEEL-RT Default', IsDefault: true } },
+    { resourceKey: `site-script:${id('4')}`, kind: 'siteScript', fields: { Title: 'KEEL-RT Script', Content: '{}' } },
+    site('/sites/keel-rt-finance'),
+    site('/sites/keel-rt-legal', { title: 'KEEL-RT Legal' }),
+  ];
+  const newest = [
+    chosen[0], chosen[2],
+    { ...chosen[1], fields: { ...chosen[1].fields, Title: 'KEEL-RT Design 2' } },
+    // A new PnP export rewrites the stored template; the summaries are the same.
+    site('/sites/keel-rt-finance', { templateXml: 'b', templateSha256: 'b', templateBytes: 2 }),
+    site('/sites/keel-rt-legal', { title: 'KEEL-RT Legal', lists: [] }),
+  ];
+  const groups = workloadChoices('sharepoint-structure', chosen, newest);
+  // A site missing from the newest backup (out of scope, or its read failed) is not called deleted.
+  const unread = workloadChoices('sharepoint-structure', chosen, newest.slice(0, 4)).find((group) => group.kind === 'siteTemplate');
+  assert.deepEqual(unread.items.map((item) => [item.name, item.change, item.restorable]), [
+    ['KEEL-RT Finance (/sites/keel-rt-finance)', 'same', true],
+    ['KEEL-RT Legal (/sites/keel-rt-legal)', null, true],
+  ]);
+  assert.deepEqual(groups.map((group) => [group.kind, group.restorable]), [
+    ['hubSite', true], ['siteDesign', true], ['siteScript', true], ['siteTemplate', true],
+  ]);
+  const by = (kind) => groups.find((group) => group.kind === kind);
+  assert.equal(by('hubSite').name, 'SharePoint hub sites');
+  assert.deepEqual(by('hubSite').items.map((item) => [item.name, item.change, item.tenantWide]), [['KEEL-RT Hub', 'same', false]]);
+  assert.deepEqual(by('siteDesign').items.map((item) => [item.name, item.change, item.restorable, item.tenantWide]), [
+    ['KEEL-RT Design', 'changed', true, false],
+    ['KEEL-RT Default', 'same', true, true],
+  ]);
+  // A deleted script is added again (Add-PnPSiteScript).
+  assert.deepEqual(by('siteScript').items.map((item) => [item.name, item.change, item.restorable]), [['KEEL-RT Script', 'deleted', true]]);
+  assert.deepEqual(by('siteTemplate').items.map((item) => [item.name, item.change, item.restorable]), [
+    ['KEEL-RT Legal (/sites/keel-rt-legal)', 'changed', true],
+    ['KEEL-RT Finance (/sites/keel-rt-finance)', 'same', true],
+  ]);
+});

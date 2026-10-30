@@ -1,29 +1,28 @@
 {
-  "restoreRef": "a223880c-e632-84d2-b09c-db5be2112176",
+  "restoreRef": "327dc1b9-81ab-8304-ac77-e845fd211763",
   "entry": {
-    "naturalKey": "conditionalAccessPolicy:KEEL-RT-148-ca",
+    "naturalKey": "conditionalAccessPolicy:KEEL-RT-245-ca",
     "resourceType": "conditionalAccessPolicy",
     "operation": "restore-soft-deleted",
-    "targetId": "7de17940-446e-86d3-9383-e1ab7015eb91",
+    "targetId": "5c70303c-a487-89f6-b0c9-e6a8cfe694fd",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-12T11:15:25.255Z",
+    "recordedAt": "2026-10-30T09:15:13.758Z",
     "priorState": {
-      "id": "7de17940-446e-86d3-9383-e1ab7015eb91",
+      "id": "5c70303c-a487-89f6-b0c9-e6a8cfe694fd",
       "state": "enabledForReportingButNotEnforced",
       "conditions": {
         "users": {
           "excludeRoles": [],
           "excludeUsers": [
             "387df5b1-6f21-82b1-a085-cc16cc32a24d",
-            "8aa8d0e6-1afc-8f12-9ab6-ba93988eb6e0",
             "4d947a08-1117-8e21-ad0f-2bbf00af6bdd"
           ],
           "includeRoles": [],
           "includeUsers": [],
           "excludeGroups": [],
           "includeGroups": [
-            "a9f95845-1cf1-8688-bb4e-597f2643a6c8"
+            "f396b2a6-0cb2-87ae-a0fe-ebf004f3faf7"
           ],
           "excludeGuestsOrExternalUsers": null,
           "includeGuestsOrExternalUsers": null
@@ -51,7 +50,7 @@
         "servicePrincipalRiskLevels": []
       },
       "templateId": null,
-      "displayName": "KEEL-RT-148-ca",
+      "displayName": "KEEL-RT-245-ca",
       "grantControls": {
         "operator": "OR",
         "termsOfUse": [],
@@ -60,29 +59,28 @@
         ],
         "authenticationStrength": null,
         "customAuthenticationFactors": [],
-        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/deletedItems/policies('7de17940-446e-86d3-9383-e1ab7015eb91')/grantControls/authenticationStrength/$entity"
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/deletedItems/policies('5c70303c-a487-89f6-b0c9-e6a8cfe694fd')/grantControls/authenticationStrength/$entity"
       },
-      "createdDateTime": "2026-10-12T08:24:22.6129162Z",
-      "deletedDateTime": "2026-10-12T10:09:01Z",
+      "createdDateTime": "2026-10-30T08:39:46.0259968Z",
+      "deletedDateTime": "2026-10-30T09:11:11Z",
       "sessionControls": null,
-      "modifiedDateTime": "2026-10-12T09:57:11.0137283Z"
+      "modifiedDateTime": "2026-10-30T09:10:49.5892785Z"
     },
     "intendedState": {
-      "id": "7de17940-446e-86d3-9383-e1ab7015eb91",
+      "id": "5c70303c-a487-89f6-b0c9-e6a8cfe694fd",
       "state": "enabledForReportingButNotEnforced",
       "conditions": {
         "users": {
           "excludeRoles": [],
           "excludeUsers": [
             "387df5b1-6f21-82b1-a085-cc16cc32a24d",
-            "8aa8d0e6-1afc-8f12-9ab6-ba93988eb6e0",
             "4d947a08-1117-8e21-ad0f-2bbf00af6bdd"
           ],
           "includeRoles": [],
           "includeUsers": [],
           "excludeGroups": [],
           "includeGroups": [
-            "a9f95845-1cf1-8688-bb4e-597f2643a6c8"
+            "f396b2a6-0cb2-87ae-a0fe-ebf004f3faf7"
           ],
           "excludeGuestsOrExternalUsers": null,
           "includeGuestsOrExternalUsers": null
@@ -110,7 +108,7 @@
         "servicePrincipalRiskLevels": []
       },
       "templateId": null,
-      "displayName": "KEEL-RT-148-ca",
+      "displayName": "KEEL-RT-245-ca",
       "grantControls": {
         "operator": "OR",
         "termsOfUse": [],
@@ -119,29 +117,28 @@
         ],
         "authenticationStrength": null,
         "customAuthenticationFactors": [],
-        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('7de17940-446e-86d3-9383-e1ab7015eb91')/grantControls/authenticationStrength/$entity"
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('5c70303c-a487-89f6-b0c9-e6a8cfe694fd')/grantControls/authenticationStrength/$entity"
       },
-      "createdDateTime": "2026-10-12T08:24:22.6129162Z",
+      "createdDateTime": "2026-10-30T08:39:46.0259968Z",
       "deletedDateTime": null,
       "sessionControls": null,
       "modifiedDateTime": null
     },
     "postState": {
-      "id": "7de17940-446e-86d3-9383-e1ab7015eb91",
+      "id": "5c70303c-a487-89f6-b0c9-e6a8cfe694fd",
       "state": "enabledForReportingButNotEnforced",
       "conditions": {
         "users": {
           "excludeRoles": [],
           "excludeUsers": [
             "387df5b1-6f21-82b1-a085-cc16cc32a24d",
-            "8aa8d0e6-1afc-8f12-9ab6-ba93988eb6e0",
             "4d947a08-1117-8e21-ad0f-2bbf00af6bdd"
           ],
           "includeRoles": [],
           "includeUsers": [],
           "excludeGroups": [],
           "includeGroups": [
-            "a9f95845-1cf1-8688-bb4e-597f2643a6c8"
+            "f396b2a6-0cb2-87ae-a0fe-ebf004f3faf7"
           ],
           "excludeGuestsOrExternalUsers": null,
           "includeGuestsOrExternalUsers": null
@@ -169,7 +166,7 @@
         "servicePrincipalRiskLevels": []
       },
       "templateId": null,
-      "displayName": "KEEL-RT-148-ca",
+      "displayName": "KEEL-RT-245-ca",
       "grantControls": {
         "operator": "OR",
         "termsOfUse": [],
@@ -178,13 +175,13 @@
         ],
         "authenticationStrength": null,
         "customAuthenticationFactors": [],
-        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('7de17940-446e-86d3-9383-e1ab7015eb91')/grantControls/authenticationStrength/$entity"
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('5c70303c-a487-89f6-b0c9-e6a8cfe694fd')/grantControls/authenticationStrength/$entity"
       },
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies/$entity",
-      "createdDateTime": "2026-10-12T08:24:22.6129162Z",
+      "createdDateTime": "2026-10-30T08:39:46.0259968Z",
       "deletedDateTime": null,
       "sessionControls": null,
-      "modifiedDateTime": "2026-10-12T09:57:11.0137283Z"
+      "modifiedDateTime": "2026-10-30T09:10:49.5892785Z"
     }
   }
 }

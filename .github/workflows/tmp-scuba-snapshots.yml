@@ -1,0 +1,31 @@
+name: Temporary ScubaGear screenshots
+on:
+  push:
+    branches: [tmp/scuba-snapshots-ci]
+permissions:
+  contents: write
+jobs:
+  shots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: engine
+      - run: npm ci
+        working-directory: portal
+      - run: npx playwright install --with-deps chromium
+        working-directory: portal
+      - run: node ui-harness/build.mjs && npx playwright test -c ui-harness/playwright.config.ts -g "scuba-lists" --update-snapshots=all
+        working-directory: portal
+        env:
+          CI: "true"
+      - run: |
+          git config user.name 7empes7s
+          git config user.email 125469033+7empes7s@users.noreply.github.com
+          git add portal/ui-harness/__screenshots__
+          git commit -m "CI screenshots" || true
+          git push origin HEAD:tmp/scuba-snapshots-ci

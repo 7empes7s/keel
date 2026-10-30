@@ -1,29 +1,29 @@
 {
-  "restoreRef": "162f905c-1bf1-8490-8cb4-2b1e1a615464",
+  "restoreRef": "ff5bb49a-a2b4-8a9a-a75f-9119c6d420aa",
   "entry": {
-    "naturalKey": "claimsMappingPolicy:252c15b9-2eb4-8495-a478-83c8ed236a59",
+    "naturalKey": "claimsMappingPolicy:c1adf28e-3e66-8841-9a67-437f7d266af0",
     "resourceType": "claimsMappingPolicy",
     "operation": "create",
-    "targetId": "1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+    "targetId": "bce8b583-60c7-8397-a230-bf868a9548f4",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-15T10:22:16.877Z",
+    "recordedAt": "2026-10-30T00:41:59.304Z",
     "priorState": null,
     "intendedState": {
-      "id": "252c15b9-2eb4-8495-a478-83c8ed236a59",
+      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
       "definition": [
-        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[{\"Source\":\"user\",\"ID\":\"employeeid\",\"SamlClaimType\":\"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/employeeid\",\"JwtClaimType\":\"employeeid\"}]}}"
+        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-W2-claimsMappingPolicy",
+      "displayName": "KEEL-RT-248-claims",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+      "id": "bce8b583-60c7-8397-a230-bf868a9548f4",
       "definition": [
-        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[{\"Source\":\"user\",\"ID\":\"employeeid\",\"SamlClaimType\":\"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/employeeid\",\"JwtClaimType\":\"employeeid\"}]}}"
+        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-W2-claimsMappingPolicy",
+      "displayName": "KEEL-RT-248-claims",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/claimsMappingPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

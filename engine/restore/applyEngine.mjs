@@ -35,7 +35,7 @@ import {
 } from './userOperations.mjs';
 import {
   ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
-  intunePostStateRefusal, intuneRecordFor, intuneTrustFieldStep, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
+  intunePostStateRefusal, intuneRecordFor, intuneJournalState, intuneTrustFieldStep, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
   backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer, unreadAssignmentsStep,
 } from './intuneOperations.mjs';
 import {
@@ -1528,7 +1528,7 @@ async function applyIntuneWrite(writer, resource, verb, {
   if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes(), ...trustCompletion } };
 
   const journal = await journalBeforeMutation(rollbackClient, {
-    runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
+    runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: intuneJournalState(resourceType, desired, before),
   });
   if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
 

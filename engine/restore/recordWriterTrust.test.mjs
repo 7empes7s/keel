@@ -10,6 +10,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import { applyWave } from './applyEngine.mjs';
+import { planCompensation } from './compensation.mjs';
 import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
 import { INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, intuneTrustFieldStep, intuneWriteBody } from './intuneOperations.mjs';
 import { applyRecordWrite, changedRecordFields, defineRecord, recordTrustFieldStep, recordWriteBody, trustFieldStep } from './recordWriter.mjs';
@@ -156,4 +158,78 @@ test('a create that finds the same object already there still lists a trust fiel
     assert.equal(graph.calls.some((call) => call.method === 'POST' || call.method === 'PATCH'), false, mode);
     assert.deepEqual(result.applied.completion?.[0]?.fields, ['trustedRootCertificate'], mode);
   }
+});
+
+// The rollback journal, kept in memory: the entries a restore with a restore reference records.
+function memoryJournal() {
+  const rows = [];
+  return {
+    rows,
+    async query(sql, params) {
+      if (sql.includes('INSERT INTO rollback_entry')) {
+        const [, naturalKey, priorState, , resourceType, operation, , , intendedState] = params;
+        rows.push({ naturalKey, resourceType, operation, priorState, intendedState: JSON.parse(intendedState ?? 'null') });
+        return { rows: [{ id: rows.length }] };
+      }
+      return { rows: [] };
+    },
+  };
+}
+
+const intuneWave = (graph, journal, resources, existingTargetIds = new Map()) => applyWave(graph, { async acquire() {}, observeRetryAfter() {} }, resources, {
+  targetTenant: 'fixture', mode: 'enforce', existingTargetIds, readAfterWriteOptions: { attempts: 1, delayMs: 0 },
+  rollbackClient: journal, runId: 'run-1', restoreRef: 'restore-1',
+});
+
+test('the Intune policy journal never records a trust field value the write did not send', async () => {
+  const kind = { '@odata.type': '#microsoft.graph.windows10EndpointProtectionConfiguration' };
+  const desired = { ...kind, id: 'src-1', displayName: 'KEEL-RT-Journal', description: 'Backup', firewallCertificateRevocationListCheckMethod: 'attempt' };
+
+  // Create: the journal's intent is the payload minus the trust field.
+  let graph = idoFakeGraph();
+  let journal = memoryJournal();
+  let outcome = await intuneWave(graph, journal, [resourceOf('deviceConfiguration', desired, { verb: 'create' })]);
+  assert.deepEqual(outcome.failed, []);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal('firewallCertificateRevocationListCheckMethod' in post.body, false);
+  assert.equal(journal.rows.length, 1);
+  assert.equal(journal.rows[0].operation, 'create');
+  assert.equal('firewallCertificateRevocationListCheckMethod' in journal.rows[0].intendedState, false);
+  assert.deepEqual(journal.rows[0].intendedState, { ...kind, id: 'src-1', displayName: 'KEEL-RT-Journal', description: 'Backup' });
+
+  // Update: the trust field stays as live holds it, and the prior state is the whole live policy.
+  const path = '/deviceManagement/deviceConfigurations/cfg-1';
+  const live = { ...kind, id: 'cfg-1', displayName: 'KEEL-RT-Journal', description: 'Live', firewallCertificateRevocationListCheckMethod: 'none' };
+  graph = idoFakeGraph({ seed: { [path]: live } });
+  journal = memoryJournal();
+  outcome = await intuneWave(graph, journal, [resourceOf('deviceConfiguration', desired, { verb: 'update', targetId: 'cfg-1', live: { state: 'present', targetId: 'cfg-1', payload: live } })]);
+  assert.deepEqual(outcome.failed, []);
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.deepEqual(Object.keys(patch.body).sort(), ['@odata.type', 'description']);
+  assert.equal(journal.rows[0].operation, 'update');
+  // Not sent, so the policy keeps its live value: that is what the journal intends.
+  assert.equal(journal.rows[0].intendedState.firewallCertificateRevocationListCheckMethod, 'none');
+  assert.equal(journal.rows[0].intendedState.description, 'Backup');
+  assert.equal(journal.rows[0].priorState.firewallCertificateRevocationListCheckMethod, 'none');
+});
+
+test('an undo of that update reverts only what was written, never the trust field', async () => {
+  const kind = { '@odata.type': '#microsoft.graph.windows10EndpointProtectionConfiguration' };
+  const path = '/deviceManagement/deviceConfigurations/cfg-2';
+  const live = { ...kind, id: 'cfg-2', displayName: 'KEEL-RT-Undo', description: 'Live', firewallCertificateRevocationListCheckMethod: 'none' };
+  const desired = { ...kind, id: 'src-2', displayName: 'KEEL-RT-Undo', description: 'Backup', firewallCertificateRevocationListCheckMethod: 'attempt' };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const journal = memoryJournal();
+  const outcome = await intuneWave(graph, journal, [resourceOf('deviceConfiguration', desired, { verb: 'update', targetId: 'cfg-2', live: { state: 'present', targetId: 'cfg-2', payload: live } })]);
+  assert.deepEqual(outcome.failed, []);
+
+  const [row] = journal.rows;
+  const after = (await graph.read('beta', path)).body;
+  const plan = planCompensation({
+    restoreRef: 'restore-1',
+    entries: [{ id: 'entry-1', ...row, targetId: 'cfg-2', blastRadius: 'access-affecting', outcome: 'succeeded', outcomeDetail: null, postState: null }],
+    current: new Map([[row.naturalKey, { targetId: 'cfg-2', payload: after }]]),
+  });
+  assert.deepEqual(plan.conflicts, []);
+  assert.deepEqual(plan.operations.map((op) => op.revertedFields), [['description']]);
 });

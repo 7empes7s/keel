@@ -257,6 +257,22 @@ export function intuneWriteBody(resourceType, payload, verb) {
   return withoutTrustFields(resourceType, body);
 }
 
+/**
+ * The state a policy write intends, for the rollback journal: the backup
+ * payload, with each trust, certificate or sign-in field as the write leaves it
+ * (never sent, so live's value, or absent on a create). An undo then never
+ * counts such a field as changed by the restore.
+ */
+export function intuneJournalState(resourceType, desired, live) {
+  const state = withoutTrustFields(resourceType, desired);
+  if (state === desired || !live || typeof live !== 'object') return state;
+  const kept = { ...state };
+  for (const key of Object.keys(desired)) {
+    if (!(key in state) && key in live) kept[key] = live[key];
+  }
+  return kept;
+}
+
 /** The manual step for a policy's trust, certificate or sign-in fields the write leaves out, or null. */
 export function intuneTrustFieldStep(resourceType, desired, live, verb) {
   return trustFieldStep(resourceType, desired, live, verb, { excluded: intuneRecordFor(resourceType)?.excluded ?? [] });

@@ -148,7 +148,7 @@ function premium(facts) {
 // The built-in roles ScubaGear treats as highly privileged, as { templateId, displayName }.
 // ScubaGear takes them from Microsoft's fixed role catalogue, so all of them are always
 // there; a backup that lacks one cannot stand in for it.
-function privilegedRoleTemplates(facts, key) {
+export function privilegedRoleTemplates(facts, key) {
   const byName = new Map();
   for (const role of list(facts, 'roleDefinition')) {
     if (role.isBuiltIn !== true || !PRIVILEGED_ROLES.includes(role.displayName)) continue;
@@ -218,6 +218,41 @@ function privilegedUsers(facts, run = {}) {
 }
 
 /**
+ * One role's active assignments, as Get-PrivilegedRole lists them, built from Keel's
+ * backups: each assignment schedule, then each active assignment with no schedule
+ * (made outside PIM, so it never ends and has no start date). Exported for
+ * tools/scubagear-pim-check.mjs, which compares it with the schedule instances
+ * ScubaGear's provider reads.
+ */
+export function roleAssignmentsOf(facts, templateId) {
+  const own = list(facts, 'roleAssignmentSchedule').filter((schedule) => schedule.roleDefinitionId === templateId);
+  const expiration = (schedule) => schedule.scheduleInfo?.expiration ?? {};
+  const assignments = own.map((schedule) => ({
+    Id: schedule.id,
+    PrincipalId: schedule.principalId,
+    RoleDefinitionId: schedule.roleDefinitionId,
+    DirectoryScopeId: schedule.directoryScopeId ?? '/',
+    AssignmentType: schedule.assignmentType ?? null,
+    MemberType: schedule.memberType ?? null,
+    StartDateTime: schedule.scheduleInfo?.startDateTime ?? null,
+    EndDateTime: expiration(schedule).type === 'noExpiration' ? null
+      : expiration(schedule).endDateTime ?? (expiration(schedule).duration ? `after ${expiration(schedule).duration}` : null),
+  }));
+  for (const active of list(facts, 'roleAssignment')) {
+    if (active.roleDefinitionId !== templateId) continue;
+    const scheduled = own.some((schedule) => schedule.principalId === active.principalId
+      && (schedule.directoryScopeId ?? '/') === (active.directoryScopeId ?? '/'));
+    if (!scheduled) {
+      assignments.push({
+        Id: active.id, PrincipalId: active.principalId, RoleDefinitionId: active.roleDefinitionId,
+        DirectoryScopeId: active.directoryScopeId ?? '/', AssignmentType: 'Assigned', MemberType: 'Direct', StartDateTime: null, EndDateTime: null,
+      });
+    }
+  }
+  return assignments;
+}
+
+/**
  * Get-PrivilegedRole: each privileged role with, when the tenant has Entra ID P2, its
  * active assignments and its PIM rules. The provider reads assignment schedule
  * instances; Keel backs up the schedules plus every active assignment. An active
@@ -243,30 +278,7 @@ function privilegedRoles(facts) {
   const heldByGroup = holders.some((assignment) => groups.has(assignment.principalId));
   if (heldByGroup) throw new CouldNotBuild('privileged_roles', 'a privileged role is held through a group, and Keel does not back up PIM for Groups rules');
   return roles.map((role) => {
-    const own = schedules.filter((schedule) => schedule.roleDefinitionId === role.templateId);
-    const expiration = (schedule) => schedule.scheduleInfo?.expiration ?? {};
-    const assignments = own.map((schedule) => ({
-      Id: schedule.id,
-      PrincipalId: schedule.principalId,
-      RoleDefinitionId: schedule.roleDefinitionId,
-      DirectoryScopeId: schedule.directoryScopeId ?? '/',
-      AssignmentType: schedule.assignmentType ?? null,
-      MemberType: schedule.memberType ?? null,
-      StartDateTime: schedule.scheduleInfo?.startDateTime ?? null,
-      EndDateTime: expiration(schedule).type === 'noExpiration' ? null
-        : expiration(schedule).endDateTime ?? (expiration(schedule).duration ? `after ${expiration(schedule).duration}` : null),
-    }));
-    for (const active of list(facts, 'roleAssignment')) {
-      if (active.roleDefinitionId !== role.templateId) continue;
-      const scheduled = own.some((schedule) => schedule.principalId === active.principalId
-        && (schedule.directoryScopeId ?? '/') === (active.directoryScopeId ?? '/'));
-      if (!scheduled) {
-        assignments.push({
-          Id: active.id, PrincipalId: active.principalId, RoleDefinitionId: active.roleDefinitionId,
-          DirectoryScopeId: active.directoryScopeId ?? '/', AssignmentType: 'Assigned', MemberType: 'Direct', StartDateTime: null, EndDateTime: null,
-        });
-      }
-    }
+    const assignments = roleAssignmentsOf(facts, role.templateId);
     const policy = policies.get(policyFor.get(role.templateId));
     if (!policy) throw new CouldNotBuild('privileged_roles', `no PIM policy backed up for ${role.displayName}`);
     // Entra always ships a role's PIM rules; a policy backed up without them cannot answer.

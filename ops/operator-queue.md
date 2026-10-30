@@ -13424,8 +13424,8 @@ item that needs it stays untouched.
   Marouane's "Grant admin consent" on KEEL Collector (Q282). Check consent first: a Collector token for
   `https://api.securitycenter.microsoft.com/.default` must carry `Ti.Read.All` in `roles` (report yes/no, never the token). If no, set
   this item `blocked` and stop.
-- Status: todo
-- Result:
+- Status: blocked: waiting on Marouane's admin consent on KEEL Collector (Q282)
+- Result: blocked, consent not granted (2026-10-30 19:40 UTC, keel-operator). Build 41a460a9 has #821. Collector token for `https://api.securitycenter.microsoft.com/.default`: `Ti.Read.All` in roles **no** (token has 0 roles). Nothing run, nothing written. Waiting on Marouane's "Grant admin consent" on KEEL Collector (Q282).
 - **Tenant:** reads only, Collector credential from `/etc/keel/tenant.json`. GETs only. Grant, consent, create or change nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
@@ -13603,8 +13603,16 @@ item that needs it stays untouched.
   `Description` from audioConferencingPolicy, vdiPolicy and feedbackPolicy.
 - Needs: /opt/keel-live at the #825 merge or later (`! grep -q Get-CsOnlinePstnUsages /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
   Scripts are mounted from the checkout, so no image rebuild is expected.
-- Status: todo
-- Result:
+- Status: done
+- Result: done, as expected (2026-10-30 19:52 UTC, keel-operator). Build **B = 41a460a9**. Reads only, Collector `/etc/keel/tenant.json`; MicrosoftTeams 7.9.0; nothing granted, created or changed; global admin not used.
+  - **Step 1, capture:** both exit **0**, pseudonymize exit 0, verify ok.
+    - `teams-voice-network`: outcome **complete**, proven voice-routes, pstn-gateways, translation-rules, unassigned-number-treatments, network-regions, network-sites, network-subnets, trusted-ip-addresses, network-roaming-policies, auto-attendants, call-queues, dial-in-conferencing, audio-conferencing-policies, call-hold-policies (14; no pstn-usages); notProven `[]`.
+    - `teams-device-policies`: outcome **complete**, proven all 6; notProven `[]`.
+  - **Step 2:** `claude/live-evidence-teams-voice-network` **02dca4c6** (rebuilt from origin/master, the 2 records replaced, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **27**, refused `[]`, absent 7 (the 6 older evidence-branch records plus `defender-endpoint-indicators`, not captured yet: Q286).
+  - **Step 4, `run`:** exit 3 only from the known partials (power-platform-settings, teams-collaboration-policies). `teams-voice-network` **complete**, fieldCounts `{"observed":34}`, unknownFields `{}`, skipped `[]`. `teams-device-policies` **complete**, fieldCounts `{"observed":76}`, unknownFields `{}`, skipped `[]`.
+  - **Step 5, `proof`:** both current (expire 2026-11-29). Exit 1 only from the 4 older proofs expiring 2026-11-06.
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential (Teams Administrator, already held). No `New-`, `Set-`, `Grant-` or `Remove-`
   cmdlet. Grant, assign or create nothing.
 - Do: repeat Q279 steps 1 to 5 exactly (same commands, same evidence branch `claude/live-evidence-teams-voice-network`,

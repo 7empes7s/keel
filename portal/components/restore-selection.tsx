@@ -328,14 +328,17 @@ function groupingsFor(kinds: OtherKinds): Grouping<RestoreItem>[] {
           if (!group && !own.length && searching) continue;
           const base = group ?? { key: service.code, ...serviceGroup(service.code), items: [] };
           const rows = base.items.length;
+          // Settings of this service that changed are listed under "Changed recently".
+          const moved = changed.filter((item) => (item.service ?? "").toLowerCase() === service.code.toLowerCase()).length;
+          const none = rows ? undefined : moved ? `${plural(moved, "setting")} changed, listed above` : "Nothing in this backup";
           services.push({
             ...base,
             count: own.length
               ? rows ? `${plural(rows, "setting")} · ${own.length} more ${own.length === 1 ? "kind" : "kinds"}` : kindsWords(own.length)
-              : rows ? undefined : "Nothing in this backup",
+              : none,
             extra: own.length
               ? kinds.render(own)
-              : rows ? undefined : <p className="restore-kinds-none">This backup holds no {service.name} settings.</p>,
+              : rows ? undefined : <p className="restore-kinds-none">{moved ? `Every ${service.name} setting in this backup has changed since; they are listed under Changed recently.` : `This backup holds no ${service.name} settings.`}</p>,
           });
         }
         // Anything not placed in a known service still shows, after them.

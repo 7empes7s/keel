@@ -180,6 +180,11 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     const rest = units.slice(units.indexOf(last.group) + 1).filter((unit) => unit.group.key === group.key && !unit.closed);
     return last.more + rest.reduce((sum, unit) => sum + unitRows(unit), 0);
   };
+  // True when this page shows the group's last unit, so its extra shows on one page only.
+  const endsHere = (group: ListGroup<T>, shown: typeof paged) => {
+    const own = units.filter((unit) => unit.group.key === group.key);
+    return shown.at(-1)?.group === own.at(-1);
+  };
   const toggleClosed = (key: string, isClosed: boolean) => view.set({ closed: (isClosed ? closed.filter((entry) => entry !== key) : [...closed, key]).join(",") || (closedByDefault.length ? "none" : null) });
 
   function rowsOf(group: ListGroup<T>, start: number, end: number, later = 0, owner = group) {
@@ -419,7 +424,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 </div>
               ) : ids.length ? rowsOf(group, first.start, first.end, later) : null}
               {/* The group's other kinds follow its last row, on the page that shows it. */}
-              {!isClosed && group.extra && later === 0 ? <div className="sel-extra">{group.extra}</div> : null}
+              {!isClosed && group.extra && later === 0 && endsHere(group, shownUnits) ? <div className="sel-extra">{group.extra}</div> : null}
             </section>
           );
         })}

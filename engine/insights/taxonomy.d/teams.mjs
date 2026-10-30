@@ -13,7 +13,7 @@ export default Object.freeze({
     { key: 'apps', name: 'Custom apps', types: ['teamsCatalogApp'], match: /catalogapp|customapp/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role/ },
     { key: 'org', name: 'Organization policies', types: ['teams-org-policies'], match: /orgpolic|external|guest|federation|apppermission|appsetup|messaging|chat|channelpolic/ },
-    { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies', 'teams-voice-network'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|pstn|network|attendant|conferencing/ },
+    { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies', 'teams-voice-network'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|phonenumber|pstn|network|attendant|conferencing/ },
     { key: 'devices', name: 'Devices and clients', types: ['teams-device-policies'], match: /device|ipphone|phone|mobility|vdi|feedback|workload|update/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),

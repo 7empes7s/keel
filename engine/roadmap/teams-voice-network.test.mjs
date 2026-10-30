@@ -181,6 +181,14 @@ test('auto attendants and call queues are paged past 100, up to the object cap',
   assert.equal(capped.calls.length, 2);
 });
 
+test('a full page that adds nothing new stops paging (-Skip not honoured)', async () => {
+  const hundred = many(VOICE_NETWORK_FAMILIES.callQueue, 100);
+  const live = fakeTeams({ 'Get-CsCallQueue': () => hundred });
+  const result = await readTeamsVoiceNetwork({ powershell: live.powershell, families: ['callQueue'], now });
+  assert.equal(result.resources.length, 100);
+  assert.equal(live.calls.length, 2);
+});
+
 test('a page that fails fails the whole family, never a short list', async () => {
   const queues = many(VOICE_NETWORK_FAMILIES.callQueue, 150);
   const live = fakeTeams({

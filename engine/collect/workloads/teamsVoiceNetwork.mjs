@@ -266,7 +266,9 @@ function teamsWorkload({ workload, type, families, label }) {
       read.conflicts.push(...page.conflicts);
       read.unidentified += page.unidentified;
       read.capped ||= page.capped;
-      if (output.length < PAGE_SIZE || read.capped) break;
+      // A short page is the last one. A full page that adds nothing new means -Skip was
+      // not honoured: stop rather than ask for the same page again.
+      if (output.length < PAGE_SIZE || read.capped || (page.resources.length === 0 && page.unidentified === 0)) break;
     }
     return read;
   }

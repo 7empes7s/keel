@@ -10774,8 +10774,13 @@ item that needs it stays untouched.
   2026-10-16 20:32 (Q98) and lapses **2026-11-15 20:32 UTC**. A new restore is needed (as Q244). Finish by **2026-11-13**.
 - Needs: Q248 done or blocked. Break-glass readiness **ready** (`node cli/keel-breakglass.mjs report --config "$COLLECTOR"`); if
   not, stop and report blocked.
-- Status: todo
-- Result:
+- Status: blocked: waiting on Marouane (second GA session for the CA delete)
+- Result: blocked, not started (2026-10-30 00:47 UTC, keel-operator). B = 53cbe462. No fixture created; nothing written.
+  - Break-glass read **ready** at 23:45 UTC; it will be re-checked right before A.
+  - **Waiting on Marouane, same as Q245 and Q247.** Checklist step 186 (conditionalAccessPolicy delete, lockout-sensitive) needs "Marouane keeps a second, separate Global Administrator session signed in to the test tenant for the whole step, and is reachable to undo the change by hand". Q98 ran with Marouane confirming in the session.
+    - The 21:56 UTC decision covers the no-exclusions exception for `KEEL-RT-249-ca-delete`, not that precondition.
+    - Steps A to C take about 5 minutes back to back once he's there.
+  - Deadline 2026-11-13; the record lapses 2026-11-15 20:32.
 - **Marouane's decision (2026-10-29 21:56 UTC, decision card in the thread):** reuse the Q98 exception once more. It covers only
   the fixture `KEEL-RT-249-ca-delete` in this item. Every other new CA policy still excludes marouane.defili and the break-glass accounts.
 - **Test tenant only.** Never target, assign or sign in as marouane.defili. The policy is **never turned on**.

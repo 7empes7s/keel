@@ -6,17 +6,17 @@ import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
   groupWorkloadsByService,
-  hasBackupData,
   startsFromPage,
   workloadBackupLine,
+  workloadRestoreBadge,
   type RestoreWorkload,
 } from "@/lib/restore-workloads-view";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { WorkloadRestore } from "@/components/restore/workload-restore";
 
-// The Restore page's backups of Exchange, SharePoint and OneDrive, Teams, Purview and
-// Power Platform. Only what this tenant has a backup of is listed; when there is none,
-// the section says so in one line.
+// The Restore page without a tenant backup yet: every kind of setting KEEL backs up on
+// its own, under its Microsoft service, each with its backup and how it is put back.
+// With a tenant backup the same kinds sit inside the services of the main list instead.
 export function WorkloadServices({ workloads, now, canRestore = false, canApprove = false }: {
   workloads: RestoreWorkload[] | null;
   now: string;
@@ -26,7 +26,7 @@ export function WorkloadServices({ workloads, now, canRestore = false, canApprov
   const [open, setOpen] = useState<string | null>(null);
   const heading = (
     <div className="section-heading-row report-heading">
-      <h2 id="restore-services-heading">Other services</h2>
+      <h2 id="restore-services-heading">Microsoft 365 services</h2>
     </div>
   );
   if (workloads === null) {
@@ -37,14 +37,13 @@ export function WorkloadServices({ workloads, now, canRestore = false, canApprov
       </section>
     );
   }
-  const shown = workloads.filter(hasBackupData);
-  const groups = groupWorkloadsByService(shown, serviceOrder);
-  const openWorkload = shown.find((workload) => workload.workload === open) ?? null;
+  const groups = groupWorkloadsByService(workloads, serviceOrder);
+  const openWorkload = workloads.find((workload) => workload.workload === open) ?? null;
   return (
     <section aria-labelledby="restore-services-heading" className="report-section restore-services">
       {heading}
       {groups.length === 0 ? (
-        <p className="empty-state">No backups of other services yet.</p>
+        <p className="empty-state">No other services to show yet.</p>
       ) : (
         <div className="restore-services-grid">
           {groups.map((group) => {
@@ -56,17 +55,7 @@ export function WorkloadServices({ workloads, now, canRestore = false, canApprov
                   <span className="restore-service-icon"><Icon name={service.icon} /></span>
                   <h3 id={headingId}>{service.name}</h3>
                 </header>
-                <ul className="restore-workloads">
-                  {group.workloads.map((workload) => (
-                    <WorkloadCard
-                      key={workload.workload}
-                      now={now}
-                      onStart={canRestore && startsFromPage(workload) ? () => setOpen(workload.workload) : null}
-                      open={open === workload.workload}
-                      workload={workload}
-                    />
-                  ))}
-                </ul>
+                <WorkloadKinds canRestore={canRestore} now={now} onStart={setOpen} open={open} workloads={group.workloads} />
               </section>
             );
           })}
@@ -87,19 +76,46 @@ export function WorkloadServices({ workloads, now, canRestore = false, canApprov
   );
 }
 
-function WorkloadCard({ workload, now, onStart, open }: { workload: RestoreWorkload; now: string; onStart: (() => void) | null; open: boolean }) {
+/** One service's kinds of setting backed up on their own, in order, one card each. */
+export function WorkloadKinds({ workloads, now, canRestore, open, onStart }: {
+  workloads: RestoreWorkload[];
+  now: string;
+  canRestore: boolean;
+  open: string | null;
+  onStart: (workload: string) => void;
+}) {
+  return (
+    <ul className="restore-workloads">
+      {workloads.map((workload) => (
+        <WorkloadCard
+          key={workload.workload}
+          now={now}
+          onStart={canRestore && startsFromPage(workload) ? () => onStart(workload.workload) : null}
+          open={open === workload.workload}
+          workload={workload}
+        />
+      ))}
+    </ul>
+  );
+}
+
+export function WorkloadCard({ workload, now, onStart, open }: { workload: RestoreWorkload; now: string; onStart: (() => void) | null; open: boolean }) {
   const backup = workloadBackupLine(workload, now);
+  const badge = workloadRestoreBadge(workload);
   return (
     <li className="restore-workload">
       <div className="restore-workload-head">
         <b>{workload.name}</b>
+        <span className="restore-chip" data-tone={badge.tone}>{badge.text}</span>
       </div>
       <p className="restore-workload-backup" data-tone={backup.tone}>
         <span aria-hidden="true" className="restore-workload-dot" />
         {backup.text}.
       </p>
+      {/* Kept but not put back by KEEL: where a person makes the change instead. */}
+      {badge.tone === "soon" ? <p className="restore-workload-todo">{workload.todo}</p> : null}
       {onStart ? (
-        <button aria-expanded={open} className={open ? "btn btn-sm" : "primary-action restore-workload-start"} onClick={onStart} type="button">
+        <button aria-expanded={open} className={open ? "btn btn-sm" : "btn restore-workload-start"} onClick={onStart} type="button">
           {open ? "Choosing below" : "Choose what to put back"}
         </button>
       ) : null}

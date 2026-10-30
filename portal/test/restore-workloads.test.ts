@@ -9,10 +9,13 @@ import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 import { getRestoreWorkloads } from "@/lib/restore-workloads";
 import {
+  WORKLOAD_ORDER,
   groupWorkloadsByService,
   hasBackupData,
   workloadBackupLine,
+  workloadRestoreBadge,
 } from "@/lib/restore-workloads-view";
+import { WORKLOADS } from "../../engine/collect/workloadContract.mjs";
 import { tenantRef } from "@/lib/runtime-config";
 import { serviceOrder } from "@/lib/services";
 
@@ -114,4 +117,29 @@ test("services follow the portal's order and no stored code reaches the words", 
       assert.doesNotMatch(workload.name, /^[a-z]+(-[a-z]+)+$/, `${workload.workload} reads as a code`);
     }
   }
+});
+
+test("every kind KEEL backs up on its own has a place in its service's order", async () => {
+  assert.deepEqual([...WORKLOAD_ORDER].sort(), [...WORKLOADS].sort());
+  const groups = groupWorkloadsByService(await getRestoreWorkloads(), serviceOrder);
+  const exchange = groups.find((group) => group.service === "Exchange")!.workloads.map((workload) => workload.workload);
+  // Mailboxes first, then groups, roles, and the mail flow and protection policies.
+  assert.deepEqual(exchange, [
+    "exchange-mailbox-settings", "exchange-recipients", "exchange-distribution-groups", "exchange-role-groups",
+    "exchange-mail-flow", "exchange-extended",
+  ]);
+  for (const group of groups) {
+    const order = group.workloads.map((workload) => WORKLOAD_ORDER.indexOf(workload.workload));
+    assert.deepEqual(order, [...order].sort((a, b) => a - b), `${group.service} is out of order`);
+  }
+});
+
+test("each kind says how it is put back, even with nothing backed up", async () => {
+  const workloads = await getRestoreWorkloads();
+  const find = (id: string) => workloads.find((workload) => workload.workload === id)!;
+  assert.deepEqual(workloadRestoreBadge(find("exchange-mail-flow")), { tone: "fine", text: "Can be put back here" });
+  assert.deepEqual(workloadRestoreBadge(find("purview-labels")), { tone: "muted", text: "Nothing to put back yet" });
+  const backup = { collectionId: "c", takenAt: null, items: 1, partial: false };
+  assert.deepEqual(workloadRestoreBadge({ ...find("power-platform-settings"), backup }), { tone: "soon", text: "By hand only" });
+  assert.deepEqual(workloadRestoreBadge({ ...find("sharepoint-site-settings"), backup }), { tone: "soon", text: "Not from this page yet" });
 });

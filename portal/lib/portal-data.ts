@@ -39,6 +39,7 @@ import {
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 import { templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { DRIFT_TEMPLATE_FAMILY_SQL, INTENT_TYPE, templateFamilySql } from "../../engine/insights/templateAreas.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
@@ -409,7 +410,9 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
-    templateFamily: templateFamilyOf(raw.after_payload) ?? templateFamilyOf(raw.before_payload),
+    // Read with the row (template_family) where the query looked it up, which also covers
+    // older endpoint security policies (engine/insights/templateAreas.mjs).
+    templateFamily: (typeof raw.template_family === "string" && raw.template_family) || templateFamilyOf(raw.after_payload) || templateFamilyOf(raw.before_payload),
   };
 }
 
@@ -694,7 +697,7 @@ async function scopedOpenDrift(client: KeelClient, ref: string, baselineId: stri
         WHERE tenant_ref = $1 AND baseline_id = $2
         ORDER BY natural_key, detected_at DESC, id DESC
      )
-     SELECT d.* FROM drift d JOIN latest ON latest.id = d.id
+     SELECT d.*, ${DRIFT_TEMPLATE_FAMILY_SQL} AS template_family FROM drift d JOIN latest ON latest.id = d.id
       WHERE ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
       ORDER BY d.detected_at, d.id`,
     [ref, baselineId, ...visible.values],
@@ -1039,8 +1042,8 @@ export interface RestoreResource {
   // The name the backup holds for it (displayName and the like), or null when the
   // object has none; the page never falls back to a bare object id.
   name?: string | null;
-  // The settings catalog template family, when the object has one: endpoint security
-  // policies (antivirus, firewall…) are filed under Defender (taxonomy settingKind).
+  // The template family, when the object has one: endpoint security policies (antivirus,
+  // firewall…), in either format, are filed under Defender (taxonomy settingKind).
   templateFamily?: string | null;
 }
 
@@ -1052,6 +1055,9 @@ export interface RestoreResourcesData {
 
 // The readable name a saved object carries, by the field Microsoft uses for it.
 export const PAYLOAD_NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
+// The template family a saved copy files by: an endpoint security policy, in either
+// format, is listed under Defender (engine/insights/templateAreas.mjs).
+const RESOURCE_FAMILY_SQL = templateFamilySql({ typeExpr: "rv.resource_type", payloads: ["rv.payload"], tenantExpr: "s.tenant_ref" });
 
 export async function getRestoreResources(
   snapshotId: string,
@@ -1068,7 +1074,7 @@ export async function getRestoreResources(
       `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
               CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
               CASE WHEN rv.resource_type = 'conditionalAccessPolicy' THEN rv.payload END AS rated_payload,
-              CASE WHEN rv.resource_type = 'configurationPolicy' THEN rv.payload->'templateReference'->>'templateFamily' END AS template_family
+              CASE WHEN rv.resource_type IN ('configurationPolicy', '${INTENT_TYPE}') THEN ${RESOURCE_FAMILY_SQL} END AS template_family
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2

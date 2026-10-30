@@ -4,6 +4,7 @@ import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges } from "../../engine/identity/attribution.mjs";
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { settingKind, templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { templateFamilySql } from "../../engine/insights/templateAreas.mjs";
 
 import { valueWords } from "@/lib/changes-view";
 import { isObjectId, replaceObjectIds } from "@/lib/object-ids";
@@ -90,8 +91,10 @@ function short(value: unknown): string {
 // A key counts as gone only when the later backup read its type at all: a backup of
 // one tier does not make another tier's settings look deleted.
 const DIFF_SQL = `
-  SELECT p.natural_key, p.resource_type, p.payload_hash, p.payload AS before, n.payload AS after, (n.id IS NULL) AS deleted
+  SELECT p.natural_key, p.resource_type, p.payload_hash, p.payload AS before, n.payload AS after, (n.id IS NULL) AS deleted,
+         ${templateFamilySql({ typeExpr: "p.resource_type", payloads: ["p.payload"], tenantExpr: "ps.tenant_ref" })} AS template_family
     FROM resource_version p
+    JOIN snapshot ps ON ps.id = p.snapshot_id
     LEFT JOIN resource_version n ON n.snapshot_id = $2 AND n.natural_key = p.natural_key
    WHERE p.snapshot_id = $1
      AND (
@@ -106,6 +109,8 @@ interface DiffRow {
   hash: string;
   // The chosen backup's payload, to compare by content where a hash was stored under other rules.
   payload: unknown;
+  // The template family it files by (engine/insights/templateAreas.mjs), or null.
+  templateFamily: string | null;
   // The Microsoft object ids an audit record about it would name.
   objectIds: string[];
   kind: "changed" | "deleted";
@@ -120,6 +125,7 @@ async function diff(client: Client, fromId: string, toId: string): Promise<DiffR
     const resourceType = String(row.resource_type);
     const base = {
       naturalKey: String(row.natural_key), resourceType, hash: String(row.payload_hash), payload: row.before,
+      templateFamily: typeof row.template_family === "string" && row.template_family ? row.template_family : null,
       objectIds: changeObjectIds({ naturalKey: String(row.natural_key), before: row.before, after: row.after }) as string[],
     };
     if (row.deleted) {
@@ -247,7 +253,7 @@ export async function getRestoreChanges(snapshotId: string): Promise<RestoreChan
       naturalKey: row.naturalKey,
       resourceType: row.resourceType,
       // An endpoint security policy made in Intune sits under Defender, as on the backup list.
-      service: typeInfo(settingKind(row.resourceType, templateFamilyOf(row.payload))).service,
+      service: typeInfo(settingKind(row.resourceType, row.templateFamily ?? templateFamilyOf(row.payload))).service,
       kind: row.kind,
       seenAt: when.get(row.naturalKey)?.seenAt ?? newest.takenAt,
       sameUntil: when.get(row.naturalKey)?.sameUntil ?? chosen.takenAt,

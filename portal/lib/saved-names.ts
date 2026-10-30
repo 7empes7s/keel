@@ -1,6 +1,7 @@
 // The name each saved setting carries, read from the tenant's most recent backup that
 // holds one. The job page uses it so follow-ups and undo items never show a bare id.
 import { objectNameSql } from "../../engine/cir/objectName.mjs";
+import { templateFamilySql } from "../../engine/insights/templateAreas.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, type IdNames, NO_ID_NAMES, referencedIds } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
 import type { ChangeRef } from "@/lib/sentences";
@@ -33,7 +34,7 @@ export async function savedNames(client: QueryClient, tenantRef: string, keys: (
   const { rows } = await client.query(
     `SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, ${NAME_SQL} AS name,
             CASE WHEN rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
-            rv.payload->'templateReference'->>'templateFamily' AS template_family
+            ${templateFamilySql({ typeExpr: "rv.resource_type", payloads: ["rv.payload"], tenantExpr: "s.tenant_ref" })} AS template_family
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
       WHERE s.tenant_ref = $1 AND rv.natural_key = ANY($2::text[])

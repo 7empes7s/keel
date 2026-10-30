@@ -14,7 +14,7 @@ export default Object.freeze({
     // Antivirus, firewall, attack surface reduction and the like: set in Intune's
     // Endpoint security pages and stored as Intune settings catalog policies, but they
     // are Defender for Endpoint settings, so lists file them here (see `subkinds`).
-    { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy'], match: /endpointsecurity|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
+    { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy', 'defenderEndpointSecurityIntent'], match: /endpointsecurity|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
     { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule', 'defender-endpoint-indicators'], match: /foroffice|polic|rule|detection|indicator|alert/ },
     { key: 'sensors', name: 'Sensors and coverage', types: ['defenderIdentitySensor'], match: /sensor|coverage/ },
     { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
@@ -60,6 +60,26 @@ export default Object.freeze({
         endpointSecurityDiskEncryption: 'Disk encryption',
         endpointSecurityAccountProtection: 'Account protection',
         endpointSecurityApplicationControl: 'App control',
+      }),
+    },
+    // The same areas in the older format (deviceManagementIntent), made before Intune
+    // moved endpoint security to the settings catalog. Such a policy names only its
+    // template, so the family is that template's templateSubtype, looked up when the
+    // row is read (../templateAreas.mjs). Security baselines (subtype none) stay Intune.
+    defenderEndpointSecurityIntent: {
+      name: 'Endpoint security policy (older format)',
+      of: 'deviceManagementIntent',
+      families: Object.freeze({
+        antivirus: 'Antivirus',
+        firewall: 'Firewall',
+        firewallSharedAppList: 'Firewall',
+        firewallSharedIpList: 'Firewall',
+        firewallSharedPortlist: 'Firewall',
+        attackSurfaceReduction: 'Attack surface reduction',
+        // Microsoft's spelling.
+        endpointDetectionReponse: 'Endpoint detection and response',
+        diskEncryption: 'Disk encryption',
+        accountProtection: 'Account protection',
       }),
     },
   }),

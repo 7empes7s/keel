@@ -61,8 +61,9 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
           <p>
             Some restores do more than change a setting: they shorten how long content is kept, release a hold, widen
             sharing, delete content, run scripts on devices or shorten group lifetimes. With approvals on, a second person
-            approves these first. With approvals off, Keel makes them with the restore and still lists them in the plan.
-            Lockout checks stay on either way.
+            approves these first. With approvals off, Keel makes them with the restore and still lists them in the plan,
+            and a restore that only touches services with approvals off starts without waiting for an approver.
+            Lockout checks stay on either way, and turning a Conditional Access policy on always needs a person.
           </p>
         </div>
       </div>
@@ -90,7 +91,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
                     cancelLabel="Keep approvals"
                     size="sm"
                     confirmLabel="Turn off"
-                    description={<p>High-impact restore changes in {service.name} will be made without a second person approving them. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>}
+                    description={<p>Restores in {service.name}, and their high-impact changes, will be made without a second person approving them. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>}
                     disabled={busy !== null}
                     onConfirm={() => change(row.service, false)}
                     title={`Turn off approvals for ${service.name}?`}

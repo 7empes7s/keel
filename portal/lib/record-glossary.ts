@@ -275,6 +275,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Make it pass with": support("Make it pass with", COMMAND),
   "Write your own check with": support("Write your own check with", COMMAND),
   "Remove your own check with": support("Remove your own check with", COMMAND),
+  "Set a ScubaGear list with": support("Set a ScubaGear list with", COMMAND),
   "Changes": support("Change with", COMMAND),
   "Items in a backup": support("List items with", COMMAND),
   "Mapping API": support("Settings address", COMMAND),

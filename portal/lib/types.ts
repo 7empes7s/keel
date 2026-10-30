@@ -1,3 +1,5 @@
+import type { EngineRef } from "@/lib/sentences";
+
 export type ProtectionState =
   | "protected"
   | "partially-protected"
@@ -406,6 +408,26 @@ export interface OwnCheck {
 export interface OwnCheckChoices {
   snapshotId: string | null;
   types: { resourceType: string; count: number; fields: { field: string; values: (boolean | number | string | null)[] }[] }[];
+}
+
+export type ScubaListName = "sensitive-users" | "partner-domains";
+
+/** One ScubaGear config list a tenant sets (engine/benchmarks/scubagear/config.mjs). */
+export interface ScubaList {
+  list: ScubaListName;
+  policyId: string;
+  entries: string[];
+  changedAt: string | null;
+  changedBy: EngineRef | null;
+}
+
+/** The tenant's ScubaGear lists, and the emergency accounts the sign-in and admin role rules leave out. */
+export interface ScubaListsView {
+  lists: ScubaList[];
+  emergencyAccounts: { accountId: string; label: string }[];
+  // The sign-in rules and the admin role rule the emergency accounts are left out of.
+  signInRules: string[];
+  roleRules: string[];
 }
 
 export interface KnownStandardControl { controlId: string; match: "full" | "partial"; note: string | null }

@@ -16,6 +16,7 @@ import type {
   ComplianceSummary,
   KnownStandard,
   OwnCheck,
+  ScubaListName,
   StorageResidency,
 } from "@/lib/types";
 
@@ -659,8 +660,18 @@ function scubaReasonWords(code: string): string {
   if (code.startsWith("not-read:")) return "Keel does not back up the settings this rule reads yet.";
   if (code.startsWith("field-not-read:")) return "A setting this rule reads is not in Keel's backup yet.";
   if (code.startsWith("incomplete:")) return "The backup cannot answer what this rule asks.";
-  if (code.startsWith("needs-setting:")) return "This rule needs a list only you can give, such as your sensitive users or partner domains, and Keel cannot take it yet.";
+  if (code === "needs-setting:sensitive-users") return "This rule needs your list of sensitive users. Add it under ScubaGear lists.";
+  if (code === "needs-setting:partner-domains") return "This rule needs your list of partner domains. Add it under ScubaGear lists.";
+  if (code.startsWith("needs-setting:")) return "This rule needs a list from ScubaGear's config that Keel cannot take yet.";
   return "Keel could not run this rule.";
+}
+
+/** The ScubaGear list a control waits for before it can run, or null. */
+export function neededList(finding: ComplianceFinding): ScubaListName | null {
+  const reason = finding.reason ?? "";
+  if (reason === "scubagear:needs-setting:sensitive-users") return "sensitive-users";
+  if (reason === "scubagear:needs-setting:partner-domains") return "partner-domains";
+  return null;
 }
 
 /** The second line of a row and of a phone tile: the result in a few words. */
@@ -1076,4 +1087,57 @@ export function scoresByService(findings: ComplianceFinding[], order: (code: str
   return [...services.values()]
     .sort((left, right) => order(left.code) - order(right.code))
     .map((service) => ({ key: service.code, label: service.name, icon: service.icon, score: complianceScore(findings.filter((finding) => controlService(finding).code === service.code)) }));
+}
+
+/* ---------------------------------------------------------- ScubaGear lists -- */
+
+/** Each list a tenant sets for CISA ScubaGear, in plain words. */
+export const SCUBA_LIST_INFO: Record<ScubaListName, { label: string; one: string; many: string; purpose: string; help: string; example: string; icon: IconName }> = {
+  "sensitive-users": {
+    label: "Sensitive users",
+    one: "person",
+    many: "people",
+    purpose: "People an anti-phish policy must protect from impersonation",
+    help: "People attackers are likely to pretend to be, such as leaders and finance staff. An anti-phish policy that covers everyone must protect each of them by name. One email address each.",
+    example: "name@contoso.com",
+    icon: "person",
+  },
+  "partner-domains": {
+    label: "Partner domains",
+    one: "domain",
+    many: "domains",
+    purpose: "Suppliers' and partners' domains an anti-phish policy must protect",
+    help: "Domains of suppliers and partners you trade with, which attackers copy to look like them. An anti-phish policy that covers everyone must protect each one. One domain name each, without https://.",
+    example: "fabrikam.com",
+    icon: "link",
+  },
+};
+
+const LIST_EMAIL = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const LIST_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** Typed or pasted text as entries: split on spaces, commas, semicolons and new lines; lower case. */
+export function splitListEntries(text: string): string[] {
+  return [...new Set(text.split(/[\s,;]+/).map((part) => part.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** Why an entry cannot go in a list, or null. The engine checks the same again. */
+export function scubaListEntryProblem(list: ScubaListName, entry: string): string | null {
+  const clean = entry.trim().toLowerCase();
+  if (list === "sensitive-users") return clean.length <= 254 && LIST_EMAIL.test(clean) ? null : `"${entry}" is not an email address.`;
+  if (/^https?:\/\//.test(clean)) return `Leave out "https://": write ${clean.replace(/^https?:\/\//, "").replace(/\/.*$/, "")} only.`;
+  return clean.length <= 253 && LIST_DOMAIN.test(clean) ? null : `"${entry}" is not a domain name.`;
+}
+
+/** The lists not set yet, each holding back its rule. */
+export function scubaListsMissing(view: { lists: { list: ScubaListName; entries: string[] }[] }): ScubaListName[] {
+  return view.lists.filter((list) => list.entries.length === 0).map((list) => list.list);
+}
+
+/** A saved list's rule, checked again on the newest backup, in a few words. */
+export function scubaListResultWords(verdict: string | null, count: number): string {
+  if (count === 0) return "cleared, so its rule could not be checked.";
+  if (verdict === "pass") return "its rule passes on the newest backup.";
+  if (verdict === "fail") return "its rule does not pass on the newest backup.";
+  return "its rule is checked after the next backup.";
 }

@@ -52,7 +52,7 @@ import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices, ScubaListsView } from "@/lib/types";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
@@ -190,6 +190,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
   if (url.endsWith("/api/actions/compliance/own-check")) return json({ check: { id: "0c0c0000-0000-4000-8000-0000000000b1" }, evaluationId: "e7a10000-0000-4000-8000-0000000000b1", verdict: "fail" }, 201);
   if (url.endsWith("/api/actions/compliance/own-check/remove")) return json({ removed: "0c0c0000-0000-4000-8000-0000000000a7" });
+  if (url.endsWith("/api/actions/compliance/scuba-lists")) return json({ changed: true, list: null, verdict: "fail", reason: null });
   if (url.endsWith("/api/actions/compliance/check")) return json({ checked: 4, pass: 1, fail: 2, unknown: 1, notApplicable: 0, notConfigured: 1 }, 201);
   if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
@@ -952,6 +953,24 @@ const SPAM_FIX = {
     mailFix("0c0f5000-0000-4000-8000-000000000002", "KEEL-RT-Finance inbound filtering for the accounts payable team", "PhishSpamAction", "AddXHeader", "Quarantine"),
   ],
 };
+// ScubaGear lists: partner domains not set (its rule waits for it), sensitive users set,
+// one emergency account registered.
+const SCUBA_LISTS: ScubaListsView = {
+  lists: [
+    { list: "sensitive-users", policyId: "MS.SECURITYSUITE.2.1v1", entries: ["amara.okafor@contoso.com", "finance.director@contoso.com", "kenji.watanabe@contoso.com"], changedAt: "2026-10-01T14:00:00Z", changedBy: { kind: "person", id: "a1", name: "Amara Okafor", readable: true, email: "amara.okafor@contoso.com" } },
+    { list: "partner-domains", policyId: "MS.SECURITYSUITE.2.3v1", entries: [], changedAt: null, changedBy: null },
+  ],
+  emergencyAccounts: [{ accountId: "00000000-0000-4000-8000-0000000000e9", label: "KEEL-RT-breakglass-1@contoso.onmicrosoft.com" }],
+  signInRules: ["MS.AAD.1.1v1", "MS.AAD.2.1v1", "MS.AAD.2.3v1", "MS.AAD.3.1v1", "MS.AAD.3.2v2", "MS.AAD.3.6v1", "MS.AAD.3.7v1", "MS.AAD.3.8v1", "MS.AAD.3.9v1"],
+  roleRules: ["MS.AAD.7.4v1"],
+};
+const SCUBA_WAITING: ComplianceFinding = {
+  ...COMPLIANCE.findings[0],
+  id: "e7a10000-0000-4000-8000-000000005c03", controlId: "scubagear.MS.SECURITYSUITE.2.3v1", title: "Domain impersonation protection SHOULD be added for key suppliers and partners.",
+  severity: "medium", framework: "cisa-scuba", edition: "2.0.0", profile: "securitysuite", verdict: "unknown", reason: "scubagear:needs-setting:partner-domains",
+  exceptionState: "none", exception: null, exposed: false, details: [],
+};
+const SCUBA_COMPLIANCE: ComplianceData = { ...COMPLIANCE, findings: [...COMPLIANCE.findings, SCUBA_WAITING] };
 // Your own checks: one written for the tenant's own standard, and what one can be written on.
 const OWN_CHECK_FINDING: ComplianceFinding = {
   ...COMPLIANCE.findings[0],
@@ -2703,6 +2722,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} canRestore={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/scuba": case "/benchmarks/scuba-viewer": {
+      // ScubaGear lists: one not set holds back its rule; a viewer sees them without Edit.
+      const edit = path === "/benchmarks/scuba";
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(SCUBA_COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canCheck={edit} canConfigure={edit} canRestore={edit} data={SCUBA_COMPLIANCE} now={now} scubaLists={SCUBA_LISTS} /></>;
     }
     case "/benchmarks/own": {
       // A check the tenant wrote itself, beside Keel's, and the form that writes one.

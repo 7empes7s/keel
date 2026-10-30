@@ -43,6 +43,8 @@ const PAGES = [
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
   { name: "benchmarks", hash: "/benchmarks" },
+  { name: "benchmarks-scuba-lists", hash: "/benchmarks/scuba" },
+  { name: "benchmarks-scuba-lists-edit", hash: "/benchmarks/scuba?lists=edit" },
   { name: "principals", hash: "/principals" },
   { name: "notifications", hash: "/notifications" },
   { name: "integrations", hash: "/integrations" },
@@ -3764,7 +3766,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new", "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000e2"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new", "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks/scuba", "/benchmarks/scuba?lists=edit"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -4838,6 +4840,69 @@ test("shared list · the pager fits a phone without sideways scrolling", async (
   await pager.getByRole("button", { name: "Next" }).click();
   await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
 });
+
+test("Compliance · ScubaGear lists: a list not set comes first, and is set from the sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/scuba");
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  const card = page.locator(".cp-scuba");
+  await expect(card.locator("h2")).toHaveText("ScubaGear lists");
+  await expect(card.locator(".cp-callout")).toContainText("1 list is not set, so 1 CISA rule could not be checked");
+  const row = (name: string) => card.locator(".cp-scuba-row", { hasText: name });
+  await expect(card.locator(".cp-scuba-row b")).toHaveText(["Partner domains", "Sensitive users", "Emergency accounts"]);
+  await expect(row("Partner domains")).toHaveAttribute("data-tone", "soon");
+  await expect(row("Partner domains").locator(".badge")).toHaveText("Not set");
+  await expect(row("Sensitive users").locator(".badge")).toHaveText("3 people");
+  await expect(row("Sensitive users")).toContainText("Amara Okafor");
+  await expect(row("Emergency accounts").locator(".badge")).toHaveText("1 from Emergency access");
+  await expect(row("Emergency accounts").getByRole("link", { name: "Manage on Emergency access" })).toHaveAttribute("href", /\/readiness$/);
+
+  // The rule waiting for the list says so, and offers to set it rather than run a backup.
+  const waiting = page.locator(".sel-row", { hasText: "Domain impersonation protection" });
+  await expect(waiting).toContainText("This rule needs your list of partner domains");
+  await expect(waiting.getByRole("link", { name: "Run a backup" })).toHaveCount(0);
+  await waiting.getByRole("link", { name: "Set the list" }).click();
+
+  const sheet = page.locator(".bl-sheet");
+  await expect(sheet.locator("h2")).toContainText("ScubaGear lists");
+  await expect(sheet.getByRole("button", { name: "No changes" })).toBeDisabled();
+  const domain = sheet.getByLabel("Add domain");
+  await domain.fill("https://fabrikam.com/about");
+  await domain.press("Enter");
+  await expect(sheet.locator(".cp-error")).toHaveText("Leave out \"https://\": write fabrikam.com only.");
+  await domain.fill("Fabrikam.com");
+  await domain.press("Enter");
+  await domain.fill("northwind.example, tailspin.example");
+  await sheet.getByRole("button", { name: "Add", exact: true }).nth(1).click();
+  await expect(sheet.getByRole("list", { name: "Partner domains" }).locator("li")).toHaveText(["fabrikam.com", "northwind.example", "tailspin.example"]);
+  await sheet.getByRole("button", { name: "Remove tailspin.example" }).click();
+  // Emergency accounts are read here, managed on Emergency access.
+  await expect(sheet).toContainText("KEEL-RT-breakglass-1@contoso.onmicrosoft.com");
+  await sheet.getByRole("button", { name: "Save and check" }).click();
+  await expect(page.locator(".toast").first()).toContainText("List saved");
+  await expect(page.locator(".toast").first()).toContainText("Partner domains: its rule does not pass on the newest backup.");
+  const saves = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/scuba-lists");
+  expect(saves.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ list: "partner-domains", entries: ["fabrikam.com", "northwind.example"] }]);
+
+  // Someone who only reads sees the lists, without Edit or Set the list.
+  await open(page, "/benchmarks/scuba-viewer");
+  await expect(page.locator(".cp-scuba .cp-scuba-row")).toHaveCount(3);
+  await expect(page.getByRole("link", { name: "Edit lists" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Set the list" })).toHaveCount(0);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    test(`visual · scuba-lists · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/benchmarks/scuba", theme);
+      await expect(page.locator(".cp-scuba")).toHaveScreenshot(`scuba-lists-${width}-${theme}.png`);
+      await open(page, "/benchmarks/scuba?lists=edit", theme);
+      await expect(page.locator(".bl-sheet")).toHaveScreenshot(`scuba-lists-sheet-${width}-${theme}.png`);
+    });
+  }
+}
 
 test("Compliance · measure against a known standard, write your own check, remove it", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });

@@ -774,7 +774,12 @@ test('onedrive-site-settings: only a KEEL-RT- person\'s OneDrive on the test ten
   const locked = oneDriveTenant([oneDriveBody(ONEDRIVE_SITE, { LockState: 'ReadOnly' })]);
   const result = await oneDriveCapture(locked);
   assert.deepEqual(locked.writes, []);
-  assert.match(result.record.subject.skipped[0].reason, /unusable/);
+  assert.match(result.record.subject.skipped[0].reason, /OneDrive is locked/);
+  // A lock state that was not read counts as locked.
+  const { LockState, ...noLock } = oneDriveBody(ONEDRIVE_SITE);
+  const unread = oneDriveTenant([noLock]);
+  await oneDriveCapture(unread);
+  assert.deepEqual(unread.writes, []);
 });
 
 test('onedrive-site-settings: the gate refuses a narrowing off the test tenant, a widening, or another site', async () => {

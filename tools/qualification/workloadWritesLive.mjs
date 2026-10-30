@@ -176,10 +176,13 @@ async function readUntil(readOnce, matches, { sleep, attempts, delayMs }) {
 }
 
 // A OneDrive's LockState (read-only or no access) counts too: KEEL never changes or unlocks a locked site.
-const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked' || siteLocked(entry?.fields);
+// A OneDrive whose LockState was not read counts as locked: it cannot be shown unlocked.
+const oneDriveLockUnknown = (entry) => entry?.kind === 'onedriveSite' && entry?.fieldCoverage?.LockState?.status !== 'observed';
+const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked' || siteLocked(entry?.fields) || oneDriveLockUnknown(entry);
 
 /** Why `entry` cannot be written, or null. A rule's policy must be read and unlocked. */
 function lockProblem(entry, resources) {
+  if (entry?.kind === 'onedriveSite' && isLocked(entry)) return `the OneDrive is locked or its lock state was not read (LockState ${entry.fields?.LockState ?? 'unknown'}); KEEL never changes or unlocks it`;
   if (isLocked(entry)) return 'it reports a preservation lock';
   if (entry.parentPolicy || entry.parentStatus) {
     const parent = resources.find((item) => item.identity === entry.parentPolicy && !String(item.kind).endsWith('Rule'));
@@ -191,7 +194,7 @@ function lockProblem(entry, resources) {
 
 /** The parameters naming an object to its Set- cmdlet (writeDeclarations.mjs `identity`). */
 function identityOf(write, entry) {
-  if (write.identity === 'url') return { Identity: entry.fields?.url ?? entry.url };
+  if (write.identity === 'url') return { Identity: entry.url ?? entry.fields?.url };
   if (write.identity === 'guid') return { Identity: entry.identity };
   if (write.identity === 'object-name') return { Identity: entry.fields.Name };
   if (write.identity === 'fixed') return { Identity: write.fixedIdentity };
@@ -481,7 +484,6 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     identity = identityOf(write, now);
     if (identity.Identity !== capture.identity || !identityNamesFixture(write, capture)) { capture.error = 'the fixture\'s identity changed since the first read; nothing was written'; return; }
     putBack = original ?? (change.type === 'text' ? '' : original);
-    if (change.type === 'narrowing') capture.contentEffects = [];
     try {
       await writeCmdlet(write.method, { ...identity, [change.field]: change.after });
     } catch (error) {

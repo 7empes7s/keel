@@ -12941,3 +12941,42 @@ item that needs it stays untouched.
   5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' reads are listed as current.
 - **Report:** B; capture exit codes and proven/notProven; evidence branch and commit; import counts; the run table; unknown
   fields per family; anything left in the tenant (expected: nothing, reads only).
+
+### Q275: Live read check of the Exchange audit, encryption and organization setting reads, then turn them on (read-only toward the tenant, after PR #796), about 15 minutes
+- Drafted by the "Back up Exchange encryption and audit settings" thread (2026-10-30). Code: PR #796. One new read-only
+  workload, shipped `disabled` until a live read record is imported: `exchange-org-config` (Get-AdminAuditLogConfig,
+  Get-IRMConfiguration, Get-OMEConfiguration, Get-PerimeterConfig, Get-AvailabilityConfig, Get-AvailabilityAddressSpace,
+  Get-MessageClassification, Get-PolicyTipConfig, Get-ResourceConfig, Get-PartnerApplication, Get-OnPremisesOrganization).
+  No parameters. Declared fields come from Microsoft's documentation, not a live answer; this item tells us which to drop.
+- Needs: /opt/keel-live at the #796 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
+  `run-cmdlet.ps1` has a new table (`$AllowedExchangeOrgConfig`); scripts are mounted from the checkout, so no image rebuild
+  is expected. Independent of Q274 (either can run first).
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
+  cmdlet. Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** with the Exchange config the workloads use (`powershellConfigs.exchange` in
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q274 step 1:
+     ```bash
+     w=exchange-org-config
+     node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     ```
+     Report the exit code, `outcome`, `proven` and `notProven` verbatim. If the pseudonymize check is not exit 0, stop and file
+     an issue. If a cmdlet is missing for the app (CommandNotFoundException) or denied, report which; do not grant anything.
+  2. **Evidence:** commit the record to `claude/live-evidence-exchange-org-config` (from `origin/master`, that file only,
+     checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q274 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and,
+     for `exchange-org-config`, its per-family `discovery.families` statuses, `discovery.empty`, `fieldCounts` and
+     **`unknownFields`** verbatim (field names only, never values). Unknown fields are expected on the first run; the thread
+     trims them in a follow-up PR.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm the workload's reads are listed as current.
+- **Report:** capture exit code and proven/notProven; evidence branch and commit; import counts; the run table; unknown
+  fields per family; anything left in the tenant (expected: nothing, reads only).

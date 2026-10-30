@@ -202,6 +202,11 @@ test("undo restores the active baseline's value, not the one stored with an olde
     assert.deepEqual([after.before, after.after], [{ Priority: 2, State: "Disabled" }, { Priority: 1, State: "Enabled" }]);
     assert.equal(after.serviceRead?.beforeIsApproved, true);
 
+    // A baseline that already holds the newest value leaves nothing to compare or undo.
+    assert.deepEqual(serviceRow({ approved_collection_id: "c3", approved_differences: [] }).serviceRead?.undo.reason?.includes("already matches the active baseline"), true);
+    const matching = serviceRow({ approved_collection_id: "c3", approved_differences: [] });
+    assert.deepEqual([matching.before, matching.after, matching.serviceRead?.beforeIsApproved], [{}, {}, true]);
+
     // A baseline whose read no longer holds the rule leaves nothing to put back: undo says so
     // instead of quietly falling back to the older value.
     const empty = await mailFlow("2026-10-12T04:00:00.000Z", { State: "Disabled" }, false);

@@ -63,7 +63,7 @@ export interface UndoChoice {
  * Undo restores the earlier value from the read that holds it, through the Restore
  * page's own service restore, so only what that restore writes can be undone here. */
 export function serviceUndo(
-  { workload, resourceKey, changeType, heldByApprovedSetup = true }: { workload: string; resourceKey: string; changeType: string; heldByApprovedSetup?: boolean },
+  { workload, resourceKey, changeType, heldByApprovedSetup = true, matchesApproved = false }: { workload: string; resourceKey: string; changeType: string; heldByApprovedSetup?: boolean; matchesApproved?: boolean },
   choice: UndoChoice | null,
 ): ServiceUndo {
   const label = workloadLabel(workload);
@@ -78,6 +78,9 @@ export function serviceUndo(
   }
   if (!heldByApprovedSetup) {
     return { possible: false, reason: "The active baseline does not hold this setting, so there is no approved value to put back. Accept the change, or change it back in the admin center." };
+  }
+  if (matchesApproved) {
+    return { possible: false, reason: "The newest read already matches the active baseline, so there is nothing to put back. The next read settles this change." };
   }
   if (!choice) return { possible: false, reason: "The read that holds the earlier value no longer has this setting, so Keel cannot put it back." };
   if (!choice.restorable) return { possible: false, reason: choice.reason ?? "Keel does not write this kind of setting back. Accept the change, or change it back by hand." };
@@ -117,7 +120,10 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
   // The details show the active approved setup's value, the one an undo puts back, when
   // the loader could compare the resource with it (approved_differences); otherwise the
   // values stored when the change was found.
-  const againstApproved = Array.isArray(row.approved_differences) && row.approved_differences.length > 0 ? row.approved_differences : null;
+  // An empty list means the newest read already matches the active approved setup (a
+  // baseline captured after the change holds it): nothing differs and undo has nothing to do.
+  const againstApproved = Array.isArray(row.approved_differences) ? row.approved_differences : null;
+  const matchesApproved = againstApproved !== null && againstApproved.length === 0;
   const approvedCopy = undoFrom.approved && undoFrom.collectionId ? record(row.approved_fields) : null;
   const beforeIsApproved = againstApproved !== null || (changeType === "removed" && approvedCopy !== null);
   const fields = (againstApproved ?? (Array.isArray(row.fields) ? row.fields : []))
@@ -145,7 +151,7 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
       comparedWith: row.compared_with === "approved" ? "approved" : "previous",
       alertId: row.alert_id ? String(row.alert_id) : null,
       alertState: row.alert_state ? String(row.alert_state) : null,
-      undo: serviceUndo({ workload, resourceKey, changeType: String(row.change_type), heldByApprovedSetup: undoFrom.collectionId !== null }, choice),
+      undo: serviceUndo({ workload, resourceKey, changeType: String(row.change_type), heldByApprovedSetup: undoFrom.collectionId !== null, matchesApproved }, choice),
     },
   };
 }

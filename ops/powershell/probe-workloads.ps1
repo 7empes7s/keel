@@ -356,6 +356,8 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 # cmdlet not found.
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionComplianceRule' -Block { Get-RetentionComplianceRule }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpComplianceRule' -Block { Get-DlpComplianceRule }
+                # Alert policies (configuration): Get-ProtectionAlert never returns a raised alert.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ProtectionAlert' -Block { Get-ProtectionAlert }
                 # Wave 1 READ-TEAMS-PV: retention labels, adaptive scopes, auto-labeling and
                 # eDiscovery cases and holds (configuration only, never case evidence). The
                 # hold reads run against the first case and hold, if there is one.

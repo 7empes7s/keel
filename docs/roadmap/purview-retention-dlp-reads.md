@@ -23,6 +23,7 @@ Compliance Administrator role, like the label reads.
 | `purview.retention-rules` | `Get-RetentionComplianceRule` | `retention-rule:<Guid>` |
 | `purview.dlp-policies` | `Get-DlpCompliancePolicy` | `dlp-policy:<Guid>` |
 | `purview.dlp-rules` | `Get-DlpComplianceRule` | `dlp-rule:<Guid>` |
+| `purview.alert-policies` | `Get-ProtectionAlert` (alert policies, not raised alerts; optional, runs once its own row is qualified) | `alert-policy:<Guid>` |
 
 **Why a new workload, not more reads in `purview-labels`.** The label workload
 (task 106) has its own activation, which needs both label rows enabled, plus ledger rows,

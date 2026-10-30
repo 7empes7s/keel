@@ -81,14 +81,16 @@ $AllowedTeamsPolicy = @{
     'Get-CsTeamsGuestCallingConfiguration'   = @()
 }
 
-# Issue #157: Purview retention and DLP policies and rules, read in the Security &
-# Compliance session with no parameters. Reads only: no Set-, New- or Remove-, and no
-# cmdlet that reads DLP matches, incidents or reports.
+# Issue #157: Purview retention and DLP policies and rules, and alert policies, read in
+# the Security & Compliance session with no parameters. Reads only: no Set-, New- or
+# Remove-, and no cmdlet that reads DLP matches, incidents or reports.
+# Get-ProtectionAlert returns alert policies (configuration), not raised alerts.
 $AllowedPurviewRetentionDlp = @{
     'Get-RetentionCompliancePolicy' = @()
     'Get-RetentionComplianceRule'   = @()
     'Get-DlpCompliancePolicy'       = @()
     'Get-DlpComplianceRule'         = @()
+    'Get-ProtectionAlert'           = @()
 }
 
 # READ-EXO: the Exchange and Defender settings mail flow does not read, in the

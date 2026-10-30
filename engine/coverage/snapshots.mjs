@@ -21,13 +21,13 @@ export const TYPE_COVERAGE_CTES = `
     WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
   ),
   latest_type_coverage AS (
-    SELECT DISTINCT ON (entry.key)
-      entry.key AS resource_type, entry.value AS coverage_entry,
-      s.id AS snapshot_id, s.started_at, s.completed_at
-    FROM completed_snapshots s
-    CROSS JOIN LATERAL jsonb_each(COALESCE(s.coverage_digest, '{}'::jsonb)) entry
-    WHERE entry.value ->> 'outcome' IS DISTINCT FROM 'not-requested'
-    ORDER BY entry.key, s.completed_at DESC, s.started_at DESC, s.id DESC
+    -- One row per type, kept current by triggers on snapshot
+    -- (store/schema.d/83-type-coverage-latest.sql), so this no longer reads
+    -- every backup's digest. The join skips rows whose snapshot is gone.
+    SELECT t.resource_type, t.coverage_entry, t.snapshot_id, t.started_at, t.completed_at
+    FROM type_coverage_latest t
+    JOIN snapshot s ON s.id = t.snapshot_id
+    WHERE t.tenant_ref = $1
   )`;
 
 /**

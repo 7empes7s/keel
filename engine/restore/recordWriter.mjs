@@ -210,7 +210,7 @@ export function recordWriteBody(record, payload, verb) {
     if (verb !== 'create' && record.createOnly.includes(key)) continue;
     body[key] = withoutAnnotations(value);
   }
-  return withoutTrustFields(record.resourceType, record.transform ? record.transform(body, { verb, payload }) : body);
+  return withoutTrustFields(record.resourceType, record.transform ? record.transform(body, { verb, payload }) : body, verb);
 }
 
 /**
@@ -218,16 +218,61 @@ export function recordWriteBody(record, payload, verb) {
  * sends: a writer that sends the payload minus a few fields (a record with no
  * `writable` list, the built-in Intune policy writer) must not carry a trust,
  * certificate or sign-in field through. defineRecord() refuses such a field in
- * `writable`; this covers the rest. Top-level fields, as isTrustField names them.
+ * `writable`; this covers the rest, at any depth: a field inside a nested
+ * object or a list of objects (a profile's settings block, a list of servers)
+ * is dropped the same way as a top-level one.
+ *
+ * An update sends a nested object or list whole, and Graph replaces it whole,
+ * so sending it without its trust field would clear the live one. An update
+ * therefore leaves out every top-level field that holds a nested trust field
+ * (trustFieldStep lists it for a person); a create, with nothing live to
+ * clear, sends it without the trust field.
  */
-export function withoutTrustFields(resourceType, body) {
-  if (!body || typeof body !== 'object') return body;
-  const trust = Object.keys(body).filter((key) => key !== '@odata.type' && isTrustField(resourceType, key));
-  if (trust.length === 0) return body;
-  const kept = { ...body };
-  for (const key of trust) delete kept[key];
+export function withoutTrustFields(resourceType, body, verb = 'create') {
+  const stripped = stripTrust(resourceType, body);
+  if (verb === 'create' || stripped === body || !stripped || typeof stripped !== 'object' || Array.isArray(stripped)) return stripped;
+  const kept = {};
+  for (const [key, value] of Object.entries(stripped)) if (value === body[key]) kept[key] = value;
   return kept;
 }
+
+const isTrustKey = (resourceType, key) => key !== '@odata.type' && !isAnnotation(key) && isTrustField(resourceType, key);
+
+// The value without its trust fields; the same value when it holds none.
+function stripTrust(resourceType, value) {
+  if (Array.isArray(value)) {
+    const items = value.map((item) => stripTrust(resourceType, item));
+    return items.every((item, index) => item === value[index]) ? value : items;
+  }
+  if (!value || typeof value !== 'object') return value;
+  let changed = false;
+  const kept = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (isTrustKey(resourceType, key)) {
+      changed = true;
+      continue;
+    }
+    const stripped = stripTrust(resourceType, child);
+    if (stripped !== child) changed = true;
+    kept[key] = stripped;
+  }
+  return changed ? kept : value;
+}
+
+// The path of every trust field below a value, as segments (keys and list indexes).
+function nestedTrustPaths(resourceType, value, prefix = []) {
+  if (Array.isArray(value)) return value.flatMap((item, index) => nestedTrustPaths(resourceType, item, [...prefix, index]));
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) => (isTrustKey(resourceType, key)
+    ? [[...prefix, key]]
+    : nestedTrustPaths(resourceType, child, [...prefix, key])));
+}
+
+/** Whether a value holds a trust field below its top level (in a nested object or list). */
+export const holdsNestedTrust = (resourceType, value) => nestedTrustPaths(resourceType, value).length > 0;
+
+const valueAt = (value, segments) => segments.reduce((held, segment) => (held && typeof held === 'object' ? held[segment] : undefined), value);
+const pathText = (segments) => segments.reduce((text, segment) => (typeof segment === 'number' ? `${text}[${segment}]` : text ? `${text}.${segment}` : segment), '');
 
 /**
  * The manual step for the trust fields a write leaves out, or null: on a create
@@ -241,14 +286,34 @@ const isUnset = (value) => value === false || value === 0 || value === '' || sam
   || (Array.isArray(value) && value.length === 0) || (value && typeof value === 'object' && Object.keys(normalised(value)).length === 0);
 
 export function trustFieldStep(resourceType, payload, live, verb, { excluded = [], same = (_field, left, right) => sameValue(left, right) } = {}) {
-  const differing = Object.keys(payload ?? {})
-    .filter((key) => key !== '@odata.type' && !isAnnotation(key) && !SERVER_OWNED_ALWAYS.has(key) && !excluded.includes(key))
-    .filter((key) => isTrustField(resourceType, key))
-    .filter((key) => (verb === 'create' || !live ? !isUnset(payload[key]) : !same(key, payload[key], live[key])));
-  if (differing.length === 0) return null;
+  const update = verb !== 'create';
+  const differs = (segments, desired) => (verb === 'create' || !live ? !isUnset(desired)
+    // Top-level fields compare with the writer's own equality; a nested one by value at the same path.
+    : segments.length === 1 ? !same(segments[0], desired, live[segments[0]]) : !sameValue(desired, valueAt(live, segments)));
+  const fields = [];
+  const held = [];
+  for (const key of Object.keys(payload ?? {})) {
+    if (key === '@odata.type' || isAnnotation(key) || SERVER_OWNED_ALWAYS.has(key) || excluded.includes(key)) continue;
+    if (isTrustField(resourceType, key)) {
+      if (differs([key], payload[key])) fields.push(key);
+      continue;
+    }
+    // A nested trust field in the backup or in live (a backup without it would clear it).
+    const nested = [...nestedTrustPaths(resourceType, payload[key], [key]), ...(update && live ? nestedTrustPaths(resourceType, live[key], [key]) : [])]
+      .filter((segments, index, all) => all.findIndex((other) => pathText(other) === pathText(segments)) === index);
+    if (nested.length === 0) continue;
+    fields.push(...nested.filter((segments) => differs(segments, valueAt(payload, segments))).map(pathText));
+    // An update leaves the whole field out (withoutTrustFields): its other values are a step too.
+    const others = stripTrust(resourceType, payload[key]);
+    if (update && (live ? !sameValue(others, stripTrust(resourceType, live[key])) : !isUnset(others))) held.push(key);
+  }
+  if (fields.length === 0 && held.length === 0) return null;
+  const parts = [];
+  if (fields.length) parts.push(`Check ${fields.join(', ')} in the admin center and set the backup's value by hand if it is still wanted (one the backup does not hold is left as it is).`);
+  if (held.length) parts.push(`${held.join(', ')} ${held.length === 1 ? 'holds' : 'hold'} a trust setting, so ${held.length === 1 ? 'it was' : 'they were'} not restored either: set the backup's other values there by hand.`);
   return Object.freeze({
-    kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(differing),
-    description: `A restore never writes trust, certificate or sign-in settings. Check ${differing.join(', ')} in the admin center and set the backup's value by hand if it is still wanted.`,
+    kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze([...fields, ...held.filter((key) => !fields.includes(key))]),
+    description: `A restore never writes trust, certificate or sign-in settings. ${parts.join(' ')}`,
   });
 }
 
@@ -329,11 +394,17 @@ export function wholeReplaceTrustRefusal(resourceType, { payload, live, body, ex
   });
 }
 
-/** The fields of the desired body whose value live does not hold. */
+/**
+ * The fields of the desired body whose value live does not hold. An update
+ * never sends a field whose live value holds a nested trust field, even when
+ * the backup's has none: Graph would replace it whole and clear the live one
+ * (trustFieldStep lists it for a person).
+ */
 export function changedRecordFields(record, desired, live, verb = 'update') {
   const want = recordWriteBody(record, desired, verb);
   const have = recordWriteBody(record, live ?? {}, verb);
-  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameRecordField(record, key, want[key], have[key]));
+  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameRecordField(record, key, want[key], have[key]))
+    .filter((key) => verb === 'create' || !holdsNestedTrust(record.resourceType, live?.[key]));
 }
 
 /** null, or the post-state refusal text: every sent field reads back as sent. */
@@ -580,7 +651,8 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   const trustCompletion = trustStep ? { completion: [trustStep] } : {};
   // A replace (PUT) would clear the trust settings its body leaves out: refused.
   if (verb === 'update' && record.updateMethod === 'PUT' && fields.length > 0) {
-    const replace = wholeReplaceTrustRefusal(record.resourceType, { payload, live: before, body, excluded: record.excluded });
+    // The create body names every field a write can send; an update leaves out one holding a nested trust field.
+    const replace = wholeReplaceTrustRefusal(record.resourceType, { payload, live: before, body: recordWriteBody(record, payload, 'create'), excluded: record.excluded });
     if (replace) return refusalEntry(naturalKey, replace);
   }
 

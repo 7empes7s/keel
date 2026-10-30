@@ -56,7 +56,7 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import {
-  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
+  applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, wholeReplaceTrustRefusal, withoutTrustFields,
 } from './recordWriter.mjs';
 
@@ -254,7 +254,7 @@ export function intuneWriteBody(resourceType, payload, verb) {
   if (entry.settings) body.settings = settingsBody(payload?.settings);
   if (entry.scheduledActions && verb === 'create') body.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
   // A trust, certificate or sign-in field is never sent (intuneTrustFieldStep lists it for a person).
-  return withoutTrustFields(resourceType, body);
+  return withoutTrustFields(resourceType, body, verb);
 }
 
 /**
@@ -266,7 +266,8 @@ export function intuneReplaceTrustRefusal(resourceType, desired, live) {
   const entry = intuneRecordFor(resourceType);
   if (entry?.updateMethod !== 'PUT') return null;
   return wholeReplaceTrustRefusal(resourceType, {
-    payload: desired, live, body: intuneWriteBody(resourceType, desired, 'update'), excluded: entry.excluded,
+    // The create body names every field a write can send; an update leaves out one holding a nested trust field.
+    payload: desired, live, body: intuneWriteBody(resourceType, desired, 'create'), excluded: entry.excluded,
   });
 }
 
@@ -296,7 +297,9 @@ function normalised(value) {
 export function changedIntuneFields(resourceType, desired, live, verb = 'update') {
   const want = intuneWriteBody(resourceType, desired, verb);
   const have = intuneWriteBody(resourceType, live ?? {}, verb);
-  return Object.keys(want).filter((key) => !isDeepStrictEqual(normalised(want[key] ?? null), normalised(have[key] ?? null)));
+  return Object.keys(want).filter((key) => !isDeepStrictEqual(normalised(want[key] ?? null), normalised(have[key] ?? null)))
+    // A field whose live value holds a nested trust field is never sent on update (see changedRecordFields).
+    .filter((key) => verb === 'create' || !holdsNestedTrust(resourceType, live?.[key]));
 }
 
 /** Whether a compliance policy's actions for noncompliance differ from live. */

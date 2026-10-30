@@ -381,15 +381,17 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // Reviewed (every field of the beta resource): the data transfer, clipboard,
   // print and threat level settings only restrict where work data may go, and
   // the required and warning versions block or warn, keeping the data. What
-  // removes work data from the app is a wipe: a wipe version that is new or
-  // higher, an offline period before wipe that is new or shorter (compared as
-  // durations, so PT2160H equals P90D; P0D means no wipe), or an action that
-  // becomes "wipe". Issue #461: a restore assigns a
+  // removes work data from the app is a wipe: a minimum wipe version that is
+  // new or higher, a maximum wipe OS version that is new or lower, an offline
+  // period before wipe that is new or shorter (compared as durations, so
+  // PT2160H equals P90D; P0D means no wipe), or an action that becomes
+  // "wipe". Issue #461: a restore assigns a
   // recreated policy too, so a create that is assigned is judged.
   windowsManagedAppProtection: { reviewed: true, judgesCreates: 'when-assigned', rules: [
     rule('minimumWipeAppVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeOsVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeSdkVersion', 'irreversible', wipeVersionRises),
+    rule('maximumWipeOsVersion', 'irreversible', wipeVersionFalls),
     rule('appActionIfUnableToAuthenticateUser', 'irreversible', becomes('wipe')),
     rule('mobileThreatDefenseRemediationAction', 'irreversible', becomes('wipe')),
     rule('periodOfflineBeforeWipeIsEnforced', 'irreversible', offlineWipeTightens),

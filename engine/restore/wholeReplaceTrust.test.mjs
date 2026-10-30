@@ -193,3 +193,18 @@ test('a settings catalog compliance policy whose live copy holds a trust setting
   assert.equal(graph.calls.some((call) => call.method !== 'GET' && call.method !== undefined), false, 'nothing is written');
   assert.deepEqual(result.skipped.completion[0].fields, ['linux_customcompliance_trustedrootcertificate']);
 });
+
+test('a nested trust key inside the settings refuses the PUT, though an update body leaves the settings out', async () => {
+  const keyed = { ...REALTIME, settingInstance: { ...REALTIME.settingInstance, trustedRootCertificate: 'MIIBnested' } };
+  for (const [label, desired, live] of [
+    ['in the backup', { ...catalogPolicy, settings: [keyed] }, { ...catalogPolicy, description: 'Live' }],
+    ['only live', catalogPolicy, { ...catalogPolicy, description: 'Live', settings: [keyed] }],
+  ]) {
+    const graph = fakeGraph();
+    const writes = writesOf(graph);
+    const result = await run(graph, [catalogUpdate(graph, desired, live)], 'enforce');
+    assert.deepEqual(writes, [], `${label}: nothing is written`);
+    assert.deepEqual(result.failed, [], label);
+    assert.deepEqual(result.skipped[0]?.completion?.[0]?.fields, ['trustedRootCertificate'], label);
+  }
+});

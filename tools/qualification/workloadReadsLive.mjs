@@ -61,6 +61,7 @@ import {
 } from '../../engine/collect/workloads/teamsVoiceNetwork.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
+import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 
 /**
  * The SharePoint per-site sharing read, in the shape the written workloads' readers
@@ -113,6 +114,15 @@ export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, work
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 
+/** Whether `url` is a request for the declared REST read `operationId` (its host and path, any {placeholder}). */
+export function restRequestMatches(operationId, url) {
+  const operation = WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === operationId)?.operation;
+  if (operation?.kind !== 'rest') return false;
+  const parsed = new URL(url);
+  const template = operation.endpoint.split('?')[0].split(/\{[^}]+\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+');
+  return parsed.hostname === operation.host && new RegExp(`^${template}$`).test(decodeURIComponent(parsed.pathname));
+}
+
 /**
  * Runs the workload's collector once with the collector's PowerShell options, or, for a REST
  * workload, with its read-only transport (`collector`). Returns the unsigned record, with ids such as the collector's app id pseudonymized so it can be
@@ -134,10 +144,14 @@ export async function captureWorkloadReads({
 
   const declared = workloadReads(workload);
   const families = declared.map((item) => item.family);
+  // A REST read is proof only if a request for it was sent: a per-environment read with no
+  // environment to read answers `read` with nothing sent, which proves nothing.
+  const sent = [];
+  const transport = rest ? async (url, init) => { sent.push(String(url)); return collector(url, init); } : null;
   let result = null;
   let error = null;
   try {
-    result = await read(rest ? { transport: collector, families } : { ...readOptions, powershell: collector, families });
+    result = await read(rest ? { transport, families } : { ...readOptions, powershell: collector, families });
   } catch (failure) {
     error = failure;
   }
@@ -146,12 +160,14 @@ export async function captureWorkloadReads({
   const failureOf = (family) => [...(result?.failures ?? []), ...(result?.unavailable ?? [])].find((item) => item.family === family) ?? null;
   const reads = declared.map(({ family, operationId }) => {
     const summary = result?.discovery?.families?.[family] ?? null;
-    const status = summary?.status ?? 'failed';
+    let status = summary?.status ?? 'failed';
+    if (rest && status === 'read' && !sent.some((url) => restRequestMatches(operationId, url))) status = 'not-sent';
     const failed = failureOf(family);
     const detail = failed?.error ?? (error ? structuredFailure(error).error : null);
     // A REST read fails with an HTTP status rather than a PowerShell error id.
     const code = [detail?.code, detail?.errorId].filter(Boolean).join(':') || (detail?.httpStatus ? `HTTP ${detail.httpStatus}` : null);
-    if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
+    if (status === 'not-sent') diagnostics.push({ operationId, status, message: 'no request was sent for this read (nothing to read it for), so it proves nothing' });
+    else if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
     return {
       operationId, family, version: rest ? declaredRestVersion(operationId) : moduleVersion, synthetic: false, capturedAt,
       ok: status === 'read', status, objects: summary?.objects ?? 0, error: status === 'read' ? null : (code ?? status),

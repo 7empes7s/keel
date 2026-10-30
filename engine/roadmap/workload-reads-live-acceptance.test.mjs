@@ -313,6 +313,19 @@ test(`${PP}: a REST read that is refused is not proof, keeps its message out of 
   assert.deepEqual(activation.skipped.map((item) => item.family), ['powerBiSetting']);
 });
 
+test(`${PP}: a read that sent no request is not proof (no environment, so no connectors read)`, async () => {
+  const api = fakeAdminApi();
+  const { record, diagnostics } = await restCapture({ ...api, transport: async (url, init) => {
+    if (new URL(url).pathname === BAP_ENVIRONMENTS) return { status: 200, headers: {}, body: { value: [] } };
+    return api.transport(url, init);
+  } });
+  const connectors = record.subject.reads.find((item) => item.operationId === 'powerplatform.connectors');
+  assert.equal(connectors.ok, false);
+  assert.equal(connectors.status, 'not-sent');
+  assert.match(diagnostics.find((item) => item.operationId === 'powerplatform.connectors').message, /no request was sent/);
+  assert.equal(record.subject.reads.find((item) => item.operationId === 'powerplatform.environments').ok, true, 'an empty answer is still proof');
+});
+
 test(`${PP}: a REST record that claims another API version or a PowerShell module fails the gate`, async () => {
   const { record } = await restCapture(fakeAdminApi());
   const tamper = (change) => { const copy = structuredClone(record); change(copy); return signed(copy); };

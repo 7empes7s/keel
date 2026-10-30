@@ -17,7 +17,7 @@ export type CompletionState = "configuration-restored" | "service-validation-pen
 
 export interface CompletionItem {
   id: string;
-  kind: "credential" | "certificate" | "consent" | "integration" | "service-validation" | "enforcement";
+  kind: "credential" | "certificate" | "consent" | "integration" | "service-validation" | "enforcement" | "manual-setting";
   requirement: string;
   description: string;
   owner: string | null;
@@ -48,6 +48,7 @@ const STATE_TONES: Record<CompletionState, BadgeTone> = {
 
 const KIND_ICONS: Record<CompletionItem["kind"], IconName> = {
   credential: "settings", certificate: "page", consent: "check", integration: "link", "service-validation": "check-circle", enforcement: "play",
+  "manual-setting": "settings",
 };
 
 const STATE_LABELS: Record<CompletionState, string> = {

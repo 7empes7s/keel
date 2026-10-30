@@ -510,7 +510,7 @@ CREATE TABLE IF NOT EXISTS recovery_completion_item (
 -- snapshot had turned on leaves an 'enforcement' item until it is turned on.
 ALTER TABLE recovery_completion_item DROP CONSTRAINT IF EXISTS recovery_completion_item_kind_check;
 ALTER TABLE recovery_completion_item ADD CONSTRAINT recovery_completion_item_kind_check
-  CHECK (kind IN ('credential','certificate','consent','integration','service-validation','enforcement'));
+  CHECK (kind IN ('credential','certificate','consent','integration','service-validation','enforcement','manual-setting'));
 CREATE INDEX IF NOT EXISTS recovery_completion_item_open_idx
   ON recovery_completion_item (tenant_ref, state, created_at DESC);
 

@@ -86,7 +86,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   externalDomainFederation: at(ENTRA, 'External Identities', 'All identity providers'),
   // These have no page in the admin center; Microsoft Graph or PowerShell is
   // the only way to manage them.
-  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, no admin center page)',
+  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, signed in with an admin role; no admin center page)',
   permissionGrantPreApprovalPolicy: 'Microsoft Graph: /policies/permissionGrantPreApprovalPolicies (beta, no admin center page)',
   directoryRoleAccessReviewPolicy: 'Microsoft Graph: /policies/directoryRoleAccessReviewPolicy (beta, no admin center page)',
   multiTenantOrganizationIdentitySyncPolicyTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization (no admin center page)',
@@ -98,7 +98,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   exchangeCustomAppScope: 'Exchange Online PowerShell: New-ManagementScope (no admin center page)',
   defenderRoleDefinition: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles'),
   defenderRoleAssignment: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles', '<role>', 'Assignments'),
-  defenderCustomAppScope: 'Microsoft Graph: /roleManagement/defender/customAppScopes (beta, no admin center page)',
+  defenderCustomAppScope: 'Microsoft Graph lists them at /roleManagement/defender/customAppScopes (beta) but cannot write them; no admin center page',
   synchronizationJob: at(ENTRA, 'Enterprise apps', '<app>', 'Provisioning'),
   // sign-in and security policies
   authenticationStrengthPolicy: at(ENTRA, 'Protection', 'Conditional Access', 'Authentication strengths'),

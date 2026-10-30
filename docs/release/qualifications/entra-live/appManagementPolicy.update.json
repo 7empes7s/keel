@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "appManagementPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "53cbe4622e37eae6d11799414f10ff8dc62fae58",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-29T22:15:53.041Z",
+  "restoreRef": "00f25c72-0eac-8890-a877-0218b8fd7623",
+  "naturalKey": "appManagementPolicy:244e4d11-2b4a-8679-82c8-4cf4cace708f",
+  "fixtureKind": "named-object",
+  "captureSha256": "20e3f18040e3ed60484fa0d98322dde1812dda9423c7300336f87a62732acb6c",
+  "proofRef": "docs/release/qualifications/entra-live/appManagementPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "d741b57c6e9f1b8f40e449ab8020bcfe16b8d837c2c9a6efe8484a0ff14efcfa"
+    }
+  }
+}

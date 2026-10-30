@@ -1,0 +1,98 @@
+{
+  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "entry": {
+    "naturalKey": "deviceManagementCompliancePolicy:054da45a-58ba-81a7-8858-767d264e0fac",
+    "resourceType": "deviceManagementCompliancePolicy",
+    "operation": "create",
+    "targetId": "e8ec3b77-8431-81f3-b2ca-e70e1ad4edac",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T01:10:22.544Z",
+    "priorState": null,
+    "intendedState": {
+      "name": "KEEL-RT-236-compliance",
+      "settings": [
+        {
+          "@odata.type": "#microsoft.graph.deviceManagementConfigurationSetting",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL-RT test fixture",
+      "technologies": "linuxMdm",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "scheduledActionsForRule": [
+        {
+          "ruleName": null,
+          "scheduledActionConfigurations": [
+            {
+              "actionType": "block",
+              "gracePeriodHours": 0,
+              "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
+              "notificationMessageCCList": []
+            }
+          ]
+        }
+      ]
+    },
+    "postState": {
+      "id": "e8ec3b77-8431-81f3-b2ca-e70e1ad4edac",
+      "name": "KEEL-RT-236-compliance",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL-RT test fixture",
+      "settingCount": 1,
+      "technologies": "linuxMdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-30T01:10:22.8820643Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-30T01:10:22.8820643Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('e8ec3b77-8431-81f3-b2ca-e70e1ad4edac')/settings",
+      "scheduledActionsForRule": [
+        {
+          "id": "e8ec3b77-8431-81f3-b2ca-e70e1ad4edac",
+          "ruleName": null,
+          "scheduledActionConfigurations": [
+            {
+              "id": "448a82fc-d74f-844c-91c9-a7b26aab873d",
+              "actionType": "block",
+              "gracePeriodHours": 0,
+              "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
+              "notificationMessageCCList": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

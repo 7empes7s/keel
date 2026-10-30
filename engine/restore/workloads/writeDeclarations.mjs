@@ -42,13 +42,26 @@ const EXO_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchange';
 const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
 /**
+ * Cross-tenant access: whether another tenant's MFA and device claims are
+ * accepted, whether invitations from and to it skip the consent prompt, and
+ * which of its users and apps may come in (and where ours may go).
+ */
+export const CROSS_TENANT_TRUST_FIELDS = Object.freeze([
+  'inboundTrust', 'automaticUserConsentSettings',
+  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+]);
+
+/**
  * Fields no restore ever writes (CLAUDE.md restore-writer rule): they decide which
  * senders, certificates, hosts, partners or federated organizations the tenant trusts.
  * A tampered or stale backup could make a connector trust another certificate or IP
  * range, treat outside mail as internal, send mail through another host, let a sender
- * range skip spam filtering, or open Teams chat to other organizations, so a difference
- * is listed for an administrator to check and apply by hand. declare() refuses them,
+ * range skip spam filtering, open Teams chat to other organizations, or let guests in
+ * from other domains and tenants without a consent prompt, so a difference is listed for
+ * an administrator to check and apply by hand. declare() and defineRecord() refuse them,
  * and any other field whose name says it carries trust, a certificate or a sign-in endpoint.
+ * Writers that send the whole payload (records with no `writable` list, the Intune policy
+ * body) drop them from the body itself (recordWriter.mjs withoutTrustFields).
  */
 export const TRUST_FIELDS = Object.freeze({
   exchangeInboundConnector: Object.freeze([
@@ -67,12 +80,61 @@ export const TRUST_FIELDS = Object.freeze({
   teamsFederationConfiguration: Object.freeze([
     'AllowFederatedUsers', 'AllowedDomains', 'AllowedDomainsAsAList', 'BlockedDomains', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified',
   ]),
+  // Entra ID record writers (recordWriter.mjs defineRecord) are held to the same rule.
+  // Cross-tenant access for tenants that join the multitenant organization: whether
+  // their MFA and device claims are accepted, whether invitations from and to them
+  // skip the consent prompt, and which of their users and apps may collaborate.
+  multiTenantOrganizationPartnerConfigurationTemplate: CROSS_TENANT_TRUST_FIELDS,
+  // The same settings on the tenant default and on each partner entry
+  // (tenantPolicyOperations.mjs records are held to the rule too).
+  crossTenantAccessPolicyConfigurationDefault: CROSS_TENANT_TRUST_FIELDS,
+  crossTenantAccessPolicyPartner: CROSS_TENANT_TRUST_FIELDS,
+  // The guest invitation allow and block lists: which outside domains guests may come from.
+  b2bManagementPolicy: Object.freeze(['definition']),
 });
-export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin|issuer|metadataexchange/i;
+// `signin` names a sign-in endpoint or setting, not a device's failed sign-in count or its
+// sign-in options page (Intune passcodeSignInFailureCountBeforeWipe, settingsBlockSignInOptionsPage).
+export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin(?!failurecount|optionspage)|issuer|metadataexchange/i;
 
 /** Whether a restore must never write this field of this resource type. */
 export function isTrustField(resourceType, field) {
   return (TRUST_FIELDS[resourceType] ?? []).includes(field) || TRUST_FIELD_PATTERN.test(field);
+}
+
+/**
+ * Settings catalog policies (and their reusable settings groups) hold every
+ * setting under the same keys and name it by its settingDefinitionId value, so a
+ * check on key names never sees a trusted root certificate or a single sign-on
+ * setting. A definition id is a trust setting when it names trust, a certificate
+ * or sign-in (TRUST_FIELD_PATTERN), federation, single sign-on (Windows, Edge,
+ * Office, the Apple SSO and extensible SSO payloads), Kerberos and the servers
+ * browsers send credentials to, the Apple login window, or a certificate payload
+ * (PKCS, SCEP, PFX, Apple root, PEM, ACME and identity preference payloads).
+ */
+export const TRUST_SETTING_PATTERN = new RegExp(
+  `${TRUST_FIELD_PATTERN.source}|federat|singlesignon|extensiblesso|kerberos|kdcproxy|authserverallowlist|authnegotiatedelegate`
+  + '|pkcs|scep|pfx|com\\.apple\\.security\\.(?:root|pem|acme|identitypreference)|com\\.apple\\.(?:sso|loginwindow)',
+  'i',
+);
+
+/**
+ * The trust setting definition ids anywhere in a payload (top-level, in each
+ * setting and in every child instance), sorted and without repeats.
+ */
+export function trustSettingIds(payload) {
+  const found = new Set();
+  const walk = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    const id = node.settingDefinitionId;
+    if (typeof id === 'string' && TRUST_SETTING_PATTERN.test(id)) found.add(id);
+    Object.values(node).forEach(walk);
+  };
+  walk(payload);
+  return [...found].sort();
 }
 
 const entries = {};

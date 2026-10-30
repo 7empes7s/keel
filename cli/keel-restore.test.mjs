@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { planWaves } from '../engine/restore/wavePlanner.mjs';
+import { applyIdentityObjectWrite } from '../engine/restore/identityObjectOperations.mjs';
+import { idoFakeGraph } from '../engine/test/idoFakeGraph.mjs';
 import { incompleteReadDeleteRefusals, runCli, runRestore, unreadTypesOf } from './keel-restore.mjs';
 
 const testDbUrl = process.env.KEEL_DB_TEST_URL;
@@ -14,8 +16,8 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for restore CLI tests');
 // artifactPromotionFakes tests below) — so restoreFakes() supplies an already-
 // completed fake artifact and stubs validateArtifactForExecution, letting these
 // fixtures promote directly via --artifact instead of re-deriving one through a real
-// dry run (which cannot itself observe real target ids for not-yet-created
-// resources and so can never reach 'completed' for a create-then-reference scope).
+// dry run (which plans not-yet-created resources with placeholder ids,
+// engine/restore/plannedIds.mjs, and so never observes their real target ids).
 const FIXTURE_ARTIFACT_ID = '99999999-0000-4000-8000-000000000099';
 const artifactArgv = [
   'node', 'keel-restore.mjs',
@@ -280,6 +282,35 @@ async function runFixture(dependencies, { logger = { log() {}, error() {} } } = 
   assert.equal(fixture.state.clientEnds, 1);
 }
 
+// Issue #695: a guest federation whose sign-in field differs from the backup is
+// skipped with a manual step. The run records that skip and carries on, instead
+// of crashing on its completion step before anything is saved.
+{
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-fed',
+    passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml',
+  };
+  const federation = await applyIdentityObjectWrite(idoFakeGraph(), {
+    naturalKey: 'externalDomainFederation:KEEL-RT-fed', resourceType: 'externalDomainFederation',
+    payload: { ...live, passiveSignInUri: 'https://keel-rt-other.example/sso' }, references: [],
+    live: { state: 'present', targetId: 'fed-1', payload: live },
+  }, 'update', { mode: 'dry-run', readAfterWriteOptions: { attempts: 1, delayMs: 0 } });
+  assert.ok(federation.skipped, 'the federation is skipped with a manual step');
+  let waveCount = 0;
+  const fixture = restoreFakes({
+    applyWave: async (...args) => {
+      waveCount += 1;
+      const result = await applyWave(...args);
+      return waveCount === 1 ? { ...result, skipped: [...result.skipped, federation.skipped] } : result;
+    },
+  });
+  const lines = [];
+  const exitCode = await runFixture(fixture.dependencies, { logger: { log: (line) => lines.push(line), error: (line) => lines.push(line) } });
+  assert.equal(exitCode, 0, lines.join('\n'));
+  assert.equal(fixture.state.waveCalls.length, 2, 'the waves after the skip still run');
+  assert.ok(lines.some((line) => /completion step: externalDomainFederation:KEEL-RT-fed — .*passiveSignInUri/.test(line)), lines.join('\n'));
+}
+
 // A failed wave stops the run before later waves can write, returns a non-zero
 // CLI outcome, and still closes the test-database client.
 {
@@ -353,7 +384,7 @@ function selectionResources() {
   };
 }
 
-function selectionFakes({ resourceSet = selectionResources() } = {}) {
+function selectionFakes({ resourceSet = selectionResources(), targetHasAdmins = true } = {}) {
   const state = { connectUrls: [], clientEnds: 0, dbQueries: 0, waveCalls: [], waveResults: [] };
   const client = {
     query: async (sql) => {
@@ -415,7 +446,7 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
       canonicalizeAll: () => [
         // group:Admins already exists in the target, so the dry-run can resolve the
         // policy's reference without run provenance from a real write.
-        { naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id', payload: { displayName: 'Admins' } },
+        ...(targetHasAdmins ? [{ naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id', payload: { displayName: 'Admins' } }] : []),
         { naturalKey: 'roleAssignment:GlobalAdministrator:break-glass', resourceType: 'roleAssignment', sourceId: 'target-break-glass-role-id', payload: { principalId: 'break-glass-id' } },
       ],
       GraphWriter: FakeWriter,
@@ -467,6 +498,22 @@ function runSelectionCli(selection, dependencies, extraArgv = []) {
   assert.ok(!applied.includes('group:Unrelated'), 'an unselected, unreferenced resource is never touched');
   assert.equal(fixture.state.dbQueries, 0, 'the selection path loads no plan row');
   assert.equal(fixture.state.clientEnds, 1);
+}
+
+// Issue #726 follow-up: when the dependency is missing from the target, the dry
+// run plans its create and the policy that names it plans against a placeholder
+// id, instead of failing on a reference no dry run can know.
+{
+  const fixture = selectionFakes({ targetHasAdmins: false });
+  const exitCode = await runSelectionCli(['conditionalAccessPolicy:Protect-Admins'], fixture.dependencies);
+  assert.equal(exitCode, 0, JSON.stringify(fixture.state.waveResults));
+  assert.deepEqual(fixture.state.waveCalls, [['group:Admins'], ['conditionalAccessPolicy:Protect-Admins']]);
+  assert.deepEqual(fixture.state.waveResults.flatMap((r) => r.failed), []);
+  assert.deepEqual(
+    fixture.state.waveResults.flatMap((r) => r.applied.map((a) => [a.naturalKey, a.targetId])),
+    [['group:Admins', null], ['conditionalAccessPolicy:Protect-Admins', null]],
+    'both creates are reported, with no target id and no placeholder',
+  );
 }
 
 // A selected key the snapshot does not contain fails loudly — restoring something the

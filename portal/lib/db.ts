@@ -15,6 +15,24 @@ export interface DbClient {
 
 type PoolRegistry = Map<string, pg.Pool>;
 
+/** Connections each pool may open. */
+export const POOL_MAX = 8;
+
+/** How long a caller waits for a free pooled connection before giving up. */
+export const POOL_WAIT_MS = 5_000;
+
+/**
+ * Thrown when every pooled connection stays busy for POOL_WAIT_MS. Pages already catch
+ * read failures and show "could not be read" with a retry, so a full pool now ends in
+ * that message instead of a page that never finishes loading.
+ */
+export class DatabaseBusyError extends Error {
+  constructor(cause: unknown) {
+    super(`Keel's database had no free connection within ${POOL_WAIT_MS / 1000} seconds`, { cause });
+    this.name = "DatabaseBusyError";
+  }
+}
+
 // Kept on globalThis so a development reload reuses the pools instead of leaking them.
 const registry: PoolRegistry = ((globalThis as { __keelPortalPools?: PoolRegistry }).__keelPortalPools ??= new Map());
 
@@ -23,8 +41,10 @@ function poolFor(url: string): pg.Pool {
   if (!pool) {
     pool = new pg.Pool({
       connectionString: url,
-      max: 8,
+      max: POOL_MAX,
       idleTimeoutMillis: 30_000,
+      // Without this, a caller waits forever when all connections are in use.
+      connectionTimeoutMillis: POOL_WAIT_MS,
       // Idle pooled connections never keep a one-shot process (a test file) alive.
       allowExitOnIdle: true,
     });
@@ -41,7 +61,19 @@ const TRANSACTION_END = /^\s*(commit|rollback|end)\b/i;
 
 /** A pooled connection with the engine client's shape: `query()` and `end()`. */
 export async function connect(url: string): Promise<DbClient> {
-  const leased = await poolFor(url).connect();
+  const pool = poolFor(url);
+  let leased: pg.PoolClient;
+  try {
+    leased = await pool.connect();
+  } catch (error) {
+    // pg-pool's message when no connection came free in time. A slow new connection
+    // fails with its own error and is passed on as it is.
+    if (/timeout exceeded when trying to connect/i.test(String((error as Error)?.message))) {
+      console.error("[keel-portal] database pool full: gave up waiting for a connection");
+      throw new DatabaseBusyError(error);
+    }
+    throw error;
+  }
   let discard = false;
   let inTransaction = false;
   return {

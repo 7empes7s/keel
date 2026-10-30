@@ -55,8 +55,11 @@ import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
+import { trustSettingIds } from './workloads/writeDeclarations.mjs';
+import { appleProfileField, appleProfileTrust, groupPolicyTrustSettings, namedTrustSkip, trustOmaUris } from './namedTrustSettings.mjs';
 import {
-  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, undoesCreate,
+  applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
+  undoesCreate, wholeReplaceTrustRefusal, withoutTrustFields,
 } from './recordWriter.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
@@ -196,6 +199,64 @@ export function credentialSubtype(payload) {
   return subtype && CREDENTIAL_SUBTYPE.test(subtype) ? subtype : null;
 }
 
+/**
+ * CLAUDE.md restore-writer rule for settings catalog policies, compliance
+ * policies and reusable settings groups: a trust, certificate or sign-in
+ * setting is named by its settingDefinitionId value, not a key, so the
+ * key-based trust check misses it. These are written whole (PUT), so leaving
+ * the setting out would delete it from the tenant: the whole write is a manual
+ * step when the backup holds one, or (on update) the live policy does.
+ * Returns null or the skipped outcome.
+ */
+export function trustSettingRefusal(resource, verb) {
+  const ids = new Set(trustSettingIds(resource?.payload));
+  if (verb === 'update') for (const id of trustSettingIds(resource?.live?.payload)) ids.add(id);
+  if (ids.size === 0) return null;
+  const fields = [...ids].sort();
+  const description = `this policy holds trust, certificate or sign-in settings (${fields.join(', ')}); a restore never writes them, and the policy is written whole, so restore it by hand in the Intune admin center`;
+  return {
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    // The same manual step as a whole-replace refusal, so the person sees which settings to set by hand.
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(fields), description })]),
+  };
+}
+
+/**
+ * CLAUDE.md restore-writer rule for custom profiles: a trust, certificate or
+ * sign-in setting is named by a value, not a key, so the key-based trust check
+ * misses it. In an OMA-URI profile it is an omaUri (or a value naming one); in
+ * an Apple custom profile it is a payload in the profile file. Both are
+ * written as one list or one file, so leaving one out would delete it from the
+ * tenant: the whole write is a manual step when the backup holds one, or (on
+ * update) the live profile does. A profile file that cannot be read is manual
+ * too, since nothing shows it holds none. Returns null or the skipped outcome.
+ */
+export function omaTrustRefusal(resource, verb) {
+  const payloads = [resource?.payload, ...(verb === 'update' ? [resource?.live?.payload] : [])];
+  const names = new Set();
+  const unreadable = new Set();
+  for (const payload of payloads) {
+    for (const uri of trustOmaUris(payload)) names.add(uri);
+    const apple = appleProfileTrust(payload);
+    for (const name of apple.trust) names.add(name);
+    for (const field of apple.unreadable) unreadable.add(field);
+  }
+  // Without the live profile nothing shows its custom settings hold no trust setting the list would remove.
+  const writesWhole = Array.isArray(resource?.payload?.omaSettings) || appleProfileField(resource?.payload) !== null;
+  // A live profile read without its file or its custom settings list cannot show the backup's removes no trust setting.
+  const liveFileMissing = appleProfileField(resource?.payload) !== null && appleProfileField(resource?.live?.payload) === null;
+  const liveListMissing = Array.isArray(resource?.payload?.omaSettings) && !Array.isArray(resource?.live?.payload?.omaSettings);
+  if (names.size === 0 && unreadable.size === 0 && verb === 'update' && writesWhole && (!resource?.live?.payload || liveFileMissing || liveListMissing)) {
+    return namedTrustSkip([], () => 'the live profile was not read, so nothing shows its custom settings hold no trust, certificate or sign-in setting the restore would remove; restore the profile by hand in the Intune admin center');
+  }
+  if (names.size === 0 && unreadable.size > 0) {
+    return namedTrustSkip(unreadable, (fields) => `the profile file (${fields}) could not be read, so nothing shows it holds no trust, certificate or sign-in setting; restore the profile by hand in the Intune admin center`);
+  }
+  if (names.size === 0) return null;
+  return namedTrustSkip(names, (list) => `this profile holds custom settings for trust, certificates or sign-in (${list}); a restore never writes them, and the custom settings are written as one list or file, so restore the profile by hand in the Intune admin center`);
+}
+
 // ------------------------------------------------------------------- bodies
 
 /** Every @odata annotation except @odata.type, at every depth. */
@@ -252,7 +313,27 @@ export function intuneWriteBody(resourceType, payload, verb) {
   }
   if (entry.settings) body.settings = settingsBody(payload?.settings);
   if (entry.scheduledActions && verb === 'create') body.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
-  return body;
+  // A trust, certificate or sign-in field is never sent (intuneTrustFieldStep lists it for a person).
+  return withoutTrustFields(resourceType, body, verb);
+}
+
+/**
+ * The refusal of a policy update written whole (PUT) when the backup or the
+ * live policy holds a trust, certificate or sign-in setting, or null
+ * (recordWriter.mjs wholeReplaceTrustRefusal).
+ */
+export function intuneReplaceTrustRefusal(resourceType, desired, live) {
+  const entry = intuneRecordFor(resourceType);
+  if (entry?.updateMethod !== 'PUT') return null;
+  return wholeReplaceTrustRefusal(resourceType, {
+    // The create body names every field a write can send; an update leaves out one holding a nested trust field.
+    payload: desired, live, body: intuneWriteBody(resourceType, desired, 'create'), excluded: entry.excluded,
+  });
+}
+
+/** The manual step for a policy's trust, certificate or sign-in fields the write leaves out, or null. */
+export function intuneTrustFieldStep(resourceType, desired, live, verb) {
+  return trustFieldStep(resourceType, desired, live, verb, { excluded: intuneRecordFor(resourceType)?.excluded ?? [] });
 }
 
 /** Nulls (and empty values Graph leaves out) read the same as an absent field. */
@@ -276,7 +357,9 @@ function normalised(value) {
 export function changedIntuneFields(resourceType, desired, live, verb = 'update') {
   const want = intuneWriteBody(resourceType, desired, verb);
   const have = intuneWriteBody(resourceType, live ?? {}, verb);
-  return Object.keys(want).filter((key) => !isDeepStrictEqual(normalised(want[key] ?? null), normalised(have[key] ?? null)));
+  return Object.keys(want).filter((key) => !isDeepStrictEqual(normalised(want[key] ?? null), normalised(have[key] ?? null)))
+    // A field whose live value holds a nested trust field is never sent on update (see changedRecordFields).
+    .filter((key) => verb === 'create' || !holdsNestedTrust(resourceType, live?.[key]));
 }
 
 /** Whether a compliance policy's actions for noncompliance differ from live. */
@@ -320,6 +403,10 @@ export function intuneWriteRefusal(resource, verb) {
       reason: `manual: the policy holds values Graph never returns (passwords, keys, certificates or encrypted settings) at ${secrets.join(', ')}; restore it by hand so they are never written as blanks`,
     };
   }
+  const trust = trustSettingRefusal(resource, verb);
+  if (trust) return trust;
+  const oma = omaTrustRefusal(resource, verb);
+  if (oma) return oma;
   if (entry.odataTypeRequired && typeof payload['@odata.type'] !== 'string') {
     return { outcome: 'failed', reason: 'the backup does not record which kind of policy this is (@odata.type), and Graph needs it to write one' };
   }
@@ -1148,7 +1235,38 @@ function groupPolicyRefusal(resource, verb) {
       return manual('a value in this backup does not say which field of its setting it fills');
     }
   }
-  return null;
+  const backup = groupPolicyTrustSettings(settings);
+  if (backup.unknown.length > 0) {
+    return manual(`this backup does not say what ${backup.unknown.length === 1 ? 'the setting' : 'the settings'} ${backup.unknown.join(', ')} ${backup.unknown.length === 1 ? 'is' : 'are'}, so ${backup.unknown.length === 1 ? 'it' : 'they'} cannot be checked for trust, certificate or sign-in settings`);
+  }
+  const live = verb === 'update' ? groupPolicyTrustSettings(resource.live?.payload?.definitionValues).trust : [];
+  return groupPolicyTrustRefusal([...backup.trust, ...live]);
+}
+
+/**
+ * CLAUDE.md restore-writer rule for administrative templates: a setting is
+ * named by a GUID definition id, so only its display name and category say it
+ * is a trust, certificate or sign-in setting. A restore puts the template's
+ * settings back as a set (a live setting not in the backup is removed), so the
+ * whole template is a manual step when the backup or the live template holds one.
+ */
+function groupPolicyTrustRefusal(names) {
+  if (names.length === 0) return null;
+  return namedTrustSkip(names, (list) => `this template holds trust, certificate or sign-in settings (${list}); a restore never writes them, and the template's settings are written as one set, so restore it by hand in the Intune admin center`);
+}
+
+/** On update, the live template's own settings are read: one that is a trust setting makes the write manual. */
+async function groupPolicyLiveTrust(io, { verb, targetId }) {
+  if (verb !== 'update' || !targetId) return null;
+  const read = await readGroupPolicySettings(io, targetId);
+  if (read.error) return `${read.error}, so they could not be checked for trust, certificate or sign-in settings`;
+  const refusal = groupPolicyTrustRefusal(groupPolicyTrustSettings(read.settings).trust);
+  return refusal ? { skipped: refusal.reason, completion: refusal.completion } : null;
+}
+
+/** The template's preflights, one after another; the first that finds something stops them. */
+async function groupPolicyPreflight(io, step) {
+  return (await groupPolicyDefinitionsExist(io, step)) ?? groupPolicyLiveTrust(io, step);
 }
 
 /** Every setting a template uses must exist in the target (an imported ADMX file is put back first). */
@@ -1298,6 +1416,8 @@ function compliancePolicyRefusal(resource, verb) {
   if (secrets.length > 0) {
     return { outcome: 'skipped', reason: `manual: the policy holds values Graph never returns at ${secrets.join(', ')}; restore it by hand so they are never written as blanks` };
   }
+  const trust = trustSettingRefusal(resource, verb);
+  if (trust) return trust;
   const newBackup = 'take a new backup, then restore';
   if (!Array.isArray(payload.settings)) return { outcome: 'failed', reason: `the backup does not hold this compliance policy's settings; writing it would empty the policy, so ${newBackup}` };
   const count = payload.settingCount;
@@ -1632,7 +1752,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   groupPolicyConfiguration: defineRecord({
     resourceType: 'groupPolicyConfiguration', version: 'beta', collection: '/deviceManagement/groupPolicyConfigurations', operations: ['create', 'update'],
     excluded: ['definitionValues', 'assignments', 'policyConfigurationIngestionType'],
-    refusal: groupPolicyRefusal, preflight: groupPolicyDefinitionsExist, afterWrite: inOrder(groupPolicySettingsAfterWrite, assignmentsAfterWrite),
+    refusal: groupPolicyRefusal, preflight: groupPolicyPreflight, afterWrite: inOrder(groupPolicySettingsAfterWrite, assignmentsAfterWrite),
     assignmentType: '#microsoft.graph.groupPolicyConfigurationAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // Restore gaps, batch 6. An app category is only a name; Microsoft's
@@ -2313,6 +2433,8 @@ async function appAfterWrite(io, step) {
  */
 export function reusableSettingRefusal(resource, verb) {
   if (verb === 'delete') return null;
+  const trust = trustSettingRefusal(resource, verb);
+  if (trust) return trust;
   const payload = resource.payload ?? {};
   const instance = payload.settingInstance;
   if (!instance || typeof instance !== 'object' || Array.isArray(instance)) {

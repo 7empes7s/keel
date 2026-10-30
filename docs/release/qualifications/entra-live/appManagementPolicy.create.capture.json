@@ -1,0 +1,56 @@
+{
+  "restoreRef": "53b64b80-dda0-8970-8bac-30faba42bcbb",
+  "entry": {
+    "naturalKey": "appManagementPolicy:244e4d11-2b4a-8679-82c8-4cf4cace708f",
+    "resourceType": "appManagementPolicy",
+    "operation": "create",
+    "targetId": "c39e24a3-7840-82cd-9a7e-07e004b846f8",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:21:50.186Z",
+    "priorState": null,
+    "intendedState": {
+      "isEnabled": true,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-credpolicy",
+      "restrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": [
+          {
+            "state": "enabled",
+            "maxLifetime": "P90D",
+            "excludeActors": null,
+            "restrictionType": "passwordLifetime",
+            "restrictForAppsCreatedAfterDateTime": "2026-01-01T00:00:00Z"
+          }
+        ],
+        "applicationRestrictions": {
+          "identifierUris": null
+        }
+      }
+    },
+    "postState": {
+      "id": "c39e24a3-7840-82cd-9a7e-07e004b846f8",
+      "isEnabled": true,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-credpolicy",
+      "restrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": [
+          {
+            "state": "enabled",
+            "maxLifetime": "P90D",
+            "excludeActors": null,
+            "restrictionType": "passwordLifetime",
+            "restrictForAppsCreatedAfterDateTime": "2026-01-01T00:00:00Z"
+          }
+        ],
+        "applicationRestrictions": {
+          "identifierUris": null
+        }
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/appManagementPolicies/$entity",
+      "deletedDateTime": null
+    }
+  }
+}

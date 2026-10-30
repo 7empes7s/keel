@@ -14,6 +14,8 @@ const PAGES = [
   { name: "schedules-viewer", hash: "/schedules/viewer" },
   { name: "drift", hash: "/drift" },
   { name: "drift-services", hash: "/drift/services" },
+  { name: "drift-feed", hash: "/drift/feed" },
+  { name: "drift-feed-empty", hash: "/drift/feed-empty" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
@@ -1295,6 +1297,11 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await integration.getByLabel("Evidence reference").fill("CHG-5121");
   await integration.getByRole("button", { name: "Mark verified" }).click();
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
+  // A skipped object had nothing written: it never reads as restored.
+  const skipped = page.locator(".completion-resource").filter({ hasText: "KEEL-RT-Head office" });
+  await expect(skipped.locator(".completion-badge-skipped")).toHaveText("Not restored: set it by hand");
+  await expect(skipped.locator(".completion-mechanism")).toHaveText("KEEL wrote nothing to it");
+  await expect(skipped).not.toContainText("Configuration restored");
 });
 
 // Task-73 and the Resilience redesign: what needs the reader comes first as alerts that
@@ -4834,4 +4841,46 @@ test("names hidden · People shows the setting, its state and who changed it", a
   await open(page, "/principals/anonymity", "light");
   await page.getByRole("region", { name: "Hide people's names" }).getByRole("button", { name: "Show names" }).click();
   await expect(page.getByRole("dialog", { name: "Show people's names again?" })).toContainText("audit record");
+});
+
+// Insights A4 (IN-FEED): Changes > Every change groups every change the way the reader
+// picks, the priority tiles add up, and no row shows an id.
+test("every change: grouping, priority tiles that add up, names instead of ids", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/drift/feed", width === 390 ? "light" : "dark");
+    await expect(page.getByRole("link", { name: "Every change" })).toHaveAttribute("aria-current", "page");
+    const list = page.locator('[aria-label="Every change"]').first();
+    await expect(page.getByText("10 changes, 2 critical: look at those first.")).toBeVisible();
+    // By day by default, newest first.
+    await expect(page.locator(".sel-group-name, .sel-group-label").first()).toContainText("Today");
+    for (const label of ["Type", "Service", "Priority", "Who"]) {
+      await page.getByRole("radio", { name: label, exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`group=${label === "Who" ? "person" : label.toLowerCase()}`));
+    }
+    await expect(page.getByText("Sam Lee").first()).toBeVisible();
+    await expect(page.getByText("Not known").first()).toBeVisible();
+    await page.getByRole("radio", { name: "Day", exact: true }).click();
+    // Critical, then High as well: they add up.
+    await page.locator(".cf-tile", { hasText: "Critical" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 2 of 10 changes");
+    await page.locator(".cf-tile", { hasText: "High" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 4 of 10 changes");
+    await page.getByRole("button", { name: "Clear all" }).click();
+    const text = await page.locator("main").evaluate((main) => {
+      const copy = main.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll("details, .technical-details").forEach((node) => node.remove());
+      return copy.innerText;
+    });
+    expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+    expect(text).toContain("Unnamed device configuration");
+    await expect(list).toBeVisible();
+    await page.screenshot({ path: `test-results/every-change-${width}.png`, fullPage: true });
+  }
+});
+
+test("every change: an empty period says so, with no dead end", async ({ page }) => {
+  await open(page, "/drift/feed-empty");
+  await expect(page.getByRole("heading", { name: "No changes in the last 7 days" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open changes" })).toBeVisible();
 });

@@ -1,0 +1,32 @@
+{
+  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "entry": {
+    "naturalKey": "groupPolicyConfiguration:3cc0e427-5048-8e3f-b185-c0de5cc01561",
+    "resourceType": "groupPolicyConfiguration",
+    "operation": "create",
+    "targetId": "841d809c-6b2f-8bbc-a42f-f3a76b5ca559",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T01:10:22.707Z",
+    "priorState": null,
+    "intendedState": {
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-admx",
+      "roleScopeTagIds": [
+        "0"
+      ]
+    },
+    "postState": {
+      "id": "841d809c-6b2f-8bbc-a42f-f3a76b5ca559",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-admx",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/groupPolicyConfigurations/$entity",
+      "createdDateTime": "2026-10-30T01:10:22.7710965Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-30T01:10:22.7707454Z",
+      "policyConfigurationIngestionType": "unknown"
+    }
+  }
+}

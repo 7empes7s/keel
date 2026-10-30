@@ -143,6 +143,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Drift IDs": support("Change references", ID),
   "Change ID": support("Change reference", ID),
   "Service change ID": support("Change reference", ID),
+  "Change feed ID": support("Change reference", ID),
   "Linked drift ID": support("Linked change", ID),
   "Mismatched drift ID": support("Change that does not match", ID),
   "Approved from drift ID": support("Approved from change", ID),

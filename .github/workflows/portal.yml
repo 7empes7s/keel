@@ -110,6 +110,7 @@ jobs:
           cache-dependency-path: |
             portal/package-lock.json
             engine/package-lock.json
+            status/package-lock.json
       - name: Install age
         # The offsite tests encrypt and decrypt dumps with the age CLI, as the deploy host does.
         run: sudo apt-get update -qq && sudo apt-get install -y -qq age
@@ -125,11 +126,14 @@ jobs:
       - name: Install portal dependencies
         run: npm ci
         working-directory: portal
+      - name: Install status page dependencies
+        run: npm ci
+        working-directory: status
       - name: Run portal tests
         run: npm test
         working-directory: portal
       - name: Run restore engine tests
-        # Every tracked *.test.mjs under engine/, cli/ and tools/, found by
+        # Every tracked *.test.mjs under engine/, cli/, tools/ and status/, found by
         # tools/engine-test-files.sh (glob discovery: adding a test needs no edit here;
         # the few host-only suites are excluded there with a reason). Four files at a time:
         # each database suite works in its own schema (engine/test/dbTestHelper.mjs) and the

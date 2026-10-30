@@ -32,7 +32,7 @@ import { SITE_PERMISSIONS_RECORD_FILE } from '../../tools/qualification/sharepoi
 import { STRUCTURE_WRITES_RECORD_FILE } from '../../tools/qualification/sharepointStructureWritesAcceptance.mjs';
 import { READ_FAMILIES, workloadReadsRecordFile } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import {
-  CAPTURE_CREATE_PREFIX, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
+  CAPTURE_CREATE_PREFIX, PUT_BACK_RETRIES, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
 } from '../../tools/qualification/workloadWritesAcceptance.mjs';
 import {
   captureWorkloadWrites, ledgerEvidenceFromWorkloadWritesAcceptance, main, pinnedModuleVersions, workloadWritesCapturePlan, writeWorkloadWritesFiles,
@@ -294,6 +294,13 @@ test('a record that names a non-fixture object, a content-bearing field or an un
   assert.match(failures(resign((record) => send(record, { Identity: '00000000-0000-4000-8000-00000000ffff', Comment: inbound(record).target }))), /no capture accounts for this write/);
   assert.match(failures(resign((record) => send(record, { Identity: inbound(record).identity, Comment: 'something else' }))), /no capture accounts for this write/);
   assert.match(failures(resign((record) => send(record, { Identity: inbound(record).identity, Comment: inbound(record).target }))), /no capture accounts for this write/);
+  // A put-back resent after a refusal is accounted for (Q260); a second one answered ok, or too many, is not.
+  assert.doesNotMatch(failures(resign((record) => send(record, { Identity: inbound(record).identity, Comment: inbound(record).before }) && Object.assign(record.subject.requests.at(-1), { outcome: 'failed' }) && record)), /no capture accounts/);
+  assert.match(failures(resign((record) => send(record, { Identity: inbound(record).identity, Comment: inbound(record).before }))), /no capture accounts for this write/);
+  assert.match(failures(resign((record) => {
+    for (let i = 0; i <= PUT_BACK_RETRIES; i += 1) send(record, { Identity: inbound(record).identity, Comment: inbound(record).before }).subject.requests.at(-1).outcome = 'failed';
+    return record;
+  })), /no capture accounts for this write/);
   assert.match(failures(resign((record) => { inbound(record).identity = 'Global'; return record; })), /not the KEEL-RT- fixture recorded/);
   // A field whose effect depends on the rest of the object (Enabled while ScanAndDropRecipients is set) is never a capture's.
   assert.match(failures(resign((record) => { Object.assign(inbound(record), { field: 'Enabled', type: 'switch', before: false, target: true }); return record; })), /Enabled is not a field a capture may write/);
@@ -478,6 +485,75 @@ test('a locked retention policy and its rules are never written; a family with n
   assert.match(reasons['purview.dlp-policy.update'], /no KEEL-RT- object/);
   assert.match(reasons['purview.dlp-rule.update'], /no KEEL-RT- object/);
   assert.deepEqual(live.writes, []);
+});
+
+// Q260, live: Set-RetentionCompliancePolicy on a policy whose deployment times out saves the
+// value and then throws PolicyDeploymentException; while the change deploys, the next Set is
+// refused with PolicyLockConflictException.
+const DEPLOY_FAILED = { message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'x' failed to be deployed. To fix this issue, please retry the policy operation after some time.", category: 'ConnectionError', errorId: '[],Write-ErrorMessage' };
+const STILL_DEPLOYING = { message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyLockConflictException|Previous changes to the policy 'x' are being deployed. Once deployed, additional actions can be performed.", category: 'InvalidOperation', errorId: '[],Write-ErrorMessage' };
+
+function deployingRetentionPolicy({ lockedPutBacks }) {
+  let locked = lockedPutBacks;
+  return {
+    cmdlet({ cmdlet, parameters, state }) {
+      if (cmdlet !== 'Set-RetentionCompliancePolicy') return null;
+      const target = state['Get-RetentionCompliancePolicy'].find((body) => body.Guid === parameters.Identity);
+      if (!String(parameters.Comment).startsWith('KEEL capture') && locked > 0) { locked -= 1; return { error: STILL_DEPLOYING }; }
+      target.Comment = parameters.Comment;
+      return { error: DEPLOY_FAILED };
+    },
+  };
+}
+
+test('a retention policy that saves but fails to deploy is read back, and its put-back waits while it deploys', async () => {
+  const live = fakeTenant('purview-retention-dlp', { hooks: deployingRetentionPolicy({ lockedPutBacks: 2 }) });
+  const before = structuredClone(live.state['Get-RetentionCompliancePolicy']);
+  const waits = [];
+  const { evidence, dir, needsManualRevert } = await signedCapture('purview-retention-dlp', live, {
+    sleep: async (ms) => { waits.push(ms); }, deployWaitAttempts: 3, deployWaitDelayMs: 1000,
+  });
+  const policy = evidence.subject.writes.find((item) => item.operationId === 'purview.retention-policy.update');
+  assert.equal(policy.error, null);
+  assert.equal(policy.ok, true);
+  assert.equal(policy.readBackVerified, true);
+  assert.equal(policy.restoredToOriginal, true);
+  assert.deepEqual(waits.filter((ms) => ms === 1000), [1000, 1000], 'two waits for the two refused put-backs');
+  assert.deepEqual(needsManualRevert, []);
+  assert.deepEqual(live.state['Get-RetentionCompliancePolicy'], before);
+  // The cmdlet's errors stay in the capture log.
+  const sent = evidence.subject.requests.filter((item) => item.cmdlet === 'Set-RetentionCompliancePolicy').map((item) => item.outcome);
+  assert.deepEqual(sent, ['failed', 'failed', 'failed', 'failed']);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
+  const seam = ledgerEvidenceFromWorkloadWritesAcceptance(evidence, { tenantRef, build, hmacKey: KEY, evidenceDir: dir });
+  assert.ok(seam.writes.some((item) => item.operationId === 'purview.retention-policy.update'));
+});
+
+test('a put-back still refused after the deployment wait is reported for a manual fix', async () => {
+  const live = fakeTenant('purview-retention-dlp', { hooks: deployingRetentionPolicy({ lockedPutBacks: 10 }) });
+  const { needsManualRevert } = await signedCapture('purview-retention-dlp', live, { deployWaitAttempts: 2, deployWaitDelayMs: 0 });
+  assert.deepEqual(needsManualRevert.map((item) => item.operationId), ['purview.retention-policy.update']);
+  assert.match(needsManualRevert[0].error, /PUTTING THE SETTING BACK FAILED \(.*being deployed/);
+});
+
+test('any other cmdlet error on the write is still a definite failure, and nothing is put back', async () => {
+  const live = fakeTenant('purview-retention-dlp', {
+    hooks: { cmdlet: ({ cmdlet }) => (cmdlet === 'Set-DlpComplianceRule' ? { error: { message: 'A server side error has occurred', category: 'NotSpecified', errorId: 'WriteErrorException' } } : null) },
+  });
+  const { evidence } = await signedCapture('purview-retention-dlp', live);
+  const rule = evidence.subject.writes.find((item) => item.operationId === 'purview.dlp-rule.update');
+  assert.equal(rule.ok, false);
+  assert.match(rule.error, /Set-DlpComplianceRule failed/);
+  assert.equal(evidence.subject.requests.filter((item) => item.cmdlet === 'Set-DlpComplianceRule').length, 1);
+});
+
+test('run-cmdlet.ps1 answers the confirmation prompt of Set-DlpComplianceRule with -Confirm:$false, and the job cannot pass Confirm', () => {
+  // Q260: without it the app-only session fails with "A server side error has occurred".
+  const list = /\$NoConfirmPrompt = @\(([^)]*)\)/.exec(SCRIPT)[1];
+  assert.deepEqual([...list.matchAll(/'([A-Za-z-]+)'/g)].map((match) => match[1]), ['Set-DlpComplianceRule']);
+  assert.match(SCRIPT, /if \(\$NoConfirmPrompt -contains \$name\) \{ \$params\['Confirm'\] = \$false \}/);
+  assert.ok(SCRIPT.indexOf("$params['Confirm'] = $false") > SCRIPT.indexOf('ParameterNotAllowed'), 'added after the job parameters are checked');
+  assert.ok(!moduleAllowlist('ExchangeOnlineManagement')['Set-DlpComplianceRule'].includes('Confirm'));
 });
 
 test('a policy with no text field changes a switch only when the classifier finds no content effect', () => {

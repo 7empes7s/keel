@@ -46,6 +46,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
+import { CROSS_TENANT_TRUST_FIELDS, TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 
 export const TENANT_POLICY_OPERATIONS_CONTRACT_VERSION = 1;
 
@@ -54,22 +55,30 @@ const PARTNERS = '/policies/crossTenantAccessPolicy/partners';
 
 /**
  * The cross-tenant settings a restore may write on the default and on a
- * partner. Inbound trust (whether this tenant accepts a partner's MFA and
- * device claims) is never written, as for the partner configuration template
- * (identityObjectOperations.mjs): a wrong value changes how external users
- * pass Conditional Access, so a difference is left for a person to change.
+ * partner. The trust settings (CROSS_TENANT_TRUST_FIELDS in
+ * workloads/writeDeclarations.mjs) are never written, as for the partner
+ * configuration template (identityObjectOperations.mjs): inbound trust
+ * (whether a partner's MFA and device claims are accepted), automatic consent
+ * (whether invitations skip the consent prompt) and the B2B collaboration and
+ * direct connect lists (which partner users and apps get in, and where ours
+ * may go). A wrong value changes who from another tenant reaches this one, so
+ * a difference is left for a person to change.
  */
-const CROSS_TENANT_SETTINGS = Object.freeze([
-  'automaticUserConsentSettings', 'b2bCollaborationInbound', 'b2bCollaborationOutbound',
-  'b2bDirectConnectInbound', 'b2bDirectConnectOutbound', 'tenantRestrictions',
-]);
+const CROSS_TENANT_SETTINGS = Object.freeze(['tenantRestrictions']);
 
-const INBOUND_TRUST_TYPES = new Set(['crossTenantAccessPolicyConfigurationDefault', 'crossTenantAccessPolicyPartner']);
-const INBOUND_TRUST_PORTAL_PATH = 'Entra admin center > External Identities > Cross-tenant access settings';
-const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) '
-  + `differs from the backup. A restore never changes it: review it in ${INBOUND_TRUST_PORTAL_PATH}, and change it by hand if needed.`;
+const CROSS_TENANT_TYPES = new Set(['crossTenantAccessPolicyConfigurationDefault', 'crossTenantAccessPolicyPartner']);
+const CROSS_TENANT_PORTAL_PATH = 'Entra admin center > External Identities > Cross-tenant access settings';
+const crossTenantTrustStep = (fields) => `The cross-tenant trust settings (${fields.join(', ')}) differ from the backup. `
+  + 'They decide whether a partner tenant\'s MFA and device claims are accepted, whether invitations skip the consent prompt, and which users and apps may cross. '
+  + `A restore never changes them: review them in ${CROSS_TENANT_PORTAL_PATH}, and change them by hand if needed.`;
 
-const record = (fields) => Object.freeze({ guard: null, requestHeaders: null, sendable: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
+// A record may never list a trust field of its type (TRUST_FIELDS). Only the
+// named list is checked: the name pattern would catch branding's signInPageText.
+function record(fields) {
+  const trust = fields.writableFields.filter((field) => (TRUST_FIELDS[fields.resourceType] ?? []).includes(field));
+  if (trust.length) throw new Error(`${fields.resourceType} ${fields.operation} declares trust, certificate or sign-in fields a restore never writes: ${trust.join(', ')}`);
+  return Object.freeze({ guard: null, requestHeaders: null, sendable: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
+}
 
 /**
  * Issue #156: the company branding fields that are plain text, colours or
@@ -102,17 +111,31 @@ export const BRANDING_NESTED_FIELDS = Object.freeze({
 });
 
 /**
- * The follow-up step when the backup's inbound trust differs from the live
- * one (on a create: when the backup sets any inbound trust), otherwise null.
+ * The cross-tenant trust settings whose backup value differs from the live
+ * one (on a create: that the backup sets at all).
  */
-export function inboundTrustCompletion(resource, verb) {
-  if (!INBOUND_TRUST_TYPES.has(resource?.resourceType) || resource.payload?.inboundTrust === undefined) return null;
-  const desired = comparable(resource.payload.inboundTrust ?? null) ?? null;
-  const live = verb === 'create' ? null : comparable(resource.live?.payload?.inboundTrust ?? null) ?? null;
+function crossTenantTrustDiffers(resource, verb) {
+  if (!CROSS_TENANT_TYPES.has(resource?.resourceType)) return [];
   const empty = (value) => value === null || (typeof value === 'object' && Object.keys(value).length === 0);
-  if ((empty(desired) && empty(live)) || isDeepStrictEqual(desired, live)) return null;
+  return CROSS_TENANT_TRUST_FIELDS.filter((field) => {
+    if (resource.payload?.[field] === undefined) return false;
+    const desired = comparable(resource.payload[field] ?? null) ?? null;
+    const live = verb === 'create' ? null : comparable(resource.live?.payload?.[field] ?? null) ?? null;
+    return !((empty(desired) && empty(live)) || isDeepStrictEqual(desired, live));
+  });
+}
+
+/**
+ * The follow-up step when any cross-tenant trust setting in the backup
+ * differs from the live one (on a create: when the backup sets any),
+ * otherwise null.
+ */
+export function crossTenantTrustCompletion(resource, verb) {
+  const fields = crossTenantTrustDiffers(resource, verb);
+  if (fields.length === 0) return null;
   return Object.freeze({
-    kind: 'manual-setting', requirement: 'inboundTrust', portalPath: INBOUND_TRUST_PORTAL_PATH, description: INBOUND_TRUST_STEP,
+    kind: 'manual-setting', requirement: 'crossTenantAccess', fields: Object.freeze(fields),
+    portalPath: CROSS_TENANT_PORTAL_PATH, description: crossTenantTrustStep(fields),
   });
 }
 
@@ -600,11 +623,11 @@ export function tenantPolicyWriteRefusal(resource, verb, { lockoutGate = null, m
       return Object.freeze({ ...refusal('skipped', `manual: ${reason}`), completion });
     }
   }
-  // Inbound trust is never written: when it is the only difference, the
+  // Cross-tenant trust is never written: when it is the only difference, the
   // update is skipped with the step to change it by hand.
-  const inboundTrust = verb === 'update' ? inboundTrustCompletion(resource, verb) : null;
-  if (inboundTrust && changedFields(entry, resource.payload, resource.live.payload).length === 0) {
-    return Object.freeze({ ...refusal('skipped', `manual: ${INBOUND_TRUST_STEP}`), completion: inboundTrust });
+  const crossTenantTrust = verb === 'update' ? crossTenantTrustCompletion(resource, verb) : null;
+  if (crossTenantTrust && changedFields(entry, resource.payload, resource.live.payload).length === 0) {
+    return Object.freeze({ ...refusal('skipped', `manual: ${crossTenantTrust.description}`), completion: crossTenantTrust });
   }
   if (entry.lockout) {
     if (!lockoutGate || typeof lockoutGate.evaluate !== 'function') {

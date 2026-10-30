@@ -142,11 +142,11 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   crossTenantAccessPolicy: { kind: 'tenant-setting', fixture: 'the tenant cross-tenant access policy', select: 'crossTenantAccessPolicy', drift: 'none expected: allowedCloudEndpoints is usually empty; add one cloud only if decision D-148b allows it' },
   crossTenantAccessPolicyConfigurationDefault: {
     kind: 'tenant-setting', fixture: 'the tenant default cross-tenant settings', select: 'crossTenantAccessPolicyConfigurationDefault',
-    drift: 'turn inbound trust of MFA from other tenants on or off',
+    drift: 'change tenantRestrictions (users and groups allowed or blocked); never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them); write the original down first',
   },
   crossTenantAccessPolicyPartner: {
     kind: 'tenant-setting', fixture: 'a partner entry for a Microsoft-owned tenant id Marouane chooses (decision D-148b)',
-    select: 'the partner tenant id (pseudonymized in the evidence)', drift: 'turn its inbound MFA trust on or off',
+    select: 'the partner tenant id (pseudonymized in the evidence)', drift: 'change its tenantRestrictions; never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them)',
     note: 'Graph refuses a tenantId that does not exist. Remove the partner entry afterwards.',
   },
   adminConsentRequestPolicy: {
@@ -351,6 +351,18 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'pronounsSettings', drift: 'switch isEnabledInOrganization to the other value; write the original down first',
     note: 'Set the original value back right after the run.',
   },
+  // Graph allows only letters and digits in these names, so the fixtures start
+  // KEELRT (no hyphen). Neither can ever be deleted: reuse the same two.
+  attributeSet: {
+    kind: 'named-object', fixture: 'custom security attribute set KEELRTSet (description Fixture)',
+    select: 'KEELRTSet', drift: 'change its description: the restore puts it back',
+    note: 'Update only. An attribute set can never be deleted: create it once and reuse it. Never change its maximum number of attributes.',
+  },
+  customSecurityAttributeDefinition: {
+    kind: 'named-object', fixture: 'custom security attribute KEELRTAttr (String, single value, description Fixture) in the set KEELRTSet, assigned to nobody',
+    select: 'KEELRTSet_KEELRTAttr', drift: 'change its description: the restore puts it back',
+    note: 'Update only. An attribute can never be deleted, only deactivated: create it once and reuse it. Never assign it to a user or app.',
+  },
   engageCommunity: {
     kind: 'named-object', fixture: `private Viva Engage community ${FIXTURE_PREFIX}-community (description Fixture), owned by a test user`,
     select: `${FIXTURE_PREFIX}-community`, drift: 'change its description: the restore puts it back; never make it public',
@@ -383,6 +395,54 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-app-web`, drift: 'delete both: the restore adds the web link back with its settings and in both its categories, and the Win32 app back as a shell with its commands and detection rule, plus an "upload the package" step; then change the web link\'s description and take it out of Business: the restore puts both back',
     note: 'Never assign either app. Never upload a real package to the shell. Delete both fixtures after the run if the queue item says so.',
   },
+  // Intune policy kinds that never ran live (completion push, item 3). Each is
+  // named by its displayName and assigned to nobody, so no device or user is
+  // affected. Without these entries the capture took them for objects with no
+  // name of their own and refused them (Q129, windowsFeatureUpdateProfile).
+  assignmentFilter: {
+    kind: 'named-object', fixture: `Windows assignment filter ${FIXTURE_PREFIX}-filter (rule: (device.deviceName -startsWith "KEELRT-")), used by no assignment`,
+    select: `${FIXTURE_PREFIX}-filter`, drift: 'delete it: the restore recreates it with the same platform and rule; then change its rule: the restore puts it back',
+    note: 'The platform is never changed on update. No assignment uses the filter, so no policy targets change.',
+  },
+  roleScopeTag: {
+    kind: 'named-object', fixture: `scope tag ${FIXTURE_PREFIX}-scope-tag, on no object and in no role assignment`,
+    select: `${FIXTURE_PREFIX}-scope-tag`, drift: 'delete it: the restore recreates it with the same description; then change its description: the restore puts it back',
+    note: 'Never touch the built-in Default tag (the restore refuses it).',
+  },
+  windowsFeatureUpdateProfile: {
+    kind: 'named-object', fixture: `Windows feature update profile ${FIXTURE_PREFIX}-feature (any supported version), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-feature`, drift: 'delete it: the restore recreates it with the same version; then change its description: the restore puts it back',
+  },
+  windowsQualityUpdateProfile: {
+    kind: 'named-object', fixture: `Windows expedited quality update profile ${FIXTURE_PREFIX}-quality (any offered release), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-quality`, drift: 'delete it: the restore recreates it with the same release; then change its description: the restore puts it back',
+    note: 'Assigned to nobody, so no device is pushed an update.',
+  },
+  windowsDriverUpdateProfile: {
+    kind: 'named-object', fixture: `Windows driver update profile ${FIXTURE_PREFIX}-driver (manual approval), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-driver`, drift: 'delete it: the restore recreates it with manual approval; then change its description: the restore puts it back',
+    note: 'If Intune refuses it (for example a Windows driver update licence is missing), record that and skip this kind.',
+  },
+  notificationMessageTemplate: {
+    kind: 'named-object', fixture: `compliance notification template ${FIXTURE_PREFIX}-notice (default locale en-US, one en-US message: subject KEEL-RT, body KEEL-RT test), used by no compliance policy`,
+    select: `${FIXTURE_PREFIX}-notice`, drift: 'delete it: the restore recreates it with its message; then change the message subject: the restore puts it back',
+    note: 'Never add it to a compliance policy action, so no email is sent.',
+  },
+  managedAppPolicy: {
+    kind: 'named-object', fixture: `iOS app protection policy ${FIXTURE_PREFIX}-ios-mam protecting Microsoft Outlook (com.microsoft.office.outlook), PIN required, no wipe settings, assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-ios-mam`, drift: 'delete it: the restore recreates it with Outlook as its app; then turn its PIN off: the restore turns it back on',
+    note: 'Back it up after the per-policy apps read is deployed (PR #459): an older backup holds no apps and a recreate is refused. Never assign it.',
+  },
+  targetedManagedAppConfiguration: {
+    kind: 'named-object', fixture: `managed apps app configuration policy ${FIXTURE_PREFIX}-app-config for Microsoft Outlook (one setting: com.microsoft.outlook.Mail.FocusedInbox = false), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-app-config`, drift: 'delete it: the restore recreates it with Outlook and its setting; then change the setting value: the restore puts it back',
+    note: 'Never assign it.',
+  },
+  mobileAppConfiguration: {
+    kind: 'named-object', fixture: `managed devices iOS app configuration policy ${FIXTURE_PREFIX}-device-config for an unassigned iOS store app ${FIXTURE_PREFIX}-ios-app (one setting: KEELRT = 1), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-device-config`, drift: 'delete it: the restore recreates it for the same app with its setting; then change the setting value: the restore puts it back',
+    note: 'The app must exist in the target (the restore checks). Never assign the app or the policy.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {
@@ -405,16 +465,16 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   },
   multiTenantOrganizationPartnerConfigurationTemplate: {
     kind: 'tenant-setting', fixture: 'the multitenant organization cross-tenant access template', select: 'multiTenantOrganizationPartnerConfigurationTemplate',
-    drift: 'switch automaticUserConsentSettings.inboundAllowed to the other value; never change inboundTrust; write the original down first',
+    drift: 'switch templateApplicationLevel between newPartners and none; never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them); write the original down first',
     note: 'It only applies to tenants that join a multitenant organization later; existing partner settings are not touched.',
   },
   // Restore gaps, batch 3: guest and app consent settings. None touches
   // Conditional Access or any account.
-  b2bManagementPolicy: {
-    kind: 'tenant-setting', fixture: 'the tenant guest invitation domain restriction (the one b2bManagementPolicy)',
-    select: 'the policy id KEEL shows for b2bManagementPolicy',
-    drift: `add keel-rt-blocked.example to BlockedDomains (or remove it if the backup holds it); write the original definition down first`,
-    note: 'Only the definition is written. If the tenant has no policy, set one blocked domain keel-rt-blocked.example in the admin center first. Never block or allow a real domain.',
+  // Restore gaps, batch 21: a Defender role.
+  defenderRoleDefinition: {
+    kind: 'named-object', fixture: `custom Microsoft Defender XDR role ${FIXTURE_PREFIX}-defender-role with one read permission (microsoft.xdr/secops/securitydata/read), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-defender-role`, drift: 'delete it: the restore recreates it with the same name and permission; then change its description: the restore puts it back',
+    note: 'No assignment, so nobody gains access. If Defender XDR unified roles are not turned on in the test tenant and the create is refused, record that and skip this kind. The update route is not in Microsoft\'s docs: if the PATCH is refused, record its answer.',
   },
   permissionGrantPreApprovalPolicy: {
     kind: 'tenant-setting', fixture: 'a pre-approval policy assigned to no app: one condition, scopeType chat, Microsoft Graph application permission ChatMessage.Read.Chat',
@@ -425,6 +485,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     kind: 'named-object', fixture: `a SAML federation ${FIXTURE_PREFIX}-fed for the domain keel-rt-fed.example (sign-in https://keel-rt-fed.example/sso, a self-signed certificate)`,
     select: `${FIXTURE_PREFIX}-fed`, drift: 'change its passiveSignInUri to https://keel-rt-fed.example/drifted',
     note: 'Update only: a deleted federation is set up again by hand. No guest is invited from the domain. Delete it at the end.',
+  },
+  // Q228 (live run 2026-10-29): both carry their own displayName, so the capture checks the name.
+  appManagementPolicy: {
+    kind: 'named-object', fixture: 'an app credential policy KEEL-RT-228-credpolicy applied to nothing: one password restriction passwordLifetime, maxLifetime P90D (Graph needs state enabled on the restriction)',
+    select: 'the policy id KEEL shows for the fixture', drift: 'change its maxLifetime to P180D',
+    note: 'Never add an app or service principal to its appliesTo, and never touch the tenant default policy. A deleted policy goes to deleted items: purge it before a create round. Delete and purge it at the end.',
+  },
+  accessPackageCatalog: {
+    kind: 'named-object', fixture: 'an empty catalog KEEL-RT-228-catalog (userManaged, published, not externally visible)',
+    select: 'the catalog id KEEL shows for the fixture', drift: 'change its description',
+    note: 'No access package, resource or user goes into the catalog. Delete it at the end.',
   },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {

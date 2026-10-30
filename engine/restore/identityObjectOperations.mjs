@@ -36,6 +36,7 @@ import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './ro
 import {
   applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
+import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -116,7 +117,7 @@ function federationRefusal(resource, verb) {
   if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], live[field]))) return null;
   return {
     outcome: 'skipped', reason: `manual: ${federationSignInStep(differs)}`,
-    completion: { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) },
+    completion: [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }],
   };
 }
 
@@ -224,37 +225,48 @@ async function appScopeGuard(io, { payload, targetId, before, fields }) {
   const description = appScopeStep(detail);
   return {
     reason: `manual: ${description}`,
-    completion: { kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description },
+    completion: [{ kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description }],
   };
 }
 
 // ------------------------------------------------ multitenant org template
 
 /**
- * The partner configuration template settings a restore may write. Inbound
- * trust (whether this tenant accepts a partner's MFA and device claims) is
- * never written: a wrong value changes how partner users pass Conditional
- * Access, so a difference is reported for a person to change by hand.
+ * The partner configuration template settings a restore may write: only when
+ * the template applies. Its cross-tenant access settings (TRUST_FIELDS in
+ * workloads/writeDeclarations.mjs) are never written: inbound trust (whether
+ * a partner's MFA and device claims are accepted), automatic consent (whether
+ * invitations skip the consent prompt) and the B2B collaboration and direct
+ * connect lists (which partner users and apps get in, and where ours may go).
+ * A wrong value changes who from another tenant reaches this one, so a
+ * difference is reported for a person to change by hand.
  */
-export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze([
-  'templateApplicationLevel', 'automaticUserConsentSettings',
-  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
-]);
+export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze(['templateApplicationLevel']);
+const PARTNER_TEMPLATE_TRUST_FIELDS = TRUST_FIELDS.multiTenantOrganizationPartnerConfigurationTemplate;
 
-const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) differs from the backup. A restore never changes it: review it in Entra admin center > External Identities > Cross-tenant access settings, and change it by hand if needed.';
+const crossTenantStep = (fields) => `The cross-tenant access settings of the multitenant organization template (${fields.join(', ')}) differ from the backup. `
+  + 'They decide whether partner tenants\' MFA and device claims are accepted, whether invitations skip the consent prompt, and which users and apps may cross. '
+  + 'A restore never changes them: review them with Microsoft Graph (/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration), and change them by hand if needed.';
 
-const inboundTrustDiffers = (resource) => resource.live?.payload
-  && resource.payload?.inboundTrust !== undefined
-  && !sameValue(resource.payload.inboundTrust, resource.live.payload.inboundTrust);
+const partnerTemplateTrustDiffers = (resource) => (resource.live?.payload
+  ? PARTNER_TEMPLATE_TRUST_FIELDS.filter((field) => resource.payload?.[field] !== undefined && !sameValue(resource.payload[field], resource.live.payload[field]))
+  : []);
+
+const partnerTemplateStep = (fields) => ({
+  kind: 'manual-setting', requirement: 'crossTenantAccess', fields, description: crossTenantStep(fields),
+});
 
 function partnerTemplateRefusal(resource, verb) {
-  if (verb !== 'update' || !inboundTrustDiffers(resource)) return null;
+  if (verb !== 'update') return null;
+  const differs = partnerTemplateTrustDiffers(resource);
+  if (differs.length === 0) return null;
   if (!PARTNER_TEMPLATE_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]))) return null;
-  return { outcome: 'skipped', reason: `manual: ${INBOUND_TRUST_STEP}` };
+  return { outcome: 'skipped', reason: `manual: ${crossTenantStep(differs)}`, completion: partnerTemplateStep(differs) };
 }
 
 function partnerTemplateAfterWrite(_io, { resource }) {
-  return { completion: inboundTrustDiffers(resource) ? [{ kind: 'enforcement', requirement: 'inboundTrust', description: INBOUND_TRUST_STEP }] : [] };
+  const differs = partnerTemplateTrustDiffers(resource);
+  return { completion: differs.length ? [partnerTemplateStep(differs)] : [] };
 }
 
 // ---------------------------------------------- SharePoint tenant settings
@@ -472,24 +484,45 @@ async function allowedValuesAfterWrite(io, { payload, verb, targetId, live }) {
   return { changes: { allowedValues: written } };
 }
 
+/** A Defender role is written only when the backup says it is a custom role with at least one permission. */
+function defenderRoleRefusal(resource) {
+  const payload = resource.payload ?? {};
+  if (payload.isBuiltIn !== false) {
+    return {
+      outcome: 'skipped',
+      reason: payload.isBuiltIn === true
+        ? `manual: "${payload.displayName ?? payload.id}" is a built-in Defender role: Microsoft manages it and nobody can change it`
+        : 'manual: the backup does not say whether this Defender role is built in, so KEEL does not write it',
+    };
+  }
+  const actions = (payload.rolePermissions ?? []).flatMap((permission) => permission?.allowedResourceActions ?? []);
+  if (actions.length === 0) return { outcome: 'failed', reason: 'defenderRoleDefinition: the backed-up role has no permissions, so it cannot be written' };
+  return null;
+}
+
+const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
+
+/**
+ * Graph gives a recreated Defender role a new id, so a second restore from the
+ * same backup would not know it. Before a create, a custom role with the same
+ * name is looked for: one that already holds the backup's settings means the
+ * create is done; any other one is left for a person, never duplicated.
+ */
+async function defenderRoleCreatePreflight(io, { payload, verb }) {
+  if (verb !== 'create') return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', DEFENDER_ROLES));
+  if (listed?.ok !== true) return `could not list the Defender roles to look for one made before (${outcomeDetail(listed)})`;
+  const named = (listed.body?.value ?? []).filter((role) => String(role?.displayName ?? '').toLowerCase() === String(payload.displayName ?? '').toLowerCase());
+  if (named.length === 0) return null;
+  const same = named.find((role) => role.isBuiltIn !== true && sameValue(role.description, payload.description) && sameValue(role.rolePermissions, payload.rolePermissions));
+  if (same) return { skipped: `a custom Defender role "${payload.displayName}" with the backup's permissions is already there (${same.id}), so nothing is written` };
+  return `a Defender role named "${payload.displayName}" already exists with other settings; KEEL does not make a second one, so check it by hand`;
+}
+
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
 const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
-
-const parsedOrRaw = (entry) => {
-  try {
-    return JSON.parse(entry);
-  } catch {
-    return entry;
-  }
-};
-
-/** Two lists of JSON strings are the same when each entry parses to the same value (Graph may change the spacing). */
-export function sameJsonStrings(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) return sameValue(left, right);
-  return left.length === right.length && left.every((entry, index) => sameValue(parsedOrRaw(entry), parsedOrRaw(right[index])));
-}
 
 /** The records, one per type this module writes through recordWriter. */
 export const IDENTITY_RECORDS = Object.freeze({
@@ -573,15 +606,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
   }),
-  // Restore gaps, batch 3: guest and app consent settings.
-  // The guest invitation domain lists live in `definition`, a list of JSON
-  // strings. Only the definition is written, in place: the tenant keeps one
-  // such policy, and its name and default flag are left as they are.
-  b2bManagementPolicy: defineRecord({
-    resourceType: 'b2bManagementPolicy', version: 'beta', collection: '/policies/b2bManagementPolicies',
-    operations: ['update'], writable: ['definition'], sameField: (field, left, right) => (field === 'definition' ? sameJsonStrings(left, right) : null),
-    permission: 'Policy.ReadWrite.B2BManagementPolicy', docs: beta('b2bmanagementpolicy-update'),
-  }),
+  // Restore gaps, batch 3: guest and app consent settings. The guest
+  // invitation domain lists (b2bManagementPolicy) are never written: they are
+  // trust fields (TRUST_FIELDS in workloads/writeDeclarations.mjs).
   // A pre-approval policy does nothing until it is assigned to an app's
   // service principal; that assignment is not backed up, so it stays a step.
   permissionGrantPreApprovalPolicy: defineRecord({
@@ -610,6 +637,18 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], writable: ['displayName', 'customAttributes'], createOnly: ['type'],
     updateGuard: appScopeGuard,
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
+  }),
+  // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
+  // description and permissions. Microsoft's own roles (isBuiltIn true, or
+  // no flag at all) are never written. Who holds the role is a separate kind
+  // (defenderRoleAssignment), restored by hand after a privilege review.
+  // Graph documents the create; the update uses the same PATCH as the other
+  // role providers and is confirmed by the live proof.
+  defenderRoleDefinition: defineRecord({
+    resourceType: 'defenderRoleDefinition', version: 'beta', collection: DEFENDER_ROLES,
+    operations: ['create', 'update'], writable: ['displayName', 'description', 'rolePermissions'], refusal: defenderRoleRefusal,
+    preflight: defenderRoleCreatePreflight,
+    permission: 'RoleManagement.ReadWrite.Defender', docs: beta('rbacapplication-post-roledefinitions'),
   }),
   // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).
   // The SharePoint tenant settings other than sharing: sync app limits, idle

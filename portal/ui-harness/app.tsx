@@ -7,6 +7,9 @@ import { KitPage } from "./kit";
 import { EMPTY_PREFS } from "@/lib/menu-prefs";
 import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
+import { ChangeFeed } from "@/components/baselines/change-feed";
+import { ChangesViews } from "@/components/baselines/changes-views";
+import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
@@ -122,6 +125,7 @@ function completionResources() {
     completionItem("ci-2", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id"),
     completionItem("ci-3", "service-validation", "signIn", "Confirm a real sign-in or token request succeeds for the application"),
   ];
+  const skippedItems = [completionItem("ci-5", "manual-setting", "isTrusted", "Mark this location as trusted again in the Entra admin center")];
   const groupItems = [completionItem("ci-4", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id")];
   const stateOf = (items: { kind: string; state: string }[]) => {
     const open = items.filter((entry) => entry.state !== "verified");
@@ -131,6 +135,8 @@ function completionResources() {
   return [
     { naturalKey: "application:Payroll connector", resourceType: "application", mechanism: "recreate", state: stateOf(appItems), items: appItems },
     { naturalKey: "group:Finance approvers", resourceType: "group", mechanism: "recreate", state: stateOf(groupItems), items: groupItems },
+    // Skipped by the restore (nothing written): its only item is the step to do by hand.
+    { naturalKey: "namedLocation:KEEL-RT-Head office", resourceType: "namedLocation", mechanism: "skipped", state: stateOf(skippedItems), items: skippedItems },
   ];
 }
 const HARNESS_PEOPLE = [
@@ -392,6 +398,30 @@ function assignedUndoArtifact(id: string, choices: Record<string, string> | null
 }
 
 const now = "2026-10-02T09:40:00Z";
+
+// Changes > Every change (IN-FEED): rows from backups, service reads and the audit log.
+const feedRow = (id: string, occurredAt: string, rest: Partial<FeedRow>): FeedRow => ({
+  id, source: "audit", occurredAt, day: occurredAt.slice(0, 10), type: "group", typeName: "Group", service: "Entra", priority: "normal",
+  priorityReason: null, object: { key: `group:${id}`, name: null, status: "found" }, change: "modified", activity: null, person: null, ...rest,
+});
+const FEED_ADA = { kind: "user" as const, id: "a0a00000-0000-4000-8000-0000000000a1", name: "Amara Okafor" };
+const FEED_SAM = { kind: "user" as const, id: "b0b00000-0000-4000-8000-0000000000b2", name: "Sam Lee" };
+const FEED_APP = { kind: "servicePrincipal" as const, id: "c0c00000-0000-4000-8000-0000000000c3", name: "KEEL Restorer" };
+const CHANGE_FEED: ChangeFeedData = {
+  generatedAt: "2026-10-02T09:40:00Z", since: "2026-09-02T09:40:00Z", until: "2026-10-02T09:40:00Z", truncated: false,
+  rows: [
+    feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA }),
+    feedRow("audit:entra:f2:0", "2026-10-02T08:05:00Z", { type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "ca-1", name: "Block legacy auth", status: "found" }, activity: "Update conditional access policy", person: FEED_ADA }),
+    feedRow("service:f3", "2026-10-02T07:00:00Z", { source: "service", type: "sharepoint-tenant-settings", typeName: "SharePoint sharing settings", service: "SharePoint", priority: "high", object: { key: "sharepoint-tenant-settings:tenant", name: "Sharing settings", status: "found" } }),
+    feedRow("audit:entra:f4:0", "2026-10-02T06:40:00Z", { object: { key: "g-1", name: "Finance", status: "found" }, activity: "Add member to group", person: FEED_SAM }),
+    feedRow("audit:entra:f5:0", "2026-10-01T16:10:00Z", { object: { key: "g-2", name: "Helpdesk admins", status: "found" }, activity: "Update group", person: FEED_APP }),
+    feedRow("drift:f6", "2026-10-01T09:00:00Z", { source: "drift", type: "group", change: "removed", object: { key: "group:Old project team", name: "Old project team", status: "deleted" } }),
+    feedRow("audit:intune:f7:0", "2026-10-01T08:30:00Z", { type: "deviceCompliancePolicy", typeName: "Device compliance policy", service: "Intune", priority: "high", object: { key: "dc-1", name: "Windows laptops must be encrypted", status: "found" }, activity: "Patch DeviceCompliancePolicy", person: FEED_SAM }),
+    feedRow("service:f8", "2026-09-30T22:00:00Z", { source: "service", type: "exchange-mail-flow", typeName: "Mail flow rule", service: "Exchange", change: "added", object: { key: "exchange-mail-flow:rule:Forward to partner", name: "Forward to partner", status: "found" } }),
+    feedRow("audit:intune:f9:0", "2026-09-30T14:00:00Z", { type: "DeviceConfiguration", typeName: "Device configuration", service: "Intune", change: "removed", object: { key: "dead0000-0000-4000-8000-000000000009", name: null, status: "unknown" }, activity: "Delete DeviceConfiguration", person: FEED_SAM }),
+    feedRow("drift:f10", "2026-09-29T09:00:00Z", { source: "drift", type: "namedLocation", typeName: "Named location", priority: "low", change: "added", object: { key: "namedLocation:Branch offices", name: "Branch offices", status: "found" } }),
+  ],
+};
 const DRIFT = [
   { id: "dr1", naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", changeType: "modified", blastRadius: "tenant-lockout", detectedAt: "2026-10-02T09:12:00Z",
     before: { displayName: "Block legacy auth", state: "enabled", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
@@ -2512,6 +2542,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
     case "/readiness/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
+    case "/drift/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;
+    case "/drift/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;
     case "/drift/anonymous": {
       const items = DRIFT_DECIDED.map(hideActors);
       const verdict = changesVerdict(items, BASELINES[0].setAt, now);

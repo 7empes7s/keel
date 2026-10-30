@@ -131,7 +131,8 @@ const CATALOG_WIPE_THRESHOLD = 'device_vendor_msft_policy_config_devicelock_maxd
 // Restore gaps batch 12: an app protection "wipe" version. A device or app
 // below it has its work data removed from the app. Introducing one, or raising
 // it, removes that data from more devices.
-const versionParts = (value) => String(value).split('.').map((part) => Number.parseInt(part, 10) || 0);
+// Android patch versions are dates (2024-01-01), so dashes split parts too.
+const versionParts = (value) => String(value).split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
 const versionAbove = (left, right) => {
   const a = versionParts(left);
   const b = versionParts(right);
@@ -142,6 +143,45 @@ const versionAbove = (left, right) => {
 };
 const hasVersion = (value) => typeof value === 'string' && value.trim().length > 0;
 const wipeVersionRises = (before, after) => hasVersion(after) && (!hasVersion(before) || versionAbove(after, before));
+// Issue #705 review: a MAXIMUM wipe version wipes devices above it, so one that
+// is new or lower wipes more.
+const wipeVersionFalls = (before, after) => hasVersion(after) && (!hasVersion(before) || versionAbove(before, after));
+
+// Issue #705: iOS and Android app protection (managedAppPolicy).
+/** An ISO 8601 duration (P90D, PT12H) in days, or null when unreadable. */
+function isoDurationDays(value) {
+  const match = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(String(value ?? ''));
+  if (!match || value === 'P' || String(value).endsWith('T')) return null;
+  const [, y, mo, w, d, h, mi, sec] = match.map((part) => Number(part ?? 0));
+  return y * 365 + mo * 30 + w * 7 + d + h / 24 + mi / 1440 + sec / 86400;
+}
+const hasValue = (value) => value !== null && value !== undefined && value !== '';
+// The offline period after which the app's work data is wiped. Zero or absent
+// means no wipe. Introducing one, or shortening it, wipes data sooner. An
+// unreadable period is treated as shorter: the safe direction.
+const offlineWipeTightens = (before, after) => {
+  if (!hasValue(after)) return false;
+  const a = isoDurationDays(after);
+  if (a === null) return true;
+  if (a <= 0) return false;
+  if (!hasValue(before)) return true;
+  const b = isoDurationDays(before);
+  return b === null || b <= 0 || a < b;
+};
+// Where work data may be copied, narrowest to widest. Absent means no
+// protection policy, which restricts nothing, so only a change from a known
+// level is judged: a new policy only ever narrows.
+const CLIPBOARD_SHARING = ['blocked', 'managedApps', 'managedAppsWithPasteIn', 'allApps'];
+const clipboardWidens = (before, after) => hasValue(before) && widens(CLIPBOARD_SHARING)(before, after);
+const DATA_TRANSFER_DESTINATIONS = ['none', 'managedApps', 'allApps'];
+const transferWidens = (before, after) => hasValue(before) && widens(DATA_TRANSFER_DESTINATIONS)(before, after);
+const increasesFromKnown = (before, after) => typeof before === 'number' && typeof after === 'number' && after > before;
+// Every action field (appActionIf..., and the threat defense remediation) set to
+// wipe. Read by name, so an action Graph adds later is judged too.
+const isAppActionField = (key) => key.startsWith('appActionIf') || key === 'mobileThreatDefenseRemediationAction';
+const appActionsThatWipe = (payload) => Object.entries(payload ?? {})
+  .filter(([key, value]) => isAppActionField(key) && String(value).toLowerCase() === 'wipe')
+  .map(([key]) => key).sort();
 
 /** groupSetting stores its values as [{ name, value }]; address one by name. */
 const settingValue = (name) => (payload) => payload?.values?.find?.((entry) => entry?.name === name)?.value;
@@ -281,6 +321,16 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // separate consent). Credentials never reach a write body (fieldProjection).
   // The restore keeps its own access-affecting approval, as before.
   application: { reviewed: true, rules: [] },
+  // Issue #700: an access package catalog. Reviewed (every field the restore
+  // writes: displayName, description, state, catalogType, isExternallyVisible). Making it
+  // externally visible lets users outside the organization request its access
+  // packages, and through them reach the groups, apps and sites they grant, so
+  // false -> true needs the separate approval. A recreated catalog is judged too
+  // (judgesCreates): restoring it visible exposes it from the moment it exists,
+  // while restoring false (not visible) is no effect.
+  accessPackageCatalog: { reviewed: true, judgesCreates: true, rules: [
+    rule('isExternallyVisible', 'externally-sharing', disabledToEnabled),
+  ] },
   // Issue #155: Intune policies. These rules land on DEVICE content, which a
   // policy reaches as soon as it is assigned, whether the policy is new or
   // changed, so these three types judge creates too (judgesCreates). Reviewed
@@ -331,15 +381,53 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // Reviewed (every field of the beta resource): the data transfer, clipboard,
   // print and threat level settings only restrict where work data may go, and
   // the required and warning versions block or warn, keeping the data. What
-  // removes work data from the app is a wipe: a wipe version that is new or
-  // higher, or an action that becomes "wipe". Issue #461: a restore assigns a
+  // removes work data from the app is a wipe: a minimum wipe version that is
+  // new or higher, a maximum wipe OS version that is new or lower, an offline
+  // period before wipe that is new or shorter (compared as durations, so
+  // PT2160H equals P90D; P0D means no wipe), or an action that becomes
+  // "wipe". Issue #461: a restore assigns a
   // recreated policy too, so a create that is assigned is judged.
   windowsManagedAppProtection: { reviewed: true, judgesCreates: 'when-assigned', rules: [
     rule('minimumWipeAppVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeOsVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeSdkVersion', 'irreversible', wipeVersionRises),
+    rule('maximumWipeOsVersion', 'irreversible', wipeVersionFalls),
     rule('appActionIfUnableToAuthenticateUser', 'irreversible', becomes('wipe')),
     rule('mobileThreatDefenseRemediationAction', 'irreversible', becomes('wipe')),
+    rule('periodOfflineBeforeWipeIsEnforced', 'irreversible', offlineWipeTightens),
+  ] },
+  // Issue #705: app protection, written whole by the managedAppPolicy writer
+  // (engine/restore/intuneOperations.mjs), which creates the iOS and Android
+  // kinds. Reviewed (every field of the v1.0 iOS and Android resources):
+  //  - What removes work data from the app is a wipe: an offline period before
+  //    wipe that is new or shorter, a minimum wipe version that is new or
+  //    higher, a maximum wipe OS version that is new or lower, a Company Portal
+  //    deferral before wipe that is new or shorter, or an action that becomes
+  //    "wipe". Irreversible.
+  //  - The two levels that decide which apps work data may go to (send/open-in
+  //    destinations and clipboard), widened on an existing policy, plus a
+  //    longer clipboard exception, let it leave the managed apps:
+  //    externally-sharing. Not on create: a new policy only ever narrows them.
+  //  - The finer restriction toggles (save-as and storage locations, backup,
+  //    print, exempted apps and protocols, open-in filtering), PIN, encryption
+  //    and the required and warning versions are configuration, as in the
+  //    Windows review above.
+  // A restore assigns a recreated policy too (issue #461), so a create that is
+  // assigned is judged. A delete of a policy that is still assigned is refused
+  // by the writer (DELETE_POLICY), so deletes carry no effect here.
+  managedAppPolicy: { reviewed: true, judgesCreates: 'when-assigned', rules: [
+    rule('periodOfflineBeforeWipeIsEnforced', 'irreversible', offlineWipeTightens),
+    rule('minimumWipeOsVersion', 'irreversible', wipeVersionRises),
+    rule('minimumWipeAppVersion', 'irreversible', wipeVersionRises),
+    rule('minimumWipeSdkVersion', 'irreversible', wipeVersionRises),
+    rule('minimumWipePatchVersion', 'irreversible', wipeVersionRises),
+    rule('minimumWipeCompanyPortalVersion', 'irreversible', wipeVersionRises),
+    rule('maximumWipeOsVersion', 'irreversible', wipeVersionFalls),
+    rule('wipeAfterCompanyPortalUpdateDeferralInDays', 'irreversible', wipeThresholdTightens),
+    rule('appActionIf* (actions that wipe)', 'irreversible', addsEntry, appActionsThatWipe),
+    rule('allowedOutboundDataTransferDestinations', 'externally-sharing', transferWidens),
+    rule('allowedOutboundClipboardSharingLevel', 'externally-sharing', clipboardWidens),
+    rule('allowedOutboundClipboardSharingExceptionLength', 'externally-sharing', increasesFromKnown),
   ] },
   // Restore gaps batch 13: a link between two Intune apps. Reviewed (every
   // field of both beta kinds): a dependency installs or detects another app,

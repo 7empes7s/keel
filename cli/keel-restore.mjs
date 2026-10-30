@@ -90,7 +90,7 @@ import { assessDeletePlan } from '../engine/graph/impact.mjs';
 import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
-import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
+import { applyWave, applyPatches, recordLiveIdentifiers, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
 import { recordTrustSkippedLocations } from '../engine/restore/namedLocationTrust.mjs';
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
@@ -106,6 +106,7 @@ import {
 import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
+import { recordPlannedCreates } from '../engine/restore/plannedIds.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
   createDryRunArtifact, getDryRunArtifactById, plannedVerbsOf, restoreCandidates, validateArtifactForExecution,
@@ -1196,7 +1197,9 @@ export async function runRestore({
     };
     const governor = new ThrottleGovernorClass(seeds);
     const runId = planId !== undefined ? `run-${planId}` : `run-selection-${sourceSnapshot}`;
-    const appliedIds = new Map();
+    // Issue #726: a live app's own appId, so a service principal names the app
+    // an earlier restore recreated by its new appId.
+    const appliedIds = recordLiveIdentifiers(new Map(), resources);
     // Named locations skipped on trust: a later policy that names one is skipped too.
     const trustSkippedLocations = new Set();
     // Accumulated across every wave and the deferred-patch phase. Ordinarily a
@@ -1259,6 +1262,9 @@ export async function runRestore({
       results.failed.push(...result.failed);
       results.notRemediable.push(...(result.notRemediable ?? []));
       recordAppliedIds(appliedIds, result.applied);
+      // A dry run's planned creates get placeholder ids, so a later write that
+      // references one plans cleanly instead of failing (an enforce run records none).
+      recordPlannedCreates(appliedIds, result.applied, wave, mode);
       recordTrustSkippedLocations(trustSkippedLocations, result.skipped);
       if (result.failed.length) {
         await reportPoliciesThatMayBeOn(result.failed);
@@ -1387,9 +1393,12 @@ export async function runRestore({
       // incomplete configuration) become named completion items.
       const followUpByKey = new Map(results.applied.filter((entry) => Array.isArray(entry.followUp)).map((entry) => [entry.naturalKey, entry.followUp]));
       // Issue #546: assignments the backup did not read stay a step for a
-      // person after the run, whatever way the object came back (or none).
+      // person after the run, whatever way the object came back (or none). So
+      // does a setting the writer never sends (kind 'manual-setting', such as
+      // a trust or sign-in field left out of the write).
       const stepsByKey = new Map(results.applied
-        .map((entry) => [entry.naturalKey, [entry.completion ?? []].flat().filter((step) => step?.requirement === 'assignments')])
+        .map((entry) => [entry.naturalKey, [entry.completion ?? []].flat()
+          .filter((step) => step?.requirement === 'assignments' || step?.kind === 'manual-setting')])
         .filter(([, steps]) => steps.length > 0));
       const recovered = results.applied
         .map((entry) => byKey.get(entry.naturalKey))
@@ -1404,6 +1413,21 @@ export async function runRestore({
           ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
           ...(stepsByKey.has(resource.naturalKey) ? { steps: stepsByKey.get(resource.naturalKey) } : {}),
         }));
+      // A skipped object's manual steps (a trusted named location, a federation
+      // sign-in page, a shorter group lifetime nobody approved) are open items
+      // too, so they outlive the job output. Nothing was written, so the object
+      // opens only those steps, under the mechanism 'skipped'.
+      const appliedKeys = new Set(results.applied.map((entry) => entry.naturalKey));
+      for (const entry of results.skipped) {
+        if (appliedKeys.has(entry.naturalKey)) continue;
+        const steps = [entry.completion ?? []].flat().filter((step) => step?.kind === 'manual-setting');
+        if (steps.length === 0) continue;
+        recovered.push({
+          naturalKey: entry.naturalKey,
+          resourceType: byKey.get(entry.naturalKey)?.resourceType ?? String(entry.naturalKey).split(':')[0],
+          mechanism: 'skipped', steps,
+        });
+      }
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {
           tenantRef: artifact.tenantRef,
@@ -1411,7 +1435,7 @@ export async function runRestore({
           owner: artifact.requestedBy ?? null,
           applied: recovered,
         });
-        logger.log(`completion: ${completionItems.length} item(s) open for recovered objects`);
+        logger.log(`completion: ${completionItems.length} item(s) open for recovered or skipped objects`);
       }
     }
 

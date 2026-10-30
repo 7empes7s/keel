@@ -1,0 +1,55 @@
+{
+  "restoreRef": "f8ea064e-1261-8126-8bc7-389600a279a4",
+  "entry": {
+    "naturalKey": "targetedManagedAppConfiguration:A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
+    "resourceType": "targetedManagedAppConfiguration",
+    "operation": "update",
+    "targetId": "A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:41:33.746Z",
+    "priorState": {
+      "id": "A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
+      "version": "\"2100ac35-5cb5-864c-96f2-a26e4d0d08cd\"",
+      "isAssigned": false,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-app-config",
+      "customSettings": [
+        {
+          "name": "com.microsoft.outlook.Mail.FocusedInbox",
+          "value": "true"
+        }
+      ],
+      "createdDateTime": "2026-10-29T22:34:15.4837278Z",
+      "deployedAppCount": 1,
+      "lastModifiedDateTime": "2026-10-29T22:38:17.1826499Z"
+    },
+    "intendedState": {
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-app-config",
+      "customSettings": [
+        {
+          "name": "com.microsoft.outlook.Mail.FocusedInbox",
+          "value": "false"
+        }
+      ]
+    },
+    "postState": {
+      "id": "A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
+      "version": "\"0b7c8199-a901-8c45-a15b-a7e0586ff38b\"",
+      "isAssigned": false,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-app-config",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/targetedManagedAppConfigurations/$entity",
+      "customSettings": [
+        {
+          "name": "com.microsoft.outlook.Mail.FocusedInbox",
+          "value": "false"
+        }
+      ],
+      "createdDateTime": "2026-10-29T22:34:15.4837278Z",
+      "deployedAppCount": 1,
+      "lastModifiedDateTime": "2026-10-29T22:41:34Z"
+    }
+  }
+}

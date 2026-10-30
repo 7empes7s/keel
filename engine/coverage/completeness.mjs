@@ -83,6 +83,8 @@ function secretSettings(payload) {
 // Wave 2 ENTRA: a part the backup may already hold (a later read can add it).
 const heldUnless = (fields) => (payload) => (fields.every((field) => Array.isArray(payload?.[field])) ? [] : always(payload));
 const builtInGrantPolicy = (payload) => (/^microsoft-/i.test(String(payload?.id ?? '')) ? always(payload) : []);
+// Restore gaps batch 21: an object the backup does not mark as custom (isBuiltIn false) is not written.
+const builtInFlag = (payload) => (payload?.isBuiltIn !== false ? always(payload) : []);
 const organizationDefault = (payload) => (payload?.isOrganizationDefault === true ? always(payload) : []);
 // Token lifetime, token issuance, claims mapping and home realm discovery policies.
 const STS_POLICY_MISSING = Object.freeze([
@@ -253,12 +255,13 @@ export const COMPLETENESS = Object.freeze({
   // Remaining kinds, batch 4.
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},
-  servicePrincipalCreationPolicy: { whole: 'not-written', missing: [part('Its include and exclude conditions', 'other-route')] },
+  // Q256: Graph refuses app writes without a directory role, so none is written.
+  servicePrincipalCreationPolicy: { whole: 'not-written', missing: [part('A built-in app creation policy', 'microsoft-managed', builtInFlag)] },
   permissionGrantPreApprovalPolicy: { missing: [part('Which app it is assigned to', 'other-route')] },
   accessReviewPolicy: {},
   directoryRoleAccessReviewPolicy: {},
   multiTenantOrganizationIdentitySyncPolicyTemplate: {},
-  multiTenantOrganizationPartnerConfigurationTemplate: {},
+  multiTenantOrganizationPartnerConfigurationTemplate: { missing: [part('Its cross-tenant access settings (trust in partner sign-ins, automatic consent, who may cross)', 'not-written')] },
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
   externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
@@ -266,7 +269,8 @@ export const COMPLETENESS = Object.freeze({
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
   exchangeRoleAssignment: { whole: 'not-written' },
   exchangeCustomAppScope: { missing: [part('The app role assignments that use it', 'other-route')] },
-  defenderRoleDefinition: { whole: 'not-written' },
+  // Restore gaps batch 21: custom roles written; built-in ones are Microsoft's.
+  defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', builtInFlag)] },
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.

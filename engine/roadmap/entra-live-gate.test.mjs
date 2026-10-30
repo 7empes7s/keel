@@ -494,6 +494,36 @@ test('an app relationship is a fixture only when both of its apps are (#478)', (
   assert.equal(namesFixture('groupPolicyUploadedDefinitionFile', { fileName: 'windowsupdate.admx', displayName: 'KEEL-RT-admx' }), false);
 });
 
+test('an attribute set or custom security attribute also accepts the letters-only KEELRT prefix', async () => {
+  // Graph forbids hyphens in these names, so KEEL-RT- can never be used for them.
+  assert.equal(namesFixture('attributeSet', { id: 'KEELRTSet' }), true);
+  assert.equal(namesFixture('attributeSet', { id: 'KEELRT20261029', description: 'Fixture' }), true);
+  assert.equal(namesFixture('attributeSet', { id: 'Engineering' }), false);
+  // Anchored: the prefix must start the name.
+  assert.equal(namesFixture('attributeSet', { id: 'ProdKEELRTSet' }), false);
+  assert.equal(namesFixture('customSecurityAttributeDefinition', { attributeSet: 'KEELRTSet', name: 'KEELRTAttr' }), true);
+  assert.equal(namesFixture('customSecurityAttributeDefinition', { attributeSet: 'KEELRTSet', name: 'CostCenter' }), false);
+  // Every other kind still needs the hyphenated prefix.
+  assert.equal(namesFixture('group', { displayName: 'KEELRTGroup' }), false);
+  assert.equal(namesFixture('group', { displayName: 'KEEL-RT-group' }), true);
+
+  const { steps } = buildLiveGatePlan();
+  const setStep = steps.find((step) => step.id === 'attributeSet:update');
+  const attrStep = steps.find((step) => step.id === 'customSecurityAttributeDefinition:update');
+  assert.equal(setStep.fixtureKind, 'named-object');
+  assert.equal(attrStep.fixtureKind, 'named-object');
+  assert.ok(!setStep.commands.at(-1).includes('--allow-by-reference'));
+  assert.equal((await capture(setStep, { naturalKey: 'KEELRTSet', displayName: 'KEELRTSet' })).status, 'captured');
+  await assert.rejects(capture(setStep, { naturalKey: 'Engineering', displayName: 'Engineering' }), /not a disposable/);
+  assert.equal((await capture(attrStep, { naturalKey: 'KEELRTSet_KEELRTAttr', displayName: 'KEELRTAttr' })).status, 'captured');
+  // An attribute is a fixture only inside a fixture set: its key (<set>_<name>) decides, whatever its name.
+  await assert.rejects(capture(attrStep, { naturalKey: 'Engineering_KEELRTAttr', displayName: 'KEELRTAttr' }), /not a disposable/);
+  await assert.rejects(capture(attrStep, { naturalKey: 'KEELRTSet_CostCenter', displayName: 'CostCenter' }), /not a disposable/);
+  // A group named KEELRT is still refused.
+  const group = steps.find((step) => step.id === 'group:update');
+  await assert.rejects(capture(group, { naturalKey: 'KEELRTGroup', displayName: 'KEELRTGroup' }), /not a disposable/);
+});
+
 test('a delegated consent grant is checked by its client app and user, not a role (#295)', async () => {
   const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'oauth2PermissionGrant:update');
   assert.equal(step.fixtureKind, 'by-reference');

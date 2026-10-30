@@ -1,0 +1,51 @@
+{
+  "restoreRef": "5a74a140-88d6-8bc9-9a65-a83fd6466381",
+  "entry": {
+    "naturalKey": "multiTenantOrganizationPartnerConfigurationTemplate:multiTenantOrganizationPartnerConfigurationTemplate",
+    "resourceType": "multiTenantOrganizationPartnerConfigurationTemplate",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-28T07:47:51.408Z",
+    "priorState": {
+      "id": "f9fe5b5a-89d1-8771-bb84-66de69fb6e52",
+      "inboundTrust": null,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration/$entity",
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "b2bCollaborationOutbound": null,
+      "b2bDirectConnectOutbound": null,
+      "templateApplicationLevel": "newPartners,existingPartners",
+      "automaticUserConsentSettings": {
+        "inboundAllowed": false,
+        "outboundAllowed": true
+      }
+    },
+    "intendedState": {
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "b2bCollaborationOutbound": null,
+      "b2bDirectConnectOutbound": null,
+      "templateApplicationLevel": "newPartners,existingPartners",
+      "automaticUserConsentSettings": {
+        "inboundAllowed": true,
+        "outboundAllowed": true
+      }
+    },
+    "postState": {
+      "id": "f9fe5b5a-89d1-8771-bb84-66de69fb6e52",
+      "inboundTrust": null,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration/$entity",
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "b2bCollaborationOutbound": null,
+      "b2bDirectConnectOutbound": null,
+      "templateApplicationLevel": "newPartners,existingPartners",
+      "automaticUserConsentSettings": {
+        "inboundAllowed": true,
+        "outboundAllowed": true
+      }
+    }
+  }
+}

@@ -119,7 +119,7 @@ fi
 
 # --- npm dependencies (same folders and order as CI) ----------------------------------
 # npm ci only when the lockfile changed since the last install, so reruns are fast.
-for dir in engine portal; do
+for dir in engine portal status; do
   lock="${REPO_ROOT}/${dir}/package-lock.json"
   stamp="${REPO_ROOT}/${dir}/node_modules/.dev-setup-lock.sha256"
   want="$(sha256sum "$lock" | cut -d' ' -f1)"

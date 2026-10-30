@@ -1,5 +1,5 @@
 {
-  "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
+  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
   "entry": {
     "naturalKey": "crossTenantAccessPolicyPartner:efc83404-0842-8940-959a-c048aa123c26",
     "resourceType": "crossTenantAccessPolicyPartner",
@@ -7,20 +7,35 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-13T11:52:37.010Z",
+    "recordedAt": "2026-10-29T23:59:25.924Z",
     "priorState": {
       "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
-      "inboundTrust": {
-        "isMfaAccepted": true,
-        "isCompliantDeviceAccepted": null,
-        "isHybridAzureADJoinedDeviceAccepted": null
-      },
+      "inboundTrust": null,
       "isServiceProvider": null,
       "tenantRestrictions": null,
       "b2bCollaborationInbound": null,
       "b2bDirectConnectInbound": null,
       "appServiceConnectInbound": null,
-      "b2bCollaborationOutbound": null,
+      "b2bCollaborationOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
       "b2bDirectConnectOutbound": null,
       "m365CollaborationInbound": null,
       "m365CollaborationOutbound": null,
@@ -32,11 +47,7 @@
     },
     "intendedState": {
       "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
-      "inboundTrust": {
-        "isMfaAccepted": false,
-        "isCompliantDeviceAccepted": null,
-        "isHybridAzureADJoinedDeviceAccepted": null
-      },
+      "inboundTrust": null,
       "isServiceProvider": null,
       "tenantRestrictions": null,
       "b2bCollaborationInbound": null,
@@ -54,11 +65,7 @@
     },
     "postState": {
       "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
-      "inboundTrust": {
-        "isMfaAccepted": false,
-        "isCompliantDeviceAccepted": null,
-        "isHybridAzureADJoinedDeviceAccepted": null
-      },
+      "inboundTrust": null,
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/partners/$entity",
       "isServiceProvider": null,
       "tenantRestrictions": null,

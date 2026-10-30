@@ -2,9 +2,10 @@ import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
-import { createBodyProjection, immutableDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
+import { createBodyProjection, immutableDrift, namedValueDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
+import { holdOwnAppIdUris, withAppId, withDeletedAppId, withLiveAppId } from '../reconcile/liveAppId.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
@@ -26,8 +27,8 @@ import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
-  isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
-  inboundTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
+  changedFields as changedTenantPolicyFields, isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
+  crossTenantTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
 import {
   assignLicenseBody, changedUserFields, groupLicenceReadPath, isSyncedUser, isUserGoverned, licencePlan, manualUserFields,
@@ -35,7 +36,7 @@ import {
 } from './userOperations.mjs';
 import {
   ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
-  intunePostStateRefusal, intuneRecordFor, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
+  intunePostStateRefusal, intuneRecordFor, intuneReplaceTrustRefusal, intuneTrustFieldStep, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
   backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer, unreadAssignmentsStep,
 } from './intuneOperations.mjs';
 import {
@@ -44,6 +45,7 @@ import {
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
+import { assertNoPlannedIds, isPlannedId } from './plannedIds.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
   namedLocationTrustKept, namedLocationTrustRefusal, skippedLocationPolicyRefusal, withoutNamedLocationTrust,
@@ -145,6 +147,29 @@ export function rewriteReferences(payload, references, ctx, naturalKey, resource
     rewritten = setAtPath(rewritten, ref.field, ref.prefix ? `${ref.prefix}${result.targetId}` : result.targetId);
   }
   return rewritten;
+}
+
+/** Issue #726: the alternate identifiers (an application's appId) of every
+ * planned resource matched to a live object, recorded as `<naturalKey>#<name>`
+ * — the key rewriteReferences reads for an explicit identifier reference. An app
+ * an earlier restore recreated keeps the backup's key but has a new appId, so a
+ * service principal restored in a later run must carry the live appId, never the
+ * one the key encodes. A value this run already holds (a create) is kept, and
+ * a value the key already encodes is not recorded. */
+export function recordLiveIdentifiers(appliedIds, resources) {
+  for (const resource of resources ?? []) {
+    if (resource?.live?.state !== 'present') continue;
+    for (const name of ALTERNATE_IDENTIFIERS[resource.resourceType] ?? []) {
+      const value = resource.live.payload?.[name];
+      const key = `${resource.naturalKey}#${name}`;
+      if (typeof value !== 'string' || value.length === 0 || appliedIds.has(key)) continue;
+      // The key already encodes this value: an app that was never recreated
+      // keeps writing the backup's appId exactly as stored.
+      if (resource.naturalKey.toLowerCase() === `${resource.resourceType}:${value}`.toLowerCase()) continue;
+      appliedIds.set(key, value);
+    }
+  }
+  return appliedIds;
 }
 
 /** Empirically observed on this tenant: a read immediately after a write to the same object can
@@ -442,6 +467,8 @@ export async function applyWave(writer, governor, wave, {
   // restore run sets it yet.
   allowTenantWide = false,
 }) {
+  // A dry run's placeholder ids (plannedIds.mjs) never reach a write.
+  assertNoPlannedIds(appliedIds, mode);
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
   // purpose and verified; the closing sign-in path comparison skips only these.
@@ -561,7 +588,7 @@ export async function applyWave(writer, governor, wave, {
     const intuneRefusal = intuneWriteRefusal(resource, effectiveVerb);
     if (intuneRefusal) {
       (intuneRefusal.outcome === 'skipped' ? skipped : failed).push(intuneRefusal.outcome === 'skipped'
-        ? { naturalKey: resource.naturalKey, reason: intuneRefusal.reason }
+        ? { naturalKey: resource.naturalKey, reason: intuneRefusal.reason, ...(intuneRefusal.completion ? { completion: intuneRefusal.completion } : {}) }
         : { naturalKey: resource.naturalKey, error: intuneRefusal.reason });
       return;
     }
@@ -675,6 +702,7 @@ export async function applyWave(writer, governor, wave, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, existingTargetIds,
       });
       if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.skipped) skipped.push(outcome.skipped);
       if (outcome.failed) failed.push(outcome.failed);
       return;
     }
@@ -826,6 +854,10 @@ export async function applyWave(writer, governor, wave, {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         return;
       }
+      // A deleted app an earlier restore recreated comes back with the appId
+      // Entra gave it, never the backup's: its own URIs (`api://<appId>`) are
+      // written with that appId.
+      desired = withDeletedAppId(desired, resource.resourceType, resource.live);
 
       // Task-152 review: Microsoft restores a deleted policy in the state it was
       // deleted in. One that comes back on is a lockout question before anything
@@ -999,6 +1031,9 @@ export async function applyWave(writer, governor, wave, {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         return;
       }
+      // Issue #726: an app an earlier restore recreated has a new appId. The
+      // body carries the live one (an `api://<appId>` URI), never the backup's.
+      desired = withLiveAppId(desired, resource.resourceType, resource.live);
       // Verification compares what a write can set: server-owned fields, OData
       // annotations and nulls are left out on both sides (verificationView).
       const normalisedDesired = verificationView(desired, resource.resourceType);
@@ -1013,7 +1048,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       if (mode === 'dry-run') {
-        applied.push({ naturalKey: resource.naturalKey, targetId });
+        applied.push({ naturalKey: resource.naturalKey, targetId, changes: plannedUpdateChanges(resource, desired, payload, normalisedDesired) });
         return;
       }
 
@@ -1160,8 +1195,13 @@ export async function applyWave(writer, governor, wave, {
     // annotations, a group's securityIdentifier/assignedLicenses/onPremises*):
     // the raw snapshot payload is never posted, Graph refuses it with 400.
     // The same body is what verification below compares against.
-    const createBody = policyCreate ? policyCreate.body
+    const fullCreateBody = policyCreate ? policyCreate.body
       : withoutFields(createBodyProjection(payload, resource.resourceType), createExcluded ?? []);
+    // An application's identifierUris that name the backup's appId wait for the
+    // appId Entra assigns: the create leaves them out, and a PATCH right after
+    // writes them with the new appId.
+    const { body: createBody, held: heldUris } = holdOwnAppIdUris(fullCreateBody, resource.resourceType, payload?.appId);
+    const ownUris = (createdAppId) => [...(createBody.identifierUris ?? []), ...withAppId(heldUris, payload?.appId, createdAppId)];
 
     // Wave 2 RST: a create this run already sent is never sent again. One whose
     // object reads back as the body it wrote counts as applied; anything else
@@ -1170,7 +1210,9 @@ export async function applyWave(writer, governor, wave, {
       const existing = prior.targetId ? await retryOperation(() => writer.read('v1.0', `${path}/${prior.targetId}`)) : null;
       if (existing && existing.ok !== false) {
         const body = existing.body ?? existing;
-        const desiredView = verificationView(createBody, resource.resourceType);
+        // A resumed app counts as created only once its own URIs were written too.
+        const expected = heldUris.length > 0 ? { ...createBody, identifierUris: ownUris(body.appId) } : createBody;
+        const desiredView = verificationView(expected, resource.resourceType);
         const createdLive = onlyFields(verificationView(forVerification(body, resource), resource.resourceType), desiredView);
         if (residualDiff(desiredView, createdLive, resource.resourceType).length === 0) {
           const identifiers = createdIdentifiers(resource.resourceType, body, body);
@@ -1253,7 +1295,27 @@ export async function applyWave(writer, governor, wave, {
       failed.push({ naturalKey: resource.naturalKey, error: `created ${resource.resourceType} ${targetId} did not read back the identifiers its create returned` });
       return;
     }
-    await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead?.body ?? reRead });
+    let postState = reRead?.body ?? reRead;
+    if (heldUris.length > 0) {
+      const identifierUris = ownUris(identifiers?.appId);
+      const appPath = `${path}/${targetId}`;
+      const uriResult = await writeAfterCreate(writer, 'v1.0', appPath, { method: 'PATCH', body: { identifierUris } }, { retryOperation, ...readAfterWriteOptions });
+      const sameUris = (r) => isDeepStrictEqual([...(r?.body?.identifierUris ?? [])].sort(), [...identifierUris].sort());
+      const uriReRead = uriResult.ok
+        ? await readAfterWrite(writer, 'v1.0', appPath, (r) => isNotFound(r) || (r?.ok === true && !sameUris(r)), { retryOperation, ...readAfterWriteOptions })
+        : null;
+      if (!uriResult.ok || uriReRead?.ok === false || !sameUris({ body: uriReRead?.body ?? uriReRead })) {
+        const why = !uriResult.ok ? outcomeDetail(uriResult) : 'they did not read back';
+        await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState, detail: `created; Application ID URIs with the new appId not written: ${why}` });
+        failed.push({
+          ...(!uriResult.ok ? graphFailure(resource.naturalKey, uriResult) : { naturalKey: resource.naturalKey }),
+          error: `created ${resource.resourceType} ${targetId}, but its Application ID URIs (${identifierUris.join(', ')}) were not written: ${why}`,
+        });
+        return;
+      }
+      postState = uriReRead?.body ?? uriReRead;
+    }
+    await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState });
     const entry = identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId };
     if (policyCreate?.unknown.length > 0) entry.unwrittenFields = policyCreate.unknown;
     applied.push(entry);
@@ -1367,12 +1429,19 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     return { failed: { naturalKey, error: err.message } };
   }
   const targetId = resource.targetId ?? resource.live?.targetId ?? null;
-  // Inbound trust is never written; a difference is reported as a follow-up step.
-  const inboundTrust = inboundTrustCompletion(resource, verb);
-  const followUp = inboundTrust ? { completion: inboundTrust } : {};
+  // Cross-tenant trust is never written; a difference is reported as a follow-up step.
+  const crossTenantTrust = crossTenantTrustCompletion(resource, verb);
+  const followUp = crossTenantTrust ? { completion: crossTenantTrust } : {};
   const writes = [...methods, ...(root ? [root] : [])];
-  if (writes.length === 0) return { applied: { naturalKey, targetId, ...followUp } };
-  if (mode === 'dry-run') return { applied: { naturalKey, targetId, ...followUp } };
+  // Issue #720: the plan names each field that changes. A PUT sends every
+  // writable field, but only the ones that differ from live are listed.
+  const live = resource.live?.payload ?? null;
+  const changes = {
+    fields: !root ? [] : root.method === 'PUT' && live ? changedTenantPolicyFields(entry, desired, live) : root.fields,
+    ...(methods.length > 0 ? { methods: methods.map((write) => write.methodId) } : {}),
+  };
+  if (writes.length === 0) return { applied: { naturalKey, targetId, changes, ...followUp } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes, ...followUp } };
 
   // A reviewer query names directory objects inside a string, out of reach of
   // reference rewriting: each must still exist before the PUT replaces the policy.
@@ -1408,15 +1477,15 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${verb} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };
   }
-  const live = reRead?.body ?? reRead;
-  const postStateRefusal = tenantPolicyPostStateRefusal(entry, desired, live, written);
+  const after = reRead?.body ?? reRead;
+  const postStateRefusal = tenantPolicyPostStateRefusal(entry, desired, after, written);
   if (postStateRefusal) {
-    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'tenant policy post-state did not verify' });
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: after, detail: 'tenant policy post-state did not verify' });
     return { failed: { naturalKey, error: postStateRefusal } };
   }
-  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
+  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: after });
   return {
-    applied: { naturalKey, targetId: targetId ?? live?.id ?? null, ...followUp },
+    applied: { naturalKey, targetId: targetId ?? after?.id ?? null, changes, ...followUp },
     signInPathSection: entry.signInPathSection,
   };
 }
@@ -1479,6 +1548,14 @@ async function applyIntuneWrite(writer, resource, verb, {
   const fields = verb === 'create' || !before
     ? Object.keys(intuneWriteBody(resourceType, desired, verb)).filter((field) => field !== '@odata.type')
     : changedIntuneFields(resourceType, desired, before, verb).filter((field) => field !== '@odata.type');
+  // Trust, certificate and sign-in fields are never sent: a difference is a step for a person.
+  const trustStep = intuneTrustFieldStep(resourceType, desired, before, verb);
+  const trustCompletion = trustStep ? { completion: [trustStep] } : {};
+  // A replace (PUT) would clear the trust settings its body leaves out: refused.
+  if (verb === 'update' && fields.length > 0) {
+    const replace = intuneReplaceTrustRefusal(resourceType, desired, before);
+    if (replace) return { skipped: { naturalKey, reason: replace.reason, completion: replace.completion } };
+  }
   // A backup taken before actions were backed up leaves the live actions alone:
   // an absent list is never sent as an empty one (that would remove them).
   const actionsInBackup = backupHoldsActions(desired);
@@ -1509,16 +1586,20 @@ async function applyIntuneWrite(writer, resource, verb, {
   if (verb === 'create') {
     const existingId = existingTargetIds.get(naturalKey);
     if (existingId) {
-      if (mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: changes() } };
+      if (mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: changes(), ...trustCompletion } };
       const found = await retryOperation(() => writer.read(entry.version, intuneReadPath(resourceType, existingId)));
       if (found?.ok !== true) {
         return { failed: { naturalKey, error: `conflict: a policy with this name exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
       }
-      if (changedIntuneFields(resourceType, desired, found.body, 'create').length === 0) return { applied: { naturalKey, targetId: existingId } };
+      if (changedIntuneFields(resourceType, desired, found.body, 'create').length === 0) {
+        // Equal in what a write sends; a trust field that differs is still a step for a person.
+        const step = intuneTrustFieldStep(resourceType, desired, found.body, 'update');
+        return { applied: { naturalKey, targetId: existingId, ...(step ? { completion: [step] } : {}) } };
+      }
       return { failed: { naturalKey, error: 'conflict: a different policy with this name exists in the target — manual reconciliation required' } };
     }
   }
-  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes() } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes(), ...trustCompletion } };
 
   const journal = await journalBeforeMutation(rollbackClient, {
     runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
@@ -1609,7 +1690,7 @@ async function applyIntuneWrite(writer, resource, verb, {
   }
 
   await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: live });
-  return { applied: { naturalKey, targetId, changes: changes(assignmentsWritten) } };
+  return { applied: { naturalKey, targetId, changes: changes(assignmentsWritten), ...trustCompletion } };
 }
 
 /**
@@ -2000,6 +2081,35 @@ function withoutPath(value, [head, ...rest]) {
   return copy;
 }
 
+/**
+ * Issue #720: what a dry run of a plain update would change, worked out the
+ * way the enforce run decides to write. `fields` names each field of the PATCH
+ * body whose value differs from live (every one when live was not read). A
+ * difference only in a field the PATCH does not send still makes the enforce
+ * run write, so that field is listed instead. A group also lists the licences
+ * it would add (`addLicences`); nothing is written when `fields` is empty and
+ * there is no `addLicences`. A directory setting names each of its `values`
+ * that changes.
+ */
+function plannedUpdateChanges(resource, desired, payload, normalisedDesired) {
+  const sent = Object.keys(payload ?? {}).filter((field) => field !== '@odata.type');
+  const live = resource.live?.payload ?? null;
+  if (!live) return { fields: sent };
+  const liveView = verificationView(forVerification(live, resource), resource.resourceType);
+  const differ = [...new Set(residualDiff(normalisedDesired, liveView, resource.resourceType).map((path) => path.split('.')[0]))];
+  const sentDiffer = sent.filter((field) => differ.includes(field));
+  const fields = sentDiffer.length > 0 ? sentDiffer : differ;
+  const changes = { fields };
+  if (resource.resourceType === 'group') {
+    const add = licencePlan(desired, live, { resourceType: 'group' }).add;
+    if (add.length > 0) changes.addLicences = add.map((licence) => licence.skuId);
+  }
+  if (resource.resourceType === 'groupSetting' && fields.includes('values')) {
+    changes.values = namedValueDrift(desired?.values, live.values).changed;
+  }
+  return changes;
+}
+
 function residualDiff(desired, live, resourceType) {
   const paths = [];
   collectResidualPaths(
@@ -2054,6 +2164,7 @@ export async function applyPatches(writer, governor, patches, {
   readAfterWriteOptions,
   throttleRetryOptions,
 }) {
+  assertNoPlannedIds(appliedIds, mode);
   const applied = [];
   const failed = [];
   const retryOperation = (operation) => retryThrottledGraphOperation(operation, {
@@ -2100,7 +2211,7 @@ export async function applyPatches(writer, governor, patches, {
     if (resourceType === 'conditionalAccessPolicy') body = enforceReportOnly(body);
 
     if (mode === 'dry-run') {
-      applied.push({ naturalKey: patch.naturalKey, targetId: patchId });
+      applied.push({ naturalKey: patch.naturalKey, targetId: isPlannedId(patchId) ? null : patchId });
       continue;
     }
 

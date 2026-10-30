@@ -11962,3 +11962,43 @@ item that needs it stays untouched.
   - the second dry run's planned writes;
   - the capture result and commit;
   - anything left in the tenant.
+
+### Q256: Find why Graph refuses the Restorer's app creation policy POST (Q239's 403), about 5 minutes
+- Drafted by the "Find why service principal creation policy gets 403" thread (2026-10-30). In Q239 the Restorer's
+  `POST beta /policies/servicePrincipalCreationPolicies` answered 403 `Authorization_RequestDenied` (request-id 24075f32-…),
+  though its appRoleAssignments hold Policy.ReadWrite.ApplicationConfiguration. The Restorer already holds every application
+  permission that could plausibly cover this API (Policy.ReadWrite.ApplicationConfiguration, Policy.ReadWrite.PermissionGrant,
+  Application.ReadWrite.All, Directory.ReadWrite.All, RoleManagement.ReadWrite.Directory, Policy.ReadWrite.Authorization), and
+  Microsoft does not document the API. These checks tell apart (a) a permission missing from the token, (b) a refused part of
+  the request body, and (c) Graph refusing app-only writes to this API. The answer decides the code change.
+- Needs: nothing (any build). **Quick; fine to take between other items.**
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for the writes, Collector for reads; global admin not used; grant nothing. Never change the
+  built-in `microsoft-verified-publishers` policy. Never print a token: decode it locally and report only the claim values asked for.
+  Tenant-wide write covered by Marouane's 2026-10-22 approval, as in Q239: put the tenant back right after.
+- Do:
+  1. Write down the tenant's app creation policies (Collector, `GET beta /policies/servicePrincipalCreationPolicies`): ids,
+     isBuiltIn, includes and excludes counts. Expected: the built-in only, includes 2, excludes 0.
+  2. **Token check:** get a Restorer app-only Graph token the usual way and decode its payload locally. Report `aud`, `tid`
+     (pseudonymised is fine), `idtyp`, and whether `roles` contains each of: Policy.ReadWrite.ApplicationConfiguration,
+     Policy.ReadWrite.PermissionGrant, Application.ReadWrite.All, Directory.ReadWrite.All, Policy.Read.All. Also report the
+     Restorer's directory roles (`GET v1.0 /servicePrincipals/{restorer sp id}/memberOf` as the Collector: role names only).
+  3. **Reads as the Restorer:** `GET beta /policies/servicePrincipalCreationPolicies` and
+     `GET v1.0 /policies/servicePrincipalCreationPolicies`. Report status and error code/message for each.
+  4. **Minimal create as the Restorer, same token as step 2:** `POST beta /policies/servicePrincipalCreationPolicies` with only
+     `{"displayName":"KEEL-RT-256-app-creation","description":"KEEL-RT test fixture"}` (no includes, no excludes, no id).
+     Report status, error code, message, request-id and the `date` header verbatim.
+     - If 201: report the body (id, isBuiltIn, includes/excludes counts). Then `POST .../{new id}/includes` with one condition
+       copied from the built-in policy's first include (all its fields except `id`) and report the answer. Then
+       `PATCH .../{new id}` `{"description":"KEEL-RT test fixture 2"}` and report the answer. Then DELETE the fixture (report
+       status) and repeat step 1: the list must match what was written down.
+     - If 403: also try the same POST with an explicit `"id":"keel-rt-256-app-creation"` in the body and report the answer
+       (delete it at once if it is created).
+  5. **Control, same token:** `PATCH beta /policies/servicePrincipalCreationPolicies/microsoft-verified-publishers` is **not**
+     allowed (built-in). Instead, as a control that the token can write policies, `POST v1.0 /policies/permissionGrantPolicies`
+     with `{"id":"keel-rt-256-pgp","displayName":"KEEL-RT-256-pgp","description":"KEEL-RT test fixture"}` (assigned to nothing),
+     report the status, then DELETE it (report status).
+  6. Cleanup: no `KEEL-RT-256-*` object left (app creation policies and permission grant policies). Report anything left.
+- **Report:** step 1 before and after; step 2 claim results and directory roles; steps 3 to 5 status, error code and message
+  verbatim with request-ids; anything left in the tenant.

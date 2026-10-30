@@ -304,6 +304,7 @@ export const DISPLAY_ENUMS = {
     "policy-evaluation": "Policy checks",
     "automation-execution": "Automatic roll-backs",
     "content-effect-approval": "Content-effect approvals",
+    "restore-approval-setting": "Restore approval settings",
     "recovery-completion": "Restore follow-up",
     "incident-recovery": "Incident recovery",
     "incident-recovery-check": "Checks after an incident restore",

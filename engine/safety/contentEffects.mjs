@@ -35,6 +35,7 @@ import { createHash } from 'node:crypto';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
+import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/restoreApprovalSettings.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
 export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices']);
@@ -658,6 +659,13 @@ export async function approveContentEffects(client, { tenantRef, artifactId, app
  */
 export async function assertContentEffectApproval(client, { artifact, effects, at: requestedAt = undefined }) {
   if (effects.length === 0) return null;
+  // The customer's restore approval setting: when every effect's service has the
+  // approval turned off, the effects are made with the restore. The record says so,
+  // so the caller can treat them as cleared (a shorter group lifetime is written).
+  const need = await effectsNeedApproval(client, { tenantRef: artifact.tenantRef, effects });
+  if (!need.required) {
+    return Object.freeze({ notRequired: true, services: need.waived, effectsDigest: contentEffectsDigest(effects) });
+  }
   const at = requestedAt ?? await databaseNow(client);
   const digest = contentEffectsDigest(effects);
   const { rows } = await client.query(
@@ -709,8 +717,13 @@ export async function loadContentEffectReview(client, { tenantRef, artifactId })
       [artifact.id, effectsDigest],
     )
     : { rows: [] };
+  const need = effects.length > 0 ? await effectsNeedApproval(client, { tenantRef, effects }) : { required: false, waived: [] };
   return {
     artifactId: artifact.id,
+    // False when the customer turned restore approvals off for every service these
+    // effects are in: the restore makes them without a second approver.
+    approvalRequired: need.required,
+    approvalWaivedFor: need.waived,
     requestedBy: artifact.requested_by == null ? null : String(artifact.requested_by),
     status: artifact.status,
     createdAt: artifact.created_at,
@@ -726,8 +739,8 @@ const ARTIFACT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 /**
  * Which of these dry runs still wait on their content-effect approval: they carry
  * content effects and no unrevoked approval of exactly those effects by someone other
- * than the requester. The same test the review page applies. Tenant-scoped, two
- * queries whatever the number of dry runs. Lets the approval inbox list an approved
+ * than the requester, in a service whose restore approval is on. The same test the
+ * review page applies. Tenant-scoped, three queries whatever the number of dry runs. Lets the approval inbox list an approved
  * restore whose content effects nobody has approved yet as still waiting.
  */
 export async function dryRunsAwaitingContentEffectApproval(client, { tenantRef, artifactIds }) {
@@ -746,7 +759,10 @@ export async function dryRunsAwaitingContentEffectApproval(client, { tenantRef, 
       WHERE artifact_id::text = ANY($1::text[]) AND revoked_at IS NULL`,
     [artifacts.map((artifact) => artifact.id)],
   );
+  const settings = await getRestoreApprovalSettings(client, { tenantRef });
   for (const artifact of artifacts) {
+    // Effects whose services have restore approvals turned off wait for nobody.
+    if (!(await effectsNeedApproval(client, { tenantRef, effects: artifact.content_effects, settings })).required) continue;
     const digest = contentEffectsDigest(artifact.content_effects);
     const approved = approvals.some((approval) => approval.artifact_id === artifact.id
       && approval.effects_digest === digest

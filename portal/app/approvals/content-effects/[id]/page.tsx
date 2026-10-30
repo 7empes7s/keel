@@ -40,6 +40,8 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
     );
   }
   if (!review) notFound();
+  // Cleared: nothing to approve, already approved, or restore approvals are off for these services.
+  const cleared = review.effects.length === 0 || review.approvals.length > 0 || !review.approvalRequired;
 
   return (
     <>
@@ -48,21 +50,21 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
         generatedAt={new Date().toISOString()}
         parents={PARENTS}
         section="Inbox"
-        status={review.effects.length === 0 || review.approvals.length > 0 ? { tone: "fine", label: "Approved" } : { tone: "soon", label: "Waiting for you" }}
+        status={!review.approvalRequired && review.effects.length > 0 ? { tone: "fine", label: "No approval needed" } : cleared ? { tone: "fine", label: "Approved" } : { tone: "soon", label: "Waiting for you" }}
         title={TITLE}
       />
-      <Verdict text={contentEffectVerdict(review)} tone={review.effects.length === 0 || review.approvals.length > 0 ? "fine" : "soon"} />
+      <Verdict text={contentEffectVerdict(review)} tone={cleared ? "fine" : "soon"} />
       <section aria-labelledby="content-effects-plan-heading" className="report-section ce-section">
         <h2 id="content-effects-plan-heading">The restore</h2>
         <p className="ce-plan">
           Restore of {review.resources} {review.resources === 1 ? "setting" : "settings"}, planned{" "}
           <time dateTime={review.createdAt ?? undefined}>{formatTimestamp(review.createdAt)}</time>, asked for by {review.requestedByName}.
-          {" "}Your approval covers exactly the changes below.
+          {review.approvalRequired ? " Your approval covers exactly the changes below." : " Restore approvals are off for these services, so the changes below are made with the restore."}
         </p>
         <ContentEffectReview
           approvals={review.approvals}
           artifactId={review.artifactId}
-          canApprove={!review.viewerIsRequester}
+          canApprove={!review.viewerIsRequester && review.approvalRequired}
           effects={review.effects}
           effectsDigest={review.effectsDigest}
           names={review.names}

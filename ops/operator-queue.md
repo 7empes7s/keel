@@ -12607,8 +12607,14 @@ item that needs it stays untouched.
   **2026-11-27 07:47 UTC**.
 - Needs: /opt/keel-live at 22eee59f or later (`grep -q "switch templateApplicationLevel" /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
   Run it at the deployed commit B.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 11:50 UTC, keel-operator). Build **B = 6caae1c0**. Restorer for writes, Collector for reads; global admin not used; nothing granted. inboundTrust, automaticUserConsentSettings and b2b* never written.
+  - Before: `templateApplicationLevel` **`newPartners,existingPartners`**; `automaticUserConsentSettings` `{inboundAllowed: true, outboundAllowed: true}`; inboundTrust null. Snapshot S **1ce062ba** (same value).
+  - Drift: PATCH `templateApplicationLevel` → `none` (204; read back `none`).
+  - Dry run **c6071ea2**: one `update`, fields **`templateApplicationLevel` only**, no `manual:` skip. Approval **59120c66-1bb6-4411-bf5d-af14fab5cc46**. Enforce exit 0, `update succeeded`. Captured with `--allow-tenant-setting`; observedAt **2026-10-30T11:44:12.686Z**.
+  - Step 3: dry run **8948b514**: **noop** (0 planned writes).
+  - Step 4: after `templateApplicationLevel` `newPartners,existingPartners`, `automaticUserConsentSettings` unchanged; the whole template read back **equal** to before. Nothing put back by hand.
+  - Step 5: `claude/live-evidence-q269` **77f92fa6** (from origin/master, no PR). pseudonymize check exit 0; secret scan 0. `live evidence multiTenantOrganizationPartnerConfigurationTemplate.update.json: fixture-tested -> live-qualified`.
 - **Test tenant only.** Same rules and capture tooling as Q238. Self-approve; log the approval id. Restorer for writes; grant nothing.
   This changes a tenant-wide setting (2026-10-22 approval): **write down `templateApplicationLevel` first and check it is back at
   the end.** Never change `inboundTrust`, `automaticUserConsentSettings` or any `b2b*` setting.

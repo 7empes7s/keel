@@ -793,7 +793,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Anti-malware policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Safe Links policies (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
+**You do:** Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver while restore approvals are on. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 
 ### Teams organization policies
 
@@ -819,7 +819,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Teams guest messaging configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Put back: Teams guest calling configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 
-**You do:** Meeting policies are changed by hand in the Teams admin center using the backup, because Teams refuses changes to them from KEEL. Which users and groups a policy is assigned to, and settings KEEL does not restore, are changed by hand too. A deleted named messaging policy is recreated assigned to nobody. Turning transcription on for guests needs a second approver.
+**You do:** Meeting policies are changed by hand in the Teams admin center using the backup, because Teams refuses changes to them from KEEL. Which users and groups a policy is assigned to, and settings KEEL does not restore, are changed by hand too. A deleted named messaging policy is recreated assigned to nobody. Turning transcription on for guests needs a second approver while restore approvals are on.
 
 ### Purview retention and data loss prevention
 
@@ -837,7 +837,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Data loss prevention (DLP) policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Data loss prevention (DLP) rules (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Shorter retention, a deleting retention action and a released hold need a second approver; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
+**You do:** Shorter retention, a deleting retention action and a released hold need a second approver while restore approvals are on; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
 
 ### Exchange protection rules, address lists, mobile and retention settings
 
@@ -891,7 +891,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Safe Attachments rules (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Safe Attachments for SharePoint, OneDrive and Teams (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** A rule turned on or off, a deleted object, and settings KEEL does not restore are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a spam, anti-phish or Safe Attachments rule other than its comment needs a second approver. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
+**You do:** A rule turned on or off, a deleted object, and settings KEEL does not restore are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a spam, anti-phish or Safe Attachments rule other than its comment needs a second approver while restore approvals are on. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
 
 ### Exchange admin role groups
 
@@ -902,6 +902,37 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft's built-in groups cannot be deleted, only their members changed.
+
+### Exchange distribution lists and Microsoft 365 group mail settings
+
+**Backed up:**
+
+- Distribution lists and mail-enabled security groups
+- Dynamic distribution lists
+- Microsoft 365 group mail settings
+
+**KEEL can restore:**
+
+- Put back: Distribution list settings
+- Add back: Distribution lists that no longer exist
+
+**You do:** KEEL puts back a distribution list's settings and adds back a deleted list. Its owners, moderators and who may send to it are listed for you to set by hand in the Exchange admin center using the backup. Dynamic distribution lists and Microsoft 365 group mail settings are put back by hand. Members are kept with the Entra group backup.
+
+### Shared, room and equipment mailboxes, contacts and mailbox access
+
+**Backed up:**
+
+- Shared mailboxes
+- Room mailboxes
+- Equipment mailboxes
+- Mail contacts
+- Full Access and other rights on shared, room and equipment mailboxes
+- Send As rights
+- Room and equipment booking rules
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted shared, room or equipment mailbox, a contact, Full Access, Send As and Send on behalf rights, and room booking rules are put back by hand in the Exchange admin center using the backup. Mail in the mailboxes comes back from the content backup.
 
 ### SharePoint site structure
 
@@ -985,7 +1016,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 - Put back: Retention labels (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** KEEL restores only a retention label's text and duration; a shorter duration needs a second approver. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.
+**You do:** KEEL restores only a retention label's text and duration; a shorter duration needs a second approver while restore approvals are on. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.
 
 ### Power Platform and Power BI settings
 

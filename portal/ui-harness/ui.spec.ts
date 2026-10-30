@@ -39,6 +39,7 @@ const PAGES = [
   { name: "policy", hash: "/policies/p1" },
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
+  { name: "approvals-settings", hash: "/approvals/settings" },
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
   { name: "benchmarks", hash: "/benchmarks" },
@@ -845,6 +846,32 @@ test("restore puts back several mailboxes at once, each as its own request", asy
   await panel.getByRole("button", { name: "Send 2 for approval" }).click();
   await expect(panel.locator("h3")).toHaveText("Step 4 of 4: sent to approvers. Nothing changes until one of them approves.");
 });
+
+// SharePoint site structure is offered too: hubs, designs, scripts and a site's missing lists.
+for (const [theme, width] of [["dark", 1440], ["light", 390]] as const) {
+  test(`restore puts back SharePoint site structure from the page · ${theme} ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await open(page, "/restore", theme);
+    await page.locator(".restore-workload", { hasText: "SharePoint site structure" }).getByRole("button", { name: "Choose what to put back" }).click();
+    const panel = page.locator(".workload-restore");
+    await expect(panel.locator("h3")).toHaveText("Step 1 of 4: choose what to put back.");
+    for (const group of ["SharePoint hub sites", "SharePoint site designs", "SharePoint site scripts"]) {
+      await expect(panel.locator(".workload-choice-group", { hasText: group })).toBeVisible();
+    }
+    await expect(panel.getByRole("checkbox", { name: /KEEL-RT Finance \(\/sites\/keel-rt-finance\)/ })).toBeEnabled();
+    await panel.getByRole("checkbox", { name: /KEEL-RT Projects hub/ }).check();
+    await panel.getByRole("checkbox", { name: /KEEL-RT Finance/ }).check();
+    await panel.getByRole("button", { name: "Check what would change" }).click();
+    await expect(panel.locator("h3")).toHaveText("Step 3 of 4: review what will change, then send it for approval.", { timeout: 20_000 });
+    await expect(panel.locator(".restore-ba-table").nth(1)).toContainText("Missing now");
+    await expect(panel.locator(".restore-ba-table").nth(1)).toContainText("Invoices");
+    const results = await new AxeBuilder({ page }).include(".workload-restore").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(results.violations.map((violation) => violation.id)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    expectPlainText(await textOutside(page, ".workload-restore", '[data-layer="record"]'));
+    if (process.env.KEEL_SHOTS) await panel.screenshot({ path: `${process.env.KEEL_SHOTS}/structure-review-${width}-${theme}.png` });
+  });
+}
 
 test("restore of another service fits a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

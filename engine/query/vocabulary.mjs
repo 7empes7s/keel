@@ -223,8 +223,13 @@ export const CONCEPT_WORDS = Object.freeze([
   },
   {
     pattern: /\b(?:mailbox (?:permissions?|delegations?|forwarding|settings?)|shared mailboxes?|(?:mail |email |auto-?)forwarding|send as|full access)\b/i,
-    label: 'Exchange mailbox settings',
-    kinds: ['exchange-mailbox-settings'],
+    label: 'Exchange mailbox settings, shared mailboxes and who has access to them',
+    kinds: ['exchange-recipients', 'exchange-mailbox-settings'],
+  },
+  {
+    pattern: /\b(?:distribution (?:lists?|groups?)|mailing lists?|dynamic distribution|mail-enabled security groups?|room mailboxes?|meeting rooms?|room booking|equipment mailboxes?|mail contacts?|calendar processing)\b/i,
+    label: 'Exchange distribution lists, rooms and contacts',
+    kinds: ['exchange-distribution-groups', 'exchange-recipients'],
   },
   {
     pattern: /\b(?:activesync|mobile device access|owa polic(?:y|ies)|outlook on the web)\b/i,

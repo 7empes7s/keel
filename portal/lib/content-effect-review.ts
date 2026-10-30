@@ -11,6 +11,7 @@ import type { NamedKeys } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { savedNames } from "@/lib/saved-names";
+import { serviceFor } from "@/lib/services";
 import { type EngineRef, personLabel } from "@/lib/sentences";
 
 // Q45: the content effects of ANY persisted dry run, whichever surface made it (the
@@ -57,6 +58,9 @@ export interface ContentEffectReviewView {
   effects: ContentEffect[];
   effectsDigest: string | null;
   approvals: { approvedBy: string; approvedAt: string | null }[];
+  // False when restore approvals are turned off for every service these changes are in.
+  approvalRequired: boolean;
+  approvalWaivedFor: string[];
   // Saved names by key, so each effect names its object, never by id.
   names: NamedKeys;
 }
@@ -70,6 +74,8 @@ export interface EngineContentEffectReview {
   effects: ContentEffect[];
   effectsDigest: string | null;
   approvals: { approvedBy: string; approvedAt: unknown }[];
+  approvalRequired?: boolean;
+  approvalWaivedFor?: string[];
 }
 
 function iso(value: unknown): string | null {
@@ -96,13 +102,22 @@ export function contentEffectReviewView(
     effects: review.effects,
     effectsDigest: review.effectsDigest,
     approvals: review.approvals.map((approval) => ({ approvedBy: nameOf(approval.approvedBy), approvedAt: iso(approval.approvedAt) })),
+    approvalRequired: review.approvalRequired !== false,
+    approvalWaivedFor: review.approvalWaivedFor ?? [],
     names,
   };
+}
+
+function listOf(codes: string[]): string {
+  const items = codes.map((code) => serviceFor(code).name);
+  if (items.length <= 1) return items[0] ?? "these services";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 /** The page's one-line verdict. Pure, so it is tested directly. */
 export function contentEffectVerdict(review: ContentEffectReviewView): string {
   if (review.effects.length === 0) return "This restore changes no kept or shared content. It needs only the usual approval.";
+  if (!review.approvalRequired) return `Restore approvals are turned off for ${listOf(review.approvalWaivedFor)}, so these content changes are made with the restore. No second approval is needed.`;
   if (review.approvals.length > 0) return "These content changes are approved. The restore can run once its own request is approved.";
   if (review.viewerIsRequester) return "You asked for this restore, so someone else must approve its content changes.";
   return "This restore changes kept or shared content. It cannot run until you approve those changes.";

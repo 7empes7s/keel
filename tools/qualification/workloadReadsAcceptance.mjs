@@ -4,6 +4,9 @@
  * tools/release/qualification.mjs can register the gate without an import cycle.
  */
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
+import {
+  DISTRIBUTION_GROUP_FAMILIES, EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_MODULE, EXCHANGE_RECIPIENTS_WORKLOAD, RECIPIENT_FAMILIES,
+} from '../../engine/collect/workloads/exchangeRecipients.mjs';
 import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
@@ -30,6 +33,8 @@ export const READ_FAMILIES = Object.freeze({
   'exchange-mail-flow': MAIL_FLOW,
   'exchange-extended': EXCHANGE_EXTENDED,
   'exchange-role-groups': EXCHANGE_ROLE_GROUPS,
+  [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: DISTRIBUTION_GROUP_FAMILIES,
+  [EXCHANGE_RECIPIENTS_WORKLOAD]: RECIPIENT_FAMILIES,
   'teams-org-policies': TEAMS_POLICIES,
   'teams-voice-policies': TEAMS_EXTENDED,
   'purview-retention-dlp': RETENTION_DLP,
@@ -42,7 +47,9 @@ export const READ_FAMILIES = Object.freeze({
 
 // Read-only workloads name their module here; a written workload's comes from its writes.
 const READ_ONLY_MODULES = Object.freeze({
-  [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE, [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
+  [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE,
+  [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE, [EXCHANGE_RECIPIENTS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE,
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

@@ -6,6 +6,7 @@
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
 import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
+import { serviceFor } from "@/lib/services";
 
 export interface EngineRef {
   kind: string;
@@ -355,6 +356,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "benchmark-evaluation": return typeof subject.verdict === "string"
       ? `A control check ${subject.verdict === "pass" ? "passed" : subject.verdict === "fail" ? "failed" : "could not decide"}`
       : "A control check ran";
+    case "restore-approval-setting": {
+      const service = typeof subject.service === "string" ? serviceFor(subject.service).name : "a service";
+      return subject.approvalRequired === false
+        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for a second person`
+        : `${actorName} turned on restore approvals for ${service}`;
+    }
     case "people-anonymity": return subject.enabled === true
       ? `${actorName} turned on "Hide people's names"`
       : `${actorName} turned off "Hide people's names", so names show again`;

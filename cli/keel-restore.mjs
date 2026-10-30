@@ -136,6 +136,7 @@ import {
 } from '../engine/restore/compensation.mjs';
 import { readUndoAssignments } from '../engine/restore/undoAssignedPolicy.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
+import { effectsNeedApproval } from '../engine/govern/restoreApprovalSettings.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import {
   ComplianceFixRefusal, fixFor, fixedPayload, isWorkloadFix, newestSnapshotWith, parseWorkloadFixTarget, planComplianceFix,
@@ -1190,6 +1191,13 @@ export async function runRestore({
       // Gap D3: only effects whose separate approval was just checked unlock a
       // write the guard otherwise refuses (a shorter group lifetime).
       if (contentEffectApproval) approvedContentEffects = contentEffects.effects;
+    } else if (mode === 'dry-run' && contentEffects.effects.length > 0) {
+      // A dry run shows a high-impact change as waiting for a second approver only
+      // when the customer's restore approval setting asks for one. Unreadable
+      // setting: it waits, the safe reading.
+      const need = await effectsNeedApproval(client, { tenantRef: sourceTenantRef, effects: contentEffects.effects })
+        .catch(() => ({ required: true }));
+      if (!need.required) approvedContentEffects = contentEffects.effects;
     }
 
     const seeds = {

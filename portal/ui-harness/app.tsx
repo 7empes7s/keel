@@ -22,6 +22,8 @@ import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
 import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
+import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
+import type { RestoreApprovalSetting } from "@/lib/restore-approvals";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { NotificationsPage } from "@/components/notifications/notifications-page";
 import { ActivityPage } from "@/components/activity/activity-page";
@@ -236,6 +238,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/api/actions/restore/workload?")) {
     const params = new URL(url, "http://harness").searchParams;
     if (params.get("workload") === "exchange-mailbox-settings") return json({ choices: MAILBOX_CHOICES });
+    if (params.get("workload") === "sharepoint-structure") return json({ choices: STRUCTURE_CHOICES });
     return json({ choices: workloadChoicesFixture(params.get("collection")) });
   }
   if (url.endsWith("/api/actions/restore/workload/dry-run")) {
@@ -245,6 +248,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const boxes = (body.targets ?? []).filter((key) => key !== "organization");
       return json({ runs: boxes.map((target, index) => ({ target, job: { id: `job-mb-${index}` }, artifactId: `mb000000-0000-4000-8000-00000000000${index}` })) }, 202);
     }
+    if (body.workload === "sharepoint-structure") return json({ runs: [{ target: null, job: { id: "job-sp-1" }, artifactId: "sp000000-0000-4000-8000-000000000001" }] }, 202);
     return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
   }
   // Compliance, "Make it pass": the fix is planned, and its dry run is ready.
@@ -255,6 +259,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/api/actions/restore/dry-run/f1c00000") && fixTarget.includes("#")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: fixTarget, field: fixTarget.slice(fixTarget.indexOf("#") + 1), from: "AddXHeader", to: "Quarantine" } } });
   if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
+  if (url.includes("/api/actions/restore/dry-run/sp000000")) return json({ artifact: STRUCTURE_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
   // The undo of r11: a policy that restore created is assigned now, so it waits for a choice.
   if (url.endsWith("/api/actions/restore/compensate") && String(init?.body ?? "").includes(ASSIGNED_UNDO_RESTORE)) {
@@ -1253,6 +1258,12 @@ const HARNESS_NAMER = (key: string) => {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return `Person ${[0, 1, 2, 3].map((index) => letters[(hash >>> (index * 5)) % letters.length]).join("")}`;
 };
+// Restore approvals: on for most services, off for Purview and SharePoint, changed by an admin.
+const RESTORE_APPROVALS: RestoreApprovalSetting[] = ["Entra", "Intune", "Exchange", "Teams", "SharePoint", "Purview", "Power Platform", "Defender"].map((service) => (
+  service === "Purview" || service === "SharePoint"
+    ? { service, approvalRequired: false, changedAt: "2026-10-01T08:00:00Z", changedBy: personRef("8c1e0000-0000-4000-8000-0000000000a1", "admin@contoso.com") }
+    : { service, approvalRequired: true, changedAt: null, changedBy: null }
+));
 const ANONYMITY_ON: AnonymitySetting = { enabled: true, changedAt: "2026-10-01T08:00:00Z", changedBy: displayPerson(MAROUANE, HARNESS_NAMER) };
 const hidePerson = <T,>(ref: T): T => displayPerson(ref, HARNESS_NAMER) as T;
 function hidePeople<T extends { references?: RowReferences; signoffs?: EngineRef[] }>(row: T): T {
@@ -2315,6 +2326,11 @@ const RESTORE_WORKLOADS: RestoreWorkload[] = [
     writes: [{ verb: "Put back", name: "SharePoint tenant sharing and site settings", after: [] }, { verb: "Add back", name: "SharePoint site groups", after: [] }],
     todo: "Settings KEEL does not restore are changed by hand in the SharePoint admin center using the backup.",
     backup: backedUp("c0110000-0000-4000-8000-000000000003", "2026-10-02T05:40:00Z", 41), lastRun: null },
+  { workload: "sharepoint-structure", name: "SharePoint site structure", service: "SharePoint",
+    reads: ["SharePoint hub sites", "SharePoint site designs", "SharePoint site scripts"],
+    writes: [{ verb: "Put back", name: "SharePoint hub site settings", after: [] }, { verb: "Add back", name: "SharePoint site scripts", after: [] }],
+    todo: "Who may use a site design or join a hub is granted by hand in the SharePoint admin center.",
+    backup: backedUp("c0110000-0000-4000-8000-000000000008", "2026-10-02T05:45:00Z", 5), lastRun: null },
   { workload: "onedrive-site-settings", name: "OneDrive settings", service: "SharePoint",
     reads: ["OneDrive site sharing and storage settings"], writes: [],
     todo: "KEEL does not restore OneDrive settings. Change them by hand in the SharePoint admin center using the backup.",
@@ -2372,6 +2388,37 @@ function workloadChoicesFixture(collection: string | null) {
     ],
   };
 }
+// SharePoint site structure: hubs, designs, scripts and named sites' lists and navigation.
+const STRUCTURE_BACKUP = { collectionId: "c0110000-0000-4000-8000-000000000008", takenAt: "2026-10-02T05:45:00Z", items: 5 };
+const STRUCTURE_CHOICES = {
+  workload: "sharepoint-structure", backups: [STRUCTURE_BACKUP], chosen: STRUCTURE_BACKUP,
+  groups: [
+    { kind: "hubSite", name: "SharePoint hub sites", restorable: true, reason: null, items: [
+      { key: "hub-site:51000000-0000-4000-8000-000000000001", name: "KEEL-RT Projects hub", change: null, restorable: true, reason: null, tenantWide: false },
+    ] },
+    { kind: "siteDesign", name: "SharePoint site designs", restorable: true, reason: null, items: [
+      { key: "site-design:52000000-0000-4000-8000-000000000001", name: "KEEL-RT Project site", change: null, restorable: true, reason: null, tenantWide: false },
+    ] },
+    { kind: "siteScript", name: "SharePoint site scripts", restorable: true, reason: null, items: [
+      { key: "site-script:53000000-0000-4000-8000-000000000001", name: "KEEL-RT Add project lists", change: null, restorable: true, reason: null, tenantWide: false },
+    ] },
+    { kind: "siteTemplate", name: "SharePoint site structure: lists, libraries, columns, content types and navigation", restorable: true, reason: null, items: [
+      { key: "site-template:https://contoso.sharepoint.com/sites/keel-rt-finance", name: "KEEL-RT Finance (/sites/keel-rt-finance)", change: null, restorable: true, reason: null, tenantWide: false },
+      { key: "site-template:https://contoso.sharepoint.com", name: "Communication site (/)", change: null, restorable: true, reason: null, tenantWide: true },
+    ] },
+  ],
+};
+const STRUCTURE_ARTIFACT = {
+  id: "sp000000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], contentEffects: [], contentEffectApprovals: [], effectsDigest: null,
+  workloadRestore: {
+    operations: [
+      { resourceKey: "hub-site:51000000-0000-4000-8000-000000000001", kind: "update", changes: [{ field: "Description", before: "Old text", after: "All KEEL-RT project sites" }, { field: "RequiresJoinApproval", before: false, after: true }] },
+      { resourceKey: "site-template:https://contoso.sharepoint.com/sites/keel-rt-finance", kind: "update", changes: [{ field: "lists", before: null, after: ["Invoices", "Shared Documents"] }, { field: "siteColumns", before: null, after: ["InvoiceNumber"] }] },
+    ],
+    manual: [{ resourceKey: "site-template:https://contoso.sharepoint.com/sites/keel-rt-finance", field: null, reason: "left out of what KEEL sends: list items (list items come back from the content backup; permissions, webhooks, custom actions, property bags and document templates are put back by hand)" }],
+    refusals: [],
+  },
+};
 // Exchange mailboxes: several picked at once, one check and one request each.
 const MAILBOX_CHOICES = {
   workload: "exchange-mailbox-settings", backups: [WORKLOAD_BACKUPS[0]], chosen: WORKLOAD_BACKUPS[0],
@@ -2582,6 +2629,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
+    case "/approvals/settings": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
+      <RestoreApprovalSettingsCard canChange now={now} settings={RESTORE_APPROVALS} />
+      <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}

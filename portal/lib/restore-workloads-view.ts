@@ -85,6 +85,7 @@ export const PAGE_RESTORE_WORKLOADS: readonly string[] = [
   "exchange-mailbox-settings", "teams-settings",
   "exchange-mail-flow", "exchange-extended", "teams-org-policies", "teams-voice-policies",
   "purview-retention-dlp", "purview-governance", "purview-labels",
+  "sharepoint-structure",
 ];
 
 // Mailboxes and teams: one dry run, and one approval, per chosen mailbox or team

@@ -44,6 +44,7 @@ const ENUMS = Object.freeze({
   limitedAccessFiles: ['OfficeOnlineFilesOnly', 'WebPreviewableFiles', 'OtherFiles'],
   specialCharacters: ['NoPreference', 'Allowed', 'Disallowed'],
   restrictedSearch: ['Disabled', 'Enabled'],
+  sharingState: ['Unspecified', 'On', 'Off'],
 });
 
 /** An enum value by name: a number (or a numeric string) is looked up, a name passes through. */
@@ -120,6 +121,8 @@ export const FAMILIES = Object.freeze({
       ConditionalAccessPolicy: (value) => enumName(ENUMS.conditionalAccess, value),
       LimitedAccessFileType: (value) => enumName(ENUMS.limitedAccessFiles, value),
       SpecialCharactersStateInFileFolderNames: (value) => enumName(ENUMS.specialCharacters, value),
+      ODBAccessRequests: (value) => enumName(ENUMS.sharingState, value),
+      ODBMembersCanShare: (value) => enumName(ENUMS.sharingState, value),
       DisabledWebPartIds: lowerSorted,
     }),
   }),
@@ -225,8 +228,12 @@ async function readFamily(family, { powershell }) {
   let bodies;
   if (spec.whole) {
     const body = allowedSitesBody(output);
-    // An answer KEEL cannot read as URLs is counted as unidentified, never kept.
-    if (!body) return { ...emptyRead(), unidentified: 1 };
+    // An answer KEEL cannot read as URLs is a failed read, never kept or counted as proof.
+    if (!body) {
+      return emptyRead({
+        failure: { family, operation: spec.operation, status: 'failed', error: { code: 'BAD_ANSWER', message: `${spec.cmdlet} did not answer with site URLs` } },
+      });
+    }
     bodies = [body];
   } else {
     bodies = output.map((body) => (spec.prepare ? spec.prepare(body) : body));

@@ -160,6 +160,7 @@ test('each read is one tenant-wide object with declared fields, enums by name, s
   assert.equal(tenant.SpecialCharactersStateInFileFolderNames, 'Allowed');
   assert.deepEqual(tenant.DisabledWebPartIds, ['a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002']);
   assert.equal(tenant.LegacyAuthProtocolsEnabled, false);
+  assert.equal(tenant.ODBAccessRequests, 'Unspecified');
 
   assert.deepEqual(byKey['sync-client:tenant'].fields.AllowedDomainList, ['aaaaaaaa-0000-4000-8000-000000000001', 'bbbbbbbb-0000-4000-8000-000000000002']);
   assert.deepEqual(byKey['sync-client:tenant'].fields.ExcludedFileExtensions, ['exe', 'pst']);
@@ -208,6 +209,7 @@ test('gaps are never silent: empty, missing fields, failures, and no Copilot lic
 
   const odd = await read(fakeTenant({ 'Get-PnPTenantRestrictedSearchAllowedList': [{ nope: 1 }] }), { families: ['restrictedSearchAllowedSites'] });
   assert.equal(odd.outcome, 'failed', 'an answer KEEL cannot read as site URLs is never kept as an empty list');
+  assert.equal(odd.discovery.families.restrictedSearchAllowedSites.status, 'failed', 'so a live capture never counts it as proof');
 });
 
 test('each read turns on with its own proof; a changed sharing default is a change', async (t) => {

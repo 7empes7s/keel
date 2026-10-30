@@ -406,3 +406,19 @@ test('per-site admin settings come from the same PnP answer, under their own led
   assert.ok(Object.keys(SITE_SETTINGS_FIELDS).every((field) => entry.fieldCoverage[field].operation === SITE_SETTINGS_OPERATION));
   assert.equal(second.result.outcome, 'complete');
 });
+
+test('the live capture proves the per-site settings only when every one of them was returned', async () => {
+  const { readSharePointSiteSharing } = await import('../../tools/qualification/workloadReadsLive.mjs');
+  const full = { Url: `https://${HOST}/sites/site1`, SharingCapability: 2, LockState: 'Unlock', ConditionalAccessPolicy: 0, SensitivityLabel: 'x',
+    DenyAddAndCustomizePages: 2, RestrictedAccessControl: false, RestrictedAccessControlGroups: [], StorageQuota: 1, ExternalUserExpirationInDays: 0 };
+  const capture = (sites) => readSharePointSiteSharing({
+    powershell: fakeCmdletContainer({ module: 'PnP.PowerShell', allowlist: { 'Get-PnPTenantSite': ['Identity'] }, answer: () => sites }).powershell,
+  });
+  const proven = await capture([full]);
+  assert.deepEqual(proven.discovery.families['site-settings'], { status: 'read', objects: 1 });
+  const { LockState, ...noLock } = full;
+  const short = await capture([noLock]);
+  assert.equal(short.discovery.families['site-sharing'].status, 'read', 'the sharing field is proven on its own');
+  assert.equal(short.discovery.families['site-settings'].status, 'partial');
+  assert.match(short.failures[0].error.message, /lockState/);
+});

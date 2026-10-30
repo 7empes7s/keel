@@ -60,14 +60,17 @@ import { readConfigFile } from '../../engine/config/configFile.mjs';
 export async function readSharePointSiteSharing({ powershell }) {
   try {
     const sites = await readSiteSharing(powershell);
-    // The per-site settings come from the same answer. They count as read only when at
-    // least one listed site carries one of them, so a module that leaves them all out
-    // never switches them on.
-    const settings = [...sites.values()].some((body) => Object.values(SITE_SETTINGS_FIELDS).some((pick) => pick(body) !== undefined && pick(body) !== null));
+    // The per-site settings come from the same answer. They count as read only when each
+    // of them is carried by at least one listed site, so a module that leaves one out never
+    // switches them on, and the missing names are reported.
+    const bodies = [...sites.values()];
+    const missing = Object.entries(SITE_SETTINGS_FIELDS)
+      .filter(([, pick]) => !bodies.some((body) => pick(body) !== undefined && pick(body) !== null)).map(([field]) => field);
+    const settings = sites.size === 0 || missing.length === 0;
     return {
-      outcome: settings || sites.size === 0 ? 'complete' : 'partial',
-      discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size }, 'site-settings': { status: settings || sites.size === 0 ? 'read' : 'partial', objects: sites.size } } },
-      failures: settings || sites.size === 0 ? [] : [{ family: 'site-settings', error: { code: 'NOT_RETURNED', message: 'no listed site carried a lock state, access policy, label, custom script, restricted access or quota setting' } }],
+      outcome: settings ? 'complete' : 'partial',
+      discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size }, 'site-settings': { status: settings ? 'read' : 'partial', objects: sites.size } } },
+      failures: settings ? [] : [{ family: 'site-settings', error: { code: 'NOT_RETURNED', message: `no listed site carried: ${missing.join(', ')}` } }],
     };
   } catch (error) {
     const failed = { status: 'failed', objects: 0 };

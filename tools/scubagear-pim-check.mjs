@@ -58,6 +58,27 @@ async function readAll(transport, path) {
   return items;
 }
 
+/**
+ * One person can hold a role both permanently and through an activation or a second schedule; a field
+ * is "not set" if any copy lacks it. Both sides merge the same way.
+ */
+function merge(map, key, entry) {
+  const seen = map.get(key);
+  map.set(key, seen ? { start: seen.start === 'not set' ? seen.start : entry.start, end: seen.end === 'not set' ? seen.end : entry.end } : entry);
+}
+
+/**
+ * A token failure's description carries trace and correlation ids, a timestamp and often the app or
+ * tenant id, so keep only the HTTP status and the AADSTS code.
+ */
+export function tokenFailure(error) {
+  const message = String(error?.message ?? '');
+  const status = /^Token request failed \((\d+)\)/.exec(message)?.[1];
+  const code = /AADSTS\d+/.exec(message)?.[0];
+  if (!status) return new Error('token request failed before Entra answered');
+  return new Error(`token request failed (${status}${code ? `, ${code}` : ''})`);
+}
+
 /** Reads what each side needs. Pure apart from the injected transport. */
 export async function readPimLive(transport) {
   const facts = {};
@@ -76,18 +97,14 @@ export function comparePim({ facts, instances }) {
     // Keel's adapter side, keyed like the instances (who holds the role, and where).
     const keel = new Map();
     for (const assignment of roleAssignmentsOf(facts, role.templateId)) {
-      keel.set(`${assignment.PrincipalId}|${assignment.DirectoryScopeId}`, { start: state(assignment.StartDateTime), end: state(assignment.EndDateTime) });
+      merge(keel, `${assignment.PrincipalId}|${assignment.DirectoryScopeId}`, { start: state(assignment.StartDateTime), end: state(assignment.EndDateTime) });
     }
     const scuba = new Map();
     let throughGroup = 0;
     for (const instance of instances.filter((candidate) => candidate.roleDefinitionId === role.templateId)) {
       // Keel cannot build a role held through a group (its rules read "could not check"), so those are only counted.
       if (instance.memberType === 'Group') { throughGroup += 1; continue; }
-      const key = keyOf(instance);
-      const seen = scuba.get(key);
-      const entry = { start: state(instance.startDateTime), end: state(instance.endDateTime) };
-      // One person can hold a role both permanently and through an activation; a field is "not set" if any copy lacks it.
-      scuba.set(key, seen ? { start: seen.start === 'not set' ? seen.start : entry.start, end: seen.end === 'not set' ? seen.end : entry.end } : entry);
+      merge(scuba, keyOf(instance), { start: state(instance.startDateTime), end: state(instance.endDateTime) });
     }
     const found = [];
     for (const [key, mine] of keel) {
@@ -104,7 +121,10 @@ export function comparePim({ facts, instances }) {
     differences += found.length;
     roles.push({ role: role.displayName, keel: keel.size, scubaGear: scuba.size, throughGroup, differences: found, keelSays: verdicts(keel), scubaGearSays: verdicts(scuba) });
   }
-  return { agree: differences === 0, roles, privilegedRoles: PRIVILEGED_ROLES.length, instances: instances.length };
+  // A role held through a group is one Keel cannot check, and ScubaGear's verdict would rest on holders left out
+  // here, so the two cannot be said to agree.
+  const heldThroughGroup = roles.some((entry) => entry.throughGroup > 0);
+  return { agree: differences === 0 && !heldThroughGroup, heldThroughGroup, roles, privilegedRoles: PRIVILEGED_ROLES.length, instances: instances.length };
 }
 
 async function main(argv) {
@@ -116,12 +136,14 @@ async function main(argv) {
   }
   try {
     const config = readConfigFile(path, { readFile: readFileSync, what: 'collector settings' });
-    const transport = readOnlyGraphTransport(async () => (await getToken(config)).accessToken);
+    const transport = readOnlyGraphTransport(async () => {
+      try { return (await getToken(config)).accessToken; } catch (error) { throw tokenFailure(error); }
+    });
     const result = comparePim(await readPimLive(transport));
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.agree ? 0 : 1;
   } catch (error) {
-    // The message names the read that failed, never a token or a value.
+    // The message names the read that failed or the token status, never a token, id or value.
     process.stderr.write(`scubagear-pim-check: ${error.message}\n`);
     return 2;
   }

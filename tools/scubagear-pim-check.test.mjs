@@ -4,7 +4,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { FIXTURE_BACKUPS } from '../engine/benchmarks/scubagear/fixtureTenant.mjs';
-import { KEEL_READS, SCUBA_READ, comparePim, readPimLive } from './scubagear-pim-check.mjs';
+import { KEEL_READS, SCUBA_READ, comparePim, readPimLive, tokenFailure } from './scubagear-pim-check.mjs';
 
 const facts = {
   roleDefinition: FIXTURE_BACKUPS.roleDefinition,
@@ -69,6 +69,7 @@ test('missing and extra assignments are named, a group holder is only counted, a
   assert.ok(all.includes('an assignment Keel lists that ScubaGear does not'));
   assert.ok(all.includes('an assignment ScubaGear lists that Keel does not'));
   assert.equal(result.roles.reduce((sum, role) => sum + role.throughGroup, 0), 1);
+  assert.equal(result.heldThroughGroup, true);
   const text = JSON.stringify(result);
   assert.doesNotMatch(text, /[0-9a-f]{8}-[0-9a-f]{4}-/i, 'no object id');
   assert.doesNotMatch(text, /KEEL-RT-|\d{4}-\d{2}-\d{2}T/, 'no name or date');
@@ -95,4 +96,36 @@ test('the live read sends GET only, to the reads each side makes, and follows ne
   await assert.rejects(readPimLive(async () => ({ status: 403, body: null })), /HTTP 403/);
   const outside = async (url) => ({ status: 200, body: { value: [], '@odata.nextLink': url.includes('evil') ? null : 'https://evil.example/next' } });
   await assert.rejects(readPimLive(outside), /outside Microsoft Graph/);
+});
+
+test('a role held through a group means the two cannot agree, even with no other difference', () => {
+  const instances = matchingInstances();
+  instances.push({ ...instances[0], principalId: 'bbbbbbbb-0000-4000-8000-0000000000ff', memberType: 'Group' });
+  const result = comparePim({ facts, instances });
+  assert.ok(result.roles.every((role) => role.differences.length === 0));
+  assert.equal(result.heldThroughGroup, true);
+  assert.equal(result.agree, false);
+});
+
+test('two Keel schedules for one holder merge the way ScubaGear copies do: a never-ending one is not hidden by a later dated one', () => {
+  const [first] = facts.roleAssignmentSchedule;
+  const permanent = { ...first, id: `${first.id}-permanent`, scheduleInfo: { startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'noExpiration' } } };
+  const dated = { ...first, id: `${first.id}-dated`, scheduleInfo: { startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2027-01-01T00:00:00Z' } } };
+  const schedules = [permanent, dated, ...facts.roleAssignmentSchedule.slice(1)];
+  const twice = { ...facts, roleAssignmentSchedule: schedules };
+  const key = (x) => `${x.principalId}|${x.roleDefinitionId}|${x.directoryScopeId ?? '/'}`;
+  // ScubaGear sees only the dated copy.
+  const instances = matchingInstances().map((instance) => (key(instance) === key(first)
+    ? { ...instance, startDateTime: '2026-01-01T00:00:00Z', endDateTime: '2027-01-01T00:00:00Z' } : instance));
+  const result = comparePim({ facts: twice, instances });
+  assert.equal(result.agree, false);
+  assert.ok(result.roles.flatMap((role) => role.differences).includes('end date: Keel not set, ScubaGear set'));
+});
+
+test('a token failure keeps only the status and the AADSTS code', () => {
+  const raw = new Error("Token request failed (400): unauthorized_client — AADSTS700016: Application with identifier "
+    + "'11111111-2222-4333-8444-555555555555' was not found in the directory 'contoso.onmicrosoft.com'. Trace ID: "
+    + '66666666-7777-4888-9999-000000000000 Correlation ID: 12345678-1234-4123-8123-123456789012 Timestamp: 2026-10-30 21:00:00Z');
+  assert.equal(tokenFailure(raw).message, 'token request failed (400, AADSTS700016)');
+  assert.equal(tokenFailure(new Error('getaddrinfo ENOTFOUND login.microsoftonline.com')).message, 'token request failed before Entra answered');
 });

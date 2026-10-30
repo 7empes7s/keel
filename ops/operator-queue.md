@@ -12340,7 +12340,15 @@ item that needs it stays untouched.
   - A put-back refused with `PolicyLockConflictException` is retried every 5 minutes, up to 18 times (90 minutes).
   Expect the run to sit about an hour on the retention policy put-back, as in Q260 step 3. That is normal, not a hang.
 - Needs: PR #756 merged and deployed (build B). Check: `grep -q NoConfirmPrompt /opt/keel-live/ops/powershell/run-cmdlet.ps1`.
-- Status: todo
+- Status: done
+- Result: done (2026-10-30 07:55 UTC, keel-operator). Build **B = dd50b39d** (the #756 merge; `NoConfirmPrompt` present). Purview Restorer for writes, Purview Collector for reads; global admin not used; nothing granted; no hand redeploys.
+  - Step 1: `KEEL-RT-retention` DistributionStatus **Error** (not Pending), so the capture started at once.
+  - Step 2: capture **exit 0** (07:37:57 → 07:47:55, 10 min), its own verify ok. **Proven 4/4:** `purview.retention-policy.update`, `purview.retention-rule.update`, `purview.dlp-policy.update`, `purview.dlp-rule.update`. Not proven: none. `needsManualRevert`: **[]**. observedAt **2026-10-30T07:47:55.879Z**.
+    - Standalone verify as written: exit 0 but `ok: false`, "writer capture expected tenant/build identity required" (the same command form as Q234). With `--tenant sha256:f7b3959300856957 --build <B>` added: **exit 0, ok true, no failures**.
+    - Retention put-back: the write (07:38:54) and both put-backs are logged `failed` / `CMDLET_ERROR` `[],Write-ErrorMessage` (the log does not say which exception). The first put-back (07:39:17) was refused and the retry 5 min later (07:44:29) saved: **1 refused put-back, about 5 minutes of waiting**, not the hour expected.
+  - Step 3: `pseudonymize.mjs check`: every id a pseudonym in both files. Secret scan: 0 hits.
+  - Step 4: branch **`claude/live-evidence-purview-retention-dlp-4`**, commit **dfdc8fa8** (from origin/master, no PR). `keel-workload-collect import`: `workload-writers-purview-retention-dlp-live-acceptance.json` evidenceBuild dd50b39d, reads 0, **writes 4**; `refused: []`.
+  - Left in the tenant: all four fixtures' Comment is `KEEL test fixture` (Collector read 07:50). The retention policy is redeploying (Pending, WhenChanged 07:44:41), as expected. Nothing else changed.
 - **Tenant (test tenant only, standing authorizations; nothing to approve):** same as Q234 for this workload. One Comment write on
   each of the four `KEEL-RT-` fixtures (retention policy, retention rule, DLP policy, DLP rule), read back, put back, read back.
   Restorer for writes, Collector for reads, purview configs. Global admin not used. Nothing granted. No CA, no break-glass.

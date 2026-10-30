@@ -82,6 +82,13 @@ const SETTING_TEMPLATES = [
 const TEMPLATE = { id: 'tmpl-win-24h2', displayName: 'Security Baseline for Windows 10 and later', displayVersion: 'Version 24H2', lifecycleState: 'active', platforms: 'windows10', technologies: 'mdm', templateFamily: 'baseline' };
 const CATEGORIES = new Map([['cat-av', 'Defender'], ['cat-asr', 'Attack Surface Reduction'], ['cat-fw', 'Firewall']]);
 
+test('without a default, a recommended definition allowing one option is Microsoft\'s value', () => {
+  const template = { settingDefinitionId: 'x', choiceSettingValueTemplate: { defaultValue: null, recommendedValueDefinition: { allowedOptions: [{ itemId: 'x_1' }] } } };
+  assert.deepEqual(templateSettings(template), [{ id: 'x', expected: ['x_1'] }]);
+  const several = { settingDefinitionId: 'y', choiceSettingValueTemplate: { recommendedValueDefinition: { allowedOptions: [{ itemId: 'y_0' }, { itemId: 'y_1' }] } } };
+  assert.deepEqual(templateSettings(several), [{ id: 'y', expected: null }]);
+});
+
 test('a template lists every setting with its recommended value, children included, groups left out', () => {
   const settings = SETTING_TEMPLATES.flatMap((entry) => templateSettings(entry.settingInstanceTemplate));
   assert.deepEqual(settings, [
@@ -254,8 +261,14 @@ test('templates are read at most once a day, only the newest reads are kept, and
   for (let index = 1; index <= 4; index += 1) {
     await recordBaselineTemplateRead(client, { tenantRef, read: { outcome: 'failed', error: 'x', templates: [], failures: [] }, readAt: new Date(now.getTime() + index * 1000) });
   }
-  const { rows } = await client.query('SELECT count(*)::int AS n FROM intune_baseline_template_read WHERE tenant_ref = $1', [tenantRef]);
-  assert.equal(rows[0].n, 3);
+  // The newest 3 stay, plus the newest usable read, so failures never empty the page.
+  const { rows } = await client.query('SELECT outcome FROM intune_baseline_template_read WHERE tenant_ref = $1 ORDER BY read_at', [tenantRef]);
+  assert.deepEqual(rows.map((row) => row.outcome), ['complete', 'failed', 'failed', 'failed']);
+  assert.equal((await intuneBaselineResults(client, { tenantRef, now: new Date(now.getTime() + 10_000) })).templates.outcome, 'complete');
+  // A partial read counts as fresh, so a template that keeps failing is retried daily.
+  const partial = tenant();
+  await recordBaselineTemplateRead(client, { tenantRef: partial, read: { outcome: 'partial', templates: [], failures: [] }, readAt: now });
+  assert.equal(await templatesDue(client, { tenantRef: partial, now }), false);
 
   const broken = { query: async () => { throw new Error('database gone'); } };
   assert.equal(await refreshBaselineTemplates(broken, { tenantRef, reader, now, logger }), null);

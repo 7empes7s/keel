@@ -12903,7 +12903,7 @@ item that needs it stays untouched.
 - **Report:** B; break-glass readiness; S and baseline ids; drift id; remediate exit code, artifact id and gate outcome; what is
   left in the tenant (expected: nothing) and the active baseline.
 
-### Q274: Live read check of the Exchange sharing, client access, transport and new mailbox default reads, then turn them on (read-only toward the tenant, after PR #791), about 15 minutes
+### Q280: Live read check of the Exchange sharing, client access, transport and new mailbox default reads, then turn them on (read-only toward the tenant, after PR #791), about 15 minutes
 - Drafted by the "Back up Exchange org access settings" thread (2026-10-30). Code: PR #791. Two new read-only workloads, both
   shipped `disabled` until a live read record is imported:
   `exchange-org-access` (Get-AuthenticationPolicy, Get-SharingPolicy, Get-OrganizationRelationship, Get-IntraOrganizationConnector,
@@ -12950,7 +12950,7 @@ item that needs it stays untouched.
   No parameters. Declared fields come from Microsoft's documentation, not a live answer; this item tells us which to drop.
 - Needs: /opt/keel-live at the #796 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedExchangeOrgConfig`); scripts are mounted from the checkout, so no image rebuild
-  is expected. Independent of Q274 (either can run first).
+  is expected. Independent of Q280 (either can run first).
 - Status: todo
 - Result:
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
@@ -12958,7 +12958,7 @@ item that needs it stays untouched.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
   1. **Capture** with the Exchange config the workloads use (`powershellConfigs.exchange` in
-     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q274 step 1:
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q280 step 1:
      ```bash
      w=exchange-org-config
      node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
@@ -12971,7 +12971,7 @@ item that needs it stays untouched.
      an issue. If a cmdlet is missing for the app (CommandNotFoundException) or denied, report which; do not grant anything.
   2. **Evidence:** commit the record to `claude/live-evidence-exchange-org-config` (from `origin/master`, that file only,
      checked for secrets) and push. No PR.
-  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q274 step 3):
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q280 step 3):
      `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
   4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and,
      for `exchange-org-config`, its per-family `discovery.families` statuses, `discovery.empty`, `fieldCounts` and
@@ -13044,7 +13044,7 @@ item that needs it stays untouched.
   Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
-  1. **Capture** with the Security & Compliance config the workload uses (as in Q274 step 1):
+  1. **Capture** with the Security & Compliance config the workload uses (as in Q280 step 1):
      ```bash
      w=purview-retention-dlp
      node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \

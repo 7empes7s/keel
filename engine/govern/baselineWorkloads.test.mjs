@@ -21,6 +21,7 @@ import { after, test } from 'node:test';
 
 import { activateBaseline, listBaselines, reinstateBaseline, resnapshotBaseline, seedFromSnapshot } from './baseline.mjs';
 import { acceptServiceChange } from './workloadApproved.mjs';
+import { baselineCompliance } from './baselineCompliance.mjs';
 import { detectWorkloadDrift } from './workloadDrift.mjs';
 import { baselineWorkloads, nearestWorkloadReads } from './baselineWorkloads.mjs';
 import { completeSnapshot, createSnapshot } from '../store/db.mjs';
@@ -129,6 +130,11 @@ test('accepting a service change updates the active baseline; a removal takes it
   await acceptServiceChange(client, { tenantRef, changeId: removed.id, actor: 'test-operator', reason: 'retired' });
 
   assert.deepEqual(await rowsOf(client, baselineId), new Map([[`${MAIL}|${RULE}`, second]]));
+  // The Baselines page reads the settings it holds now, per service.
+  const [shown] = await baselineCompliance(client, { tenantRef });
+  assert.equal(shown.serviceSettingCount, 1);
+  assert.deepEqual(shown.capture.services.map(({ workload, settings }) => [workload, settings]), [[MAIL, 1]]);
+  assert.ok(shown.capture.servicesNotRead.includes(TEAMS));
   assert.equal((await approved(client, tenantRef)).get(RULE).collection_id, second);
   assert.notEqual(first, second, 'the row moved off the read the baseline was captured from');
 });

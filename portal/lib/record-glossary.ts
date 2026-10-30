@@ -363,6 +363,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Set by": fact("Set by", "Who set this."),
   "Capture basis": fact("Made from", "What the approved setup was captured from."),
   "Types captured": fact("Types included", "The kinds of setting the approved setup holds."),
+  "Service reads captured": fact("Service reads included", "The service reads the approved setup holds, with each one's setting count and read time."),
   "Snapshot completed at": fact("Backup finished", "When the source backup finished."),
   "Settings captured": count("Settings included", "How many settings the approved setup holds."),
 

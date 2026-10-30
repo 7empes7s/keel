@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { kindMatch, matchScore, overallScore, plainLabel, quickComparisons, serviceSummaries, setupStatus, setupVerdict } from "@/lib/baselines-view";
+import { coverageWords, kindMatch, matchScore, overallScore, plainLabel, quickComparisons, serviceSettingsWords, serviceSummaries, setupStatus, setupVerdict } from "@/lib/baselines-view";
 import type { BaselineRecord } from "@/lib/types";
 
 const NOW = "2026-10-02T09:40:00Z";
@@ -90,6 +90,45 @@ test("each service and the whole tenant get a match percentage of settings", () 
   // Without the counts, no service is scored.
   assert.ok(serviceSummaries(active, [], []).every((summary) => summary.score === null));
   assert.equal(overallScore(serviceSummaries(active, [], [])), null);
+});
+
+test("service reads the approved setup holds are measured against it, the rest against Keel's first read", () => {
+  const holding = {
+    ...active,
+    serviceSettingCount: 42,
+    capture: {
+      ...active.capture,
+      services: [
+        { workload: "exchange-mail-flow", settings: 30, collectedAt: "2026-09-30T02:00:00Z", outcome: "complete" },
+        { workload: "exchange-mailbox-settings", settings: 12, collectedAt: "2026-09-30T02:00:00Z", outcome: "complete" },
+      ],
+      servicesNotRead: ["purview-labels"],
+    },
+  } as unknown as BaselineRecord;
+  const summaries = serviceSummaries(holding, [
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
+  ], ["group"], [
+    { type: "exchange-mail-flow", read: true },
+    { type: "exchange-mailbox-settings", read: false },
+    { type: "teams-org-policies", read: true },
+  ]);
+  const by = new Map(summaries.map((summary) => [summary.service.name, summary]));
+  const exchange = by.get("Exchange Online")!;
+  assert.equal(exchange.basis, "approved-setup");
+  assert.deepEqual([exchange.changed, exchange.inLine, exchange.notCovered, exchange.notRead], [1, [], ["exchange-mailbox-settings"], ["exchange-mailbox-settings"]]);
+  assert.equal(by.get("Teams")!.basis, "previous-backup");
+  assert.equal(coverageWords(holding), "10 settings in 3 kinds, and 42 service settings");
+  assert.match(serviceSettingsWords(holding)!, /^Includes 2 service reads \(.+\)\. Never read when captured: .+\.$/);
+  assert.equal(coverageWords(active), "10 settings in 3 kinds");
+  // Accept removed every held service setting: no "and 0 service settings".
+  assert.equal(coverageWords({ ...holding, serviceSettingCount: 0 } as BaselineRecord), "10 settings in 3 kinds");
+  assert.equal(serviceSettingsWords(active), null);
+  // A held service is scored against the settings the approved setup holds for it.
+  const scored = serviceSummaries(holding, [], [], [
+    { type: "exchange-mail-flow", read: true, itemCount: 29, open: { added: 1, modified: 2, removed: 0 } },
+  ], {});
+  // 30 held, 2 changed no longer match, 1 added is extra: 28 of 31.
+  assert.deepEqual(scored.find((summary) => summary.service.name === "Exchange Online")!.score, { passed: 28, evaluated: 31, excepted: 0, percent: 90 });
 });
 
 test("the status and verdict say how the tenant stands, in words", () => {

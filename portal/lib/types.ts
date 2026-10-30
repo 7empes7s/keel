@@ -208,6 +208,8 @@ export interface BaselineRecord {
   setBy: string;
   active: boolean;
   resourceCount: number;
+  // Service settings it holds (Exchange, SharePoint, Teams, Purview, Power Platform).
+  serviceSettingCount?: number;
   // Roadmap task-130: who set it, resolved to a name (absent where not resolved).
   setByRef?: Ref;
   // Roadmap task-87: version chain, what it captured and what changed since.
@@ -230,6 +232,11 @@ export interface BaselineCapture {
   types: string[];
   // Kinds left out because Microsoft kept failing to answer when it was captured (#666).
   leftOut?: { type: string; reason: string }[];
+  // Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform settings it
+  // holds: one entry per service read it captured, with the settings it holds now.
+  services?: { workload: string; settings: number; collectedAt: string | null; outcome: string | null }[];
+  // Services with no read to capture when it was captured.
+  servicesNotRead?: string[];
 }
 
 export interface BaselineChanges {

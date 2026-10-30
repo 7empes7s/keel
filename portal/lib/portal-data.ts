@@ -486,6 +486,7 @@ async function baselinesWithCapture(client: KeelClient, ref: string, now: Date):
     return {
       ...baseline,
       version: Number(entry.version ?? 1),
+      serviceSettingCount: Number(entry.serviceSettingCount ?? 0),
       supersedesId: (entry.supersedesId as string | null) ?? null,
       supersededById: (entry.supersededById as string | null) ?? null,
       supersededAt: (entry.supersededAt as string | null) ?? null,

@@ -29,11 +29,9 @@
  *    The read-back checks the whole sets, not only what was written. Otherwise
  *    they are a follow-up step. Built-in microsoft-* policies are
  *    Microsoft-managed and skipped.
- *  - An app creation policy (servicePrincipalCreationPolicy, beta, restore
- *    gaps batch 21) is written the same way: its name and description, then
- *    its include and exclude condition sets, synced to exactly the backup's.
- *    Graph gives it its own id, so a create first looks for a custom policy
- *    with the same name. Built-in policies are skipped.
+ *  - An app creation policy (servicePrincipalCreationPolicy) is not written:
+ *    Graph lets only Entra directory roles read or write it, never
+ *    application permissions alone (Q256), so it is restored by hand.
  *  - A consent is matched on (app, resource, consent type, user): Graph keeps
  *    one grant per such pair, so a re-run updates the grant it made instead of
  *    adding a second one. Its scopes are written as the backup had them.
@@ -71,9 +69,6 @@ const PERMISSION_GRANT_CONDITION_FIELDS = Object.freeze([
   'clientApplicationTenantIds', 'clientApplicationPublisherIds', 'clientApplicationsFromVerifiedPublisherOnly',
   'certifiedClientApplicationsOnly',
 ]);
-const SERVICE_PRINCIPAL_CREATION_CONDITION_FIELDS = Object.freeze([
-  'applicationIds', 'applicationPublisherIds', 'applicationsFromVerifiedPublisherOnly', 'applicationTenantIds', 'certifiedApplicationsOnly',
-]);
 
 export const DIRECTORY_POLICY_RECORDS = Object.freeze({
   tokenLifetimePolicy: stsPolicy('tokenLifetimePolicy', '/policies/tokenLifetimePolicies', 'tokenlifetimepolicy'),
@@ -91,25 +86,6 @@ export const DIRECTORY_POLICY_RECORDS = Object.freeze({
     createFields: Object.freeze(['id', 'displayName', 'description']),
     updateFields: Object.freeze(['displayName', 'description']),
     conditionFields: PERMISSION_GRANT_CONDITION_FIELDS,
-  }),
-  // Restore gaps, batch 21. An app creation policy: which apps may get an
-  // enterprise app (service principal) in the tenant. Beta only and not in
-  // Microsoft's Graph docs; the route is the Graph beta metadata's (includes
-  // and excludes are contained condition sets). Graph expands the condition
-  // sets on every read of the policy and refuses $expand (Q111 step 7), so
-  // they are read from the policy itself. Its id is Graph's; a recreated
-  // policy is found again by its name. Built-in policies are Microsoft's.
-  servicePrincipalCreationPolicy: Object.freeze({
-    resourceType: 'servicePrincipalCreationPolicy',
-    family: 'creation-policy',
-    collection: '/policies/servicePrincipalCreationPolicies',
-    version: 'beta',
-    permission: APP_CONFIG,
-    docs: 'https://github.com/microsoftgraph/msgraph-metadata (beta: servicePrincipalCreationPolicy)',
-    createFields: Object.freeze(['displayName', 'description']),
-    updateFields: Object.freeze(['displayName', 'description']),
-    conditionFields: SERVICE_PRINCIPAL_CREATION_CONDITION_FIELDS,
-    conditionsOnObject: true,
   }),
   oauth2PermissionGrant: Object.freeze({
     resourceType: 'oauth2PermissionGrant',
@@ -226,19 +202,6 @@ export function directoryPolicyWriteRefusal(resource, verb) {
     }
     if (typeof payload.id !== 'string' || payload.id.length === 0) return { outcome: 'failed', reason: 'permissionGrantPolicy: the backup has no id to recreate the policy under' };
   }
-  if (entry.family === 'creation-policy') {
-    if (payload.isBuiltIn !== false) {
-      return {
-        outcome: 'skipped',
-        reason: payload.isBuiltIn === true
-          ? `"${payload.displayName ?? payload.id}" is a built-in app creation policy: Microsoft manages it and nobody can change it`
-          : 'the backup does not say whether this app creation policy is built in, so KEEL does not write it',
-      };
-    }
-    if (typeof payload.displayName !== 'string' || payload.displayName.length === 0) {
-      return { outcome: 'failed', reason: 'servicePrincipalCreationPolicy: the backup has no displayName to find or recreate the policy by' };
-    }
-  }
   if (entry.family === 'consent') {
     for (const field of ['clientId', 'resourceId', 'consentType']) {
       if (typeof payload[field] !== 'string' || payload[field].length === 0) return { outcome: 'failed', reason: `oauth2PermissionGrant: the backup has no ${field}` };
@@ -291,8 +254,6 @@ function matcherFor(entry, desired) {
       && object.consentType === desired.consentType
       && (desired.consentType !== 'Principal' || String(object.principalId).toLowerCase() === String(desired.principalId).toLowerCase());
   }
-  // Graph gives a created app creation policy its own id, so a re-run finds it by name.
-  if (entry.family === 'creation-policy') return (object) => object.isBuiltIn === false && sameText(object.displayName, desired.displayName);
   return null;
 }
 

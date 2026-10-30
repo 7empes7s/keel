@@ -86,7 +86,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   externalDomainFederation: at(ENTRA, 'External Identities', 'All identity providers'),
   // These have no page in the admin center; Microsoft Graph or PowerShell is
   // the only way to manage them.
-  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, no admin center page)',
+  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, signed in with an admin role; no admin center page)',
   permissionGrantPreApprovalPolicy: 'Microsoft Graph: /policies/permissionGrantPreApprovalPolicies (beta, no admin center page)',
   directoryRoleAccessReviewPolicy: 'Microsoft Graph: /policies/directoryRoleAccessReviewPolicy (beta, no admin center page)',
   multiTenantOrganizationIdentitySyncPolicyTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization (no admin center page)',

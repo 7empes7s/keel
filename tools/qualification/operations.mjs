@@ -51,8 +51,6 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   claimsMappingPolicy: { displayName: 'Fixture claims mapping', definition: ['{"ClaimsMappingPolicy":{"Version":1,"IncludeBasicClaimSet":"true"}}'], isOrganizationDefault: false },
   homeRealmDiscoveryPolicy: { displayName: 'Fixture sign-in routing', definition: ['{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":false}}'], isOrganizationDefault: false },
   permissionGrantPolicy: { id: 'fixture-consent-policy', displayName: 'Fixture consent policy', description: 'Fixture' },
-  // Restore gaps, batch 21: a custom app creation policy (no condition sets in the fixture).
-  servicePrincipalCreationPolicy: { displayName: 'Fixture app creation policy', description: 'Fixture', isBuiltIn: false },
   oauth2PermissionGrant: { clientId: 'fixture-client-sp', consentType: 'AllPrincipals', principalId: null, resourceId: 'fixture-resource-sp', scope: 'User.Read' },
   group: { displayName: 'Fixture group', mailNickname: 'fixture-group', mailEnabled: false, securityEnabled: true, groupTypes: [] },
   // Roadmap task-150: a cloud user with one direct licence.

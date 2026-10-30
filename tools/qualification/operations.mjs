@@ -302,7 +302,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   },
   // Restore gaps, batch 21: a custom Defender XDR role with one read permission.
   defenderRoleDefinition: {
-    displayName: 'Fixture Defender role', description: 'Fixture', isBuiltIn: false,
+    displayName: 'Fixture Defender role', description: 'Fixture',
     rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }],
   },
   // Restore gaps, batch 10.

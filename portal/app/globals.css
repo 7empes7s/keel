@@ -2804,6 +2804,9 @@ kbd {
 .confirm-dialog {
   width: min(30rem, calc(100vw - 2rem));
   margin-top: 18vh;
+  /* A long warning scrolls inside the dialog instead of being cut off on a phone. */
+  max-height: min(40rem, calc(100svh - 18vh - 1rem));
+  overflow-y: auto;
   border-top: 3px solid var(--accent);
 }
 
@@ -11897,6 +11900,18 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .ra-name small { color: var(--text-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
 .ra-error { margin: 0; color: var(--urgent); }
 .ra-group { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--text-soft); }
+.ra-name-line { display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: center; }
+.ra-card[data-risk] { border-color: color-mix(in oklab, var(--urgent) 45%, var(--line)); }
+.ra-row[data-high-risk][data-off] { background: var(--urgent-bg); border-color: color-mix(in oklab, var(--urgent) 45%, var(--line)); }
+.ra-risk { display: grid; grid-template-columns: auto 1fr; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in oklab, var(--urgent) 45%, var(--line)); border-radius: var(--radius-md); background: var(--urgent-bg); }
+.ra-risk-icon { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius-pill); color: var(--urgent); }
+.ra-risk-icon .icon { width: 1.125rem; height: 1.125rem; }
+.ra-risk ul { margin: var(--space-xs) 0 0; padding-left: 1.1rem; color: var(--text); }
+.ra-risk-warning ul { margin: 0 0 var(--space-xs); padding-left: 1.1rem; font-size: 0.875rem; }
+.ra-risk-warning p { margin: 0 0 var(--space-xs); }
+.ra-risk-lead { display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: center; }
+.confirm-dialog-acknowledge { display: flex; gap: var(--space-xs); align-items: flex-start; margin-top: var(--space-xs); font-size: 0.875rem; font-weight: 600; }
+.confirm-dialog-acknowledge input { margin-top: 0.2rem; }
 @media (max-width: 640px) {
   .ra-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .ra-row > .btn { grid-column: 2 / -1; justify-self: start; }

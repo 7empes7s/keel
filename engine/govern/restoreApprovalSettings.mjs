@@ -25,6 +25,12 @@ export const RESTORE_APPROVAL_SETTING_EVIDENCE_KIND = 'restore-approval-setting'
 
 export class RestoreApprovalSettingError extends Error {}
 
+// Kinds of restore that are high risk to run without a person: an organization-wide
+// change, turning a Conditional Access policy on (can block sign-ins) and a write into
+// another tenant. The customer still decides; turning one off needs the admin to
+// confirm the risk warning, and the audit record says they did.
+export const HIGH_RISK_RESTORE_APPROVAL_RULES = Object.freeze(['turn-on-conditional-access', 'tenant-wide', 'other-tenant']);
+
 /** The service a restored kind belongs to, or null when Keel cannot place it. */
 export function serviceForResourceType(resourceType) {
   const service = typeInfo(String(resourceType ?? '')).service;
@@ -181,18 +187,25 @@ export async function getRestoreApprovalRules(client, { tenantRef }) {
  * Turn the approval on or off for one kind of restore. The caller checks the actor
  * holds `policies`. Writes the audit record first, so a change is never made without one.
  */
-export async function setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired, actor }) {
+export async function setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired, actor, riskAcknowledged = false }) {
   if (!RESTORE_APPROVAL_RULES.includes(rule)) {
     throw new RestoreApprovalSettingError(`unknown kind of restore: ${rule} (one of ${RESTORE_APPROVAL_RULES.join(', ')})`);
   }
   if (typeof approvalRequired !== 'boolean') throw new RestoreApprovalSettingError('approvalRequired must be true or false');
   if (typeof actor !== 'string' || actor.length === 0) throw new RestoreApprovalSettingError('a setting change needs an actor');
+  const highRisk = HIGH_RISK_RESTORE_APPROVAL_RULES.includes(rule);
+  if (highRisk && approvalRequired === false && riskAcknowledged !== true) {
+    throw new RestoreApprovalSettingError(`turning off approvals for ${rule} needs the risk warning confirmed`);
+  }
   const before = (await getRestoreApprovalRules(client, { tenantRef })).find((entry) => entry.rule === rule);
   if (before.approvalRequired === approvalRequired && before.updatedAt) return { changed: false, setting: before };
   await appendEvidence(client, {
     tenantRef,
     kind: RESTORE_APPROVAL_SETTING_EVIDENCE_KIND,
-    subject: { rule, approvalRequired, previous: before.approvalRequired },
+    subject: {
+      rule, approvalRequired, previous: before.approvalRequired,
+      ...(highRisk && approvalRequired === false ? { highRisk: true, riskAcknowledged: true } : {}),
+    },
     actor,
   });
   await client.query(

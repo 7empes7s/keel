@@ -363,7 +363,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       if (isRestoreApprovalRule(subject.rule)) {
         const kind = RESTORE_APPROVAL_RULE_INFO[subject.rule].phrase;
         return subject.approvalRequired === false
-          ? `${actorName} turned off restore approvals for ${kind}, so they no longer wait for a person`
+          ? `${actorName} turned off restore approvals for ${kind}, so they no longer wait for a person${subject.highRisk === true ? ". This is high risk; they confirmed the risk warning" : ""}`
           : `${actorName} turned on restore approvals for ${kind}`;
       }
       const service = typeof subject.service === "string" ? serviceFor(subject.service).name : "a service";

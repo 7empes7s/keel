@@ -8,7 +8,8 @@ import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
-import type { BaselineRecord, DriftRecord } from "@/lib/types";
+import { kindOrder } from "@/lib/type-groups";
+import type { BaselineCapture, BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
@@ -81,6 +82,54 @@ export function changedBy(item: Pick<DriftRecord, "attribution">): string | null
   return named.length === 1 ? named[0] : `${named[0]} and ${named.length - 1} more`;
 }
 
+// Why a kind is not in an approved setup, from the reason its source backup gave
+// (engine/govern/baselineCompliance.mjs leftOutOf). Plain words, a risk colour each.
+const LEFT_OUT_REASONS: Record<string, { label: string; detail: string; tone: RiskTone | null }> = {
+  "microsoft-service-error": { label: "Microsoft error", detail: "Microsoft kept answering with an error when the backup was taken.", tone: "soon" },
+  refused: { label: "Access refused", detail: "Microsoft refused Keel access to it when the backup was taken.", tone: "urgent" },
+  partial: { label: "Partly read", detail: "The backup read only part of it, so it was left out whole.", tone: "soon" },
+  failed: { label: "Read failed", detail: "The backup could not read it.", tone: "soon" },
+  "no-licence": { label: "No licence", detail: "The tenant had no licence for it, so there was nothing to read.", tone: null },
+  "not-read": { label: "Not backed up then", detail: "Keel did not back it up yet when the backup was taken.", tone: "low" },
+};
+const UNKNOWN_REASON = { label: "Reason not recorded", detail: "The backup did not record why.", tone: null };
+
+export interface LeftOutRow {
+  type: string;
+  name: string;
+  service: CloudService;
+  reason: { label: string; detail: string; tone: RiskTone | null };
+  // The newest complete backup read it in full: capturing a new version adds it.
+  canAdd: boolean;
+}
+
+/** Every kind the setup does not hold, with why, by service and then kind group
+ * (lib/type-groups.ts), so the list reads like the others. */
+export function leftOutRows(capture: Pick<BaselineCapture, "leftOut"> | undefined): LeftOutRow[] {
+  const seen = new Set<string>();
+  return (capture?.leftOut ?? [])
+    .filter((item) => typeof item?.type === "string" && !seen.has(item.type) && Boolean(seen.add(item.type)))
+    .map((item) => ({
+      type: item.type,
+      name: plainKind(item.type),
+      service: typeService(item.type),
+      reason: LEFT_OUT_REASONS[item.reason] ?? UNKNOWN_REASON,
+      canAdd: item.readLater === true,
+    }))
+    .sort((a, b) => kindOrder(a.type) - kindOrder(b.type) || a.name.localeCompare(b.name));
+}
+
+/** One line above the list: how many are left out, and how many a new version would add. */
+export function leftOutSummary(rows: LeftOutRow[], canCapture: boolean): { text: string; tone: RiskTone } | null {
+  if (!rows.length) return null;
+  const addable = rows.filter((row) => row.canAdd).length;
+  const head = `${plural(rows.length, "kind")} of setting ${rows.length === 1 ? "is" : "are"} not in this setup, so changes to ${rows.length === 1 ? "it are" : "them are"} not checked.`;
+  if (!addable) return { text: `${head} No later backup has read ${rows.length === 1 ? "it" : "them"} yet.`, tone: "low" };
+  const them = addable === 1 ? "it" : "them";
+  const read = `A later backup read ${addable === rows.length ? (rows.length === 1 ? "it" : "all of them") : `${addable.toLocaleString("en-GB")} of them`}`;
+  return { text: `${head} ${read}: ${canCapture ? `capture a new version to add ${them}.` : `a new version would add ${them}.`}`, tone: "soon" };
+}
+
 export interface ServiceSummary {
   service: CloudService;
   // What the service is measured against. Entra ID and Intune settings sit in the
@@ -140,7 +189,10 @@ export function serviceSummaries(
     if (!summary.changedKinds.includes(item.resourceType)) summary.changedKinds.push(item.resourceType);
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;
   }
-  for (const type of new Set(backedUp)) {
+  // Kinds the setup left out count as not covered even when the latest backup could not
+  // read them either: the setup still does not hold them.
+  const leftOut = (baseline?.capture?.leftOut ?? []).map((item) => item.type);
+  for (const type of new Set([...backedUp, ...leftOut])) {
     if (!reads.has(type) && !captured.has(type) && !changedTypes.has(type)) entry(type).notCovered.push(type);
   }
   for (const read of serviceReads) {

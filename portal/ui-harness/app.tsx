@@ -852,9 +852,22 @@ const COMPARED = (added: number, modified: number, removed: number): BaselineCha
   state: "compared", comparedSnapshotId: "0b5e0000-0000-4000-8000-0000000000d6", comparedAt: "2026-10-02T09:12:00Z",
   added, modified, removed, total: added + modified + removed,
 });
+// Kinds the setup in use does not hold, with the reason its backup gave (baselines gap 3).
+const LEFT_OUT: NonNullable<BaselineCapture["leftOut"]> = [
+  { type: "todoSettings", reason: "microsoft-service-error", readLater: true },
+  { type: "formsSettings", reason: "refused", readLater: true },
+  { type: "lifecycleWorkflow", reason: "no-licence", readLater: false },
+  { type: "authenticationStrengthPolicy", reason: "partial", readLater: true },
+  { type: "deviceConfiguration", reason: "failed", readLater: false },
+  { type: "mobileApp", reason: "not-read", readLater: true },
+  { type: "defenderRoleDefinition", reason: "microsoft-service-error", readLater: false },
+  { type: "deviceCompliancePolicy", reason: "not-read", readLater: true },
+  { type: "teamsCatalogApp", reason: "not-read", readLater: true },
+  { type: "itemInsightsSettings", reason: "no-licence", readLater: false },
+];
 const BASELINES: BaselineRecord[] = [
   { id: "b1180000-0000-4000-8000-000000000118", label: "Post-migration golden state", description: "After the tenant move", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" }, active: true, resourceCount: 4812,
-    version: 1, supersedesId: null, supersededById: null, supersededAt: null, capture: CAPTURED("2026-09-29T13:40:00Z", "0b5e0000-0000-4000-8000-0000000000c8"), changesSinceCapture: COMPARED(1, 2, 0) },
+    version: 1, supersedesId: null, supersededById: null, supersededAt: null, capture: { ...CAPTURED("2026-09-29T13:40:00Z", "0b5e0000-0000-4000-8000-0000000000c8"), leftOut: LEFT_OUT }, changesSinceCapture: COMPARED(1, 2, 0) },
   { id: "b1170000-0000-4000-8000-000000000117", label: "Before migration (v2)", description: null, setAt: "2026-09-01T09:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "Keel's scheduler", href: null }, active: false, resourceCount: 4590,
     version: 2, supersedesId: "b1160000-0000-4000-8000-000000000116", supersededById: null, supersededAt: null, capture: CAPTURED("2026-09-01T08:30:00Z", "0b5e0000-0000-4000-8000-0000000000a9"), changesSinceCapture: COMPARED(30, 9, 2) },
   { id: "b1160000-0000-4000-8000-000000000116", label: "Before migration", description: null, setAt: "2026-08-20T10:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "Keel's scheduler", href: null }, active: false, resourceCount: 4502,

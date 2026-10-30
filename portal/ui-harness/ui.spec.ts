@@ -2873,6 +2873,20 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(current).toContainText("Post-migration golden state");
     await expect(current).toContainText("4,812 settings in 6 kinds");
     await expect(current.getByRole("link", { name: "Compare with the latest backup" })).toHaveAttribute("href", /compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d6/);
+    // Baselines gap 3: every kind the setup left out, with why, grouped by service, and
+    // "Capture new version" beside the list because a later backup read some of them.
+    const leftOut = current.locator(".bl-leftout");
+    await expect(leftOut.locator(".bl-leftout-head")).toContainText("6 can be added");
+    await expect(leftOut.locator(".bl-leftout-summary")).toContainText("10 kinds of setting are not in this setup");
+    await expect(leftOut.locator(".bl-leftout-action").getByRole("button", { name: "Capture new version" })).toBeEnabled();
+    await expect(current.getByRole("button", { name: "Capture new version" })).toHaveCount(1);
+    await expect(leftOut.locator("li:visible")).toHaveCount(8);
+    await expect(leftOut.locator(".bl-leftout-group h4:visible").first()).toHaveText("Entra ID");
+    await expect(leftOut.locator("li", { hasText: "No licence" }).first()).toContainText("Not read since");
+    await expect(leftOut.locator("li[data-can-add]").first()).toContainText("Read since: can be added");
+    await leftOut.getByText("Show 2 more").click();
+    await expect(leftOut.locator("li:visible")).toHaveCount(10);
+    expectPlainText(await leftOut.innerText());
     const entra = page.locator(".bl-service", { hasText: "Entra ID" });
     await expect(entra).toContainText(/Changed\s*3\s*kinds/);
     // A service with changes links to them, filtered to that service.

@@ -56,6 +56,28 @@ const CSS = `
 .bl-empty h2, .bl-empty h3 { margin: 0; font-size: 1.0625rem; }
 .bl-empty p { margin: var(--space-2xs) 0 0; color: var(--text-soft); }
 
+/* Not in this setup: kinds the setup left out, why, and whether a new version adds them */
+.bl-leftout { display: grid; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line); border-left: 4px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-muted); min-width: 0; }
+.bl-leftout[data-tone="soon"] { border-left-color: var(--check-soon); }
+.bl-leftout[data-tone="low"] { border-left-color: var(--low-risk); }
+.bl-leftout-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.bl-leftout-head h3 { margin: 0; font-size: 1rem; font-weight: 650; }
+.bl-leftout-summary { margin: 0; font-size: 0.875rem; line-height: 1.45; }
+.bl-leftout-action { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.bl-leftout-group { display: grid; gap: var(--space-2xs); min-width: 0; }
+.bl-leftout-group h4 { margin: var(--space-2xs) 0 0; color: var(--text-soft); font-size: 0.8125rem; font-weight: 650; }
+.bl-leftout-group ul { display: grid; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.bl-leftout-group li { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(0, 2fr) auto; align-items: center; gap: var(--space-2xs) var(--space-md); padding: var(--space-xs) var(--space-sm); min-width: 0; }
+.bl-leftout-group li + li { border-top: 1px solid var(--line); }
+.bl-leftout-group li > b { font-size: 0.875rem; font-weight: 600; overflow-wrap: anywhere; }
+.bl-leftout-why { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); min-width: 0; }
+.bl-leftout-why small { color: var(--text-soft); font-size: 0.8125rem; line-height: 1.4; }
+.bl-leftout-now { justify-self: end; }
+.bl-leftout-more > summary { width: fit-content; cursor: pointer; color: var(--text); font-size: 0.8125rem; font-weight: 600; border-radius: 2px; }
+.bl-leftout-more > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bl-leftout-more[open] > summary { margin-bottom: var(--space-xs); }
+.bl-leftout-more > .bl-leftout-group + .bl-leftout-group { margin-top: var(--space-sm); }
+
 /* By service */
 .bl-services { display: grid; margin: 0; padding: 0; list-style: none; gap: var(--space-md); grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
 .bl-services > li { display: grid; }
@@ -282,6 +304,8 @@ details.compare-group > summary { display: grid; grid-template-columns: minmax(0
   .bl-current, .bl-wizard, .bl-compare-form { padding: var(--space-md); }
   .bl-facts { grid-template-columns: minmax(0, 1fr); }
   .bl-fact + .bl-fact { border-left: 0; border-top: 1px solid var(--line); }
+  .bl-leftout-group li { grid-template-columns: minmax(0, 1fr); }
+  .bl-leftout-now { justify-self: start; }
   .bl-row { flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); }
   .bl-row > .bl-kind-icon { display: none; }
   .bl-row-name { flex-basis: 100%; }

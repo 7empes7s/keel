@@ -106,3 +106,43 @@ test('an app that names the recreated app as its API resolves to the new appId t
   assert.equal(result.resolved, true);
   assert.equal(result.targetId, NEW_APP_ID);
 });
+
+// A later dry run from the same backup, after both objects were recreated: the
+// new appId Entra assigned is not a change to restore, so nothing is planned.
+const NEW_SP_ID = '66666666-6666-4666-8666-666666666666';
+
+function bothRecreatedReader(appChanges = {}) {
+  const recreatedApp = { ...appPayload, id: NEW_OBJECT_ID, appId: NEW_APP_ID, identifierUris: [`api://${NEW_APP_ID}`], ...appChanges };
+  const recreatedSp = { ...servicePrincipal.payload, id: NEW_SP_ID, appId: NEW_APP_ID, servicePrincipalNames: [NEW_APP_ID, `api://${NEW_APP_ID}`] };
+  return {
+    async collect(_version, path) {
+      if (path.startsWith('/applications')) return { items: [recreatedApp], error: null };
+      if (path.startsWith('/servicePrincipals')) return { items: [recreatedSp], error: null };
+      if (path.startsWith('/directory/deletedItems')) return { items: [], error: null };
+      throw new Error(`unexpected collection: ${path}`);
+    },
+  };
+}
+
+const backupApp = { ...app, payload: { ...appPayload, identifierUris: [`api://${OLD_APP_ID}`] } };
+const backupSp = { ...servicePrincipal, payload: { ...servicePrincipal.payload, servicePrincipalNames: [OLD_APP_ID.toUpperCase(), `api://${OLD_APP_ID}`] } };
+const bothCreated = new Map([
+  [app.naturalKey, { resourceType: 'application', targetIds: [NEW_OBJECT_ID], unknownIdCreates: 0 }],
+  [servicePrincipal.naturalKey, { resourceType: 'servicePrincipal', targetIds: [NEW_SP_ID], unknownIdCreates: 0 }],
+]);
+
+test('after both were recreated, the new appId alone plans no update of the app or its principal', async () => {
+  const { resources } = await buildReconciliationPlan(bothRecreatedReader(), [backupApp, backupSp], { sameTenant: true, createdTargetIds: bothCreated });
+  const byKey = new Map(resources.map((resource) => [resource.naturalKey, resource]));
+  assert.equal(byKey.get(app.naturalKey).verb, 'noop');
+  assert.equal(byKey.get(app.naturalKey).targetId, NEW_OBJECT_ID);
+  assert.equal(byKey.get(servicePrincipal.naturalKey).verb, 'noop');
+  assert.equal(byKey.get(servicePrincipal.naturalKey).targetId, NEW_SP_ID);
+});
+
+test('a recreated app that changed since is still planned as an update', async () => {
+  const { resources } = await buildReconciliationPlan(bothRecreatedReader({ displayName: 'Renamed' }), [backupApp, backupSp], { sameTenant: true, createdTargetIds: bothCreated });
+  const byKey = new Map(resources.map((resource) => [resource.naturalKey, resource]));
+  assert.equal(byKey.get(app.naturalKey).verb, 'update');
+  assert.equal(byKey.get(servicePrincipal.naturalKey).verb, 'noop');
+});

@@ -394,9 +394,10 @@ export const TYPE_GUIDE = Object.freeze({
   windowsAutopilotDeviceIdentity: manual('Windows Autopilot devices', MS,
     'Microsoft never returns the hardware hash that registers a device, so no tool can register it again from a backup.',
     'Use the backup as the list of devices. Import each device again from its hardware hash, taken on the device or from your vendor.'),
-  deviceManagementRoleAssignment: manual('Intune admin role assignments', KEEL,
-    'These decide who can manage devices, so a change needs a person to review it.',
-    'Review who held each Intune admin role in the backup and assign the roles again in the Intune admin center.'),
+  deviceManagementRoleAssignment: auto('Intune admin role assignments', {
+    keeps: 'Puts back who holds each Intune admin role, over which groups and scope tags. Groups are found in the target by name.',
+    todo: 'These decide who can manage devices, so a restore that changes them waits for a second approver while restore approvals are on for Intune. Backups made before 2026-10-30 do not say which role an assignment gives: assign those by hand.',
+  }),
   applePushNotificationCertificate: manual('Apple push certificate', MS,
     'Apple issues this certificate. No tool can upload it from a backup, and a new certificate from a different Apple ID cuts off every Apple device.',
     'Use the backup for the Apple ID and expiry date. Renew the certificate at Apple with that same Apple ID and upload it in the Intune admin center before it expires.'),
@@ -456,9 +457,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates policies and puts their settings back.',
     todo: 'Who a policy is assigned to is not backed up yet, so assign it again by hand.',
   }),
-  operationApprovalPolicy: manual('Multi admin approval policies', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.',
-    'Recreate each policy in the Intune admin center from the backup, with the same approver groups.'),
+  operationApprovalPolicy: auto('Multi admin approval policies', {
+    keeps: 'Puts back which admin changes need a second admin, and the groups whose members approve them. Groups are found in the target by name.',
+    todo: 'A restore that changes them waits for a second approver while restore approvals are on for Intune. A policy that now covers a different kind of change is made again by hand.',
+  }),
   // Restore gaps batch 5: the script body is backed up per script.
   deviceCustomAttributeShellScript: auto('macOS custom attribute scripts', {
     keeps: 'Recreates scripts and puts the script, its settings and who it runs on back.',
@@ -505,9 +507,10 @@ export const TYPE_GUIDE = Object.freeze({
   exchangeRoleDefinition: manual('Exchange admin roles', KEEL,
     'KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.',
     'For a custom role that still exists but differs from the backup, the restore lists what differs: fix its entries with Exchange Online PowerShell. Then give recreated roles back to their role groups or apps, after a privilege review.'),
-  exchangeRoleAssignment: manual('Exchange admin role assignments', NOT_BUILT,
-    'KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.',
-    'Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.'),
+  exchangeRoleAssignment: auto('Exchange admin role assignments', {
+    keeps: 'Puts back the Exchange roles held by people, groups and apps, over the same scope. They are found in the target by name.',
+    todo: 'A restore that adds them waits for a second approver while restore approvals are on. Roles held by an Exchange role group are given again by hand in the Exchange admin center, under Roles, Admin roles.',
+  }),
   exchangeCustomAppScope: auto('Exchange app access scopes', {
     keeps: 'Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).',
     todo: 'An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.',
@@ -516,9 +519,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates custom Defender roles and puts back their name, description and permissions.',
     todo: 'Who holds each role is not restored: add the assignments again in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, after a privilege review.',
   }),
-  defenderRoleAssignment: manual('Defender admin role assignments', NOT_BUILT,
-    'KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.',
-    'Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.'),
+  defenderRoleAssignment: auto('Defender admin role assignments', {
+    keeps: 'Puts back who holds each Defender role and for which data sources. People and groups are found in the target by name.',
+    todo: 'A restore that changes them waits for a second approver while restore approvals are on.',
+  }),
   defenderCustomAppScope: manual('Defender app access scopes', MS,
     'KEEL backs these up, but Microsoft offers no way for a tool to create or change them.',
     'Recreate each scope by hand from the backup, before the assignments that use it. There is no admin center page for it.'),

@@ -413,6 +413,29 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-intune-role`, drift: 'delete it: the restore recreates it with the same permission; then add a second read permission (Microsoft.Intune_Audit_Read): the restore takes it away again',
     note: 'No assignment, so nobody gains access. Also check that a promotion without the approval skips it with "Changes admin access".',
   },
+  // Approval-held kinds, batch 2: who holds admin roles. Each fixture gives a read-only
+  // role to an empty KEEL-RT- group (or the fixture app), so nobody gains access.
+  deviceManagementRoleAssignment: {
+    kind: 'named-object', fixture: `assignment ${FIXTURE_PREFIX}-intune-assignment of the built-in Read Only Operator role to the empty group ${FIXTURE_PREFIX}-group, scoped to that group`,
+    select: `${FIXTURE_PREFIX}-intune-assignment`, drift: 'take a new backup first (it now keeps the role), then delete the assignment: the restore recreates it with the same role, members and scope',
+    note: 'Check the dry run names the group and role (not ids) under "Changes admin access", and that a promotion without the approval skips it.',
+  },
+  operationApprovalPolicy: {
+    kind: 'named-object', fixture: `multi admin approval policy ${FIXTURE_PREFIX}-approval for device wipe, approvers the empty group ${FIXTURE_PREFIX}-group`,
+    select: `${FIXTURE_PREFIX}-approval`, drift: 'delete it: the restore recreates it with the same approver group; record Graph\'s answer if Intune asks for a second admin to approve the write itself',
+    note: 'Only a device action nobody uses on the test tenant; never cover role or policy changes, so the test tenant is never locked behind an approval.',
+  },
+  exchangeRoleAssignment: {
+    kind: 'by-reference', fixture: `Exchange role View-Only Configuration given to the ${FIXTURE_PREFIX} fixture app's service principal (Graph /roleManagement/exchange/roleAssignments)`,
+    select: 'the assignment\'s id', drift: 'remove the assignment: the restore gives the role to the same app again',
+    breakGlass: 'Never a role group, a person or a privileged role: only a view-only role and the fixture app. An assignment has no name, so check the app is the KEEL-RT- fixture app before the run.',
+    note: 'A role held by a role group is a manual step: check one is reported as such.',
+  },
+  defenderRoleAssignment: {
+    kind: 'named-object', fixture: `assignment ${FIXTURE_PREFIX}-defender-assignment of the custom role ${FIXTURE_PREFIX}-defender-role to the empty group ${FIXTURE_PREFIX}-group`,
+    select: `${FIXTURE_PREFIX}-defender-assignment`, drift: 'delete it: the restore recreates it; then add a second group: the restore takes it away again',
+    note: 'Check the dry run names the group and role under "Changes admin access".',
+  },
   deviceRegistrationPolicy: {
     kind: 'tenant-setting', fixture: 'the device registration policy (Devices, Device settings)',
     select: 'deviceRegistrationPolicy', drift: 'change userDeviceQuota (Maximum number of devices per user) to another allowed value; write the original down first. Never change who may join or MFA to join.',

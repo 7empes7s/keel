@@ -51,7 +51,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { APPROVAL_HELD_FIELDS, classifyContentEffects } from '../safety/contentEffects.mjs';
-import { withApprovalGate } from './approvalHeld.mjs';
+import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
@@ -1152,6 +1152,90 @@ function intuneRoleRefusal(resource, verb) {
   return null;
 }
 
+// ------------------------------------------- approval-held kinds, batch 2
+
+const INTUNE_ROLE_ASSIGNMENTS = '/deviceManagement/roleAssignments';
+const INTUNE_ROLES_PORTAL = 'the Intune admin center, under Tenant administration, Roles';
+const ASSIGNMENT_GROUP_LISTS = ['members', 'scopeMembers', 'resourceScopes', 'roleScopeTagIds'];
+const ASSIGNMENT_ACCESS = [...ASSIGNMENT_GROUP_LISTS, 'scopeType'];
+const roleBind = (id) => `https://graph.microsoft.com/beta/deviceManagement/roleDefinitions/${encodeURIComponent(id)}`;
+const roleIdOf = (payload) => (typeof payload?.roleDefinition?.id === 'string' && payload.roleDefinition.id.length > 0 ? payload.roleDefinition.id : null);
+
+/**
+ * Who holds an Intune admin role: the role (read with the backup, as
+ * roleDefinition) and the groups it is given to and over. A backup made before
+ * the role was kept cannot say which role to give, so nothing is written.
+ */
+function intuneAssignmentRefusal(resource, verb) {
+  const undo = undoOnlyDelete('an Intune role assignment', INTUNE_ROLES_PORTAL)(resource, verb);
+  if (undo || verb === 'delete') return undo;
+  if (!roleIdOf(resource.payload)) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: this backup does not say which Intune role the assignment "${resource.payload?.displayName ?? resource.naturalKey}" gives (backups made before 2026-10-30 did not keep it); assign the role again by hand in ${INTUNE_ROLES_PORTAL}, or restore from a newer backup`,
+    };
+  }
+  return null;
+}
+
+// A create names its role through the role's link; the role is never changed on an update.
+function intuneAssignmentBody(body, { verb, payload }) {
+  const { roleDefinition, ...rest } = body;
+  if (verb !== 'create' || !roleIdOf(payload)) return rest;
+  return { ...rest, 'roleDefinition@odata.bind': roleBind(roleIdOf(payload)) };
+}
+
+// The role link reads back only through the assignment's role.
+async function intuneAssignmentAfterWrite(io, { payload, verb, targetId }) {
+  if (verb !== 'create') return null;
+  const read = await io.retryOperation(() => io.writer.read('beta', `${INTUNE_ROLE_ASSIGNMENTS}/${encodeURIComponent(targetId)}/roleDefinition`));
+  if (read?.ok !== true) return { error: `post-state: the assignment's role could not be read back (${outcomeDetail(read)})` };
+  if (String(read.body?.id ?? '').toLowerCase() !== String(roleIdOf(payload)).toLowerCase()) {
+    return { error: 'post-state: the assignment reads back with a different role than the one written' };
+  }
+  return { changes: { roleDefinition: read.body?.displayName ?? read.body.id } };
+}
+
+const sameAssignmentAccess = (fields) => (row, payload) => fields.every((field) => sameIdLists(fields)(field, payload[field], row[field]) !== false);
+
+/** The role an Intune assignment in the target holds: { id } or { error }. */
+async function assignedRole(io, targetId) {
+  const read = await io.retryOperation(() => io.writer.read('beta', `${INTUNE_ROLE_ASSIGNMENTS}/${encodeURIComponent(targetId)}/roleDefinition`));
+  return read?.ok === true ? { id: String(read.body?.id ?? ''), name: read.body?.displayName ?? null } : { error: outcomeDetail(read) };
+}
+const sameRoleId = (left, right) => String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
+
+// An assignment made before holds the backup's access only with the same role too.
+async function sameIntuneAssignment(row, payload, io) {
+  if (!sameAssignmentAccess(ASSIGNMENT_ACCESS)(row, payload)) return false;
+  const role = await assignedRole(io, row.id);
+  return !role.error && sameRoleId(role.id, roleIdOf(payload));
+}
+
+// An update never changes the role (Graph sets it on create): one whose role
+// differs from the backup's is left for a person, and nothing is written.
+async function intuneAssignmentUpdateGuard(io, { payload, targetId }) {
+  const role = await assignedRole(io, targetId);
+  if (!role.error && sameRoleId(role.id, roleIdOf(payload))) return null;
+  const description = role.error
+    ? `The assignment's current role could not be read (${role.error}), so nothing was written.`
+    : `This assignment now gives a different role (${role.name ?? 'another role'}) than in the backup, and Intune sets the role only when an assignment is made. Nothing was written: make the assignment again by hand in ${INTUNE_ROLES_PORTAL}.`;
+  return { reason: `manual: ${description}`, completion: [{ kind: 'manual-setting', requirement: 'createOnly', fields: ['roleDefinition'], description }] };
+}
+
+// A multi admin approval policy's kind and platform are set when it is made.
+const APPROVAL_POLICY_KIND = ['policyType', 'policyPlatform', 'policySet'];
+function approvalPolicyRefusal(resource, verb) {
+  const undo = undoOnlyDelete('a multi admin approval policy', 'the Intune admin center, under Tenant administration, Multi Admin Approval')(resource, verb);
+  if (undo || verb !== 'update') return undo;
+  const live = resource.live?.payload ?? {};
+  const fields = APPROVAL_POLICY_KIND.filter((field) => resource.payload?.[field] !== undefined && !sameValue(resource.payload[field], live[field]));
+  if (fields.length === 0) return null;
+  const description = `This approval policy now covers a different kind of change (${fields.join(', ')}) than in the backup, and Intune sets that only when a policy is made. `
+    + 'Nothing was written: make the policy again by hand in the Intune admin center, under Tenant administration, Multi Admin Approval.';
+  return { outcome: 'skipped', reason: `manual: ${description}`, completion: [{ kind: 'manual-setting', requirement: 'createOnly', fields, description }] };
+}
+
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard, beforeDelete: removeChosenAssignments };
 
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
@@ -1730,14 +1814,47 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // Approval-held kind (restore/approvalHeld.mjs): a custom Intune admin role, its
   // name, description and permissions. Microsoft's own roles (isBuiltIn true, or
-  // no flag) are never written. Who holds the role (deviceManagementRoleAssignment)
-  // is not written. An enforce write is made only when its "changes admin access"
+  // no flag) are never written. Who holds the role is its own kind
+  // (deviceManagementRoleAssignment, below). An enforce write is made only when its "changes admin access"
   // effects were approved with the restore's dry run, or approvals are off for Intune.
   // A delete is only the undo of a role this restore created.
   deviceManagementRoleDefinition: defineRecord({
     resourceType: 'deviceManagementRoleDefinition', version: 'v1.0', collection: '/deviceManagement/roleDefinitions', odataType: 'keep',
     operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceManagementRoleDefinition],
     refusal: withApprovalGate(intuneRoleRefusal), permission: 'DeviceManagementRBAC.ReadWrite.All',
+  }),
+  // Approval-held kinds, batch 2. Who holds an Intune admin role: the role, the
+  // groups it is given to (members) and the groups and scope tags it reaches. The
+  // groups are matched in the target by name (remapsReferences), and the role by
+  // name, or as the custom role this restore just recreated. The role is set on
+  // create only; an update whose live role differs is a step (updateGuard). A delete is only the
+  // undo of an assignment this restore created.
+  deviceManagementRoleAssignment: defineRecord({
+    resourceType: 'deviceManagementRoleAssignment', version: 'beta', collection: INTUNE_ROLE_ASSIGNMENTS, odataType: 'keep',
+    operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', 'members', 'scopeMembers', 'resourceScopes', 'scopeType', 'roleScopeTagIds'],
+    createOnly: ['roleDefinition'], transform: intuneAssignmentBody, remapsReferences: true, sameField: sameIdLists(ASSIGNMENT_GROUP_LISTS),
+    refusal: withApprovalGate(intuneAssignmentRefusal),
+    preflight: createdOnce({
+      version: 'beta', path: INTUNE_ROLE_ASSIGNMENTS, label: 'Intune role assignment',
+      matches: (row, payload) => String(row?.displayName ?? '').toLowerCase() === String(payload.displayName ?? '').toLowerCase(),
+      same: sameIntuneAssignment,
+    }),
+    updateGuard: intuneAssignmentUpdateGuard, checkedAfterWrite: ['roleDefinition@odata.bind'], afterWrite: intuneAssignmentAfterWrite,
+    permission: 'DeviceManagementRBAC.ReadWrite.All',
+  }),
+  // Approval-held kinds, batch 2. A multi admin approval policy: which admin
+  // changes need a second admin, and the groups whose members approve them
+  // (approverGroupIds, matched in the target by name).
+  operationApprovalPolicy: defineRecord({
+    resourceType: 'operationApprovalPolicy', version: 'beta', collection: '/deviceManagement/operationApprovalPolicies',
+    operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', 'approverGroupIds'], createOnly: APPROVAL_POLICY_KIND,
+    remapsReferences: true, sameField: sameIdLists(['approverGroupIds']), refusal: withApprovalGate(approvalPolicyRefusal),
+    preflight: createdOnce({
+      version: 'beta', path: '/deviceManagement/operationApprovalPolicies', label: 'multi admin approval policy',
+      matches: (row, payload) => String(row?.displayName ?? '').toLowerCase() === String(payload.displayName ?? '').toLowerCase(),
+      same: (row, payload) => sameAssignmentAccess(['approverGroupIds'])(row, payload) && APPROVAL_POLICY_KIND.every((field) => payload[field] === undefined || sameValue(row[field], payload[field])),
+    }),
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   notificationMessageTemplate: defineRecord({
     resourceType: 'notificationMessageTemplate', version: 'v1.0', collection: '/deviceManagement/notificationMessageTemplates',
@@ -2642,7 +2759,6 @@ async function policySetItemsAfterWrite(io, { payload, verb, targetId }) {
 /** Intune types read in wave 1 that no record can write in full, and why. */
 export const INTUNE_BEST_EFFORT = Object.freeze({
   windowsAutopilotDeviceIdentity: 'the hardware hash is never returned; a device is re-imported from the device itself',
-  deviceManagementRoleAssignment: 'it grants Intune admin access to groups by id; remapping them is not qualified',
 });
 
 /** One write of a Wave 2 Intune record. */

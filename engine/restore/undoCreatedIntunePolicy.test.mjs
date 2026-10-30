@@ -37,10 +37,15 @@ const FIXTURES = Object.freeze({
   windowsDriverUpdateProfile: { collection: '/deviceManagement/windowsDriverUpdateProfiles', payload: { displayName: 'KEEL-RT-undo-driver' } },
   // Approval-held kinds: a custom Intune role a restore recreated.
   deviceManagementRoleDefinition: { collection: '/deviceManagement/roleDefinitions', payload: { displayName: 'KEEL-RT-undo-role', isBuiltIn: false } },
+  // Approval-held kinds, batch 2: an Intune role assignment and an approval policy a restore made.
+  deviceManagementRoleAssignment: { collection: '/deviceManagement/roleAssignments', payload: { displayName: 'KEEL-RT-undo-assignment', members: [] } },
+  operationApprovalPolicy: { collection: '/deviceManagement/operationApprovalPolicies', payload: { displayName: 'KEEL-RT-undo-approval', approverGroupIds: [] } },
 });
 
 // Every Intune record type that can be deleted, except app links, which are
 // deleted only through their app (intuneAppLinks.test.mjs).
+// Deleted only as the undo of their own create, and never assigned through /assign.
+const UNDO_ONLY = new Set(['deviceManagementRoleDefinition', 'deviceManagementRoleAssignment', 'operationApprovalPolicy']);
 const DELETABLE = Object.values(INTUNE_EXTENDED_RECORDS)
   .filter((record) => record.operations.includes('delete') && record.resourceType !== 'mobileAppRelationship')
   .map((record) => record.resourceType)
@@ -120,7 +125,7 @@ test('only an undo of a create skips the snapshot observation: any other delete 
       const outcome = await wave(graph, [resource]);
       assert.equal(outcome.applied.length, 0, `${type}: ${label}`);
       // An Intune role refuses any delete but the undo of its own create before the observation check.
-      if (type === 'deviceManagementRoleDefinition') assert.match(outcome.skipped[0]?.reason ?? '', /deletes only an Intune role it created itself/, `${type}: ${label}`);
+      if (UNDO_ONLY.has(type)) assert.match(outcome.skipped[0]?.reason ?? '', /deletes only an? .* it created itself/, `${type}: ${label}`);
       else assert.match(outcome.failed[0]?.error ?? '', /^partial observation cannot authorise delete/, `${type}: ${label}`);
       assert.deepEqual(writesOf(graph), [], `${type}: ${label}`);
     }
@@ -156,7 +161,7 @@ async function assignedPolicy(type, assignments) {
 const readerOf = (graph) => ({ get: (version, path) => graph.read(version, path) });
 
 // An Intune role is not assigned through /assign: who holds it is a separate kind.
-for (const type of Object.keys(FIXTURES).filter((name) => name !== 'deviceManagementRoleDefinition')) {
+for (const type of Object.keys(FIXTURES).filter((name) => !UNDO_ONLY.has(name))) {
   test(`undo of a created ${type} that is assigned now waits for a choice, then deletes it with its assignments when chosen`, async () => {
     const { item, graph } = await assignedPolicy(type, [ALL_DEVICES, GROUP('group-1')]);
     const planned = undoOf(item);

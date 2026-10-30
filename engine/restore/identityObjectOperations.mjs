@@ -38,7 +38,7 @@ import {
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import { APPROVAL_HELD_FIELDS } from '../safety/contentEffects.mjs';
-import { withApprovalGate } from './approvalHeld.mjs';
+import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -568,6 +568,30 @@ function appCredentialTrustRefusal(resource, verb) {
 
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
 
+// Approval-held kinds, batch 2: who holds an Exchange or Defender admin role.
+// An Exchange assignment names its principal as a path. A user, group or app is
+// matched in the target (canonicalize.mjs reads the id inside the path); an
+// Exchange role group, or anything else, is not a directory object, so it is
+// given its roles again by hand.
+const EXCHANGE_PRINCIPAL = /^\/(users|groups|servicePrincipals)\/[0-9a-f-]{36}$/i;
+const EXCHANGE_ROLES_PORTAL = 'the Exchange admin center, under Roles, Admin roles';
+function exchangeAssignmentRefusal(resource, verb) {
+  const undo = undoOnlyDelete('an Exchange role assignment', EXCHANGE_ROLES_PORTAL)(resource, verb);
+  if (undo || verb === 'delete') return undo;
+  const principal = String(resource.payload?.principalId ?? '');
+  if (!EXCHANGE_PRINCIPAL.test(principal)) {
+    const description = `This Exchange role is held by ${principal.toLowerCase().startsWith('/rolegroups/') ? 'an Exchange role group' : 'something that is not a user, group or app'}, which a restore does not write. `
+      + `Give the role group its roles again by hand in ${EXCHANGE_ROLES_PORTAL}.`;
+    return { outcome: 'skipped', reason: `manual: ${description}`, completion: [{ kind: 'manual-setting', requirement: 'exchangeRoleGroup', fields: ['principalId'], description }] };
+  }
+  return null;
+}
+const sameText = (left, right) => String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
+const EXCHANGE_ASSIGNMENT_FIELDS = ['principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId'];
+
+const DEFENDER_ASSIGNMENTS = '/roleManagement/defender/roleAssignments';
+const DEFENDER_LISTS = ['principalIds', 'directoryScopeIds', 'appScopeIds'];
+
 /** The records, one per type this module writes through recordWriter. */
 export const IDENTITY_RECORDS = Object.freeze({
   servicePrincipal: defineRecord({
@@ -685,7 +709,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
   // description and permissions. Microsoft's own roles (isBuiltIn true, or
   // no flag at all) are never written. Who holds the role is a separate kind
-  // (defenderRoleAssignment), restored by hand after a privilege review.
+  // (defenderRoleAssignment, below), written behind the restore approval.
   // Graph documents the create; the update uses the same PATCH as the other
   // role providers and is confirmed by the live proof.
   defenderRoleDefinition: defineRecord({
@@ -693,6 +717,39 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], writable: ['displayName', 'description', 'rolePermissions'], refusal: defenderRoleRefusal,
     preflight: defenderRoleCreatePreflight,
     permission: 'RoleManagement.ReadWrite.Defender', docs: beta('rbacapplication-post-roledefinitions'),
+  }),
+  // Approval-held kinds, batch 2 (restore/approvalHeld.mjs): who holds an Exchange
+  // admin role, written only once its "changes admin access" effects are approved
+  // (or approvals are off for the service). The user, group or app is matched in
+  // the target (remapsReferences); the role and app scope are written by id, so
+  // into another tenant only a role with the same id is found (else it fails). Graph has no update of an assignment. A delete is
+  // only the undo of an assignment this restore created.
+  exchangeRoleAssignment: defineRecord({
+    resourceType: 'exchangeRoleAssignment', version: 'beta', collection: EXCHANGE_ROLE_ASSIGNMENTS,
+    operations: ['create', 'delete'], writable: EXCHANGE_ASSIGNMENT_FIELDS, remapsReferences: true,
+    refusal: withApprovalGate(exchangeAssignmentRefusal),
+    preflight: createdOnce({
+      version: 'beta', path: EXCHANGE_ROLE_ASSIGNMENTS, label: 'Exchange role assignment',
+      // The same principal may hold the same role over another scope: a separate assignment.
+      matches: (row, payload) => EXCHANGE_ASSIGNMENT_FIELDS.every((field) => sameText(row?.[field] ?? '/', payload[field] ?? '/')),
+      same: () => true,
+    }),
+    permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('rbacapplication-post-roleassignments'),
+  }),
+  // Who holds a Defender XDR admin role: the people and groups (matched in the
+  // target), the role and the data sources it covers.
+  defenderRoleAssignment: defineRecord({
+    resourceType: 'defenderRoleAssignment', version: 'beta', collection: DEFENDER_ASSIGNMENTS,
+    operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', 'principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds'],
+    remapsReferences: true, sameField: sameIdLists(DEFENDER_LISTS),
+    refusal: withApprovalGate(undoOnlyDelete('a Defender role assignment', 'the Microsoft Defender portal, under System, Permissions, Roles')),
+    preflight: createdOnce({
+      version: 'beta', path: DEFENDER_ASSIGNMENTS, label: 'Defender role assignment',
+      matches: (row, payload) => sameText(row?.displayName, payload.displayName),
+      same: (row, payload) => sameText(row?.roleDefinitionId, payload.roleDefinitionId)
+        && DEFENDER_LISTS.every((field) => sameIdLists(DEFENDER_LISTS)(field, payload[field], row?.[field])),
+    }),
+    permission: 'RoleManagement.ReadWrite.Defender', docs: beta('unifiedrbacapplicationmultiple-post-roleassignments'),
   }),
   // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).
   // The SharePoint tenant settings other than sharing: sync app limits, idle

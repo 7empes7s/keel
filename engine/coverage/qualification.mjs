@@ -194,7 +194,7 @@ export const TYPE_DECISIONS = Object.freeze({
   groupPolicyUploadedDefinitionFile: automated('intune-grouppolicy-grouppolicyuploadeddefinitionfile', 'restore gaps batch 11: create of the imported ADMX file with its ADML language files through Graph beta; a backup without the file content is refused; the settings in it get new ids, so templates that used them are set up again', { view: 'graph-rest-beta' }),
   notificationMessageTemplate: automated('intune-notification-notificationmessagetemplate', 'Wave 2: create and update with the message text per language'),
   windowsAutopilotDeviceIdentity: manual('the hardware hash is never returned, so a registration is imported again from the device'),
-  deviceManagementRoleAssignment: manual('Intune admin access needs a privilege review before it is granted again'),
+  deviceManagementRoleAssignment: automated('intune-rbac-deviceandappmanagementroleassignment', 'approval-held kinds batch 2: create and update through Graph beta of who holds an Intune role (member groups, scope groups and scope tags) and, on create, the role; groups are matched in the target by name; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; a backup that does not name the role is a manual step', { view: 'graph-rest-beta' }),
   // Remaining kinds, batch 1: backed up read-only; no writer is built yet.
   applePushNotificationCertificate: manual('the certificate is renewed with Apple under the same Apple ID; no tool can upload it from a backup'),
   mobileThreatDefenseConnector: manual('no writer yet; a connector is set up from the partner\'s console'),
@@ -215,7 +215,7 @@ export const TYPE_DECISIONS = Object.freeze({
   androidManagedStoreAccountEnterpriseSettings: manual('the binding is made by signing in to Google; no tool can make it from a backup'),
   managedDeviceCleanupRule: automated('intune-devices-manageddevicecleanuprule', 'restore gaps batch 1: update through Graph beta, only when it makes the rule wait as long or longer before retiring devices; a deleted rule is recreated by hand', { view: 'graph-rest-beta' }),
   windowsQualityUpdatePolicy: automated('intune-softwareupdate-windowsqualityupdatepolicy', 'restore gaps batch 1: create and update through Graph beta; who it is assigned to is not backed up yet', { view: 'graph-rest-beta' }),
-  operationApprovalPolicy: manual('approval rules need a person to review them before they are set again'),
+  operationApprovalPolicy: automated('intune-rbac-operationapprovalpolicy', 'approval-held kinds batch 2: create and update through Graph beta of multi admin approval policies and their approver groups (matched in the target by name); each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; the kind of change a policy covers is set on create only', { view: 'graph-rest-beta' }),
   deviceCustomAttributeShellScript: automated('intune-devices-devicecustomattributeshellscript', 'restore gaps batch 5: create and update of the script and its settings through Graph beta; a backup without the script body is refused; batch 15: who it runs on is assigned again through /assign', { view: 'graph-rest-beta' }),
   // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; restore gaps batch 2 writes the singletons.
   externalIdentitiesPolicy: automated('externalidentitiespolicy', 'restore gaps batch 2: update in place through Graph beta of whether external users can leave and whether their data is removed', { view: 'graph-rest-beta' }),
@@ -231,10 +231,10 @@ export const TYPE_DECISIONS = Object.freeze({
   externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation name and protocol; its sign-in addresses and signing certificate are a manual step, and its domains are backed up but not written, so a deleted federation is set up again by hand'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
   exchangeRoleDefinition: manual('recreated through Exchange Online PowerShell by the exchange-role-definitions workload restore (a role that is gone only, off until live-qualified); an existing role is never changed, and built-in roles are Microsoft-managed'),
-  exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
+  exchangeRoleAssignment: automated('unifiedroleassignment', 'approval-held kinds batch 2: create through Graph beta of who holds an Exchange role (a user, group or app, matched in the target), over which scope; each one is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; role group holders are a manual step', { view: 'graph-rest-beta' }),
   exchangeCustomAppScope: automated('customappscope', 'restore gaps batch 9: create and update of the name and recipient filter through Graph beta; the app role assignments that use it are not written', { view: 'graph-rest-beta' }),
   defenderRoleDefinition: automated('unifiedroledefinition', 'restore gaps batch 21: create and update through Graph beta of custom Defender roles (name, description and permissions); built-in roles are skipped; who holds the role is restored by hand', { view: 'graph-rest-beta' }),
-  defenderRoleAssignment: manual('Defender admin access needs a privilege review before it is granted again'),
+  defenderRoleAssignment: automated('unifiedroleassignmentmultiple', 'approval-held kinds batch 2: create and update through Graph beta of who holds a Defender role (people and groups, matched in the target) and the data sources it covers; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service', { view: 'graph-rest-beta' }),
   defenderCustomAppScope: manual('Graph has no write for Defender app access scopes (list only; create, update and delete are Exchange only)'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; no writer is built yet.
   deviceManagementSettings: automated('intune-shared-devicemanagement', 'restore gaps batch 17: update in place through Graph beta of the compliance settings; devices with no compliance policy are never turned compliant; the device cleanup window is the device cleanup rules', { view: 'graph-rest-beta' }),
@@ -338,6 +338,10 @@ export function remappingFor(resourceType, operation) {
 recordRemappingProof('group', 'create', 'engine/restore/applyPatches.test.mjs');
 recordRemappingProof('roleAssignment', 'create', 'engine/restore/applyEngine.test.mjs');
 recordRemappingProof('conditionalAccessPolicy', 'create', 'cli/keel-restore.test.mjs');
+// Approval-held kinds, batch 2: users, groups and apps matched in the target by name.
+for (const resourceType of ['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'operationApprovalPolicy']) {
+  recordRemappingProof(resourceType, 'create', 'engine/restore/approvalHeldAssignments.test.mjs');
+}
 recordRemappingProof('conditionalAccessPolicy', 'update', 'engine/roadmap/fidelity-ledger.test.mjs');
 // Roadmap task-107: a service principal created for an application recreated in
 // the same run carries that application's NEW appId (EXPLICIT_REFERENCES below).
@@ -1059,8 +1063,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'create and update with the message text per language are fixture-tested'),
   windowsAutopilotDeviceIdentity: byHand('device-management', 'POST /deviceManagement/importedWindowsAutopilotDeviceIdentities', 'DeviceManagementServiceConfig.ReadWrite.All',
     'the hardware hash is never returned, so a registration is imported again from the device'),
-  deviceManagementRoleAssignment: byHand('device-management', 'POST /deviceManagement/roleAssignments', 'DeviceManagementRBAC.ReadWrite.All',
-    'Intune admin access needs a privilege review before it is granted again'),
+  deviceManagementRoleAssignment: subset('device-management', 'POST /deviceManagement/roleAssignments (beta); PATCH .../{id} (beta)', 'DeviceManagementRBAC.ReadWrite.All',
+    'create and update are fixture-tested, with groups matched in the target; written only with an approved "changes admin access" effect or with approvals off'),
   // Remaining kinds, batch 1: backed up read-only; manual until a writer is built.
   applePushNotificationCertificate: byHand('device-management', null, 'DeviceManagementServiceConfig.ReadWrite.All',
     'the certificate is renewed with Apple and uploaded in the Intune admin center; the backup keeps the Apple ID, topic and expiry'),
@@ -1099,8 +1103,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update is fixture-tested and never shortens how long a rule waits before retiring devices; create is not registered'),
   windowsQualityUpdatePolicy: subset('device-management', 'POST /deviceManagement/windowsQualityUpdatePolicies (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'create and update are fixture-tested; assignments are not backed up yet'),
-  operationApprovalPolicy: byHand('device-management', 'POST /deviceManagement/operationApprovalPolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'backed up; approval rules need a privilege review before they are set again'),
+  operationApprovalPolicy: subset('device-management', 'POST /deviceManagement/operationApprovalPolicies (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update are fixture-tested, with approver groups matched in the target; written only with an approved "changes admin access" effect or with approvals off'),
   deviceCustomAttributeShellScript: subset('device-management', 'POST /deviceManagement/deviceCustomAttributeShellScripts (beta); PATCH .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementScripts.ReadWrite.All',
     'create and update are fixture-tested; assignments are written through /assign'),
   // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; manual until a writer is built.
@@ -1129,14 +1133,14 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
   exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
     'backed up; a custom role that is gone is recreated by the exchange-role-definitions workload restore; built-in roles are listed beside custom ones'),
-  exchangeRoleAssignment: byHand('identity-application', 'POST /roleManagement/exchange/roleAssignments (beta)', 'RoleManagement.ReadWrite.Exchange',
-    'backed up; a privilege review comes before any grant'),
+  exchangeRoleAssignment: subset('identity-application', 'POST /roleManagement/exchange/roleAssignments (beta)', 'RoleManagement.ReadWrite.Exchange',
+    'create is fixture-tested, with the user, group or app matched in the target; written only with an approved "changes admin access" effect or with approvals off; role group holders are by hand'),
   exchangeCustomAppScope: subset('identity-application', 'POST /roleManagement/exchange/customAppScopes (beta); PATCH .../{id} (beta)', 'RoleManagement.ReadWrite.Exchange',
     'create and update are fixture-tested; the app role assignments that use it are not written'),
   defenderRoleDefinition: subset('identity-application', 'POST /roleManagement/defender/roleDefinitions (beta); PATCH .../{id} (beta)', 'RoleManagement.ReadWrite.Defender',
     'create and update of custom roles are fixture-tested; built-in roles are skipped; assignments are not written'),
-  defenderRoleAssignment: byHand('identity-application', 'POST /roleManagement/defender/roleAssignments (beta)', 'RoleManagement.ReadWrite.Defender',
-    'backed up; a privilege review comes before any grant'),
+  defenderRoleAssignment: subset('identity-application', 'POST /roleManagement/defender/roleAssignments (beta); PATCH .../{id} (beta)', 'RoleManagement.ReadWrite.Defender',
+    'create and update are fixture-tested, with people and groups matched in the target; written only with an approved "changes admin access" effect or with approvals off'),
   defenderCustomAppScope: byHand('identity-application', 'none: Graph lists Defender app access scopes but has no create, update or delete for them', 'RoleManagement.ReadWrite.Defender',
     'backed up; Graph cannot write Defender scopes'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; manual until a writer is built.

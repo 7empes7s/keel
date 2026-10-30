@@ -226,7 +226,8 @@ export const COMPLETENESS = Object.freeze({
   groupPolicyUploadedDefinitionFile: { missing: [part('The ids of the settings in it: Intune gives them new ones, so templates that used them are set up again', 'not-written')] },
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
-  deviceManagementRoleAssignment: { whole: 'not-written' },
+  // Approval-held kinds, batch 2: written behind the restore approval.
+  deviceManagementRoleAssignment: {},
   // Remaining kinds, batch 1.
   applePushNotificationCertificate: { whole: 'not-written', missing: [part('The certificate file', 'secret')] },
   mobileThreatDefenseConnector: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
@@ -250,7 +251,7 @@ export const COMPLETENESS = Object.freeze({
   androidManagedStoreAccountEnterpriseSettings: { whole: 'not-written', missing: [part('Enrollment company codes and QR codes', 'secret')] },
   managedDeviceCleanupRule: { missing: [part('A deleted rule, and a shorter wait before devices are retired', 'not-written')] },
   windowsQualityUpdatePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
-  operationApprovalPolicy: { whole: 'not-written' },
+  operationApprovalPolicy: {},
   // Restore gaps batch 5: the script body is read per script and written back.
   deviceCustomAttributeShellScript: {},
   // Remaining kinds, batch 4.
@@ -268,11 +269,11 @@ export const COMPLETENESS = Object.freeze({
   externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
-  exchangeRoleAssignment: { whole: 'not-written' },
+  exchangeRoleAssignment: { missing: [part('A role held by an Exchange role group', 'other-route')] },
   exchangeCustomAppScope: { missing: [part('The app role assignments that use it', 'other-route')] },
   // Restore gaps batch 21: custom roles written; built-in ones are Microsoft's.
   defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', builtInFlag)] },
-  defenderRoleAssignment: { whole: 'not-written' },
+  defenderRoleAssignment: {},
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.
   // Restore gaps batch 17: compliance settings updated in place; device cleanup is its own kind.

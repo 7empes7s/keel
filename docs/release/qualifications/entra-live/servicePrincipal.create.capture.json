@@ -1,22 +1,22 @@
 {
-  "restoreRef": "bee2b98f-efe9-8651-abd4-1ada249a9cff",
+  "restoreRef": "ee4d85fd-8c29-8e8f-93b4-a50b7c6aa451",
   "entry": {
-    "naturalKey": "servicePrincipal:9eb0e7ba-92ec-8f07-a98f-430a141723ce",
+    "naturalKey": "servicePrincipal:78b09f9c-5fe5-8579-8b75-6b508149bc0c",
     "resourceType": "servicePrincipal",
     "operation": "create",
-    "targetId": "f34fe90f-f3f1-8be4-9558-2a47d289f8fa",
+    "targetId": "bc60760f-e949-8508-bbc1-7e18d80b2166",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:25:37.508Z",
+    "recordedAt": "2026-10-30T03:50:48.921Z",
     "priorState": null,
     "intendedState": {
-      "id": "4eaf6284-570d-8524-8d2d-33a345f36169",
+      "id": "e1a55fa3-37d8-887f-a2eb-9df82d35059f",
       "tags": [],
-      "appId": "9eb0e7ba-92ec-8f07-a98f-430a141723ce",
+      "appId": "96c164b9-1285-8ea6-a0ce-0f638421da59",
       "notes": null,
       "appRoles": [],
       "description": null,
-      "displayName": "KEEL-RT-246-app",
+      "displayName": "KEEL-RT-257-app",
       "accountEnabled": true,
       "signInAudience": "AzureADMyOrg",
       "servicePrincipalType": "Application",
@@ -24,7 +24,7 @@
       "appRoleAssignmentRequired": false
     },
     "postState": {
-      "id": "f34fe90f-f3f1-8be4-9558-2a47d289f8fa",
+      "id": "bc60760f-e949-8508-bbc1-7e18d80b2166",
       "info": {
         "logoUrl": null,
         "supportUrl": null,
@@ -33,7 +33,7 @@
         "privacyStatementUrl": null
       },
       "tags": [],
-      "appId": "9eb0e7ba-92ec-8f07-a98f-430a141723ce",
+      "appId": "96c164b9-1285-8ea6-a0ce-0f638421da59",
       "notes": null,
       "addIns": [],
       "appRoles": [],
@@ -43,15 +43,15 @@
       "replyUrls": [],
       "isDisabled": null,
       "description": null,
-      "displayName": "KEEL-RT-246-app",
+      "displayName": "KEEL-RT-257-app",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals/$entity",
       "accountEnabled": true,
       "appDescription": null,
-      "appDisplayName": "KEEL-RT-246-app",
+      "appDisplayName": "KEEL-RT-257-app",
       "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
       "keyCredentials": [],
       "signInAudience": "AzureADMyOrg",
-      "createdDateTime": "2026-10-30T00:25:37Z",
+      "createdDateTime": "2026-10-30T03:50:49Z",
       "deletedDateTime": null,
       "alternativeNames": [],
       "verifiedPublisher": {
@@ -64,7 +64,7 @@
       "tokenEncryptionKeyId": null,
       "applicationTemplateId": null,
       "servicePrincipalNames": [
-        "9eb0e7ba-92ec-8f07-a98f-430a141723ce"
+        "96c164b9-1285-8ea6-a0ce-0f638421da59"
       ],
       "appOwnerOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
       "oauth2PermissionScopes": [],

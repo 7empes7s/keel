@@ -4,7 +4,9 @@
  *
  * Policy workloads plan every chosen object in one dry run. Mailboxes and teams
  * (PER_ITEM_WORKLOADS) plan one object per dry run, so the page starts one check per
- * chosen mailbox or team. SharePoint settings still take operator input (a tenant host
+ * chosen mailbox or team. SharePoint site structure (hub sites, site designs, site
+ * scripts and named sites' lists and navigation) plans like a policy workload, from its
+ * own write declarations. SharePoint settings still take operator input (a tenant host
  * and a site) and stay with the operator.
  *
  * Pure: the caller loads the observations (loadWorkloadSource). Nothing here decides
@@ -15,6 +17,9 @@ import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs'
 import { workloadTarget, writeFamilies } from './cmdletSettings.mjs';
 import { EXCHANGE_WORKLOAD } from '../../collect/workloads/exchange.mjs';
 import { TEAMS_WORKLOAD } from '../../collect/workloads/teams.mjs';
+import { SHAREPOINT_STRUCTURE_WORKLOAD } from '../../collect/workloads/sharepointStructure.mjs';
+import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from './sharepointStructureWrites.mjs';
+import { structureTarget } from './sharepointStructure.mjs';
 
 export const PURVIEW_LABELS_WORKLOAD = 'purview-labels';
 
@@ -41,7 +46,17 @@ export const PAGE_RESTORE_WORKLOADS = Object.freeze([
   EXCHANGE_WORKLOAD, TEAMS_WORKLOAD,
   'exchange-mail-flow', 'exchange-extended', 'teams-org-policies', 'teams-voice-policies',
   'purview-retention-dlp', 'purview-governance', PURVIEW_LABELS_WORKLOAD,
+  SHAREPOINT_STRUCTURE_WORKLOAD,
 ]);
+
+// Every write the page plans: the cmdlet workloads' and SharePoint structure's (PnP).
+const PAGE_DECLARATIONS = Object.freeze({ ...WKLD_WRITE_OPERATIONS, ...SHAREPOINT_STRUCTURE_WRITE_OPERATIONS });
+
+// A site's template is stored for a restore, not compared: PnP rewrites it on every
+// export, so a change shows in its summaries (lists, columns, content types, navigation).
+const NOT_COMPARED = Object.freeze({
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: Object.freeze(['templateXml', 'templateSha256', 'templateBytes']),
+});
 
 const PURVIEW_KINDS = Object.freeze({
   label: { prefix: 'label:', read: 'purview.label-definitions' },
@@ -61,9 +76,21 @@ const canonical = (value) => JSON.stringify(value ?? null, (_key, inner) => (inn
   ? Object.fromEntries(Object.keys(inner).sort().map((key) => [key, inner[key]]))
   : inner));
 
+/** A site's path, "/sites/finance", or the address when it is not one. */
+function sitePath(url) {
+  try { return new URL(url).pathname.replace(/\/$/, '') || '/'; } catch { return url ?? null; }
+}
+
 /** The name a person knows an object by; never a key or a Guid when a name exists. */
-function nameOf(observation) {
+function nameOf(observation, workload = null) {
   const fields = observation.fields ?? {};
+  if (workload === SHAREPOINT_STRUCTURE_WORKLOAD) {
+    // A hub, design or script by its title; a site by its title and path, as two sites can share a title.
+    const title = [fields.Title, fields.title].find((value) => typeof value === 'string' && value.trim())?.trim() ?? null;
+    const path = sitePath(fields.url ?? null);
+    if (path && title) return `${title} (${path})`;
+    if (title || path) return title ?? path;
+  }
   for (const field of ['DisplayName', 'displayName', 'Name', 'name']) {
     if (typeof fields[field] === 'string' && fields[field].trim()) return fields[field].trim();
   }
@@ -84,10 +111,10 @@ function kindSpec(workload, kind) {
     const spec = PURVIEW_KINDS[kind];
     return spec ? { name: resourceOf(spec.read) ?? plainKind(kind), update: true, add: false, manual: null, declaration: null } : null;
   }
-  const families = writeFamilies(workload);
+  const families = writeFamilies(workload, PAGE_DECLARATIONS);
   const ops = families[kind];
   if (ops?.update) {
-    const declaration = WKLD_WRITE_OPERATIONS[ops.update];
+    const declaration = PAGE_DECLARATIONS[ops.update];
     return { name: resourceOf(declaration.readBack) ?? plainKind(kind), update: true, add: Boolean(ops.add), manual: null, declaration };
   }
   const manual = MANUAL_FAMILIES[workload]?.[kind] ?? null;
@@ -100,11 +127,19 @@ function kindSpec(workload, kind) {
  * tenantWide }, where change is 'changed', 'deleted' or 'same' against the newest
  * backup (null when there is nothing newer).
  */
-const changeOf = (later, observation) => {
+const compared = (fields, skip) => (skip ? Object.fromEntries(Object.entries(fields ?? {}).filter(([field]) => !skip.includes(field))) : fields);
+const changeOf = (later, observation, skip = null) => {
   if (!later) return null;
   const newer = later.get(observation.resourceKey) ?? null;
-  return !newer ? 'deleted' : canonical(newer.fields) === canonical(observation.fields) ? 'same' : 'changed';
+  return !newer ? 'deleted' : canonical(compared(newer.fields, skip)) === canonical(compared(observation.fields, skip)) ? 'same' : 'changed';
 };
+
+/** Whether writing this object reaches the whole tenant (the fixture guard's view). */
+function tenantWideOf(workload, spec, kind, observation) {
+  if (!spec.declaration) return false;
+  if (workload === SHAREPOINT_STRUCTURE_WORKLOAD) return structureTarget(kind, [observation]).tenantWide;
+  return workloadTarget(spec.declaration, kind, observation).tenantWide;
+}
 const CHANGE_ORDER = { changed: 0, deleted: 1, same: 2 };
 const byChange = (a, b) => (CHANGE_ORDER[a.change] ?? 3) - (CHANGE_ORDER[b.change] ?? 3) || a.name.localeCompare(b.name);
 
@@ -156,16 +191,16 @@ export function workloadChoices(workload, observations, newest = null) {
         items: [],
       });
     }
-    const change = changeOf(later, observation);
+    const change = changeOf(later, observation, NOT_COMPARED[workload] ?? null);
     let restorable = spec.update;
     let reason = null;
     if (restorable && change === 'deleted' && !spec.add) {
       restorable = false;
       reason = 'Deleted since this backup. KEEL does not add this back; an admin makes it again by hand from the backup.';
     }
-    const tenantWide = spec.declaration ? workloadTarget(spec.declaration, kind, observation).tenantWide : false;
+    const tenantWide = tenantWideOf(workload, spec, kind, observation);
     groups.get(kind).items.push({
-      key: observation.resourceKey, name: nameOf(observation) ?? spec.name, change, restorable, reason, tenantWide,
+      key: observation.resourceKey, name: nameOf(observation, workload) ?? spec.name, change, restorable, reason, tenantWide,
     });
   }
   return [...groups.values()]

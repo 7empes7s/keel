@@ -74,6 +74,9 @@ const EXCHANGE_GROUP_WORDS: Record<string, string> = {
   organization: "Organization-wide Exchange settings",
 };
 
+// The parts of a SharePoint site a structure restore only adds (engine sharepointStructure.mjs planSite).
+const MISSING_PARTS = ["lists", "siteColumns", "contentTypes"];
+
 const rolesWords = (roles: string[] | undefined) => (roles?.includes("owner") ? "Owner" : roles?.includes("guest") ? "Guest" : "Member");
 
 export interface ChangeTable { key: string; title: string; rows: FieldChange[] }
@@ -541,13 +544,15 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
                     label={`${table.title}: what will change`}
                     rows={table.rows.map((change) => {
                       const members = table.key === "members";
-                      const diff = members && change.before === "Not in the team" ? "added" : members && change.after === "Removed from the team" ? "removed" : "changed";
+                      // A SharePoint site's lists, columns or content types KEEL adds back: missing now.
+                      const missing = !members && change.before === null && MISSING_PARTS.includes(change.field);
+                      const diff = missing || (members && change.before === "Not in the team") ? "added" : members && change.after === "Removed from the team" ? "removed" : "changed";
                       return {
                         path: change.field, section: "General", label: members ? change.field : fieldWords(change.field), diff,
                         before: diff === "added" ? null : members ? String(change.before) : settingValueWords(change.field, change.before),
                         after: diff === "removed" ? null : members ? String(change.after) : settingValueWords(change.field, change.after),
                         entries: null,
-                        absent: members ? (diff === "added" ? "Not in the team" : "Removed from the team") : undefined,
+                        absent: missing ? "Missing now" : members ? (diff === "added" ? "Not in the team" : "Removed from the team") : undefined,
                       };
                     })}
                     sides={{ before: "Now in your tenant", after: "After the restore" }}

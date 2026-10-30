@@ -11424,8 +11424,32 @@ item that needs it stays untouched.
   `appleUserInitiatedEnrollmentProfile` c+u, `managedEBookCategory` c+u, `microsoftTunnelConfiguration` c+u (Q122/Q139),
   `exchangeCustomAppScope` c (Q123), `mobileAppCategory` u (Q139).
 - Needs: nothing. Run it at the deployed commit B, after Q235 (it may run before Q236; both share the 2026-11-21 deadline).
-- Status: todo
-- Result:
+- Status: done (12 promoted)
+- Result: done (2026-10-30 01:30 UTC, keel-operator). **All 11 recaptured, plus 1 new create** (mobileAppCategory create): **12 promoted**, with new observedAt 2026-10-30, so they lapse 2026-11-29.
+  - B = **05a930b5**.
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted. Nothing assigned; no Apple certificate or token uploaded.
+  - Self-approved: requester Gmail, approver Entra.
+  - Before: no KEEL-RT-237 objects. **Device cleanup rule before: none** (0 rules).
+  - Fixtures: as specified, plus `KEEL-RT-237-cleanup` (macOS, 270 days).
+    - The first tunnel POST answered 500 `An internal server error has occurred.`; the retry (also sending `routeIncludes`, `routeExcludes`, `advancedSettings`) answered 201.
+  - Step 1: S = `a5973c05`, exit 3 (incomplete only on todoSettings 500). **All 7 types `complete`**: deviceCategory 4, mobileAppCategory 10, managedDeviceCleanupRule 1, exchangeCustomAppScope 2, appleUserInitiatedEnrollmentProfile 1, microsoftTunnelConfiguration 1, managedEBookCategory 1.
+  - Step 2, update:
+    - Drifts: description `KEEL-RT drifted` (device category, tunnel, Apple profile); the app and e-book categories have no description, so they were renamed `-drifted`; tunnel DNS 10.99.0.2; cleanup rule 180 days.
+    - Dry run `71a1a5e9` listed only those fields. Approval **42b12846**. Enforce exit 0, 6× `update succeeded`. Read back as in S (tunnel DNS 10.99.0.1, rule 270 days).
+  - Step 3, create:
+    - The 3 categories, tunnel, Apple profile and Exchange scope deleted. Dry run `6acb3232`, approval **fbe010ff**, exit 0, 6× `create succeeded`, new ids.
+    - Read back as in S: tunnel 10.99.0.0/24, DNS 10.99.0.1, route 10.98.0.0/16; scope filter `PrimarySmtpAddress -like 'keel-rt-scope-none*'`.
+    - Follow-up: the Apple profile's place in the priority order is not written yet.
+  - Step 4: dry run `c047f659` from S (6 + cleanup rule): **0 field changes**, 0 skipped, 0 failed.
+  - Step 5: all KEEL-RT-237 fixtures and the cleanup rule deleted; 0 left in all 7 collections. **Cleanup rule after: none**, as before. **Left in the tenant: nothing.**
+  - Step 6:
+    - Checks: `pseudonymize.mjs check` passes on 24 files; secret scan 0; no raw ids.
+    - Commit **5b8b09ff** on `claude/live-evidence-q237` (pushed, no PR).
+    - All 12 print `fixture-tested -> live-qualified`:
+      - create and update: deviceCategory, mobileAppCategory, managedEBookCategory, microsoftTunnelConfiguration, appleUserInitiatedEnrollmentProfile;
+      - update only: managedDeviceCleanupRule;
+      - create only: exchangeCustomAppScope.
+    - observedAt: updates 2026-10-30 01:21:24–01:21:26 UTC, creates 01:25:20–01:25:32.
 - **Test tenant only.** Same hard rules and capture tooling as Q109, Q122 and Q123. Self-approve under the 2026-10-14 standing
   authorization; log every approval id. Restorer for writes; global admin not used; grant nothing; no CA, no break-glass, not
   Marouane's account. Never assign any fixture. Never upload an Apple certificate or token.

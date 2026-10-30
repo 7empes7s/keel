@@ -114,6 +114,8 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   // Not a stored type: the Intune settings catalog policies made from an Endpoint
   // security template, which lists file under Defender (taxonomy settingKind).
   defenderEndpointSecurityPolicy: "endpoint security policy",
+  // The same, in the older format (an Intune intent made from an endpoint security template).
+  defenderEndpointSecurityIntent: "endpoint security policy (older format)",
 };
 
 // Product names keep their capitals inside an otherwise lower-case label.

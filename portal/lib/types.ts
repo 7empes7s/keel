@@ -500,7 +500,8 @@ export interface DriftRecord {
   name?: string | null;
   // The settings catalog template family (templateReference.templateFamily) of the
   // observed or approved copy, when it has one: an antivirus or firewall policy made in
-  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind).
+  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind). For
+  // an older-format policy, its template's subtype (engine/insights/templateAreas.mjs).
   templateFamily?: string | null;
   // The object's isBuiltIn flag (an admin role Microsoft provides, or the tenant's own),
   // so the change names it "Built-in admin role" or "Custom admin role"; null when unknown.

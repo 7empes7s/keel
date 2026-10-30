@@ -1,4 +1,5 @@
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE, sameRecordedDifference } from './openDrift.mjs';
+import { DRIFT_TEMPLATE_FAMILY_SQL } from '../insights/templateAreas.mjs';
 
 export { markSameContentDrift } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
@@ -140,7 +141,7 @@ export async function listLatestOpenDrift(client, { tenantRef, baselineId }) {
         WHERE tenant_ref = $1 AND baseline_id = $2
         ORDER BY natural_key, detected_at DESC, id DESC
      )
-     SELECT d.*
+     SELECT d.*, ${DRIFT_TEMPLATE_FAMILY_SQL} AS template_family
        FROM drift d
        JOIN latest ON latest.id = d.id
       WHERE ${OPEN_DRIFT_PREDICATE}

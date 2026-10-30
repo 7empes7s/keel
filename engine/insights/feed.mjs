@@ -24,6 +24,7 @@ import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/open
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
 import { builtInOf, objectTypeName, settingKind, typeInfo } from './taxonomy.mjs';
+import { templateFamilySql } from './templateAreas.mjs';
 
 export { FEED_GROUPINGS, feedGroupOf, groupChangeFeed } from './feedGroups.mjs';
 
@@ -128,7 +129,7 @@ const OBJECT_IDS_SQL = `(ARRAY(SELECT lower(m[1]) FROM regexp_matches(CASE WHEN 
 const DRIFT_SQL = `
   SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at,
          ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors,
-         coalesce(r.after_payload->'templateReference'->>'templateFamily', r.before_payload->'templateReference'->>'templateFamily') AS template_family,
+         ${templateFamilySql({ typeExpr: 'r.resource_type', payloads: ['r.after_payload', 'r.before_payload'], tenantExpr: 'r.tenant_ref' })} AS template_family,
          coalesce(r.after_payload->'isBuiltIn', r.before_payload->'isBuiltIn') AS is_built_in
     FROM drift r
     JOIN snapshot s ON s.id = r.observed_snapshot

@@ -1,26 +1,26 @@
 {
-  "restoreRef": "c26b4476-eada-8ac2-9a5d-b4010e1b2153",
+  "restoreRef": "b6477c1c-2be3-880c-a9cd-8282692018fb",
   "entry": {
-    "naturalKey": "managedEBookCategory:359262d1-018e-89a1-86d7-310510bc9e7e",
+    "naturalKey": "managedEBookCategory:d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
     "resourceType": "managedEBookCategory",
     "operation": "update",
-    "targetId": "359262d1-018e-89a1-86d7-310510bc9e7e",
+    "targetId": "d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T16:17:20.274Z",
+    "recordedAt": "2026-10-30T01:21:24.119Z",
     "priorState": {
-      "id": "359262d1-018e-89a1-86d7-310510bc9e7e",
-      "displayName": "KEEL-RT-books-drift",
-      "lastModifiedDateTime": "2026-10-22T16:17:19.6306763Z"
+      "id": "d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
+      "displayName": "KEEL-RT-237-books-drifted",
+      "lastModifiedDateTime": "2026-10-30T01:21:23.2750719Z"
     },
     "intendedState": {
-      "displayName": "KEEL-RT-books"
+      "displayName": "KEEL-RT-237-books"
     },
     "postState": {
-      "id": "359262d1-018e-89a1-86d7-310510bc9e7e",
-      "displayName": "KEEL-RT-books",
+      "id": "d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
+      "displayName": "KEEL-RT-237-books",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/managedEBookCategories/$entity",
-      "lastModifiedDateTime": "2026-10-22T16:17:20Z"
+      "lastModifiedDateTime": "2026-10-30T01:21:24Z"
     }
   }
 }

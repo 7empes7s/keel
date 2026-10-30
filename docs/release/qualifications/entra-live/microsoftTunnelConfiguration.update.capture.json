@@ -1,23 +1,23 @@
 {
-  "restoreRef": "8de90bea-a0ba-8a12-a5b0-a98004dbde5d",
+  "restoreRef": "b6477c1c-2be3-880c-a9cd-8282692018fb",
   "entry": {
-    "naturalKey": "microsoftTunnelConfiguration:31044949-dd8e-839f-9c53-b348f743f7f8",
+    "naturalKey": "microsoftTunnelConfiguration:ddb535f8-f85c-8575-a7a6-658ff024332d",
     "resourceType": "microsoftTunnelConfiguration",
     "operation": "update",
-    "targetId": "31044949-dd8e-839f-9c53-b348f743f7f8",
+    "targetId": "ddb535f8-f85c-8575-a7a6-658ff024332d",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T08:57:06.044Z",
+    "recordedAt": "2026-10-30T01:21:26.293Z",
     "priorState": {
-      "id": "31044949-dd8e-839f-9c53-b348f743f7f8",
+      "id": "ddb535f8-f85c-8575-a7a6-658ff024332d",
       "network": "10.99.0.0/24",
       "splitDNS": [],
       "dnsServers": [
         "10.99.0.2"
       ],
-      "listenPort": 8443,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-tunnel",
+      "listenPort": 443,
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-237-tunnel",
       "ipv6Network": null,
       "routeExcludes": [],
       "routeIncludes": [
@@ -31,7 +31,7 @@
         "0"
       ],
       "advancedSettings": [],
-      "lastUpdateDateTime": "2026-10-22T08:52:27.3416615Z",
+      "lastUpdateDateTime": "2026-10-30T01:18:24.0662935Z",
       "defaultDomainSuffix": "",
       "disableUdpConnections": false
     },
@@ -42,8 +42,8 @@
         "10.99.0.1"
       ],
       "listenPort": 443,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-tunnel",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-tunnel",
       "ipv6Network": null,
       "routeExcludes": [],
       "routeIncludes": [
@@ -57,15 +57,15 @@
       "disableUdpConnections": false
     },
     "postState": {
-      "id": "31044949-dd8e-839f-9c53-b348f743f7f8",
+      "id": "ddb535f8-f85c-8575-a7a6-658ff024332d",
       "network": "10.99.0.0/24",
       "splitDNS": [],
       "dnsServers": [
         "10.99.0.1"
       ],
       "listenPort": 443,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-tunnel",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-tunnel",
       "ipv6Network": null,
       "routeExcludes": [],
       "routeIncludes": [
@@ -80,7 +80,7 @@
         "0"
       ],
       "advancedSettings": [],
-      "lastUpdateDateTime": "2026-10-22T08:57:06.1664983Z",
+      "lastUpdateDateTime": "2026-10-30T01:21:26.4249447Z",
       "defaultDomainSuffix": "",
       "disableUdpConnections": false
     }

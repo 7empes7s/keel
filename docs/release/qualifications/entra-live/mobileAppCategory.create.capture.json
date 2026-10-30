@@ -1,22 +1,22 @@
 {
-  "restoreRef": "881bcdba-f92c-838a-9c7f-1a7370c7e3ec",
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
   "entry": {
-    "naturalKey": "mobileAppCategory:65fee479-3aae-87db-be89-f66c515519a3",
+    "naturalKey": "mobileAppCategory:31de4f60-dbb0-8476-bfed-2f8fe35de103",
     "resourceType": "mobileAppCategory",
     "operation": "create",
-    "targetId": "ede91034-ab58-8107-b67c-7b7b765127d6",
+    "targetId": "9f1779b5-e595-8cf8-a716-14651c72d80a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-28T11:48:46.200Z",
+    "recordedAt": "2026-10-30T01:25:20.528Z",
     "priorState": null,
     "intendedState": {
-      "displayName": "KEEL-RT-209-cat"
+      "displayName": "KEEL-RT-237-apps"
     },
     "postState": {
-      "id": "ede91034-ab58-8107-b67c-7b7b765127d6",
-      "displayName": "KEEL-RT-209-cat",
+      "id": "9f1779b5-e595-8cf8-a716-14651c72d80a",
+      "displayName": "KEEL-RT-237-apps",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileAppCategories/$entity",
-      "lastModifiedDateTime": "2026-10-28T11:48:46Z"
+      "lastModifiedDateTime": "2026-10-30T01:25:20Z"
     }
   }
 }

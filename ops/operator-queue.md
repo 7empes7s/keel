@@ -9467,8 +9467,22 @@ item that needs it stays untouched.
 - Drafted by the "Restore distribution lists with Microsoft365DSC" thread (2026-10-28).
 - Needs: Q203 done; PR #602 merged (2026-10-30, 2290d9b6) and deployed; Q266 done (the `exchange-distribution-groups` reads captured,
   imported and switched on). Check: `node /opt/keel-live/cli/keel-workload-collect.mjs proof` lists the `exchange-distribution-groups` reads as current.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 15:00 UTC, keel-operator). Build **B = c8599667**. Q203 done; Q266 done (the reads current). Exchange Restorer for writes, Exchange Collector for reads; global admin not used; nothing granted. Run from my checkout at B.
+  - **Fixtures:**
+    - `KEEL-RT-dl-restore-b` (security, defaults, no owner, no members): Guid 4e7738fa….
+    - `KEEL-RT-dl-restore-a` (distribution, ApprovalRequired, hidden, no members): Guid 0d3ebde4…. Exchange refused it without an owner ("is not managed by any recipient but the MemberJoinRestriction property is set to ApprovalRequired"), so its **owner is the fixture mailbox `KEEL-RT-20260908 Alice Martin`**. carla has no Exchange recipient.
+  - **Step 1:** `keel-workload-collect run` exit **0**; exchange-distribution-groups complete (3 new changes vs the approved setup: the two new lists). **C = 772bbb65** holds both lists.
+  - **Step 2:** a → Open and unhidden (OK). Deleting b first answered "You don't have sufficient permissions. This operation can only be performed by a manager of the group" (b has no owner); with `-BypassSecurityGroupManagerCheck` it was removed.
+  - **Step 3:** dry run **f3f2c231** (Collector): **2 changes, 6 manual, 0 refused**. update a (`HiddenFromAddressListsEnabled` false→true, `MemberJoinRestriction` Open→ApprovalRequired); add b (Name, Type Security, Alias, PrimarySmtpAddress, DisplayName, …). Manual lines verbatim:
+    - a `ManagedBy` (before `["keel-rt-20260908-alice@…"]`, after `["abbaf24b-…"]`): "who owns the list (owners can change its members); an administrator applies it". **Likely spurious:** the same owner, compared as a UPN on one side and an object id on the other.
+    - b `EmailAddresses`: "the list's other addresses; the re-created list starts without it, so an administrator applies it".
+    - b `ReportToManagerEnabled` / `ReportToOriginatorEnabled`: "KEEL's distribution list writer does not carry this setting; an administrator applies it".
+    - b `Members`: "the re-created list starts with no members; the Entra group backup lists them, and an administrator adds them".
+    - b: "the re-created list gets a new identity: permissions granted to this security group, mail flow rules and anything else that named the old one do not come back".
+  - **Step 4:** approval **c09d9ded-9e5a-4b75-8dfb-ccaf81fa18ec** (keys `exchange-distribution-groups:distribution-group:<Guid>`); enforce exit **0**, `2 of 2 write(s) qualified`, **`verified`**. Collector `Get-DistributionGroup`: b back as **MailUniversalSecurityGroup** (new Guid 206b296b…); a **ApprovalRequired, hidden**.
+  - **Step 5:** dry run **b3f7e56d**: **0 changes**, 2 manual, 0 refused: a `ManagedBy` (the same likely-spurious line), and b "the backed-up list is gone and another list now uses its name; an administrator decides which one to keep", as expected. Promoting f3f2c231 again: exit 1, `Distribution lists restore partial: the list changed since the dry run, or could not be read again; a new dry run is required` (twice), **no write** (both lists read the same after). The refusal is as intended, but the word is "partial", not "stale" (same as Q240).
+  - **Left in the tenant (as the item says):** `KEEL-RT-dl-restore-a` (owner Alice fixture, no members) and `KEEL-RT-dl-restore-b` (new Guid).
 - **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id.
 - **Fixtures:** with your usual admin path (Restorer, Exchange), create two lists: `KEEL-RT-dl-restore-a` (distribution, MemberJoinRestriction
   ApprovalRequired, hidden from the address book) and `KEEL-RT-dl-restore-b` (mail-enabled security, defaults). No members.

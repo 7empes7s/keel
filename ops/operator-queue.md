@@ -12268,7 +12268,16 @@ item that needs it stays untouched.
   backup's old appId and Graph refused it (`NoBackingApplicationObject`). Q257 step 6 (dry run `013b1083`) planned a spurious
   `application` update `fields: ["appId"]` and an empty `servicePrincipal` update. PR #740 (merge `571614b5`) fixes both.
 - Needs: the deployed build B at or after `571614b5`. Check: `git -C /opt/keel-live merge-base --is-ancestor 571614b5 HEAD`.
-- Status: todo
+- Status: done
+- Result: done (2026-10-30 06:55 UTC, keel-operator). Build **B = 5204da92** (has #740 `571614b5` and #755). Restorer for writes, Collector for reads; global admin not used; nothing granted or consented, no secrets or certificates.
+  - Step 1: no `KEEL-RT-261` app, principal or deleted item.
+  - Step 2: `KEEL-RT-261-app` (single tenant, 0 secrets, 0 certificates, no API permissions), old appId `5a739dcc…`, object `416c7d93…`; principal `f2994886…` (first POST after 12 s gave 201). Assigned to nobody.
+  - Step 3: snapshot **S = efe6cecf** (collect exit 3 only for the known todoSettings 500); holds `application:5a739dcc…` and `servicePrincipal:5a739dcc…`.
+  - Step 4: both deleted and purged; confirmed 404 in deleted items.
+  - Step 5, **pass 1** (app only): dry run **2dfee2d3**, completed, verbs `application` create, `domain:techinsiderbytes.com` noop (closure). Approval **054970da-fbc9-4570-b1ab-5acd015a8b10**. Enforce **exit 0**, `application create succeeded`, new object `98d5b412…`, **new appId `9663452a-6f54-43eb-b1ce-0249c47957aa`**.
+  - Step 6, **pass 2** (principal): dry run **cfa63a07**, completed, verbs `application` **noop**, domain noop, `servicePrincipal` **create**. Approval **58bfe11a-9b04-4fc4-bca5-5222bd7670c3**. Enforce **exit 0**, `servicePrincipal create succeeded` (`f35f89fe…`). Read back: principal appId **`9663452a…` = the new appId** (not `5a739dcc…`). The #726 `NoBackingApplicationObject` failure is gone.
+  - Step 7: dry run **ef7ab11f** (both selected), completed, verbs: `application` **noop**, `domain` noop, `servicePrincipal` **noop**. No `fields: ["appId"]`, no empty update (Q257's spurious diff is fixed).
+  - Step 8: deleted and purged the principal and app (the app purge needed one retry after a 404). Nothing named `KEEL-RT-261` left live or in deleted items.
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q257. Log every approval id.
   Grant nothing, consent to nothing, add no secrets or certificates. Global admin not used.
 - Do, at B, from your own checkout (never `/opt/keel`):
@@ -12293,7 +12302,17 @@ item that needs it stays untouched.
   recreated app is restored with the appId it has.
 - Needs: Q261 done, and the deployed build B at or after PR #755's merge commit. Check:
   `git -C /opt/keel-live log --oneline -1 --grep "#755"` shows the merge, or `merge-base --is-ancestor <merge sha> HEAD`.
-- Status: todo
+- Status: done
+- Result: done (2026-10-30 07:10 UTC, keel-operator). Build **B = 5204da92** (the #755 merge). Restorer for writes, Collector for reads; global admin not used; nothing granted or consented, no secrets or certificates, no service principal.
+  - Step 1: no `KEEL-RT-262` app, principal or deleted app.
+  - Step 2: `KEEL-RT-262-app` (single tenant, 0 secrets, 0 certificates, no API permissions), **old appId `768756bf-7b78-4444-bcaa-c31a65651240`**, object `4dedfba4…`. PATCH `identifierUris` `["api://768756bf…"]`: 204 (the read showed it after ~15 s of replication).
+  - Step 3: snapshot **S = 8b572956** (collect exit 3 only for todoSettings, 504 this time). `application:768756bf…` holds `identifierUris: ["api://768756bf…"]`.
+  - Step 4: deleted and purged (purge needed one retry after a 404); confirmed 404 live and in deleted items.
+  - Step 5, **create path:** dry run **06ae7bc9**, completed, verbs `application` create, `domain` noop. Approval **dd498cf4-748e-4bfa-afad-dcab40883a6f**. Enforce **exit 0**, `application create succeeded`, object `b010a529…`, **new appId `3c8867c1-4aa5-4ae0-aba3-2fe2eeaaf3f7`**. Journal create entry: outcome `succeeded`, postState `identifierUris: ["api://3c8867c1…"]` (intendedState carried the backup's `api://768756bf…`). Read back: `identifierUris` exactly **`["api://3c8867c1…"]`**.
+  - Step 6, **deleted-items path:** deleted the recreated app (not purged; 200 in deleted items). Dry run **d313780a**, completed, verbs `application` **restore-soft-deleted**, `domain` noop. Approval **491b41d4-1720-4e43-ac17-f7b7691334ab**. Enforce **exit 0**, `restore-soft-deleted succeeded`, no residual drift, no not-remediable. Journal postState appId `3c8867c1…`, `identifierUris ["api://3c8867c1…"]`. Read back: appId still `3c8867c1…`, `identifierUris` exactly **`["api://3c8867c1…"]`**.
+  - Step 7: dry run **c98aff51**, completed, verbs `application` **noop**, `domain` noop.
+  - Step 8: deleted and purged `KEEL-RT-262-app` (purge needed one retry). Nothing named `KEEL-RT-262` left live or in deleted items.
+  - No Graph write was refused.
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q257 and Q261. Log every
   approval id. Grant nothing, consent to nothing, add no secrets or certificates. Global admin not used.
 - Do, at B, from your own checkout (never `/opt/keel`):

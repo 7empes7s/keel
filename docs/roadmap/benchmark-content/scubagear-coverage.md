@@ -11,11 +11,11 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 | Entra ID | 34 | 28 | 6 |
 | Exchange Online | 12 | 2 | 10 |
 | Security Suite (Defender and Purview) | 24 | 11 | 13 |
-| SharePoint and OneDrive | 8 | 2 | 6 |
+| SharePoint and OneDrive | 8 | 8 | 0 |
 | Teams | 14 | 11 | 3 |
 | Power Platform | 9 | 2 | 7 |
 | Power BI | 8 | 8 | 0 |
-| **All** | **109** | **64** | **45** |
+| **All** | **109** | **70** | **39** |
 
 ## Summary
 
@@ -24,11 +24,11 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 | Entra ID | 34 | 23 | 11 | 30 | 0 | 1 | 3 |
 | Exchange Online | 12 | 10 | 2 | 3 | 0 | 9 | 0 |
 | Security Suite (Defender and Purview) | 24 | 9 | 15 | 19 | 0 | 2 | 3 |
-| SharePoint and OneDrive | 8 | 8 | 0 | 0 | 8 | 0 | 0 |
+| SharePoint and OneDrive | 8 | 8 | 0 | 8 | 0 | 0 | 0 |
 | Teams | 14 | 4 | 10 | 11 | 0 | 3 | 0 |
 | Power Platform | 9 | 5 | 4 | 2 | 0 | 5 | 2 |
 | Power BI | 8 | 0 | 8 | 8 | 0 | 0 | 0 |
-| **All** | **109** | **59** | **50** | **73** | **8** | **20** | **8** |
+| **All** | **109** | **59** | **50** | **81** | **0** | **20** | **8** |
 
 - 🟢 Ready: Keel reads everything it needs.
 - 🟡 Partly read: Keel reads it through another API, some fields may be missing.
@@ -142,14 +142,14 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 
 | Rule | Level | Keel | Statement | Inputs |
 |---|---|---|---|---|
-| MS.SHAREPOINT.1.1v1 | SHALL | 🟡 Partly read | External sharing for SharePoint SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.1.2v1 | SHALL | 🟡 Partly read | External sharing for OneDrive SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.1.3v1 | SHALL | 🟡 Partly read | External sharing SHALL be restricted to approved external domains and/or users in approved security groups per interagency collaboration needs. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.2.1v1 | SHALL | 🟡 Partly read | File and folder default sharing scope SHALL be set to "Specific people (only the people the user specifies)." | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.2.2v1 | SHALL | 🟡 Partly read | File and folder default sharing permissions SHALL be set to view only. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.3.1v1 | SHALL | 🟡 Partly read | Expiration days for "Anyone" links SHALL be set to 30 days or less. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.3.2v1 | SHALL | 🟡 Partly read | The allowable file and folder permissions for links SHALL be set to view only. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.3.3v2 | SHALL | 🟡 Partly read | Reauthentication days for people who use a verification code SHALL be set to 30 days or less. | `SPO_tenant` (partly read) |
+| MS.SHAREPOINT.1.1v1 | SHALL | 🟢 Ready | External sharing for SharePoint SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` |
+| MS.SHAREPOINT.1.2v1 | SHALL | 🟢 Ready | External sharing for OneDrive SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` |
+| MS.SHAREPOINT.1.3v1 | SHALL | 🟢 Ready | External sharing SHALL be restricted to approved external domains and/or users in approved security groups per interagency collaboration needs. | `SPO_tenant` |
+| MS.SHAREPOINT.2.1v1 | SHALL | 🟢 Ready | File and folder default sharing scope SHALL be set to "Specific people (only the people the user specifies)." | `SPO_tenant` |
+| MS.SHAREPOINT.2.2v1 | SHALL | 🟢 Ready | File and folder default sharing permissions SHALL be set to view only. | `SPO_tenant` |
+| MS.SHAREPOINT.3.1v1 | SHALL | 🟢 Ready | Expiration days for "Anyone" links SHALL be set to 30 days or less. | `SPO_tenant` |
+| MS.SHAREPOINT.3.2v1 | SHALL | 🟢 Ready | The allowable file and folder permissions for links SHALL be set to view only. | `SPO_tenant` |
+| MS.SHAREPOINT.3.3v2 | SHALL | 🟢 Ready | Reauthentication days for people who use a verification code SHALL be set to 30 days or less. | `SPO_tenant` |
 
 ## Teams
 
@@ -239,12 +239,6 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.SECURITYSUITE.5.2v1 | CISA marks it as a check to do by hand. |
 | MS.SECURITYSUITE.6.1v1 | Keel's read of `hosted_content_filter_policies` does not keep `RecommendedPolicyType`. |
 | MS.SECURITYSUITE.6.2v1 | Keel's read of `hosted_content_filter_policies` does not keep `RecommendedPolicyType`. |
-| MS.SHAREPOINT.1.2v1 | Keel's read of `SPO_tenant` does not keep `ODBSharingCapability`. |
-| MS.SHAREPOINT.2.1v1 | Keel's read of `SPO_tenant` does not keep `DefaultSharingLinkType`. |
-| MS.SHAREPOINT.2.2v1 | Keel's read of `SPO_tenant` does not keep `DefaultLinkPermission`. |
-| MS.SHAREPOINT.3.1v1 | Keel's read of `SPO_tenant` does not keep `RequireAnonymousLinksExpireInDays`. |
-| MS.SHAREPOINT.3.2v1 | Keel's read of `SPO_tenant` does not keep `FileAnonymousLinkType`, `FolderAnonymousLinkType`. |
-| MS.SHAREPOINT.3.3v2 | Keel's read of `SPO_tenant` does not keep `EmailAttestationReAuthDays`, `EmailAttestationRequired`. |
 | MS.TEAMS.5.1v2 | Keel does not read `tenant_app_settings`. |
 | MS.TEAMS.5.2v2 | Keel does not read `tenant_app_settings`. |
 | MS.TEAMS.5.3v2 | Keel does not read `tenant_app_settings`. |

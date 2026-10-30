@@ -87,9 +87,8 @@ export const SCUBA_INPUT_SOURCES = Object.freeze({
   defender_dlp_license: entry('securitysuite', 'Whether the Purview DLP cmdlets ran', 'run-status', ['purview.dlp-policies', 'purview.dlp-rules']),
 
   // SharePoint and OneDrive
-  SPO_tenant: entry('sharepoint', 'Get-SPOTenantRest (SharePoint admin tenant properties)', 'partial',
-    ['sharepoint.tenant-settings', 'onedrive.site-settings'],
-    'Keel reads tenant sharing settings through Graph, which may not carry every SharePoint admin field these rules use (for example anonymous link expiry and default link type).'),
+  SPO_tenant: entry('sharepoint', 'Get-SPOTenantRest (SharePoint admin tenant properties)', 'read', ['sharepoint-tenant.tenant'],
+    'Keel reads the same tenant object with Get-PnPTenant on the admin site.'),
 
   // Teams
   meeting_policies: entry('teams', 'Get-CsTeamsMeetingPolicy', 'read', ['teams.meeting-policies']),

@@ -32,6 +32,7 @@ import { collectPurviewExtended, recordPurviewExtendedRun } from './purviewExten
 import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDlp.mjs';
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, collectSharePointStructure, recordSharePointStructureRun } from './sharepointStructure.mjs';
+import { SHAREPOINT_TENANT_WORKLOAD, collectSharePointTenant, recordSharePointTenantRun } from './sharepointTenant.mjs';
 import { collectTeams, recordTeamsRun } from './teams.mjs';
 import { collectTeamsExtended, recordTeamsExtendedRun } from './teamsExtended.mjs';
 import { collectTeamsPolicies, recordTeamsPolicyRun } from './teamsPolicies.mjs';
@@ -87,6 +88,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: SHAREPOINT_STRUCTURE_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointStructureRun,
     collect: (client, { base, powershell, scope }) => collectSharePointStructure(client, {
       ...base, powershell, sites: scope.sharepointStructureSites ?? [], tenantHost: scope.sharepointHost ?? null }) },
+  // sharepointTenant.mjs: tenant-wide settings on the admin site.
+  { workload: SHAREPOINT_TENANT_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointTenantRun,
+    collect: (client, { base, powershell }) => collectSharePointTenant(client, { ...base, powershell }) },
   // teams.mjs
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {

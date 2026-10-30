@@ -481,7 +481,12 @@ try {
             @{ name = "Get-PnPHubSite"; block = { Get-PnPHubSite } },
             @{ name = "Get-PnPSiteDesign"; block = { Get-PnPSiteDesign } },
             @{ name = "Get-PnPSiteScript"; block = { Get-PnPSiteScript } },
-            @{ name = "Get-PnPSiteTemplate -Handlers Fields"; block = { Get-PnPSiteTemplate -Handlers Fields } }
+            @{ name = "Get-PnPSiteTemplate -Handlers Fields"; block = { Get-PnPSiteTemplate -Handlers Fields } },
+            # SharePoint tenant settings (engine/collect/workloads/sharepointTenant.mjs): reads only.
+            @{ name = "Get-PnPTenantSyncClientRestriction"; block = { Get-PnPTenantSyncClientRestriction } },
+            @{ name = "Get-PnPBrowserIdleSignout"; block = { Get-PnPBrowserIdleSignout } },
+            @{ name = "Get-PnPTenantRestrictedSearchMode"; block = { Get-PnPTenantRestrictedSearchMode } },
+            @{ name = "Get-PnPTenantRestrictedSearchAllowedList"; block = { Get-PnPTenantRestrictedSearchAllowedList } }
         )) {
         try {
             $out = & $c.block

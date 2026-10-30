@@ -1,0 +1,35 @@
+{
+  "restoreRef": "5cd731e2-81a0-8dff-9aa9-425dba27d89d",
+  "entry": {
+    "naturalKey": "accessPackageCatalog:f8c19de1-c025-8b18-aab6-916521552146",
+    "resourceType": "accessPackageCatalog",
+    "operation": "create",
+    "targetId": "b9528e46-2e4d-86e0-87a7-06997fa920a8",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T02:12:26.708Z",
+    "priorState": null,
+    "intendedState": {
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-catalog",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    },
+    "postState": {
+      "id": "b9528e46-2e4d-86e0-87a7-06997fa920a8",
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-catalog",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/catalogs/$entity",
+      "createdDateTime": "2026-10-30T02:12:26.793Z",
+      "modifiedDateTime": "2026-10-30T02:12:26.793Z",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    }
+  }
+}

@@ -1,15 +1,15 @@
 {
-  "restoreRef": "6edd5b49-d193-8730-8011-a0d36f4646b7",
+  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
   "entry": {
-    "naturalKey": "windowsManagedAppProtection:I_9a57402a-22e4-8be3-a78e-e65cdc1e032d",
+    "naturalKey": "windowsManagedAppProtection:I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
     "resourceType": "windowsManagedAppProtection",
     "operation": "update",
-    "targetId": "I_9a57402a-22e4-8be3-a78e-e65cdc1e032d",
+    "targetId": "I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T17:31:49.114Z",
+    "recordedAt": "2026-10-30T01:05:22.162Z",
     "priorState": {
-      "id": "I_9a57402a-22e4-8be3-a78e-e65cdc1e032d",
+      "id": "I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
       "apps": [
         {
           "id": "com.microsoft.edge.windows",
@@ -20,19 +20,19 @@
           }
         }
       ],
-      "version": "\"13088ae9-98de-8018-b796-115e282b964a\"",
-      "isAssigned": true,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-150-win-mam",
-      "printBlocked": false,
+      "version": "\"4daa8838-01f3-8733-85a0-1b5372d42da3\"",
+      "isAssigned": false,
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-236-win-mam",
+      "printBlocked": true,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections(apps())/$entity",
-      "createdDateTime": "2026-10-22T17:25:55.6274096Z",
+      "createdDateTime": "2026-10-30T00:55:08.4701407Z",
       "roleScopeTagIds": [
         "0"
       ],
       "deployedAppCount": 1,
-      "apps@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections('I_9a57402a-22e4-8be3-a78e-e65cdc1e032d')/apps",
-      "lastModifiedDateTime": "2026-10-22T17:25:55Z",
+      "apps@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections('I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6')/apps",
+      "lastModifiedDateTime": "2026-10-30T01:02:12Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,
@@ -56,8 +56,8 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "intendedState": {
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-150-win-mam",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-win-mam",
       "printBlocked": false,
       "roleScopeTagIds": [
         "0"
@@ -85,19 +85,19 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "postState": {
-      "id": "I_9a57402a-22e4-8be3-a78e-e65cdc1e032d",
-      "version": "\"13088ae9-98de-8018-b796-115e282b964a\"",
-      "isAssigned": true,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-150-win-mam",
+      "id": "I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
+      "version": "\"0cf2bafe-6c70-842a-8e49-ca30715046e3\"",
+      "isAssigned": false,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-win-mam",
       "printBlocked": false,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections/$entity",
-      "createdDateTime": "2026-10-22T17:25:55.6274096Z",
+      "createdDateTime": "2026-10-30T00:55:08.4701407Z",
       "roleScopeTagIds": [
         "0"
       ],
       "deployedAppCount": 1,
-      "lastModifiedDateTime": "2026-10-22T17:25:55Z",
+      "lastModifiedDateTime": "2026-10-30T01:05:22Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,

@@ -1,0 +1,43 @@
+{
+  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "entry": {
+    "naturalKey": "deviceShellScript:c5ac9778-c68a-800b-8c82-34b89d6be34c",
+    "resourceType": "deviceShellScript",
+    "operation": "create",
+    "targetId": "c35246d1-7c93-81d4-87a1-57f8081aa12f",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T01:10:22.545Z",
+    "priorState": null,
+    "intendedState": {
+      "fileName": "keel-rt-236.sh",
+      "retryCount": 0,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-shell",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "executionFrequency": "PT0S",
+      "blockExecutionNotifications": true
+    },
+    "postState": {
+      "id": "c35246d1-7c93-81d4-87a1-57f8081aa12f",
+      "fileName": "keel-rt-236.sh",
+      "retryCount": 0,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-shell",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
+      "createdDateTime": "2026-10-30T01:10:22.5996592Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "executionFrequency": "PT0S",
+      "lastModifiedDateTime": "2026-10-30T01:10:22.5996592Z",
+      "blockExecutionNotifications": true
+    }
+  }
+}

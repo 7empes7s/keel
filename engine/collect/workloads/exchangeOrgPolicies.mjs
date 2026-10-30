@@ -30,7 +30,7 @@
  *    qualified AND every read of the workload is live-qualified and enabled.
  */
 import { registerWorkload } from '../registry.mjs';
-import { runCmdlet } from '../../powershell/jobQueue.mjs';
+import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { exchangeActivation, structuredFailure } from './exchange.mjs';
 import {
   emptyRead, guidOf, ledgerRows, objectsFrom, recordCmdletRun, recordDisabledRun, summarize,
@@ -54,7 +54,17 @@ const byPolicyIdentity = (body) => {
   return POLICY_IDENTITY.test(id) ? id.toLowerCase() : null;
 };
 
-const family = (operation, cmdlet, prefix, identity, fields) => Object.freeze({ operation, cmdlet, prefix, identity, fields: Object.freeze(fields) });
+// Get-ApplicationAccessPolicy with no Identity lists "<organization>\*". A tenant that has
+// never had an application access policy has nothing under that path yet, and Exchange
+// answers "object '<organization>\*' couldn't be found" instead of an empty list. Only that
+// wildcard lookup counts as empty; a named object that is missing, or any other error,
+// stays a failure.
+const NO_POLICY_YET = /object '[^']*\\\*' couldn['’]t be found/i;
+export function noApplicationAccessPolicyYet(error) {
+  return error instanceof CmdletError && NO_POLICY_YET.test(String(error.detail?.message ?? ''));
+}
+
+const family = (operation, cmdlet, prefix, identity, fields, { emptyWhen = null } = {}) => Object.freeze({ operation, cmdlet, prefix, identity, fields: Object.freeze(fields), emptyWhen });
 
 /**
  * Sharing and client access, in the order a list shows them: sign-in, sharing with other
@@ -92,7 +102,7 @@ export const ACCESS_FAMILIES = Object.freeze({
   ]),
   applicationAccessPolicy: family('exchange-org-access.application-access-policies', 'Get-ApplicationAccessPolicy', 'application-access-policy', byPolicyIdentity, [
     'AppId', 'AccessRight', 'ScopeName', 'ScopeIdentity', 'PolicyScopeGroupId', 'Description', 'IsValid',
-  ]),
+  ], { emptyWhen: noApplicationAccessPolicyYet }),
   externalInOutlook: family('exchange-org-access.external-in-outlook', 'Get-ExternalInOutlook', 'external-in-outlook', organization, [
     'Enabled', 'AllowList',
   ]),
@@ -153,6 +163,7 @@ function orgPolicyWorkload({ workload, type, families, label, required = [] }) {
       const { tenantConfigPath = null, ...options } = powershell;
       ({ output } = await runCmdlet({ module: EXCHANGE_ORG_POLICIES_MODULE, cmdlet: spec.cmdlet, parameters: {}, tenantConfigPath }, { ...options, allowedCmdlets: cmdlets }));
     } catch (error) {
+      if (spec.emptyWhen?.(error)) return emptyRead();
       return emptyRead({ failure: { family: name, operation: spec.operation, ...structuredFailure(error) } });
     }
     return { ...emptyRead(), ...objectsFrom(name, spec, output, { maxObjects }) };

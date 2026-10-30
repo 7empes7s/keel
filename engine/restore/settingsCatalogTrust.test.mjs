@@ -82,6 +82,8 @@ test('a settings catalog policy holding a trust setting is manual on create and 
     assert.equal(refusal?.outcome, 'skipped', verb);
     assert.match(refusal.reason, /^manual: this policy holds trust, certificate or sign-in settings/, verb);
     assert.ok(refusal.reason.includes(WINDOWS_ROOT), verb);
+    // The person still sees which settings to set by hand.
+    assert.deepEqual(refusal.completion.map((step) => [step.kind, step.requirement, step.fields]), [['manual-setting', 'trustFields', [WINDOWS_ROOT]]], verb);
   }
   // The policy is written whole, so a backup without the setting would delete the live one.
   const removes = intuneWriteRefusal(resourceOf('configurationPolicy', plain, live(trusted)), 'update');

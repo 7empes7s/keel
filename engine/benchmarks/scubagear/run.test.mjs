@@ -155,6 +155,34 @@ test('a role held through a group is could not check, since Keel does not back u
   assert.match(result.details[0].value, /group/);
 });
 
+test('a backup that cannot answer what a role rule asks is could not check, never a pass', () => {
+  const unknown = (policyId, backups, reason) => {
+    const result = run(id(policyId), backups);
+    assert.equal(result.verdict, 'unknown', policyId);
+    assert.equal(result.reason, reason, policyId);
+  };
+  // PIM policies backed up without their rules: no offenders would be found.
+  const noRules = { ...FIXTURE_BACKUPS, unifiedRoleManagementPolicy: FIXTURE_BACKUPS.unifiedRoleManagementPolicy.map(({ rules, ...policy }) => policy) };
+  for (const policyId of ['MS.AAD.7.6v1', 'MS.AAD.7.7v1', 'MS.AAD.7.8v1', 'MS.AAD.7.9v1']) unknown(policyId, noRules, 'scubagear:incomplete:privileged_roles');
+  // A privileged role missing from the role backup would drop its holders.
+  const noGlobalAdmin = { ...FIXTURE_BACKUPS, roleDefinition: FIXTURE_BACKUPS.roleDefinition.filter((role) => role.displayName !== 'Global Administrator') };
+  unknown('MS.AAD.7.3v1', noGlobalAdmin, 'scubagear:incomplete:privileged_users');
+  unknown('MS.AAD.7.6v1', noGlobalAdmin, 'scubagear:incomplete:privileged_roles');
+  // A role holder in no backup may be a group newer than the group backup.
+  const stranger = { ...FIXTURE_BACKUPS, roleAssignmentSchedule: [...FIXTURE_BACKUPS.roleAssignmentSchedule, { ...FIXTURE_BACKUPS.roleAssignmentSchedule[0], id: 'sched-x', principalId: 'bbbbbbbb-0000-4000-8000-0000000000b1' }] };
+  unknown('MS.AAD.7.6v1', stranger, 'scubagear:incomplete:privileged_roles');
+  // A user backup that does not say whether an admin is synced.
+  const unsaid = { ...FIXTURE_BACKUPS, user: FIXTURE_BACKUPS.user.map(({ onPremisesImmutableId, ...user }) => user) };
+  unknown('MS.AAD.7.3v1', unsaid, 'scubagear:incomplete:privileged_users');
+});
+
+test('daily backups are allowed a day and a half, the others six hours', () => {
+  const reads = (policyId) => Object.fromEntries(scuba().find((control) => control.controlId === id(policyId)).requiredObservations.map((read) => [read.resourceType, read.maxAgeMs]));
+  assert.equal(reads('MS.AAD.7.3v1').user, 36 * HOUR);
+  assert.equal(reads('MS.AAD.7.3v1').roleAssignment, 6 * HOUR);
+  assert.equal(reads('MS.AAD.5.7v1').appManagementPolicy, 36 * HOUR);
+});
+
 test('a hidden field reaches the rules only as set or not set, and never shows in a finding', () => {
   const ben = FIXTURE_BACKUPS.user.find((user) => user.onPremisesImmutableId);
   assert.equal(maskedFacts('user', ben).onPremisesImmutableId, SENSITIVE_MASK);

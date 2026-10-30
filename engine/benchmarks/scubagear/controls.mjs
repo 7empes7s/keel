@@ -15,8 +15,8 @@
  *        (scubagear:field-not-read:<input>.<field>);
  *      - a backup it needs is missing, too old or incomplete (the usual reasons);
  *      - the backup cannot answer what it asks (scubagear:incomplete:<input>);
- *      - it gave no result, or the rule runner could not load (scubagear:no-result,
- *        scubagear:runner-unavailable).
+ *      - it gave no result, or the rule runner could not load or failed (scubagear:no-result,
+ *        scubagear:runner-unavailable, scubagear:runner-error).
  *
  * The verdicts feed the Compliance page and its score like every other control; the
  * score leaves "could not check" out.
@@ -79,8 +79,9 @@ registerPredicate(SCUBA_PREDICATE, (facts, args) => {
   try {
     results = resultsFor(args.product, built.document);
   } catch (error) {
-    if (/rules\.(wasm|json)|ENOENT|WebAssembly/.test(String(error?.message))) return { verdict: 'unknown', reason: REASON('runner-unavailable') };
-    throw error;
+    // Never let one rule's failure stop the other checks or leave an older pass standing.
+    const unavailable = /rules\.(wasm|json)|ENOENT|WebAssembly/.test(String(error?.message));
+    return { verdict: 'unknown', reason: REASON(unavailable ? 'runner-unavailable' : 'runner-error') };
   }
   const own = results.filter((result) => result?.PolicyId === args.policyId);
   if (own.length !== 1) return { verdict: 'unknown', reason: REASON(own.length ? 'several-results' : 'no-result') };

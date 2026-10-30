@@ -61,7 +61,10 @@ export function pascal(value) {
   return value;
 }
 
-const graph = (resourceType) => Object.freeze({ resourceType, maxAgeMs: GRAPH_MAX_AGE_MS });
+// Types Keel backs up in its daily tier (tier2 in the collection catalogue), not the
+// every-few-hours one: a fresher limit would leave their rules could not check most of the day.
+const DAILY_TYPES = new Set(['user', 'groupSetting', 'appManagementPolicy', 'tenantAppManagementPolicy']);
+const graph = (resourceType) => Object.freeze({ resourceType, maxAgeMs: DAILY_TYPES.has(resourceType) ? WORKLOAD_MAX_AGE_MS : GRAPH_MAX_AGE_MS });
 const mailFlow = (...parts) => Object.freeze({ resourceType: MAIL_FLOW, parts: Object.freeze(parts), maxAgeMs: WORKLOAD_MAX_AGE_MS });
 const list = (facts, type) => facts[type] ?? [];
 const single = (facts, type) => list(facts, type).slice(0, 1);
@@ -79,13 +82,17 @@ function premium(facts) {
 }
 
 // The built-in roles ScubaGear treats as highly privileged, as { templateId, displayName }.
-function privilegedRoleTemplates(facts) {
+// ScubaGear takes them from Microsoft's fixed role catalogue, so all of them are always
+// there; a backup that lacks one cannot stand in for it.
+function privilegedRoleTemplates(facts, key) {
   const byName = new Map();
   for (const role of list(facts, 'roleDefinition')) {
     if (role.isBuiltIn !== true || !PRIVILEGED_ROLES.includes(role.displayName)) continue;
     byName.set(role.displayName, { templateId: role.templateId ?? role.id, displayName: role.displayName });
   }
-  return PRIVILEGED_ROLES.filter((name) => byName.has(name)).map((name) => byName.get(name));
+  const missing = PRIVILEGED_ROLES.filter((name) => !byName.has(name));
+  if (missing.length) throw new CouldNotBuild(key, `the role backup lacks ${missing.join(', ')}`);
+  return PRIVILEGED_ROLES.map((name) => byName.get(name));
 }
 
 /**
@@ -98,7 +105,7 @@ function privilegedUsers(facts) {
   const users = new Map(list(facts, 'user').map((user) => [user.id, user]));
   const groups = new Set(list(facts, 'group').map((group) => group.id));
   const servicePrincipals = new Set(list(facts, 'servicePrincipal').map((sp) => sp.id));
-  const roles = privilegedRoleTemplates(facts);
+  const roles = privilegedRoleTemplates(facts, 'privileged_users');
   const roleName = new Map(roles.map((role) => [role.templateId, role.displayName]));
   const holders = [
     ...list(facts, 'roleAssignment').filter((assignment) => (assignment.directoryScopeId ?? '/') === '/'),
@@ -111,6 +118,7 @@ function privilegedUsers(facts) {
     if (servicePrincipals.has(principal)) continue; // ScubaGear lists these apart (privileged_service_principals).
     const user = users.get(principal);
     if (!user) throw new CouldNotBuild('privileged_users', 'a privileged role holder is in no backup of users, groups or apps');
+    if (user.onPremisesImmutableId === undefined) throw new CouldNotBuild('privileged_users', 'the user backup does not say whether an admin is synced from on-premises');
     out[principal] ??= {
       id: principal,
       DisplayName: user.displayName ?? null,
@@ -133,15 +141,21 @@ function privilegedUsers(facts) {
  * cannot be built.
  */
 function privilegedRoles(facts) {
-  const roles = privilegedRoleTemplates(facts);
+  const roles = privilegedRoleTemplates(facts, 'privileged_roles');
   if (!premium(facts)) return roles.map((role) => ({ DisplayName: role.displayName, RoleTemplateId: role.templateId }));
   const groups = new Set(list(facts, 'group').map((group) => group.id));
   const schedules = list(facts, 'roleAssignmentSchedule');
   const policyFor = new Map(list(facts, 'unifiedRoleManagementPolicyAssignment')
     .map((assignment) => [assignment.roleDefinitionId, assignment.policyId]));
   const policies = new Map(list(facts, 'unifiedRoleManagementPolicy').map((policy) => [policy.id, policy]));
-  const heldByGroup = [...list(facts, 'roleAssignment'), ...schedules, ...list(facts, 'roleEligibilitySchedule')]
-    .some((assignment) => groups.has(assignment.principalId) && roles.some((role) => role.templateId === assignment.roleDefinitionId));
+  const known = new Set([...list(facts, 'user'), ...list(facts, 'servicePrincipal')].map((principal) => principal.id));
+  const holders = [...list(facts, 'roleAssignment'), ...schedules, ...list(facts, 'roleEligibilitySchedule')]
+    .filter((assignment) => roles.some((role) => role.templateId === assignment.roleDefinitionId));
+  // Each type comes from its own newest backup, so a holder in none of them may be a newer group.
+  if (holders.some((assignment) => !groups.has(assignment.principalId) && !known.has(assignment.principalId))) {
+    throw new CouldNotBuild('privileged_roles', 'a privileged role holder is in no backup of users, groups or apps');
+  }
+  const heldByGroup = holders.some((assignment) => groups.has(assignment.principalId));
   if (heldByGroup) throw new CouldNotBuild('privileged_roles', 'a privileged role is held through a group, and Keel does not back up PIM for Groups rules');
   return roles.map((role) => {
     const own = schedules.filter((schedule) => schedule.roleDefinitionId === role.templateId);
@@ -170,7 +184,9 @@ function privilegedRoles(facts) {
     }
     const policy = policies.get(policyFor.get(role.templateId));
     if (!policy) throw new CouldNotBuild('privileged_roles', `no PIM policy backed up for ${role.displayName}`);
-    const rules = (policy.rules ?? []).map((rule) => ({ ...pascal(rule), RuleSource: role.displayName, RuleSourceType: 'Directory Role' }));
+    // Entra always ships a role's PIM rules; a policy backed up without them cannot answer.
+    if (!Array.isArray(policy.rules) || policy.rules.length === 0) throw new CouldNotBuild('privileged_roles', `the PIM policy for ${role.displayName} was backed up without its rules`);
+    const rules = policy.rules.map((rule) => ({ ...pascal(rule), RuleSource: role.displayName, RuleSourceType: 'Directory Role' }));
     return { DisplayName: role.displayName, RoleTemplateId: role.templateId, Assignments: assignments, Rules: rules };
   });
 }
@@ -249,7 +265,7 @@ export const ADAPTERS = Object.freeze({
   }),
   privileged_roles: Object.freeze({
     reads: ['roleDefinition', 'roleAssignment', 'roleAssignmentSchedule', 'roleEligibilitySchedule', 'unifiedRoleManagementPolicy',
-      'unifiedRoleManagementPolicyAssignment', 'subscribedSku', 'group'].map(graph),
+      'unifiedRoleManagementPolicyAssignment', 'subscribedSku', 'group', 'user', 'servicePrincipal'].map(graph),
     fields: 'all',
     // The provider reads schedule instances, where an assignment made outside PIM has no
     // start date. Keel backs up schedules, whose start date for such an assignment is

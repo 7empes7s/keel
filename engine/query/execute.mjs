@@ -79,6 +79,10 @@ export async function knownEntities(client, { tenantRef }) {
 // A change is placed in time by the collection that saw it (its completion), falling
 // back to when it was recorded. Comparisons, coverage and the window all use this time.
 const SEEN_AT = 'COALESCE(os.completed_at, d.detected_at)';
+// The template family a settings catalog policy's copy carries (templateReference); read
+// for those rows alone, so the other rows' payloads stay out of the sort.
+const TEMPLATE_FAMILY_SQL = `CASE WHEN d.resource_type = 'configurationPolicy'
+  THEN COALESCE(d.after_payload->'templateReference'->>'templateFamily', d.before_payload->'templateReference'->>'templateFamily') END`;
 
 function filters({ tenantRef, scope, entity, at, typeExpr, keyExpr, asOfExpr, nextParam }) {
   const owner = entity
@@ -112,7 +116,10 @@ const TEMPLATES = Object.freeze({
     const matched = `WITH matched AS (
        SELECT DISTINCT ON (d.resource_type, d.natural_key)
               d.id, d.tenant_ref, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
-              d.detected_at, d.observed_snapshot, ${SEEN_AT} AS seen_at
+              d.detected_at, d.observed_snapshot, ${SEEN_AT} AS seen_at,
+              -- An endpoint security policy made in Intune is listed under Defender
+              -- (taxonomy settingKind); only settings catalog policies carry one.
+              ${TEMPLATE_FAMILY_SQL} AS template_family
          FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref
         WHERE ${condition}
@@ -135,7 +142,7 @@ const TEMPLATES = Object.freeze({
                   ORDER BY ps.completed_at DESC LIMIT 1) AS window_from
            FROM (SELECT DISTINCT tenant_ref, resource_type, seen_at FROM page) p
        )
-       SELECT m.id::text AS id, m.natural_key, m.resource_type, m.change_type, m.blast_radius, m.detected_at,
+       SELECT m.id::text AS id, m.natural_key, m.resource_type, m.template_family, m.change_type, m.blast_radius, m.detected_at,
               m.observed_snapshot::text AS collection_id, m.seen_at, o.window_from,
               COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name,
               CASE WHEN m.change_type = 'modified' AND jsonb_typeof(d.before_payload) = 'object' AND jsonb_typeof(d.after_payload) = 'object'
@@ -153,9 +160,9 @@ const TEMPLATES = Object.freeze({
     // summarised beyond the rows it lists.
     const { rows: grouped } = await client.query(
       `${matched}
-       SELECT m.resource_type, m.change_type, m.blast_radius, count(*)::int AS n FROM matched m
-        GROUP BY m.resource_type, m.change_type, m.blast_radius
-        ORDER BY m.resource_type, m.change_type, m.blast_radius`,
+       SELECT m.resource_type, m.template_family, m.change_type, m.blast_radius, count(*)::int AS n FROM matched m
+        GROUP BY m.resource_type, m.template_family, m.change_type, m.blast_radius
+        ORDER BY m.resource_type, m.template_family NULLS FIRST, m.change_type, m.blast_radius`,
       [...base, ...where.values],
     );
     const counted = { total: grouped.reduce((sum, row) => sum + Number(row.n), 0) };
@@ -187,11 +194,15 @@ const TEMPLATES = Object.freeze({
       total: Number(counted?.total ?? 0),
       known,
       nextRead: schedule ? { every, n: Number(schedule.cadence?.n ?? 1) || 1, dueAt: iso(schedule.next_due_at) } : null,
-      summary: grouped.map((row) => ({ resourceType: row.resource_type, changeType: row.change_type, impact: row.blast_radius, count: Number(row.n) })),
+      summary: grouped.map((row) => ({
+        resourceType: row.resource_type, ...(row.template_family ? { templateFamily: row.template_family } : {}),
+        changeType: row.change_type, impact: row.blast_radius, count: Number(row.n),
+      })),
       records: rows.map((row) => ({
         kind: 'change',
         id: row.id,
         resourceType: row.resource_type,
+        ...(row.template_family ? { templateFamily: row.template_family } : {}),
         naturalKey: row.natural_key,
         name: clip(row.display_name, MAX_NAME_TEXT),
         changeType: row.change_type,

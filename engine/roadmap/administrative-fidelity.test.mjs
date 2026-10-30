@@ -130,11 +130,11 @@ test('three operation records, each a fixture-tested registration; every sibling
 test('the evidence report names what cannot be recovered and carries no coverage percentage', () => {
   const ledger = buildAdministrativeFamilyLedger();
   assert.deepEqual(ledger.families.map((family) => family.resourceType).sort(),
-    ['adminReportSettings', 'administrativeUnit', 'appsAndServicesSettings', 'directorySettingTemplate', 'domain', 'engageCommunity',
-      'externalConnection', 'formsSettings', 'groupLifecyclePolicy', 'groupSetting', 'itemInsightsSettings',
+    ['adminReportSettings', 'administrativeUnit', 'appsAndServicesSettings', 'defenderIdentitySensor', 'directorySettingTemplate', 'domain',
+      'engageCommunity', 'externalConnection', 'formsSettings', 'groupLifecyclePolicy', 'groupSetting', 'itemInsightsSettings',
       'microsoft365AppsInstallationOptions', 'organization', 'organizationalBranding', 'organizationalBrandingLocalization',
-      'profileCardProperty', 'pronounsSettings', 'schemaExtension', 'securityZone', 'sharedEmailDomain', 'sharepointSettings',
-      'subscribedSku', 'todoSettings']);
+      'profileCardProperty', 'pronounsSettings', 'schemaExtension', 'secureScoreControlProfile', 'securityZone', 'sharedEmailDomain',
+      'sharepointSettings', 'subscribedSku', 'todoSettings']);
   const byType = new Map(ledger.families.map((family) => [family.resourceType, family]));
   const unit = byType.get('administrativeUnit');
   assert.deepEqual({ status: unit.status, restoreScope: unit.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });

@@ -265,3 +265,30 @@ test('with names hidden, people a change is about and addresses in keys are code
   assert.equal(hidePeopleText('https://contoso-my.sharepoint.com/personal/ada_contoso_com', namer), `https://contoso-my.sharepoint.com/personal/${namer('ada_contoso_com')}`);
   assert.equal(hidePeopleText('mail for ada@contoso.test', null), 'mail for ada@contoso.test');
 });
+
+test('an endpoint security policy made in Intune is listed under Defender', async () => {
+  const tenant = 'tailspin';
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@tailspin.test') RETURNING id", [tenant, hoursAgo(100)]);
+  const policy = (name, templateFamily) => ({ id: `${name}-id`, name, templateReference: { templateId: `${name}_1`, templateFamily } });
+  const antivirus = ['configurationPolicy:KEEL-RT-Antivirus', 'configurationPolicy', policy('KEEL-RT-Antivirus', 'endpointSecurityAntivirus')];
+  const wifi = ['configurationPolicy:KEEL-RT-Wi-Fi', 'configurationPolicy', policy('KEEL-RT-Wi-Fi', 'none')];
+  const snap = await snapshot(tenant, hoursAgo(6), [antivirus, wifi]);
+  for (const [key, type, payload] of [antivirus, wifi]) {
+    await drift(tenant, baseline.id, snap, { key, type, change: 'modified', before: payload, after: payload, at: hoursAgo(5) });
+  }
+  const { rows } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW });
+  const byName = Object.fromEntries(rows.map((entry) => [entry.object.name, entry]));
+  assert.deepEqual([byName['KEEL-RT-Antivirus'].type, byName['KEEL-RT-Antivirus'].service, byName['KEEL-RT-Antivirus'].typeName], ['configurationPolicy', 'Defender', 'Endpoint security policy']);
+  assert.deepEqual([byName['KEEL-RT-Wi-Fi'].type, byName['KEEL-RT-Wi-Fi'].service, byName['KEEL-RT-Wi-Fi'].typeName], ['configurationPolicy', 'Intune', 'Settings catalog policy']);
+});
+
+test('grouping by type keeps endpoint security policies apart from other settings catalog policies', () => {
+  const rows = [
+    { type: 'configurationPolicy', kind: 'configurationPolicy', typeName: 'Settings catalog policy', service: 'Intune', priority: 'normal' },
+    { type: 'configurationPolicy', kind: 'defenderEndpointSecurityPolicy', typeName: 'Endpoint security policy', service: 'Defender', priority: 'normal' },
+  ];
+  assert.deepEqual(groupChangeFeed(rows, 'type').map((group) => [group.key, group.label, group.count]), [
+    ['configurationPolicy', 'Settings catalog policy', 1],
+    ['defenderEndpointSecurityPolicy', 'Endpoint security policy', 1],
+  ]);
+});

@@ -3,7 +3,7 @@ import { sameContent } from "../../engine/cir/canonicalHash.mjs";
 import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges } from "../../engine/identity/attribution.mjs";
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
-import { typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { settingKind, templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
 
 import { valueWords } from "@/lib/changes-view";
 import { isObjectId, replaceObjectIds } from "@/lib/object-ids";
@@ -246,7 +246,8 @@ export async function getRestoreChanges(snapshotId: string): Promise<RestoreChan
     const all: RestoreChange[] = rowsChanged.map((row) => ({
       naturalKey: row.naturalKey,
       resourceType: row.resourceType,
-      service: typeInfo(row.resourceType).service,
+      // An endpoint security policy made in Intune sits under Defender, as on the backup list.
+      service: typeInfo(settingKind(row.resourceType, templateFamilyOf(row.payload))).service,
       kind: row.kind,
       seenAt: when.get(row.naturalKey)?.seenAt ?? newest.takenAt,
       sameUntil: when.get(row.naturalKey)?.sameUntil ?? chosen.takenAt,

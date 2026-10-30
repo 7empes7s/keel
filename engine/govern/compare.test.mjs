@@ -368,3 +368,21 @@ test('an added or removed Intune script never shows its text, in Compare or Acti
     }
   }
 });
+
+test('a settings catalog item carries its template family, so lists can file it under Defender', () => {
+  const policy = (name, family, extra = {}) => ({
+    natural_key: `configurationPolicy:${name}`, resource_type: 'configurationPolicy', payload_hash: name, hash_version: 2, blast_radius: null, references: [],
+    payload: { name, platforms: 'windows10', technologies: 'mdm', ...(family ? { templateReference: { templateFamily: family } } : {}), ...extra },
+  });
+  const left = [policy('KEEL-RT-AV', 'endpointSecurityAntivirus'), policy('KEEL-RT-Old', null)];
+  const right = [policy('KEEL-RT-AV', 'endpointSecurityAntivirus', { description: 'now' }), policy('KEEL-RT-FW', 'endpointSecurityFirewall')];
+  for (const portable of [false, true]) {
+    const result = compareSettings({ rows: left, coverage: null }, { rows: right, coverage: null }, { portable });
+    const items = Object.fromEntries(result.groups[0].items.map((item) => [item.name, item]));
+    assert.equal(items['KEEL-RT-AV'].changeType, 'changed');
+    assert.equal(items['KEEL-RT-AV'].templateFamily, 'endpointSecurityAntivirus');
+    assert.equal(items['KEEL-RT-FW'].templateFamily, 'endpointSecurityFirewall');
+    assert.equal(items['KEEL-RT-Old'].changeType, 'removed');
+    assert.equal('templateFamily' in items['KEEL-RT-Old'], false, 'a policy with no template family carries none');
+  }
+});

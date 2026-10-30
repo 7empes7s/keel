@@ -3,6 +3,7 @@
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { readableValue } from "@/lib/changed-values";
 import { formatTimestamp } from "@/lib/presentation";
+import { itemKind } from "@/lib/type-groups";
 
 export type ChangeType = "added" | "removed" | "changed";
 
@@ -26,6 +27,8 @@ export interface SettingsItem {
   name: string | null;
   changeType: ChangeType;
   blastRadius: string | null;
+  // The settings catalog template family, when the stored object has one.
+  templateFamily?: string | null;
   fields?: CompareField[];
   fieldsTotal?: number;
 }
@@ -33,6 +36,10 @@ export interface SettingsItem {
 export interface SettingsGroup {
   service: string;
   resourceType: string;
+  // The kind the page files the group under, when it is part of the stored type that
+  // another service owns (an Intune antivirus policy is a Defender endpoint security
+  // policy). Absent means the stored type.
+  kind?: string;
   added: number;
   removed: number;
   changed: number;
@@ -413,4 +420,37 @@ export function compareItemLine(fields: readonly { path: string }[], total?: num
   const rest = count - first.length;
   const list = rest > 0 ? `${first.join(", ")} and ${rest} more` : first.length === 2 ? `${first[0]} and ${first[1]}` : first[0];
   return `${count === 1 ? "1 setting differs" : `${count.toLocaleString("en-GB")} settings differ`}: ${list}.`;
+}
+
+/** The group's kind: the part of the stored type it was filed under, or the stored type. */
+export function groupKind(group: Pick<SettingsGroup, "resourceType" | "kind">): string {
+  return group.kind ?? group.resourceType;
+}
+
+/** The settings groups by the kind each item is (itemKind), not only by stored type: the
+ *  endpoint security policies inside "Settings catalog policy" become their own Defender
+ *  group. Counts follow the items; what the engine counted but did not list (unchanged,
+ *  and items past the list limit) stays with the stored type. */
+export function settingsByKind(groups: readonly SettingsGroup[]): SettingsGroup[] {
+  return groups.flatMap((group) => {
+    const parts = new Map<string, SettingsItem[]>();
+    for (const item of group.items) {
+      const kind = itemKind({ resourceType: group.resourceType, templateFamily: item.templateFamily });
+      if (kind === group.resourceType) continue;
+      parts.set(kind, [...(parts.get(kind) ?? []), item]);
+    }
+    if (!parts.size) return [group];
+    const moved = new Set([...parts.values()].flat());
+    const count = (items: readonly SettingsItem[], change: ChangeType) => items.filter((item) => item.changeType === change).length;
+    const split = [...parts.entries()].map(([kind, items]): SettingsGroup => ({
+      ...group, kind, items, total: items.length, unchanged: 0,
+      added: count(items, "added"), removed: count(items, "removed"), changed: count(items, "changed"),
+    }));
+    const kept = group.items.filter((item) => !moved.has(item));
+    const rest: SettingsGroup = {
+      ...group, items: kept, total: group.total - moved.size,
+      added: group.added - count([...moved], "added"), removed: group.removed - count([...moved], "removed"), changed: group.changed - count([...moved], "changed"),
+    };
+    return rest.added + rest.removed + rest.changed > 0 ? [rest, ...split] : split;
+  });
 }

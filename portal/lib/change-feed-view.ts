@@ -23,6 +23,9 @@ export interface FeedRow {
   occurredAt: string;
   day: string;
   type: string;
+  // The kind the row is listed as (an Intune antivirus policy is a Defender endpoint
+  // security policy); the same as `type` for every other row.
+  kind?: string;
   typeName: string;
   service: string | null;
   priority: FeedPriority;

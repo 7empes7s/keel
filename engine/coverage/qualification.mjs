@@ -287,6 +287,8 @@ export const TYPE_DECISIONS = Object.freeze({
   profileCardProperty: manual('no writer yet'),
   pronounsSettings: automated('pronounssettings', 'restore gaps batch 20: update in place'),
   defenderDetectionRule: manual('no writer yet; beta only; a rule can run response actions, so it is rebuilt turned off'),
+  defenderIdentitySensor: manual('no writer yet; a sensor is installed on each server, so only its settings can be put back'),
+  secureScoreControlProfile: manual('no writer yet; the state an admin set on each action is set again by hand'),
   teamsCatalogApp: manual('Graph does not return the app package; it is uploaded again from your own copy'),
   engageCommunity: automated('community', 'restore gaps batch 20: update in place of the name, description and privacy; a private community is never made public, and a deleted community is set up by hand (a create makes a Microsoft 365 group and needs owners)'),
 });
@@ -1235,6 +1237,10 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update in place is fixture-tested'),
   defenderDetectionRule: byHand('policy', 'POST /security/rules/detectionRules (beta)', 'CustomDetection.ReadWrite.All',
     'backed up; no writer yet; a rebuilt rule starts turned off'),
+  defenderIdentitySensor: byHand('administrative-configuration', 'PATCH /security/identities/sensors/{id}', 'SecurityIdentitiesSensors.ReadWrite.All',
+    'backed up; no writer yet; the sensor itself is installed on the server'),
+  secureScoreControlProfile: byHand('administrative-configuration', 'PATCH /security/secureScoreControlProfiles/{id}', 'SecurityEvents.ReadWrite.All',
+    'backed up; no writer yet'),
   teamsCatalogApp: byHand('identity-application', 'POST /appCatalogs/teamsApps', 'AppCatalog.ReadWrite.All',
     'backed up without the app package, which Graph does not return'),
   engageCommunity: subset('administrative-configuration', 'PATCH /employeeExperience/communities/{id}', 'Community.ReadWrite.All',
@@ -1417,6 +1423,13 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   ]),
   defenderDetectionRule: Object.freeze([
     lost('configuration', 'detection rule', 'no writer yet; rebuilt by hand from the backup and left off until its response actions are checked'),
+  ]),
+  defenderIdentitySensor: Object.freeze([
+    lost('configuration', 'sensor settings', 'no writer yet; set again by hand from the backup'),
+    lost('relationship', 'sensor software', 'installed on each server; a removed sensor is installed again there'),
+  ]),
+  secureScoreControlProfile: Object.freeze([
+    lost('configuration', 'action state', 'no writer yet; the state and its reason are set again by hand from the backup'),
   ]),
   teamsCatalogApp: Object.freeze([
     lost('configuration', 'app package', 'Graph does not return the package; it is uploaded again from your own copy'),

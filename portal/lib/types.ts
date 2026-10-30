@@ -208,6 +208,8 @@ export interface BaselineRecord {
   setBy: string;
   active: boolean;
   resourceCount: number;
+  // Service settings it holds (Exchange, SharePoint, Teams, Purview, Power Platform).
+  serviceSettingCount?: number;
   // Roadmap task-130: who set it, resolved to a name (absent where not resolved).
   setByRef?: Ref;
   // Roadmap task-87: version chain, what it captured and what changed since.
@@ -230,6 +232,11 @@ export interface BaselineCapture {
   types: string[];
   // Kinds left out because Microsoft kept failing to answer when it was captured (#666).
   leftOut?: { type: string; reason: string }[];
+  // Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform settings it
+  // holds: one entry per service read it captured, with the settings it holds now.
+  services?: { workload: string; settings: number; collectedAt: string | null; outcome: string | null }[];
+  // Services with no read to capture when it was captured.
+  servicesNotRead?: string[];
 }
 
 export interface BaselineChanges {
@@ -438,6 +445,10 @@ export interface DriftRecord {
   // the observed or approved copy; null when it has none. The page never shows the key
   // when it holds an object id.
   name?: string | null;
+  // The settings catalog template family (templateReference.templateFamily) of the
+  // observed or approved copy, when it has one: an antivirus or firewall policy made in
+  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind).
+  templateFamily?: string | null;
   // Names of the objects the before/after copies point to by id (users, groups, roles,
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.
@@ -466,11 +477,17 @@ export interface ServiceRead {
   // As stored: "transport-rule:Block forwarding", "site:<id>" or "tenant".
   resourceKey: string;
   collectionId: string;
-  // The read that holds the approved value (or, for a change recorded before the
-  // service had an approved setup, the read before the change): an undo restores from it.
+  // The read the change was compared with when it was recorded: the approved value then
+  // (or, for a change recorded before the service had an approved setup, the read before it).
   previousCollectionId: string;
   // When that read was taken; null when unknown.
   previousReadAt: string | null;
+  // The read an undo restores from, and when it was taken: the active approved setup's
+  // read for this resource, so a newer baseline version's value wins over previousCollectionId.
+  // collectionId is null when the service's approved setup does not hold this resource
+  // (nothing to put back); `approved` is false only when the service has no approved setup
+  // at all and undo falls back to previousCollectionId.
+  undoFrom: { collectionId: string | null; readAt: string | null; approved: boolean };
   // What the read was compared with: the service's approved setup, or (older changes)
   // the read before it.
   comparedWith: "approved" | "previous";

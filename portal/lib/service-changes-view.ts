@@ -62,7 +62,10 @@ export interface UndoChoice {
 /** Whether Keel can undo one service setting change, and in plain words why not.
  * Undo restores the earlier value from the read that holds it, through the Restore
  * page's own service restore, so only what that restore writes can be undone here. */
-export function serviceUndo({ workload, resourceKey, changeType }: { workload: string; resourceKey: string; changeType: string }, choice: UndoChoice | null): ServiceUndo {
+export function serviceUndo(
+  { workload, resourceKey, changeType, heldByApprovedSetup = true }: { workload: string; resourceKey: string; changeType: string; heldByApprovedSetup?: boolean },
+  choice: UndoChoice | null,
+): ServiceUndo {
   const label = workloadLabel(workload);
   if (!PAGE_RESTORE_WORKLOADS.includes(workload)) {
     return { possible: false, reason: `Keel cannot write ${label} back yet. Accept the change, or change it back in the admin center.` };
@@ -73,14 +76,37 @@ export function serviceUndo({ workload, resourceKey, changeType }: { workload: s
   if (workload === "exchange-mailbox-settings" && resourceKey === "organization") {
     return { possible: false, reason: "Organization-wide Exchange settings go back together with a mailbox. Put them back from the Restore page." };
   }
+  if (!heldByApprovedSetup) {
+    return { possible: false, reason: "The active baseline does not hold this setting, so there is no approved value to put back. Accept the change, or change it back in the admin center." };
+  }
   if (!choice) return { possible: false, reason: "The read that holds the earlier value no longer has this setting, so Keel cannot put it back." };
   if (!choice.restorable) return { possible: false, reason: choice.reason ?? "Keel does not write this kind of setting back. Accept the change, or change it back by hand." };
   return { possible: true, reason: null };
 }
 
+/** The read an undo restores from: the one the active approved setup points at for this
+ * resource (workload_approved.collection_id), which a new baseline version or an accepted
+ * change moves, so undo puts back today's approved value rather than the one stored with
+ * an older change. When the service has an approved setup that does not hold this
+ * resource (say an older version without it was reinstated), there is no approved value
+ * and collectionId is null. Only a service with no approved setup at all (a change
+ * recorded before it had one) falls back to the read the change was compared with. */
+export function undoSource(row: Record<string, unknown>): { collectionId: string | null; readAt: string | null; approved: boolean } {
+  const approved = row.approved_collection_id ? String(row.approved_collection_id) : null;
+  if (approved) {
+    return { collectionId: approved, readAt: row.approved_observed_to ? new Date(row.approved_observed_to as string | Date).toISOString() : null, approved: true };
+  }
+  if (row.has_approved_setup === true) return { collectionId: null, readAt: null, approved: true };
+  return {
+    collectionId: String(row.previous_collection_id),
+    readAt: row.previous_observed_to ? new Date(row.previous_observed_to as string | Date).toISOString() : null,
+    approved: false,
+  };
+}
+
 /** One stored workload_drift row, joined with its resource's fields and its alert, as a
  * row of the Changes list. `choice` is what the restore offers for its resource from
- * the read that holds the earlier value. */
+ * the read undo restores from (undoSource). */
 export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoice | null = null): DriftRecord {
   const workload = String(row.workload);
   const resourceKey = String(row.resource_key);
@@ -90,6 +116,7 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
   const fields = (Array.isArray(row.fields) ? row.fields : [])
     .map((field) => record(field))
     .filter((field): field is Record<string, unknown> => field !== null && typeof field.path === "string");
+  const undoFrom = undoSource(row);
   const changed = (side: "before" | "after") => Object.fromEntries(fields.map((field) => [String(field.path), field[side] ?? null]));
   return {
     id: String(row.id),
@@ -107,10 +134,11 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
       collectionId: String(row.collection_id),
       previousCollectionId: String(row.previous_collection_id),
       previousReadAt: row.previous_observed_to ? new Date(row.previous_observed_to as string | Date).toISOString() : null,
+      undoFrom,
       comparedWith: row.compared_with === "approved" ? "approved" : "previous",
       alertId: row.alert_id ? String(row.alert_id) : null,
       alertState: row.alert_state ? String(row.alert_state) : null,
-      undo: serviceUndo({ workload, resourceKey, changeType: String(row.change_type) }, choice),
+      undo: serviceUndo({ workload, resourceKey, changeType: String(row.change_type), heldByApprovedSetup: undoFrom.collectionId !== null }, choice),
     },
   };
 }

@@ -324,6 +324,8 @@ export const COMPLETENESS = Object.freeze({
   profileCardProperty: { whole: 'not-written' },
   pronounsSettings: {},
   defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
+  defenderIdentitySensor: { whole: 'not-written', missing: [part('The sensor software on each server and its health', 'other-route')] },
+  secureScoreControlProfile: { whole: 'not-written', missing: [part('Microsoft\'s text and score for each action', 'microsoft-managed')] },
   teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
   formsSettings: {},
   appsAndServicesSettings: {},

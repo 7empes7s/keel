@@ -6,14 +6,14 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
-  bytesWords, compareItemId, compareItemLine, containerWords, contentItemWords, countsWords, differenceTotals, notComparedReasons,
+  bytesWords, compareItemId, compareItemLine, containerWords, contentItemWords, countsWords, differenceTotals, groupKind, notComparedReasons, settingsByKind,
   sideWords, workloadLabel, workloadNotComparedSentence,
   type ChangeType, type CompareData, type CompareOpenable, type CompareField, type CompareResult, type GapTone, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
 import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
 import { holdsObjectId } from "@/lib/object-ids";
-import { plainKind } from "@/lib/baselines-view";
+import { itemKindName, plainKind } from "@/lib/baselines-view";
 import { SERVICES, serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts, type KindPart } from "@/lib/type-groups";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
@@ -136,7 +136,7 @@ function SettingsGroupView({ group, index, sides }: { group: SettingsGroup; inde
   return (
     <details className="compare-group">
       <summary>
-        <span className="compare-group-name">{plainKind(group.resourceType)}</span>
+        <span className="compare-group-name">{plainKind(groupKind(group))}</span>
         <span className="compare-group-counts">{countsWords(group)}</span>
         <Icon className="compare-group-chevron" name="chevron-down" />
       </summary>
@@ -293,15 +293,18 @@ function Unmatched({ entries }: { entries: SettingsSection["unmatched"] }) {
 }
 
 /** Every changed item with settings to show, in the order the page lists them. */
-function openable(settings: SettingsSection): CompareOpenable[] {
-  return byService(settings.groups, (group) => group.resourceType).flatMap((block) => block.parts.flatMap((part) => part.items.flatMap((group) => byChange(group.items)
+function openable(groups: SettingsGroup[]): CompareOpenable[] {
+  return byService(groups, groupKind).flatMap((block) => block.parts.flatMap((part) => part.items.flatMap((group) => byChange(group.items)
     .filter((item) => item.changeType === "changed" && item.fields?.length)
-    .map((item) => ({ id: compareItemId(group.resourceType, item.naturalKey), name: itemName(item, group.resourceType), kind: plainKind(group.resourceType), service: block.heading, fields: item.fields ?? [], fieldsTotal: item.fieldsTotal })))));
+    .map((item) => ({ id: compareItemId(group.resourceType, item.naturalKey), name: itemName(item, group.resourceType), kind: itemKindName({ resourceType: group.resourceType, templateFamily: item.templateFamily }), service: block.heading, fields: item.fields ?? [], fieldsTotal: item.fieldsTotal })))));
 }
 
 function SettingsPanel({ settings, portable, sides, restore }: { settings: SettingsSection; portable: boolean; sides: Sides; restore: { href: string; label: string } | null }) {
+  // An Intune antivirus or firewall policy is listed as a Defender endpoint security
+  // policy, as on Restore and Approved setup; the stored type stays in Technical details.
+  const groups = settingsByKind(settings.groups);
   return (
-    <CompareSheet items={openable(settings)} restore={restore} sides={sides}>
+    <CompareSheet items={openable(groups)} restore={restore} sides={sides}>
     <section aria-labelledby="compare-settings-heading" className="item-card compare-section">
       <h2 id="compare-settings-heading">Settings</h2>
       <p className="compare-help">
@@ -309,13 +312,13 @@ function SettingsPanel({ settings, portable, sides, restore }: { settings: Setti
         {" "}Open a kind, then See what changed on an item, to see each setting before and after.
         {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
       </p>
-      {byService(settings.groups, (group) => group.resourceType).map((block) => (
+      {byService(groups, groupKind).map((block) => (
         <div className="compare-section" key={block.key}>
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
               <KindHeading part={part} />
-              {part.items.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
+              {part.items.map((group) => <SettingsGroupView group={group} index={groups.indexOf(group)} key={groupKind(group)} sides={sides} />)}
             </div>
           ))}
         </div>

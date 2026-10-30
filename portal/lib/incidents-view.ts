@@ -7,6 +7,8 @@ import { namedSubject } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import { RESOURCE_TYPE_LABELS, ago, formatTimestamp, words } from "@/lib/presentation";
 import type { EngineRef } from "@/lib/sentences";
+import { workloadOrder } from "@/lib/restore-workloads-view";
+import { SERVICES, type CloudService } from "@/lib/services";
 import type { Ref } from "@/lib/types";
 
 export const DESCRIPTION = "During a security incident, restore from a backup an investigator has checked, not simply the newest one.";
@@ -301,4 +303,54 @@ export function serviceBackupLine(entry: IncidentServiceBackup, now: string): st
   if (!newest.inCompromiseWindow) return latest;
   const before = entry.beforeWindow;
   return before ? `${latest} The newest from before the attack is ${ago(before.at, now)}.` : `${latest} None was taken before the attack started.`;
+}
+
+// The services whose backups an investigator does not check: every Microsoft 365
+// service but Entra ID and Intune (their tenant backups are the list's rows) and Keel.
+const CHECKED_SERVICES = new Set(["entra", "intune"]);
+export const OTHER_SERVICES: readonly CloudService[] = SERVICES.filter((service) => service.code !== "Keel" && !CHECKED_SERVICES.has(service.code.toLowerCase()));
+
+export interface IncidentServiceGroup {
+  service: CloudService | null;
+  entries: IncidentServiceBackup[];
+}
+
+/** Settings kinds in the portal's order (people, groups, roles, then policies), then content. */
+function serviceEntryOrder(a: IncidentServiceBackup, b: IncidentServiceBackup): number {
+  return Number(a.kind === "content") - Number(b.kind === "content")
+    || (a.kind === "service-settings" ? workloadOrder(a.workload) - workloadOrder(b.workload) : 0)
+    || a.name.localeCompare(b.name);
+}
+
+/**
+ * Every service other than Entra ID and Intune, in the portal's order, each with its
+ * backups (none when nothing is backed up), so no service goes missing. Backups of a
+ * service the portal does not know go last, under a null service. `query` narrows by
+ * the backup's or the service's name, and drops services with nothing that matches.
+ */
+export function incidentServiceGroups(entries: IncidentServiceBackup[], query = ""): IncidentServiceGroup[] {
+  const text = query.trim().toLowerCase();
+  const known = new Set(OTHER_SERVICES.map((service) => service.code.toLowerCase()));
+  const own = (code: string | null) => entries.filter((entry) => (entry.service ?? "").toLowerCase() === (code ?? "").toLowerCase());
+  const matching = (list: IncidentServiceBackup[], serviceName: string) => (text
+    ? list.filter((entry) => `${entry.name} ${serviceName}`.toLowerCase().includes(text))
+    : list).sort(serviceEntryOrder);
+  const groups: IncidentServiceGroup[] = OTHER_SERVICES.map((service) => ({ service, entries: matching(own(service.code), service.name) }));
+  const unplaced = matching(entries.filter((entry) => !known.has((entry.service ?? "").toLowerCase()) && !CHECKED_SERVICES.has((entry.service ?? "").toLowerCase())), "Other services");
+  if (unplaced.length) groups.push({ service: null, entries: unplaced });
+  return text ? groups.filter((group) => group.entries.length) : groups;
+}
+
+/** A service group's header: how many kinds, and the most pressing problem first. */
+export function serviceGroupWords(entries: IncidentServiceBackup[]): { count: string; about: string } {
+  if (!entries.length) return { count: "No backup yet", about: "Nothing to restore from" };
+  const count = `${entries.length} ${entries.length === 1 ? "kind" : "kinds"}`;
+  const statuses = entries.map(serviceBackupStatus);
+  const none = statuses.filter((status) => status.rank === 0).length;
+  const during = statuses.filter((status) => status.rank === 1).length;
+  const before = statuses.filter((status) => status.rank === 2).length;
+  if (none) return { count, about: `${none} with no good backup` };
+  if (during) return { count, about: `${during} backed up only during the attack` };
+  if (before) return { count, about: `${before} to restore from before the attack` };
+  return { count, about: "Backed up outside the attack · check by hand" };
 }

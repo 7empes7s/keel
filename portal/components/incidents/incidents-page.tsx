@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, type MouseEvent } from "react";
+import { useMemo, type MouseEvent, type ReactNode } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { AttackTimeline, AttackWindowList, TimelineLegend } from "@/components/incidents/attack-window";
@@ -22,13 +22,14 @@ import { Verdict } from "@/components/verdict";
 import { incidentAction } from "@/lib/incident-calls";
 import {
   ALLOW_EFFECT, CLOSE_EFFECT, HISTORY_HREF, KEPT_HELP, READ_ONLY_LINE, STATES, WINDOW_HELP,
-  backupAge, backupName, backupsWord, checkLine, orderServiceBackups, serviceBackupLine, serviceBackupStatus, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
+  backupAge, backupName, backupsWord, checkLine, incidentServiceGroups, serviceBackupLine, serviceBackupStatus, serviceGroupWords, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
   personOf, restoreHref, stateChip, stateOf, type BackupState, type StateFilter,
 } from "@/lib/incidents-view";
-import type { IncidentDetail, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
+import type { IncidentDetail, IncidentRecoveryPoint, IncidentServiceBackup, IncidentSummary } from "@/lib/portal-data";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
+import { serviceFor } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
@@ -116,10 +117,44 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
       hint: `${entry.status === "open" ? "Open" : "Closed"} · opened ${ago(entry.openedAt, now)} by ${personLabel(personOf(entry.owner))}`,
     }));
 
+  // The Service view (the default) shows every Microsoft 365 service in one list: the
+  // tenant backups an investigator checks (Entra ID and Intune) are its rows, and each
+  // other service follows with its own backups, which are checked by hand. A state tile
+  // narrows the checked backups only, so the other services step aside while one is on.
+  const query = view.get("q");
+  const serviceBackups = selected?.serviceBackups;
   const groupings = useMemo<Grouping<IncidentRecoveryPoint>[]>(() => [
+    { key: "service", label: "Service", groupsOf: (items) => {
+      const searching = query.trim() !== "";
+      const checked: ListGroup<IncidentRecoveryPoint> = {
+        key: "entra-intune",
+        label: "Entra ID and Intune",
+        icon: "service-entra",
+        about: "Checked by an investigator",
+        items,
+        ...(items.length ? {} : { count: "No backup yet", extra: <p className="ir-muted">No tenant backup has finished yet.</p> }),
+      };
+      if (filterKey) return items.length ? [checked] : [];
+      const others = incidentServiceGroups(serviceBackups ?? [], query).map((group): ListGroup<IncidentRecoveryPoint> => {
+        const service = group.service ?? serviceFor(null);
+        const words = serviceGroupWords(group.entries);
+        return {
+          key: service.code,
+          label: service.name,
+          icon: service.icon,
+          about: words.about,
+          items: [],
+          count: words.count,
+          extra: group.entries.length
+            ? <ServiceBackupList entries={group.entries} now={now} />
+            : <p className="ir-muted">Keel has no backup of {service.name} yet.</p>,
+        };
+      });
+      return [...(items.length || !searching ? [checked] : []), ...others];
+    } },
     { key: "state", label: "State", groupsOf: (items) => groupBy(items, (item) => stateOf(item), (key, list) => ({ label: STATES[key as BackupState].plural, icon: STATES[key as BackupState].icon, about: backupsWord(list.length) }), (key) => STATES[key as BackupState].rank) },
     { key: "day", label: "Day", groupsOf: (items) => groupBy(items, (item) => String(item.observedTo ?? item.observedFrom ?? "").slice(0, 10), (key, list) => ({ label: key ? new Date(`${key}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : "Unknown day", icon: "calendar" as IconName, about: backupsWord(list.length) }), (key) => -Number(key.replaceAll("-", ""))) },
-  ], []);
+  ], [query, filterKey, serviceBackups, now]);
 
   const renderRow = (point: IncidentRecoveryPoint) => {
     const state = stateOf(point);
@@ -241,10 +276,11 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
 
           <section aria-labelledby="ir-backups-heading" className="ir-section">
             <h2 id="ir-backups-heading">Backups</h2>
+            <p className="ir-muted">Every Microsoft 365 service, in one list. An investigator checks the Entra ID and Intune backups; check the other services&apos; backups by hand before you restore from them.</p>
             <ActiveFilters extra={{ open: null, do: null }} filters={activeFilters} noun={{ one: "backup", many: "backups" }} shown={shown.length} total={points.length} />
-            {points.length === 0 ? (
+            {points.length === 0 && !serviceBackups?.length ? (
               <p className="sel-empty">No completed backups exist for this tenant yet.</p>
-            ) : shown.length === 0 ? (
+            ) : points.length && shown.length === 0 ? (
               <NoMatches extra={{ open: null, do: null }} filters={activeFilters} noun={{ one: "backup", many: "backups" }} />
             ) : (
               <SelectableList
@@ -266,32 +302,19 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
                 label="Backups"
                 matches={(item, text) => `${backupName(item)} ${stateChip(item)}`.toLowerCase().includes(text)}
                 noun={{ one: "backup", many: "backups" }}
+                // The engine lists at most 50 checked backups, so the other services after
+                // them always share the first page instead of sliding to the last one.
+                pageSize="50"
                 renderRow={renderRow}
                 rowName={(item) => backupName(item)}
                 toneOf={(item) => (item.stale ? "soon" : STATES[stateOf(item)].risk)}
               />
             )}
+            {view.get("group", "service") !== "service" && serviceBackups?.length ? (
+              <p className="ir-muted">Exchange, SharePoint, Teams, Power Platform, Purview and Defender backups show when you group by <Link href={href({ group: null })} onClick={(event) => follow(event, href({ group: null }))}>Service</Link>.</p>
+            ) : null}
             <p className="ir-muted">{KEPT_HELP} Kept backups are removed by routine clean-up only after you let them go.</p>
           </section>
-
-          {selected.serviceBackups?.length ? (
-            <section aria-labelledby="ir-services-heading" className="ir-section">
-              <h2 id="ir-services-heading">Other services&apos; backups</h2>
-              <p className="ir-muted">Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings, and content. The check above covers Entra ID and Intune only, so check these by hand before you restore from them.</p>
-              <ul className="ir-service-list">
-                {orderServiceBackups(selected.serviceBackups).map((entry) => {
-                  const status = serviceBackupStatus(entry);
-                  return (
-                    <li className="ir-service-row" data-tone={status.tone} key={`${entry.kind}:${entry.workload}`}>
-                      <span className="ir-service-name">{entry.name}<small>{entry.kind === "content" ? "Content" : "Settings"}</small></span>
-                      <Badge tone={status.tone}>{status.label}</Badge>
-                      <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          ) : null}
 
           <IncidentRecord detail={selected} />
         </> : null}
@@ -399,6 +422,24 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
         />
       ) : null}
     </div>
+  );
+}
+
+/** One service's backups against the attack window: a status badge and a line each. */
+function ServiceBackupList({ entries, now }: { entries: IncidentServiceBackup[]; now: string }): ReactNode {
+  return (
+    <ul className="ir-service-list">
+      {entries.map((entry) => {
+        const status = serviceBackupStatus(entry);
+        return (
+          <li className="ir-service-row" data-tone={status.tone} key={`${entry.kind}:${entry.workload}`}>
+            <span className="ir-service-name">{entry.name}<small>{entry.kind === "content" ? "Content" : "Settings"} · check by hand</small></span>
+            <Badge tone={status.tone}>{status.label}</Badge>
+            <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

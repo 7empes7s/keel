@@ -13531,3 +13531,31 @@ item that needs it stays untouched.
   A 400 on `$select` or a 403 is a result: report the status and Graph code.
 - **Report:** the JSON; anything left in the tenant (expected: nothing, reads only). The builder thread then removes `liveGate`
   from `conditionalAccessPolicyAgentConditions` in a small PR, which turns the read and MS.AAD.9.1 on together.
+
+### Q285: Check the 8 ScubaGear SharePoint rules against the live tenant (read-only, after Q276 and PR #824), about 10 minutes
+- Drafted by the "Read SharePoint admin settings beyond Graph" thread (2026-10-30). Code: PR #824 (stacked on #816 and #804,
+  merges in #797). The ScubaGear SharePoint rules (MS.SHAREPOINT.1.1 to 3.3) now read the `sharepoint-tenant` Get-PnPTenant
+  backup (kind `tenantSettings`). No new reader and no new permission: they use the read Q276 switches on.
+- Needs: Q276 done (`sharepoint-tenant.tenant` enabled), and /opt/keel-live at the #824 merge or later
+  (`grep -q "SPO_TENANT_FIELDS" /opt/keel-live/engine/benchmarks/scubagear/adapters.mjs`). If either is not there yet, set
+  Status `waiting` with which one, and check again later.
+- Status: todo
+- Result:
+- **Tenant:** nothing is sent beyond the normal scheduled reads. Grant, assign or create nothing.
+- Do, with `set -a; . /etc/keel/db.env; set +a`:
+  1. If no `sharepoint-tenant` run has completed since the deploy, run `node cli/keel-workload-collect.mjs run` once by hand
+     (it runs the compliance checks afterwards). Report its run line.
+  2. Report the newest `benchmark_evaluation` row per control for `scubagear.MS.SHAREPOINT.%`: control_id, verdict, reason,
+     and `details->0->>'value'` (the plain ScubaGear finding).
+  3. From the newest `sharepoint-tenant` observation of kind `tenantSettings`, report these setting values (they are
+     sharing settings, not secrets): SharingCapability, OneDriveSharingCapability, SharingDomainRestrictionMode,
+     DefaultSharingLinkType, DefaultLinkPermission, FileAnonymousLinkType, FolderAnonymousLinkType,
+     RequireAnonymousLinksExpireInDays, EmailAttestationRequired, EmailAttestationReAuthDays. Say whether each is a name, a
+     number or missing.
+  4. For each rule, say whether its verdict matches those values by hand. Pass: 1.1 and 1.2 need Disabled or
+     ExistingExternalUserSharingOnly; 1.3 needs AllowList (when sharing is not Disabled); 2.1 needs Direct; 2.2 needs View;
+     3.1 needs 1 to 30 days and 3.2 needs View for files and folders (both only when sharing is ExternalUserAndGuestSharing);
+     3.3 needs EmailAttestationRequired true and at most 30 days (when sharing is not Disabled).
+- **Expected:** 8 verdicts of pass, fail or N/A, none "could not check". If any is `scubagear:incomplete:SPO_tenant`, report
+  the field from step 3 that is missing or odd; that is the fix for the thread.
+- **Report:** the run line; the 8 rows; the 10 values; match or mismatch per rule.

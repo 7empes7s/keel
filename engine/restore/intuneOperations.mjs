@@ -59,6 +59,7 @@ import {
   applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, withoutTrustFields,
 } from './recordWriter.mjs';
+import { isTrustField } from './workloads/writeDeclarations.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
 
@@ -255,6 +256,23 @@ export function intuneWriteBody(resourceType, payload, verb) {
   if (entry.scheduledActions && verb === 'create') body.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
   // A trust, certificate or sign-in field is never sent (intuneTrustFieldStep lists it for a person).
   return withoutTrustFields(resourceType, body);
+}
+
+/**
+ * The state a policy write intends, for the rollback journal: the backup
+ * payload, with each trust, certificate or sign-in field as the write leaves it
+ * (never sent, so live's value, or absent on a create). An undo then never
+ * counts such a field as changed by the restore.
+ */
+export function intuneJournalState(resourceType, desired, live) {
+  const state = withoutTrustFields(resourceType, desired);
+  if (!live || typeof live !== 'object') return state;
+  // Every trust field live holds stays as it is, whether or not the backup has it.
+  const liveTrust = Object.keys(live).filter((key) => key !== '@odata.type' && isTrustField(resourceType, key));
+  if (state === desired && liveTrust.length === 0) return state;
+  const kept = { ...state };
+  for (const key of liveTrust) kept[key] = live[key];
+  return kept;
 }
 
 /** The manual step for a policy's trust, certificate or sign-in fields the write leaves out, or null. */

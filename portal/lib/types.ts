@@ -228,8 +228,10 @@ export interface BaselineCapture {
   sourceSnapshotId: string | null;
   window: { startedAt: string | null; completedAt: string | null } | null;
   types: string[];
-  // Kinds left out because Microsoft kept failing to answer when it was captured (#666).
-  leftOut?: { type: string; reason: string }[];
+  // Every kind Keel backs up that this setup does not hold, with the reason its source
+  // backup gave, and whether the newest complete backup has read it since (so capturing
+  // a new version would add it). Older readers only listed Microsoft service errors (#666).
+  leftOut?: { type: string; reason: string; readLater?: boolean }[];
 }
 
 export interface BaselineChanges {

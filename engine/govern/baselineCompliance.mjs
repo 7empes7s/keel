@@ -22,6 +22,8 @@ import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { diffSnapshots } from './diffSnapshots.mjs';
 import { isEligibleBaselineSource, serviceErrorLeftOut } from './baseline.mjs';
+import { DESCRIPTORS } from '../collect/descriptors.mjs';
+import { isServerError } from '../../tools/tenant-probe/graph.mjs';
 
 function iso(value) {
   if (value === null || value === undefined) return null;
@@ -34,13 +36,57 @@ function ms(value) {
   return text === null ? null : Date.parse(text);
 }
 
+const readInFull = (coverage) => isRecord(coverage)
+  && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty');
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Why the source backup did not read a kind in full, as a stable code the portal words. */
+function leftOutReason(coverage) {
+  if (!isRecord(coverage) || coverage.outcome === 'not-requested') return 'not-read';
+  if (coverage.outcome === 'unavailable') return 'no-licence';
+  if (coverage.outcome === 'partial') return 'partial';
+  if (coverage.outcome === 'failed') {
+    if (coverage.httpStatus === 401 || coverage.httpStatus === 403) return 'refused';
+    if (isServerError(coverage.httpStatus)) return 'microsoft-service-error';
+  }
+  return 'failed';
+}
+
+/**
+ * Gap 3 (baselines-complete): every kind Keel backs up that a baseline's scope does
+ * not hold, with the reason its source backup gave, and whether the newest
+ * whole-estate backup has read it in full since (so "Capture new version" would add
+ * it). Without the source backup's record only the kinds stored at capture are known.
+ */
+function leftOutOf(scope, sourceDigest, latest, sourceSnapshotId, capturedAt) {
+  const held = new Set(Array.isArray(scope?.types) ? scope.types : []);
+  const stored = new Map((Array.isArray(scope?.leftOut) ? scope.leftOut : [])
+    .filter((item) => typeof item?.type === 'string')
+    .map((item) => [item.type, String(item.reason ?? 'unknown')]));
+  const kinds = isRecord(sourceDigest) ? DESCRIPTORS.map(({ type }) => type) : [...stored.keys()];
+  // Only a backup finished after the capture can add a kind (portal resnapshotSource).
+  const newer = latest && latest.id !== String(sourceSnapshotId ?? '')
+    && (capturedAt === null || ms(latest.completedAt) > ms(capturedAt)) ? latest : null;
+  return [...new Set(kinds)]
+    .filter((type) => !held.has(type))
+    .sort()
+    .map((type) => ({
+      type,
+      reason: stored.get(type) ?? leftOutReason(sourceDigest?.[type]),
+      readLater: Boolean(newer?.readTypes.has(type)),
+    }));
+}
+
 /**
  * How old a baseline's evidence is and what it covered. A baseline set with task-87
  * carries its source collection; an older one is read from the snapshots its resource
  * versions came from (the window between the first and last of them). With neither,
  * the age is unknown — it is never filled in from the time of reading.
  */
-function captureOf(baseline, legacyWindow, now) {
+function captureOf(baseline, legacyWindow, now, sourceDigest = null, latest = null) {
   if (baseline.captured_at) {
     const scope = baseline.observation_scope ?? null;
     return {
@@ -50,7 +96,7 @@ function captureOf(baseline, legacyWindow, now) {
       sourceSnapshotId: baseline.source_snapshot_id ? String(baseline.source_snapshot_id) : null,
       window: scope ? { startedAt: scope.startedAt ?? null, completedAt: scope.completedAt ?? null } : null,
       types: Array.isArray(scope?.types) ? [...scope.types] : [],
-      leftOut: Array.isArray(scope?.leftOut) ? scope.leftOut.filter((item) => typeof item?.type === 'string').map((item) => ({ type: item.type, reason: String(item.reason ?? 'unknown') })) : [],
+      leftOut: leftOutOf(scope, sourceDigest, latest, baseline.source_snapshot_id, iso(baseline.captured_at)),
     };
   }
   if (legacyWindow?.completed_at) {
@@ -155,7 +201,10 @@ async function latestEligibleSnapshot(client, tenantRef) {
       .map(([type]) => type),
     ...serviceErrorLeftOut(snapshot.coverage_digest),
   ]);
-  return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions, unavailableTypes };
+  const readTypes = new Set(Object.entries(snapshot.coverage_digest ?? {})
+    .filter(([, coverage]) => readInFull(coverage))
+    .map(([type]) => type));
+  return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions, unavailableTypes, readTypes };
 }
 
 /** Every baseline of the tenant, newest first, with capture, scope, version chain and changes since capture. */
@@ -187,6 +236,15 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
 
   const latest = await latestEligibleSnapshot(client, tenantRef);
   await withPayloadsWhereHashesDiffer(client, resources, latest);
+  // What each baseline's source backup read, to say why a kind is not in it.
+  const sourceIds = [...new Set(baselines.map((baseline) => baseline.source_snapshot_id).filter(Boolean).map(String))];
+  const { rows: sourceRows } = sourceIds.length
+    ? await client.query(
+      'SELECT id::text AS id, coverage_digest FROM snapshot WHERE tenant_ref = $1 AND id = ANY($2::uuid[])',
+      [tenantRef, sourceIds],
+    )
+    : { rows: [] };
+  const sourceDigests = new Map(sourceRows.map((row) => [row.id, row.coverage_digest]));
   const successor = new Map(baselines
     .filter((baseline) => baseline.supersedes_id)
     .map((baseline) => [String(baseline.supersedes_id), String(baseline.id)]));
@@ -209,7 +267,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
       supersedesId: baseline.supersedes_id ? String(baseline.supersedes_id) : null,
       supersededById: successor.get(String(baseline.id)) ?? null,
       supersededAt: iso(baseline.superseded_at),
-      capture: captureOf(baseline, legacyWindow, now),
+      capture: captureOf(baseline, legacyWindow, now, sourceDigests.get(String(baseline.source_snapshot_id)) ?? null, latest),
       changesSinceCapture: changesSince(rows, latest, new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type))),
     };
   });

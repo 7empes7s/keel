@@ -43,14 +43,6 @@ export function captureScope(capture: BaselineCapture | undefined): string {
   return `${from}, covering ${plural(capture.types.length, "configuration type")}.`;
 }
 
-/** The kinds a baseline left out because Microsoft kept failing to answer, in words; null when none. */
-export function leftOutWords(capture: BaselineCapture | undefined): string | null {
-  const names = [...new Set((capture?.leftOut ?? []).map((item) => plainKind(item.type)))].sort();
-  if (!names.length) return null;
-  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-  return `${list} ${names.length === 1 ? "is" : "are"} not in this setup: Microsoft kept answering with an error when its backup was taken, so changes to ${names.length === 1 ? "it" : "them"} are not checked. Capture a new version once Microsoft answers again.`;
-}
-
 export function captureAge(capture: BaselineCapture | undefined, now: string): string {
   return capture?.capturedAt ? ago(capture.capturedAt, now) : "Not recorded";
 }

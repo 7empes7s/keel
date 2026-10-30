@@ -350,6 +350,43 @@ function dlpPolicies(facts) {
   return [{ value }];
 }
 
+const platformOfKind = (facts, kind) => list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === kind);
+function onePlatformObject(facts, kind, key, what) {
+  const found = platformOfKind(facts, kind);
+  if (found.length !== 1) throw new CouldNotBuild(key, `the Power Platform backup holds no ${what}`);
+  return found[0];
+}
+
+// The tenant settings ScubaGear's rules judge, each on or off.
+export const ENVIRONMENT_CREATION_SETTINGS = Object.freeze([
+  'disableEnvironmentCreationByNonAdminUsers', 'disableTrialEnvironmentCreationByNonAdminUsers', 'disablePortalsCreationByNonAdminUsers',
+]);
+
+/**
+ * Get-PowerPlatformTenantSettingsRest answers the tenant settings object. Each setting is
+ * passed on only when it is on or off: a rule whose setting is missing or of another
+ * type then gives no result, which reads "could not check", never a guess.
+ */
+function environmentCreation(facts) {
+  const settings = onePlatformObject(facts, 'tenantSettings', 'environment_creation', 'tenant settings');
+  const value = Object.fromEntries(ENVIRONMENT_CREATION_SETTINGS.filter((name) => typeof settings[name] === 'boolean').map((name) => [name, settings[name]]));
+  const share = settings.powerPlatform?.powerApps?.disableShareWithEveryone;
+  if (typeof share === 'boolean') value.powerPlatform = { powerApps: { disableShareWithEveryone: share } };
+  return [value];
+}
+
+/**
+ * Get-PowerPlatformTenantIsolationRest answers the policy, whose properties say whether
+ * isolation is off, or null when it was never set up (the rules read that as the
+ * string "null"). Anything else is not guessed at.
+ */
+function tenantIsolation(facts) {
+  const policy = onePlatformObject(facts, 'tenantIsolation', 'tenant_isolation', 'tenant isolation setting');
+  if (policy.neverConfigured === true) return ['null'];
+  if (typeof policy.isDisabled !== 'boolean') throw new CouldNotBuild('tenant_isolation', 'the backup does not say whether tenant isolation is on');
+  return [{ properties: { isDisabled: policy.isDisabled } }];
+}
+
 const SCUBA_CONFIG_FIELDS = Object.freeze([
   'M365Environment', 'Aad', 'Exo', 'CapExclusions', 'RoleExclusions', 'AgentExclusions', 'Agents', 'Users', 'Groups',
   'Applications', 'GuestUserTypes', 'AllowedForwardingDomains',
@@ -452,6 +489,12 @@ export const ADAPTERS = Object.freeze({
       .map((configuration) => ({ ...configuration, AllowedDomains: allowedDomains(configuration.AllowedDomains) }))),
   }),
   ...cmdletKeys(TEAMS_VOICE, TEAMS_EXTENDED, { broadcast_policies: 'liveEventsPolicy' }, { identity: false, check: teamsChecked }),
+  // The org-wide app settings have no app-only read. ScubaGear run with a certificate
+  // records exactly this, and its rules then judge the app permission policies.
+  tenant_app_settings: Object.freeze({
+    setting: true, fields: Object.freeze(['SettingName', 'SettingValue', 'CertificateBasedAuth']),
+    build: () => [{ CertificateBasedAuth: true }],
+  }),
 
   // SharePoint and OneDrive. Keel reads the tenant's sharing settings through Graph
   // (sharepointSettings), which names its choices; the SharePoint admin API ScubaGear
@@ -479,6 +522,15 @@ export const ADAPTERS = Object.freeze({
       }
       return environments;
     },
+  }),
+  environment_creation: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'tenantSettings')],
+    fields: Object.freeze([...ENVIRONMENT_CREATION_SETTINGS, 'powerPlatform', 'powerApps', 'disableShareWithEveryone']),
+    build: environmentCreation,
+  }),
+  tenant_isolation: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'tenantIsolation')], fields: Object.freeze(['properties', 'isDisabled']),
+    build: tenantIsolation,
   }),
   // The default environment is named Default-<tenant id>; the rules look for it by name.
   tenant_id: Object.freeze({

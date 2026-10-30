@@ -1051,6 +1051,8 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Power Platform environments
 - Power Platform data loss prevention (DLP) policies
 - Power Platform connectors in each environment
+- Power Platform tenant settings
+- Power Platform tenant isolation
 - Power BI tenant settings
 
 **KEEL can restore:** nothing yet.

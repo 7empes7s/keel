@@ -238,7 +238,7 @@ test('every Keel read named in the source table exists', () => {
 test('coverage gives every rule one state and the states add up', () => {
   assert.equal(coverage.total, 109);
   assert.equal(RULE_STATES.reduce((sum, state) => sum + coverage.summary[state], 0), 109);
-  assert.deepEqual(coverage.summary, { ready: 73, partial: 8, 'missing-input': 20, manual: 8 });
+  assert.deepEqual(coverage.summary, { ready: 81, partial: 8, 'missing-input': 12, manual: 8 });
   for (const product of PRODUCT_ORDER) {
     assert.equal(RULE_STATES.reduce((sum, state) => sum + coverage.perProduct[product][state], 0), imported.counts[product].rules);
   }

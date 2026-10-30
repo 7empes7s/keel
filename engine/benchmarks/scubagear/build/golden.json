@@ -397,7 +397,7 @@
     {
       "PolicyId": "MS.TEAMS.5.2v2",
       "Criticality": "Should",
-      "RequirementMet": false
+      "RequirementMet": true
     },
     {
       "PolicyId": "MS.TEAMS.5.3v2",
@@ -406,6 +406,16 @@
     }
   ],
   "powerplatform": [
+    {
+      "PolicyId": "MS.POWERPLATFORM.1.1v1",
+      "Criticality": "Shall",
+      "RequirementMet": true
+    },
+    {
+      "PolicyId": "MS.POWERPLATFORM.1.2v1",
+      "Criticality": "Shall",
+      "RequirementMet": false
+    },
     {
       "PolicyId": "MS.POWERPLATFORM.2.1v1",
       "Criticality": "Shall",
@@ -422,6 +432,11 @@
       "RequirementMet": true
     },
     {
+      "PolicyId": "MS.POWERPLATFORM.3.1v1",
+      "Criticality": "Shall",
+      "RequirementMet": true
+    },
+    {
       "PolicyId": "MS.POWERPLATFORM.3.2v1",
       "Criticality": "Should/Not-Implemented",
       "RequirementMet": false
@@ -430,6 +445,16 @@
       "PolicyId": "MS.POWERPLATFORM.4.1v1",
       "Criticality": "Shall/Not-Implemented",
       "RequirementMet": false
+    },
+    {
+      "PolicyId": "MS.POWERPLATFORM.5.1v1",
+      "Criticality": "Should",
+      "RequirementMet": true
+    },
+    {
+      "PolicyId": "MS.POWERPLATFORM.6.1v1",
+      "Criticality": "Should",
+      "RequirementMet": true
     }
   ],
   "powerbi": [

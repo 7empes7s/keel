@@ -91,9 +91,15 @@ const doc = (path) => Object.freeze({ url: `${LEARN}${path}`, retrievedAt: null 
 const graph = (endpoint, version = 'v1.0') => Object.freeze({ kind: 'graph', method: 'GET', endpoint, version });
 const cmdlet = (name, module, { parameters = [], probeName = name } = {}) => Object.freeze({ kind: 'cmdlet', cmdlet: name, parameters, module, probeName });
 // A read from a Microsoft admin REST API outside Graph (Power Platform, Fabric). Only the
-// hosts in REST_HOSTS are in scope. `items` names the array the answer lists objects in.
-const rest = (host, endpoint, version, { audience, items = 'value' }) => Object.freeze({ kind: 'rest', method: 'GET', host, endpoint, version, audience, items });
+// hosts in REST_HOSTS are in scope. `items` names the array the answer lists objects in;
+// null means the answer is one object (a tenant's settings). `method` is GET, except for
+// the few read actions Microsoft only offers as a POST with no body (REST_READ_ACTIONS).
+const rest = (host, endpoint, version, { audience, items = 'value', method = 'GET' }) => Object.freeze({ kind: 'rest', method, host, endpoint, version, audience, items });
 export const REST_HOSTS = Object.freeze(['api.bap.microsoft.com', 'api.powerapps.com', 'api.fabric.microsoft.com']);
+// Read actions that Microsoft's admin API takes as a POST with no body. A POST to any
+// other path is a write and stays refused. The last path segment must match, any case.
+export const REST_READ_ACTIONS = Object.freeze(['listtenantsettings']);
+const restReadAction = (endpoint) => REST_READ_ACTIONS.includes(String(endpoint).split('?')[0].split('/').filter(Boolean).pop()?.toLowerCase());
 // Path segments of those APIs that address apps, flows, user connections or Power BI
 // content rather than tenant configuration.
 const REST_CONTENT_SEGMENTS = new Set([
@@ -492,6 +498,18 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     ['powerplatform.connectors', 'Power Platform connectors in each environment',
       rest('api.powerapps.com', '/providers/Microsoft.PowerApps/scopes/admin/environments/{environment-name}/apis?api-version=2016-11-01', '2016-11-01', { audience: 'https://service.powerapps.com/' }),
       'next-link', POWER_PLATFORM_SETUP, '/en-us/connectors/powerappsforadmins/'],
+    // Who may create environments and Power Pages sites, and share apps with everyone.
+    // Microsoft offers this read only as a POST with no body (REST_READ_ACTIONS).
+    ['powerplatform.tenant-settings', 'Power Platform tenant settings',
+      rest('api.bap.microsoft.com', '/providers/Microsoft.BusinessAppPlatform/listTenantSettings?api-version=2020-10-01', '2020-10-01',
+        { audience: 'https://service.powerapps.com/', items: null, method: 'POST' }),
+      'none', POWER_PLATFORM_SETUP, '/en-us/power-platform/admin/list-tenantsettings'],
+    // Whether connections to and from other tenants are blocked, and the tenants allowed.
+    // The path is the one Get-PowerAppTenantIsolationPolicy reads, at its default version.
+    ['powerplatform.tenant-isolation', 'Power Platform tenant isolation',
+      rest('api.bap.microsoft.com', '/providers/PowerPlatform.Governance/v1/tenants/{tenant-id}/tenantIsolationPolicy?api-version=2020-06-01', '2020-06-01',
+        { audience: 'https://service.powerapps.com/', items: null }),
+      'none', POWER_PLATFORM_SETUP, '/en-us/powershell/module/microsoft.powerapps.administration.powershell/get-powerapptenantisolationpolicy'],
     ['powerbi.tenant-settings', 'Power BI tenant settings',
       rest('api.fabric.microsoft.com', '/v1/admin/tenantsettings', 'v1', { audience: 'https://api.fabric.microsoft.com/', items: 'tenantSettings' }),
       'next-link', FABRIC_READ_ONLY_ADMIN_SETUP, '/en-us/rest/api/fabric/admin/tenants/list-tenant-settings'],
@@ -541,7 +559,7 @@ export function scopeProblems(operation, { identity = null } = {}) {
       .filter((segment, index) => CONTENT_SEGMENTS.has(segment) && !(sitePermissions && index === 2));
     if (content.length && !contentReader) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
   } else if (operation?.kind === 'rest') {
-    if (operation.method !== 'GET') problems.push(`${operation.method} is not a read`);
+    if (operation.method !== 'GET' && !(operation.method === 'POST' && restReadAction(operation.endpoint))) problems.push(`${operation.method} is not a read`);
     if (!REST_HOSTS.includes(operation.host)) problems.push(`${operation.host} is not an admin API KEEL reads`);
     if (typeof operation.endpoint !== 'string' || !operation.endpoint.startsWith('/')) {
       problems.push('a REST endpoint must be a path starting with /');
@@ -815,7 +833,7 @@ export async function readRestConfiguration(descriptor, { transport, sleep = asy
     if (observed.pages >= maxPages) throw new Error(`${descriptor.id}: more than ${maxPages} pages`);
     let response;
     for (let attempt = 0; ; attempt += 1) {
-      response = await transport(next);
+      response = await transport(next, { method: operation.method });
       if (response.status !== 429 && response.status !== 503) break;
       observed.throttled += 1;
       if (attempt >= maxRetries) throw new Error(`${descriptor.id}: still throttled after ${maxRetries} retries`);
@@ -830,6 +848,14 @@ export async function readRestConfiguration(descriptor, { transport, sleep = asy
       throw error;
     }
     observed.pages += 1;
+    // One object, not a list: a null answer (nothing set) is no object.
+    if (operation.items === null) {
+      if (response.body !== null && response.body !== undefined && (typeof response.body !== 'object' || Array.isArray(response.body))) {
+        throw new Error(`${descriptor.id}: the answer is not one object`);
+      }
+      if (response.body) items.push(response.body);
+      break;
+    }
     const body = response.body ?? {};
     const list = body[operation.items];
     if (!Array.isArray(list)) throw new Error(`${descriptor.id}: the answer has no ${operation.items} list`);

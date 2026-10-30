@@ -1,11 +1,16 @@
 /**
  * READ-PP: Power Platform and Power BI tenant settings, read-only.
  *
- * A workload of its own (`power-platform-settings`). Four families, each its own
+ * A workload of its own (`power-platform-settings`). Six families, each its own
  * task-101 operation (engine/collect/workloadContract.mjs) and one admin REST read:
  *  - environments (Power Platform admin API, api.bap.microsoft.com);
  *  - data loss prevention (DLP) policies, with their connector groups and the
  *    environments they apply to (same API);
+ *  - the tenant settings: who may create environments and Power Pages sites, and
+ *    whether apps can be shared with everyone (same API; one object, read by a POST
+ *    with no body, the only way Microsoft offers it);
+ *  - tenant isolation: whether connections to and from other tenants are blocked
+ *    (same API; one object, addressed by the tenant id);
  *  - the connectors available in each environment (Power Apps admin API,
  *    api.powerapps.com), one read per environment;
  *  - Power BI tenant settings (Fabric admin API, api.fabric.microsoft.com).
@@ -13,8 +18,8 @@
  *
  * Rules:
  *  - Read only. The transport (readOnlyPowerPlatformTransport) refuses anything but a
- *    GET with no body, and any request that is not one of POWER_PLATFORM_REQUEST_SHAPES,
- *    before it is sent. No write capability exists for this workload.
+ *    GET with no body (or, for the tenant settings read alone, a POST with no body), and
+ *    any request that is not one of POWER_PLATFORM_REQUEST_SHAPES, before it is sent. No write capability exists for this workload.
  *  - Configuration only. Apps, flows, user connections, Power BI workspaces, datasets
  *    and reports are never requested: the contract refuses those path segments and the
  *    shapes do not admit them. Anything an answer carries beyond a family's declared
@@ -65,6 +70,23 @@ export const FAMILIES = Object.freeze({
     top: Object.freeze(['type']),
     properties: Object.freeze(['displayName', 'description', 'tier', 'publisher', 'isCustomApi', 'capabilities', 'createdTime', 'changedTime']),
   }),
+  // One object per tenant. Only the settings ScubaGear's rules judge are kept: the rest
+  // of the answer is optional per tenant, and a missing one would make every run partial.
+  tenantSettings: Object.freeze({
+    operation: 'powerplatform.tenant-settings', prefix: 'tenant-settings', singleton: 'tenant',
+    top: Object.freeze([
+      'disableEnvironmentCreationByNonAdminUsers', 'disableTrialEnvironmentCreationByNonAdminUsers', 'disablePortalsCreationByNonAdminUsers',
+      'powerPlatform',
+    ]),
+    properties: Object.freeze([]),
+  }),
+  // One object per tenant, addressed by the tenant id. A null answer means isolation was
+  // never set up; it is kept as { neverConfigured: true }, the way ScubaGear reads it.
+  tenantIsolation: Object.freeze({
+    operation: 'powerplatform.tenant-isolation', prefix: 'tenant-isolation', singleton: 'tenant', perTenant: true,
+    top: Object.freeze([]),
+    properties: Object.freeze(['isDisabled', 'allowedTenants']),
+  }),
   powerBiSetting: Object.freeze({
     operation: 'powerbi.tenant-settings', prefix: 'powerbi-setting', identity: 'settingName',
     top: Object.freeze([
@@ -92,6 +114,10 @@ export const POWER_PLATFORM_DESCRIPTOR = Object.freeze({
 export const POWER_PLATFORM_REQUEST_SHAPES = Object.freeze([
   { host: 'api.bap.microsoft.com', path: /^\/providers\/Microsoft\.BusinessAppPlatform\/scopes\/admin\/environments$/ },
   { host: 'api.bap.microsoft.com', path: /^\/providers\/PowerPlatform\.Governance\/v2\/policies$/ },
+  // Microsoft's only way to list the tenant settings: a POST with no body. The update is
+  // another path (updateTenantSettings) and is refused like every other request.
+  { host: 'api.bap.microsoft.com', path: /^\/providers\/Microsoft\.BusinessAppPlatform\/listTenantSettings$/i, method: 'POST' },
+  { host: 'api.bap.microsoft.com', path: /^\/providers\/PowerPlatform\.Governance\/v1\/tenants\/[0-9a-fA-F-]{36}\/tenantIsolationPolicy$/ },
   { host: 'api.powerapps.com', path: /^\/providers\/Microsoft\.PowerApps\/scopes\/admin\/environments\/[A-Za-z0-9-]+\/apis$/ },
   { host: 'api.fabric.microsoft.com', path: /^\/v1\/admin\/tenantsettings$/ },
 ]);
@@ -107,19 +133,25 @@ export class PowerPlatformScopeError extends Error {
   }
 }
 
-/** Throws unless the request is a GET of one of the configuration shapes. */
+/**
+ * Throws unless the request is a read of one of the configuration shapes: a GET with no
+ * body, or a POST with no body where the shape is a read Microsoft only offers as a POST.
+ * Returns the method to send.
+ */
 export function assertPowerPlatformRequest(url, init = {}) {
   const method = String(init.method ?? 'GET').toUpperCase();
-  if (method !== 'GET' || init.body !== undefined) throw new PowerPlatformScopeError(`Power Platform collection is read-only: refused ${method} ${url}`);
+  if (!['GET', 'POST'].includes(method) || init.body !== undefined) throw new PowerPlatformScopeError(`Power Platform collection is read-only: refused ${method} ${url}`);
   const parsed = new URL(url);
   const path = decodeURIComponent(parsed.pathname);
-  if (parsed.protocol !== 'https:' || !POWER_PLATFORM_REQUEST_SHAPES.some((shape) => shape.host === parsed.hostname && shape.path.test(path))) {
+  const shape = parsed.protocol === 'https:' ? POWER_PLATFORM_REQUEST_SHAPES.find((item) => item.host === parsed.hostname && item.path.test(path)) : null;
+  if (!shape) {
     throw new PowerPlatformScopeError(`${parsed.hostname}${path} is not a Power Platform configuration read; apps, flows, connections and Power BI content are never read`);
   }
+  if (method !== (shape.method ?? 'GET')) throw new PowerPlatformScopeError(`Power Platform collection is read-only: refused ${method} ${url}`);
   for (const key of parsed.searchParams.keys()) {
     if (!ALLOWED_QUERY.has(key.toLowerCase())) throw new PowerPlatformScopeError(`${path}: query ${key} is not allowed`);
   }
-  return true;
+  return method;
 }
 
 /**
@@ -130,10 +162,10 @@ export function assertPowerPlatformRequest(url, init = {}) {
 export function readOnlyPowerPlatformTransport(tokenFor, fetchImpl = globalThis.fetch) {
   const tokens = new Map();
   return async (url, init = {}) => {
-    assertPowerPlatformRequest(url, init);
+    const method = assertPowerPlatformRequest(url, init);
     const audience = AUDIENCE[new URL(url).hostname];
     if (!tokens.has(audience)) tokens.set(audience, await tokenFor(audience));
-    const response = await fetchImpl(url, { method: 'GET', headers: { authorization: `Bearer ${tokens.get(audience)}`, accept: 'application/json' } });
+    const response = await fetchImpl(url, { method, headers: { authorization: `Bearer ${tokens.get(audience)}`, accept: 'application/json' } });
     const text = await response.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = null; }
@@ -154,6 +186,7 @@ const canonical = (value) => JSON.stringify(value ?? null, (_key, inner) => (inn
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 /** The stable identity of one answer, or null when it has none KEEL trusts. */
 export function objectIdentity(family, body) {
+  if (FAMILIES[family].singleton) return body && typeof body === 'object' && !Array.isArray(body) ? FAMILIES[family].singleton : null;
   const value = body && typeof body === 'object' ? body[FAMILIES[family].identity] : null;
   return typeof value === 'string' && NAME.test(value) ? value : null;
 }
@@ -217,6 +250,12 @@ function keep(family, items, { maxObjects, scopeKey = null, environment = null }
 async function readFamily(family, { transport, sleep, maxObjects, substitute, scopeKey, environment }) {
   try {
     const { items } = await readRestConfiguration(operation(FAMILIES[family].operation), { transport, sleep, substitute });
+    // A null tenant isolation answer: never set up, which is itself the setting.
+    if (family === 'tenantIsolation' && items.length === 0) {
+      const resource = { resourceKey: powerPlatformKey(family, FAMILIES[family].singleton), kind: family, identity: FAMILIES[family].singleton,
+        fields: { neverConfigured: true }, fieldCoverage: { neverConfigured: { status: 'observed', operation: FAMILIES[family].operation } } };
+      return { resources: [resource], capped: false, unidentified: 0, conflicts: [], failure: null };
+    }
     return { ...keep(family, items, { maxObjects, scopeKey, environment }), failure: null };
   } catch (error) {
     if (error instanceof PowerPlatformScopeError) throw error;
@@ -224,21 +263,46 @@ async function readFamily(family, { transport, sleep, maxObjects, substitute, sc
   }
 }
 
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * The tenant id a per-tenant read is addressed by: the one given, or else the one in the
+ * default environment's name (always `Default-<tenant id>`), or null.
+ */
+export function powerPlatformTenantId(tenantId, environments) {
+  if (typeof tenantId === 'string' && GUID.test(tenantId)) return tenantId;
+  const fallback = (environments?.resources ?? [])
+    .filter((resource) => resource.fields?.isDefault === true)
+    .map((resource) => /^Default-(.+)$/.exec(resource.identity)?.[1])
+    .filter((id) => id && GUID.test(id));
+  return fallback.length === 1 ? fallback[0] : null;
+}
+
 /**
  * Reads the named families (all by default). Pure apart from the injected transport:
  * no database, no gate. `skipped` lists families the caller did not read, with the
- * reason. Callers outside tests use collectPowerPlatform.
+ * reason. `tenantId` addresses the per-tenant read (tenant isolation); without it the
+ * id is taken from the default environment's name. Callers outside tests use
+ * collectPowerPlatform.
  */
 export async function readPowerPlatform({
   transport, families = FAMILY_NAMES, skipped = [], maxObjects = DEFAULT_MAX_OBJECTS, maxEnvironments = DEFAULT_MAX_ENVIRONMENTS,
-  sleep = async () => {}, now = () => new Date(),
+  sleep = async () => {}, now = () => new Date(), tenantId = null,
 }) {
   for (const family of families) if (!FAMILIES[family]) throw new TypeError(`unknown Power Platform family ${family}`);
   const observedFrom = now().toISOString();
   const reads = new Map();
   const extraFailures = [];
-  for (const family of families.filter((name) => !FAMILIES[name].perEnvironment)) {
+  for (const family of families.filter((name) => !FAMILIES[name].perEnvironment && !FAMILIES[name].perTenant)) {
     reads.set(family, await readFamily(family, { transport, sleep, maxObjects }));
+  }
+  for (const family of families.filter((name) => FAMILIES[name].perTenant)) {
+    const tenant = powerPlatformTenantId(tenantId, reads.get('environment'));
+    if (!tenant) {
+      extraFailures.push({ family, operation: FAMILIES[family].operation, status: 'failed', error: { message: 'the tenant id is not known (none given, and no default environment named after it was read)', httpStatus: null } });
+      reads.set(family, { resources: [], capped: false, unidentified: 0, conflicts: [], failure: null });
+      continue;
+    }
+    reads.set(family, await readFamily(family, { transport, sleep, maxObjects, substitute: { 'tenant-id': tenant } }));
   }
   let environmentsCapped = false;
   for (const family of families.filter((name) => FAMILIES[name].perEnvironment)) {
@@ -346,14 +410,14 @@ export async function recordPowerPlatformRun(client, { tenantRef, result }) {
 }
 
 /** The gated entry point. Without qualification it records a `disabled` run and sends nothing. */
-export async function collectPowerPlatform(client, { tenantRef, ledger, transport, sleep, maxObjects, maxEnvironments, now }) {
+export async function collectPowerPlatform(client, { tenantRef, ledger, transport, sleep, maxObjects, maxEnvironments, now, tenantId }) {
   const activation = powerPlatformActivation(ledger);
   if (!activation.enabled) {
     const at = (now?.() ?? new Date()).toISOString();
     const run = await recordPowerPlatformRun(client, { tenantRef, result: { outcome: 'disabled', observedFrom: at, observedTo: at, reasons: activation.reasons } });
     return { run, result: null, activation };
   }
-  const result = await readPowerPlatform({ transport, families: activation.families, skipped: activation.skipped, maxObjects, maxEnvironments, sleep, now });
+  const result = await readPowerPlatform({ transport, families: activation.families, skipped: activation.skipped, maxObjects, maxEnvironments, sleep, now, tenantId });
   const run = await recordPowerPlatformRun(client, { tenantRef, result });
   return { run, result, activation };
 }

@@ -9,6 +9,7 @@ import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
 import { ChangeFeed } from "@/components/baselines/change-feed";
 import { ChangesViews } from "@/components/baselines/changes-views";
+import { openChangeCount } from "@/lib/changes-view";
 import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
@@ -19,7 +20,7 @@ import { ContentBackupsView } from "@/components/content-backups";
 import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
-import { protectStatus, protectVerdict, tierSummaries } from "@/lib/protect-view";
+import { coverageSummary, protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
@@ -77,16 +78,17 @@ import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICE
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
-import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
+import { alertCounts, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
-import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
+import { pageVerdict, resilienceAlerts, resilienceKinds, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
+import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
@@ -176,7 +178,15 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
   // The menu's section statuses read the Overview's data; answer at once so every
   // screenshot shows them.
-  if (url.endsWith("/api/dashboard")) return json(dashboard(0));
+  // A test sets __harnessDashboardFailures to make that many reads answer as a busy server.
+  if (url.endsWith("/api/dashboard")) {
+    const harness = window as unknown as { __harnessDashboardFailures?: number };
+    if ((harness.__harnessDashboardFailures ?? 0) > 0) {
+      harness.__harnessDashboardFailures! -= 1;
+      return new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "content-type": "application/json", "retry-after": "1" } });
+    }
+    return json(dashboard(0));
+  }
   // Settings' menu badge and the search's people and kinds of settings.
   // People: adding someone answers the new person; every change to a person succeeds.
   // Compliance: an exception is saved; the evidence export answers two records.
@@ -209,6 +219,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/activation-preview")) return json({ preview: { ...ACTIVATION_PREVIEW, id: "9a0c0000-0000-4000-8000-000000000093" } }, 201);
   // Policies: turning a rule off or on and resuming it succeed; a new rule lands on p2's page.
   if (/\/api\/policies\/[^/]+\/(enabled|clear-pause)$/.test(url)) return json({ policy: {} });
+  if (/\/api\/policies\/[^/]+\/edit$/.test(url)) return json({ policy: {} });
+  if (/\/api\/policies\/[^/]+\/delete$/.test(url)) return json({ deleted: {} });
   if (url.endsWith("/api/policies") && init?.method === "POST") return json({ policy: { id: "p2" } }, 201);
   if (url.endsWith("/activate")) return json({ error: "preview-stale", changed: ["grant"] }, 409);
   // Task-93: approving your own emergency change is refused; a revoke succeeds.
@@ -321,13 +333,19 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       guardRefusals: picked.filter((item) => item.naturalKey === "group:Finance").map((item) => ({ naturalKey: item.naturalKey, reason: "onPremisesSyncEnabled=true — source of authority is on-premises Active Directory, cloud-side restore is refused" })) });
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
-  if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
+  if (url.endsWith("/api/actions/dispose")) {
+    // A test makes one change fail: Keel stays busy for the Windows baseline.
+    const body = JSON.parse(String(init?.body ?? "{}")) as { driftId?: string; reason?: string };
+    if (body.reason === "Busy for Windows" && body.driftId === "dr5") return json({ error: "busy" }, 503);
+    return json({ disposition: { id: "d" } });
+  }
   // Alerts: the action answers the state it asked for, so a test sees rows change.
   if (url.endsWith("/api/actions/alerts") || url.endsWith("/api/actions/alerts/mute")) {
     const body = JSON.parse(String(init?.body ?? "{}")) as { alertId?: string; action?: string };
     const alert = INBOX_ALERTS.find((entry) => entry.id === body.alertId);
     const state = body.action === "acknowledge" ? "acknowledged" : body.action === "resolve" ? "resolved" : body.action === "mute" ? "suppressed" : alert?.conditionActive ? "open" : "resolved";
-    return json({ alert: { id: body.alertId, state } });
+    // The acknowledger owns it now, as the route answers (UI audit B5).
+    return json({ alert: { id: body.alertId, state, ...(body.action === "acknowledge" ? { owner: { id: "8c1e0000-0000-4000-8000-0000000000b5", name: "Marouane Defili" } } : {}) } });
   }
   // Schedules: the engine's floor refuses a backup every 10 minutes; other saves succeed.
   if (url.endsWith("/api/schedules") && init?.method === "POST") {
@@ -718,6 +736,16 @@ const INTENT_CHANGES: IntentCandidate[] = [{
   transitions: [
     { field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } },
     { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
+  ],
+}, {
+  // A change with many settings and long values: switching to it must not move the
+  // fields under the settings list.
+  driftId: "d9300000-0000-4000-8000-000000000004", naturalKey: "application:Sales CRM", resourceType: "application", detectedAt: "2026-10-02T09:10:00Z",
+  transitions: [
+    { field: "displayName", before: { present: true, value: "Sales CRM" }, after: { present: true, value: "Sales CRM (migration)" } },
+    { field: "signInAudience", before: { present: true, value: "AzureADMyOrg" }, after: { present: true, value: "AzureADMultipleOrgs" } },
+    { field: "web.redirectUris", before: { present: true, value: ["https://crm.contoso.com/signin-oidc"] }, after: { present: true, value: ["https://crm.contoso.com/signin-oidc", "https://crm-migration.contoso.com/signin-oidc", "https://localhost:44321/signin-oidc"] } },
+    { field: "notes", before: { present: false, value: null }, after: { present: true, value: "Opened to the partner tenant for the weekend migration; close again once the data copy has finished and the partner has signed off." } },
   ],
 }];
 const CHANNELS = [
@@ -1161,7 +1189,7 @@ const COVERAGE_TYPES: CoverageType[] = [
   ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, outcome: null, detail: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null, declaredEndpoint: null, writeCapability: null, observation: null }),
 ];
 const COVERAGE: CoverageData = { generatedAt: now, snapshot: { id: "5a2be911-0000-4000-8000-000000000002", status: "complete", startedAt: now, completedAt: now },
-  summary: { covered: 6, failed: 2, notCovered: 1, neverCollected: 1, stale: 1, total: COVERAGE_TYPES.length }, types: COVERAGE_TYPES };
+  summary: coverageSummary(COVERAGE_TYPES), types: COVERAGE_TYPES };
 const schedule = (id: string, job_kind: string, tier: string | null, cadence: Schedule["cadence"], extra: Partial<Schedule> = {}): Schedule => ({
   id, job_kind, tier, cadence, cron_override: null, enabled: true, next_due_at: "2026-10-02T10:00:00Z", last_job_id: null, last_run_at: null, last_status: null, last_error: null, ...extra,
 });
@@ -1364,8 +1392,8 @@ const header = (section: NavSection, title: string, description: string, marker?
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
-const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "3 kinds of settings are out of date", detail: "They were backed up, but not recently enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "21 kinds of settings are not backed up", detail: "Keel knows these kinds of settings but has no backup of them.", href: "/protect" };
+const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 kinds of settings are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect" };
 const ALERTS: DashboardData["alerts"][] = [
   [
     { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
@@ -1377,10 +1405,13 @@ const ALERTS: DashboardData["alerts"][] = [
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
 const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+// "Restore proven" comes from the same kinds What's protected lists, so the Overview tile and that page agree.
+const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
+const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
 const HEADLINES: DashboardData["headline"][] = [
-  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
-  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, lastProvenRestoreAt: null, failingSince: null },
-  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.", action: null, counts: HEADLINE_COUNTS, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
+  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
+  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, proof: NOTHING_PROVEN, lastProvenRestoreAt: null, failingSince: null },
+  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 24 Sept 2026.", action: null, counts: HEADLINE_COUNTS, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
 ];
 function dashboard(posture: number): DashboardData {
   return {
@@ -1392,7 +1423,8 @@ function dashboard(posture: number): DashboardData {
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 3 }, { blastRadius: "cosmetic", count: 2 }],
     openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
-    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, notCovered: 17, neverCollected: 4, stale: 3, total: 167 },
+    // The buckets add up to the total, as coverageSummary makes them.
+    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
     headline: HEADLINES[posture],
@@ -1738,8 +1770,11 @@ const INBOX_ALERTS: AlertItem[] = [
 // good group backup, so the older copy still sets the point; a failed restore is
 // listed but is not a recovery time sample. RESILIENCE_EMPTY is a tenant with nothing
 // measured yet.
+// The Entra ID and Intune kinds are What's protected's own fixture (workloads have a "-").
+const ENTRA_INTUNE_TYPES = COVERAGE_TYPES.filter((item) => !item.type.includes("-"));
 const RESILIENCE: ResilienceData = {
   generatedAt: now,
+  kinds: resilienceKinds(ENTRA_INTUNE_TYPES),
   metrics: {
     version: 1, tenantRef: "sha256:5e7a0b0b0b0b0b0b", generatedAt: now,
     freshness: {
@@ -1800,6 +1835,11 @@ const RESILIENCE: ResilienceData = {
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,
+  // Conditional Access never read; Group's only read failed.
+  kinds: resilienceKinds([
+    ct("conditionalAccessPolicy", "protected", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null, detail: null, observation: null }),
+    ct("group", "failed", { outcome: "failed", itemCount: 0 }),
+  ]),
   metrics: {
     ...RESILIENCE.metrics,
     freshness: { state: "unmeasured", achievedRpoMs: null, required: 2, oldestDependency: null, latestFailures: [], gaps: [
@@ -1835,6 +1875,7 @@ const BG1_ACCOUNT: ReadinessAccount = {
   overall: "ready",
   dimensions: {
     cloudOnlyIdentity: pass("cloud-only-member-account", { naturalKey: "user:bg1@contoso.onmicrosoft.com", domain: "contoso.onmicrosoft.com" }),
+    dedicatedAccount: pass("emergency-only", { keelPerson: null, profileFields: [], signInDays: 0, lastSignInAt: null, lookbackDays: 30 }),
     phishingResistantCredential: pass("phishing-resistant-method", { basis: "observed", recordedAt: "2026-10-01T09:00:00Z", methods: ["fido2", "password"] }),
     policyExclusions: pass("excluded-from-every-enforced-policy", { policies: bgPolicies(false) }),
     privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG1}@/` }),
@@ -1850,6 +1891,7 @@ const BG2_ACCOUNT: ReadinessAccount = {
   rotationIntervalDays: null, lastValidatedAt: "2026-06-20T10:00:00Z", lastRotatedAt: null, methodEvidence: null, overall: "not-ready",
   dimensions: {
     ...BG1_ACCOUNT.dimensions,
+    dedicatedAccount: { status: "fail", reason: "signs-in-day-to-day", evidence: { keelPerson: null, profileFields: [], signInDays: 12, lastSignInAt: "2026-10-02T07:40:00Z", lookbackDays: 30 } },
     phishingResistantCredential: { status: "unknown", reason: "no-method-evidence", evidence: {} },
     policyExclusions: { status: "fail", reason: "enforced-policy-applies", evidence: { policies: bgPolicies(true) } },
     privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG2}@/` }),
@@ -2003,6 +2045,26 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   hoursSaved: null,
 };
 
+// Audit 31 Oct 2026: 98 requests, of which the old report sent only 50. `many` holds all
+// of them, so the pager reaches the last; `capped` is a report past the engine's cap,
+// whose list says it holds only part.
+const MANY_ROWS = Array.from({ length: 98 }, (_, index) => ({
+  ...VALUE_REPORT.outcomes.rows[2],
+  id: `restore-plan:7f3c0000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  planId: `7f3c0000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  firstRequestedAt: new Date(Date.parse("2026-09-30T08:00:00.000Z") - index * 3_600_000).toISOString(),
+  lastEventAt: new Date(Date.parse("2026-09-30T08:05:00.000Z") - index * 3_600_000).toISOString(),
+}));
+const MANY_SUMMARY = VALUE_SUMMARY(0, 0, 98, 0, 0, 98);
+const VALUE_REPORT_MANY: ValueReport = {
+  ...VALUE_REPORT,
+  outcomes: { ...VALUE_REPORT.outcomes, ...MANY_SUMMARY, byFamily: { restore: MANY_SUMMARY, remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: MANY_ROWS, rowsShown: 98 },
+};
+const VALUE_REPORT_CAPPED: ValueReport = {
+  ...VALUE_REPORT_MANY,
+  outcomes: { ...VALUE_REPORT_MANY.outcomes, rows: MANY_ROWS.slice(0, 50), rowsShown: 50 },
+};
+
 // The server reads `period=` and `entity=`; here they only change what the controls show.
 function HarnessReports({ report, owners }: { report: ValueReport; owners: string[] }) {
   const params = useSearchParams();
@@ -2122,6 +2184,21 @@ const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], s
   ],
   records: ASK_MONTH_RECORDS,
 } };
+
+// Backlog G2: "Is Intune backed up?" after a run of one tier. The engine read only the newest
+// snapshot (most kinds "Not part of this backup"); the page counts the same kinds as Setup.
+const ASK_COVERAGE_KINDS = COVERAGE_TYPES.filter((item) => typeService(item.type).code === "Intune").map((item) => item.type).sort();
+const ASK_COVERAGE: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: withSharedCoverage({
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "answered", intent: "coverage", question: "Is Intune backed up?", window: null, gaps: [],
+  known: { from: now, to: now },
+  plan: { intent: "coverage", params: { entity: null, from: null, to: null, resourceType: null, resourceTypes: ASK_COVERAGE_KINDS, name: null, changeType: null, limit: 100 } },
+  total: ASK_COVERAGE_KINDS.length, shown: ASK_COVERAGE_KINDS.length, sentence: "",
+  records: ASK_COVERAGE_KINDS.map((type, index) => ({
+    kind: "coverage" as const, backup: "settings" as const, id: `5a2be911/${type}`, resourceType: type, name: null, service: "Intune",
+    outcome: index === 0 ? "complete" : "not-requested", count: index === 0 ? 4 : null, window: { from: now, to: now },
+    source: { kind: "collection" as const, id: "5a2be911-0000-4000-8000-000000000002", href: "/protect" },
+  })),
+}, COVERAGE, now) };
 
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
@@ -2300,6 +2377,9 @@ const serviceChange = (id: string, workload: string, resourceKey: string, name: 
   },
   ...over,
 });
+// Open service setting changes beyond the list's row limit, for /drift/services-capped.
+const CAPPED_SERVICE_CHANGES = 300;
+
 const SERVICE_CHANGES: DriftRecord[] = [
   serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
     // One app lost its write access, and one gained read access: each reads by its name.
@@ -2573,7 +2653,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity/anonymous": {
       const all = activityJobs(jobs).map(hidePeople);
       return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}
@@ -2620,6 +2700,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT} />;
     case "/reports/scoped": return <HarnessReports owners={["FIN"]} report={VALUE_REPORT_SCOPED} />;
+    case "/reports/many": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_MANY} />;
+    case "/reports/capped": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_CAPPED} />;
     case "/sites": return sitesPage();
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
@@ -2627,6 +2709,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
     case "/ask/month": return askPage(ASK_MONTH);
+    case "/ask/coverage": return askPage(ASK_COVERAGE);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
@@ -2643,11 +2726,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
     }
     case "/drift":
-    case "/drift/services": {
-      // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
-      const items = path === "/drift/services" ? [...DRIFT_DECIDED, ...SERVICE_CHANGES] : DRIFT_DECIDED;
-      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
-        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} /></>;
+    case "/drift/services":
+    case "/drift/services-capped": {
+      // The visual baseline is the plain Changes page; /drift/services adds service setting
+      // changes; /drift/services-capped has more open service setting changes than the list holds.
+      const items = path === "/drift" ? DRIFT_DECIDED : [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const serviceTotal = path === "/drift" ? 0 : SERVICE_CHANGES.length + (path === "/drift/services-capped" ? CAPPED_SERVICE_CHANGES : 0);
+      // As on the live page: the header counts every open change (openChangeCount).
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, serviceTotal)))}
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={serviceTotal} summary={DRIFT_SUMMARY} /></>;
     }
     case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
@@ -2690,7 +2777,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
-      const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
+      // As on the live page: the badge and the verdict count every open change,
+      // service setting changes included (openChangeCount), like the Overview.
+      const openItems = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const verdict = approvedVerdict(BASELINES[0], openItems, now, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length));
       // As on the live page: Entra ID and Intune kinds from the coverage types, the other
       // services as service reads with their changes since the previous backup.
       const isRead = (type: string) => Object.hasOwn(WORKLOAD_LABELS, type);
@@ -2700,7 +2790,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           .reduce((tally, item) => ({ ...tally, [item.changeType]: tally[item.changeType] + 1 }), { added: 0, modified: 0, removed: 0 }) }));
       // The 4,812 settings the setup holds, per kind (adds up to its resourceCount).
       const held = { conditionalAccessPolicy: 24, group: 640, namedLocation: 8, roleAssignment: 140, user: 3900, application: 100 };
-      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
+      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], openItems, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline held={held} items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
@@ -2775,15 +2865,18 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/alerts/anonymous": {
       const alerts = hiddenAlerts();
-      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(alerts, now)))}
-        {ANONYMOUS_NOTE}
-        <AlertsPage alerts={alerts} canMute canRespond now={now} /></>;
+      return <AlertsPage alerts={alerts} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} notice={ANONYMOUS_NOTE} now={now} />;
+    }
+    case "/alerts/many": {
+      // The tenant holds far more alerts than the page lists: the tiles, the verdict and
+      // the pill show the whole count, and the list says it holds fewer.
+      const counts = { ...alertCounts(INBOX_ALERTS, now), waiting: 1722, overdue: 15, resolved: 2400, resolvedWeek: 240, total: 4200 };
+      return <AlertsPage alerts={INBOX_ALERTS} canMute canRespond counts={counts} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
     }
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
-      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
-        <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
     }
     case "/setup/anonymous": {
       const state = hiddenSetup();

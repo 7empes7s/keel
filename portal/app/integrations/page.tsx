@@ -2,6 +2,9 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { GET as loadIntegrations } from "@/app/api/integrations/route";
 import { GET as loadServiceNow } from "@/app/api/integrations/servicenow/route";
+import { GET as loadIntegrity } from "@/app/api/evidence/verify/route";
+import { auditCheckOf, type AuditCheck } from "@/lib/audit-check";
+import type { ChainIntegrity } from "@/lib/evidence";
 import { PageHeader } from "@/components/page-header";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { Verdict } from "@/components/verdict";
@@ -36,8 +39,16 @@ export default async function IntegrationsPage() {
   } catch {
     servicenow = null;
   }
-  const verdict = integrationsPageVerdict(destinations, statuses, servicenow);
-  const alerts = integrationAlerts(destinations, statuses, servicenow);
+  // The audit record's check, as Activity reads it; if it fails to load, the page says nothing about it.
+  let record: AuditCheck = "unknown";
+  try {
+    const response = await loadIntegrity(new Request("http://localhost/api/evidence/verify", { headers: requestHeaders }));
+    if (response.ok) record = auditCheckOf(await response.json() as ChainIntegrity);
+  } catch {
+    record = "unknown";
+  }
+  const verdict = integrationsPageVerdict(destinations, statuses, servicenow, record);
+  const alerts = integrationAlerts(destinations, statuses, servicenow, record);
   return <>
     <PageHeader section="Settings" title="Integrations" description={DESCRIPTION} generatedAt={generatedAt} status={integrationsStatus(alerts)} />
     <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />

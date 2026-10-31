@@ -46,6 +46,7 @@ function account(id: string, label: string, methods: string[] | null): Readiness
     accountId: id, label, resourceKey: `user:${label}`, validationIntervalDays: 90, rotationIntervalDays: null,
     registeredAt: "2026-06-01T00:00:00.000Z", lastValidatedAt: "2026-09-20T00:00:00.000Z", lastRotatedAt: null,
     methodEvidence: methods ? { basis: "attested" as const, occurredAt: "2026-09-01T00:00:00.000Z", methods } : null,
+    usage: { signInLogRead: true, signInDays: 0, lastSignInAt: null, keelPerson: null },
   };
   const inv = inventory();
   return { ...base, ...evaluateAccountReadiness({ account: base, inventory: inv, now: new Date(NOW) }) } as unknown as ReadinessAccount;
@@ -233,4 +234,11 @@ test("a sign-in log with skipped entries is not called watched or read completel
   const sentence = canarySentence(page, NOW);
   assert.match(sentence, /^KEEL is not watching reliably: it skipped some sign-in entries/);
   assert.doesNotMatch(sentence, /completely/);
+});
+
+test("a sign-in log read for part of the lookback is called partly read, not unread", () => {
+  const dimension = { status: "unknown" as const, reason: "sign-in-log-partly-read", evidence: { lookbackDays: 30 } };
+  const sentence = dimensionSentence("dedicatedAccount", dimension, NOW);
+  assert.match(sentence, /reads the sign-in log but has not yet read all of the last 30 days/);
+  assert.doesNotMatch(sentence, /not reading/);
 });

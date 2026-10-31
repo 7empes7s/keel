@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { AlertRecord } from "@/components/alerts/alert-record";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
+import { PageHeader } from "@/components/page-header";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
@@ -27,12 +28,14 @@ import {
   STATE_GROUPS,
   STATE_GROUP_ORDER,
   STATE_WORDS,
+  acknowledgeNote,
   actionable,
   alertCounts,
   alertMatches,
   alertService,
   alertTitle,
   alertTone,
+  alertsStatus,
   alertsVerdict,
   bulkDetail,
   causeSentence,
@@ -45,10 +48,14 @@ import {
   isActive,
   isOverdue,
   isWaiting,
+  listedNote,
+  liveCounts,
   stateGroup,
+  withLocalChanges,
+  type AlertCounts,
   type AlertFilter,
   type AlertItem,
-  type AlertState,
+  type LocalChange,
   type StateGroup,
 } from "@/lib/alerts-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
@@ -59,7 +66,9 @@ import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // Alerts (portal audit, one design): a status pill and a verdict whose one amber action
 // acknowledges the overdue alerts; four tiles that set `state=` in the address; the
@@ -79,16 +88,23 @@ const ALERT_SORTS: ListSort<AlertItem>[] = [
 ];
 const plural = (count: number) => `${count} ${count === 1 ? "alert" : "alerts"}`;
 
-export function AlertsPage({ alerts, now, canRespond, canMute }: {
+export function AlertsPage({ alerts, counts: serverCounts, now, canRespond, canMute, header, notice }: {
   alerts: AlertItem[];
+  // The tenant's whole count (alertStateCounts). Without it, the list is the whole story.
+  counts?: AlertCounts;
   now: string;
   canRespond: boolean;
   canMute: boolean;
+  // The page header, drawn here so its status pill counts the same list as the banner
+  // and tiles: after an acknowledge they all change together (UI audit B5).
+  header?: { description: string; generatedAt?: string };
+  // Shown between the header and the page, such as the "Names hidden" note.
+  notice?: ReactNode;
 }) {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/alerts";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const stateTiles = useMemo<FilterTile<AlertItem>[]>(() => ALERT_FILTERS.map((key) => ({ key, test: (alert: AlertItem) => alertMatches(alert, key, now) })), [now]);
   // The tiles add up: `state=waiting,overdue` shows alerts in either.
   const filter = readPicked(stateTiles, params?.get("state"));
@@ -102,16 +118,16 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
   useRefreshPoll(10_000);
 
   // What this page changed, until the server's next read says where each alert stands.
-  const [changed, setChanged] = useState<Record<string, AlertState>>({});
+  const [changed, setChanged] = useState<Record<string, LocalChange>>({});
   useEffect(() => { setChanged({}); }, [alerts]);
-  const items = useMemo(() => alerts.map((alert) => {
-    const state = changed[alert.id];
-    if (!state || state === alert.state) return alert;
-    return { ...alert, state, acknowledgedAt: state === "acknowledged" ? alert.acknowledgedAt ?? now : alert.acknowledgedAt, acknowledgedByName: state === "acknowledged" ? alert.acknowledgedByName ?? "you" : alert.acknowledgedByName };
-  }), [alerts, changed, now]);
+  const items = useMemo(() => withLocalChanges(alerts, changed), [alerts, changed]);
 
-  const counts = useMemo(() => alertCounts(items, now), [items, now]);
-  const verdict = useMemo(() => alertsVerdict(items, now), [items, now]);
+  // The tiles and the verdict count every alert, as the bell and the Overview do; the
+  // list may hold fewer (see listedNote).
+  const listedCounts = useMemo(() => alertCounts(items, now), [items, now]);
+  const counts = useMemo(() => (serverCounts ? liveCounts(serverCounts, alerts, items, now) : listedCounts), [serverCounts, alerts, items, now, listedCounts]);
+  const verdict = useMemo(() => alertsVerdict(counts), [counts]);
+  const listed = listedNote(counts, listedCounts, filter);
   const ordered = useMemo(() => inboxOrder(items), [items]);
   const shown = useMemo(() => applyFilters(ordered, stateTiles, filter), [ordered, stateTiles, filter]);
   const tileTotals = useMemo(() => new Map(tileCounts(ordered, stateTiles, filter).map((entry) => [entry.key, entry])), [ordered, stateTiles, filter]);
@@ -146,12 +162,16 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
     setBusy(true);
     try {
       const failed: { alert: AlertItem; why: string }[] = [];
-      const next: Record<string, AlertState> = {};
+      const next: Record<string, LocalChange> = {};
+      // Dated at the page's own data time, so it never reads "in the future" against it.
+      const at = now;
       for (const alert of chosen) {
         const result = await alertCall(alert.id, action, text);
         const why = alertCallWords(result);
         if (why) failed.push({ alert, why });
-        else if (result.state) next[alert.id] = result.state as AlertState;
+        else if (result.state) next[alert.id] = action === "acknowledge"
+          ? { state: result.state as AlertItem["state"], acknowledged: true, owner: result.owner ?? undefined, note: text ?? null, at, by: "you" }
+          : { state: result.state as AlertItem["state"], at, by: "you" };
       }
       setChanged((current) => ({ ...current, ...next }));
       const done = chosen.length - failed.length;
@@ -176,11 +196,11 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
     ? { label: overdueIds.length === 1 ? "Acknowledge the overdue one" : "Acknowledge the overdue ones", onClick: () => void run("acknowledge", overdueIds), busy }
     : null;
 
-  const tiles: { key: AlertFilter; label: string; icon: IconName; value: number; small: string; tone?: "urgent" | "soon" }[] = [
-    { key: "waiting", label: "Needs someone", icon: "bell", value: counts.waiting, small: counts.waiting ? "Nobody has acknowledged them" : "Nothing is waiting", tone: counts.waiting ? "soon" : undefined },
-    { key: "overdue", label: "Past deadline", icon: "clock", value: counts.overdue, small: counts.overdue ? "Missed the time to acknowledge" : "Every deadline is met", tone: counts.overdue ? "urgent" : undefined },
-    { key: "acknowledged", label: "Acknowledged", icon: "check", value: counts.acknowledged, small: counts.acknowledged ? "Someone is on it" : "None in hand right now" },
-    { key: "resolved", label: "Resolved this week", icon: "check-circle", value: counts.resolvedWeek, small: "Closed in the last 7 days" },
+  const tiles: { key: AlertFilter; label: string; icon: IconName; value: string; small: string; tone?: "urgent" | "soon" }[] = [
+    { key: "waiting", label: "Needs someone", icon: "bell", value: counts.waiting.toLocaleString("en-GB"), small: counts.waiting ? "Nobody has acknowledged them" : "Nothing is waiting", tone: counts.waiting ? "soon" : undefined },
+    { key: "overdue", label: "Past deadline", icon: "clock", value: counts.overdue.toLocaleString("en-GB"), small: counts.overdue ? "Missed the time to acknowledge" : "Every deadline is met", tone: counts.overdue ? "urgent" : undefined },
+    { key: "acknowledged", label: "Acknowledged", icon: "check", value: counts.acknowledged.toLocaleString("en-GB"), small: counts.acknowledged ? "Someone is on it" : "None in hand right now" },
+    { key: "resolved", label: "Resolved this week", icon: "check-circle", value: counts.resolvedWeek.toLocaleString("en-GB"), small: "Closed in the last 7 days" },
   ];
 
   const tileLabel = (key: string) => tiles.find((tile) => tile.key === key)?.label ?? STATE_GROUPS[key as StateGroup]?.label ?? key;
@@ -226,6 +246,9 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
   const sheetOpen = Boolean(opened || step);
 
   return (
+    <>
+    {header ? <PageHeader description={header.description} generatedAt={header.generatedAt} section="Inbox" status={alertsStatus(counts)} title="Alerts" /> : null}
+    {notice}
     <div className="al-page">
       <Verdict action={verdictAction} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
@@ -243,6 +266,8 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
             );
           })}
         </section>
+
+        {listed ? <p className="al-listed">{listed}</p> : null}
 
         <ActiveFilters extra={{ closed: null, open: null }} filters={activeFilters} noun={{ one: "alert", many: "alerts" }} shown={shown.length} total={items.length} />
 
@@ -294,7 +319,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
         <DetailsSheet
           footer={canRespond && isActive(opened) || canMute ? (
             <div className="al-sheet-actions">
-              {canRespond && isWaiting(opened) ? <button aria-busy={busy || undefined} className="btn btn-primary" disabled={busy} form="al-ack" type="submit">Acknowledge</button> : null}
+              {canRespond && isWaiting(opened) ? <button aria-busy={busy || undefined} className="btn btn-primary" disabled={busy || optionalReasonMessage(note) !== null} form="al-ack" type="submit">Acknowledge</button> : null}
               {canRespond && isActive(opened) ? <Link className="btn" href={openHref(opened.id, "resolve")} onClick={(event) => follow(event, openHref(opened.id, "resolve"))}>Resolve</Link> : null}
               {canMute && opened.state !== "suppressed" ? <Link className="btn" href={openHref(opened.id, "mute")} onClick={(event) => follow(event, openHref(opened.id, "mute"))}><Icon name="pause" />Mute</Link> : null}
               {canMute && opened.state === "suppressed" ? <button className="btn" disabled={busy} onClick={() => void run("unmute", [opened.id])} type="button"><Icon name="play" />Unmute</button> : null}
@@ -343,6 +368,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
         />
       ) : null}
     </div>
+    </>
   );
 }
 
@@ -365,6 +391,7 @@ function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
   const deadline = deadlineSentence(alert, now, ago, fromNow);
   const escalation = escalationWords(alert.escalationError);
   const back = alert.occurrence - 1;
+  const ackNote = acknowledgeNote(alert);
   return (
     <div className="al-panel">
       <section className="al-panel-cause">
@@ -392,6 +419,12 @@ function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
           <dt><Icon name="clock" />Deadline</dt>
           <dd data-tone={isOverdue(alert, now) ? "urgent" : undefined}>{deadline ?? (alert.state === "acknowledged" && alert.acknowledgedAt ? `Acknowledged by ${alert.acknowledgedByName ?? "someone"} ${ago(alert.acknowledgedAt, now)}. It stays open until the change goes away.` : "None: it is closed.")}</dd>
         </div>
+        {ackNote ? (
+          <div className="al-ack-note">
+            <dt><Icon name="check" />Note</dt>
+            <dd><q>{ackNote}</q></dd>
+          </div>
+        ) : null}
         <div>
           <dt><Icon name="calendar" />Opened</dt>
           <dd>
@@ -408,10 +441,11 @@ function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
       ) : null}
 
       {canRespond && isWaiting(alert) ? (
-        <form className="al-ack" id="al-ack" onSubmit={(event) => { event.preventDefault(); onAcknowledge(); }}>
+        <form className="al-ack" id="al-ack" onSubmit={(event) => { event.preventDefault(); if (!optionalReasonMessage(note)) onAcknowledge(); }}>
           <label className="filter-field">
             <span>Note (optional)</span>
             <textarea maxLength={1000} name="note" onChange={(event) => setNote(event.target.value)} placeholder="For example: looking into it with the network team" rows={2} value={note} />
+            <ReasonHint value={note} />
           </label>
         </form>
       ) : null}

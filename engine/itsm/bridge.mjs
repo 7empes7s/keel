@@ -29,7 +29,7 @@
 //      (itsm_identity_map); an unmapped user is refused;
 //   4. that principal is, NOW, an eligible approver of that request: approveRequest runs
 //      with enforceScope, so current grants and task-90 entity scope decide, and
-//      self-approval is refused as always.
+//      self-approval is refused unless the tenant's approval mode is solo.
 // When the request was already decided (by the portal, or by an earlier callback), a
 // callback with the same outcome is `already-decided` and acts no further; one with the
 // other outcome is a `conflict`: the first committed decision stands (the request row

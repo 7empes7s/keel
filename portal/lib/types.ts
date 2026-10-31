@@ -1,3 +1,5 @@
+import type { AuditCheck } from "@/lib/audit-check";
+import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef } from "@/lib/sentences";
 
 export type ProtectionState =
@@ -28,6 +30,10 @@ export interface CoverageOutcomeDetail {
   pagesCompleted: number | null;
   startedAt: string | null;
   completedAt: string | null;
+  // A failed Microsoft call's ids and time, for a support case. Absent when not recorded.
+  requestId?: string;
+  clientRequestId?: string;
+  requestAt?: string;
 }
 
 // Evidence-backed operation capability (roadmap task-52), surfaced per
@@ -176,12 +182,15 @@ export interface CoverageType {
   observation?: CoverageObservation | null;
 }
 
+// Every kind in exactly one bucket, so the buckets add up to total
+// (lib/protect-view.ts coverageSummary). covered is backed up and current.
 export interface CoverageSummary {
   covered: number;
   failed: number;
-  notCovered: number;
-  neverCollected: number;
   stale: number;
+  neverCollected: number;
+  notCovered: number;
+  unavailable: number;
   total: number;
 }
 
@@ -477,6 +486,9 @@ export interface DriftRecord {
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.
   refNames?: Record<string, string>;
+  // What the setting points to (a role, who holds it, where) that no backup names: each
+  // id with a Microsoft Graph lookup link, for Technical details. Absent when all named.
+  unnamedRefs?: UnnamedReference[];
   // Task 91: who made the change, from audit evidence, and where a roll back of it
   // would be routed. Absent when the reader did not compute it.
   attribution?: ChangeAttribution | null;
@@ -546,6 +558,8 @@ export interface SemanticChange {
   total: number;
   shown: number;
   cosmetic: number;
+  // Differences that are only empty against missing or the order of a list; never listed.
+  ignored?: number;
   groups: { behaviour: number; fixed: number; "unknown-before": number };
 }
 
@@ -591,6 +605,8 @@ export interface SemanticSummary {
   behaviouralSettings: number;
   fixedSettings: number;
   cosmeticOnly: number;
+  // Changes where only empty values or the order of a list differ.
+  emptyOrOrderOnly?: number;
   unknownBefore: number;
   mismatched: number;
 }
@@ -642,7 +658,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -660,7 +676,16 @@ export interface DashboardData {
   // entry per day for the trend window (zero-filled), so the sparkline is to scale.
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
-  evidence: { ok: boolean; chainLength: number };
+  // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
+  // "unchecked" when there is none to compare with; undefined when it could not be read.
+  evidence: { ok: boolean; chainLength: number; check?: AuditCheck };
+  // Whether a checked off-site copy holds every backed-up type (the Resilience page's
+  // recoverable point). Undefined when it could not be read.
+  offsite?: { measured: boolean };
+  // Whether the backups can be deleted where they are kept, as the Resilience page's
+  // storage alert reads it: "deletable" (the storage cannot lock them), "unknown" (no
+  // storage details set), "other" (locked, or locking not proven yet). Absent when unread.
+  backupStorage?: "deletable" | "unknown" | "other";
   alerts: DashboardAlert[];
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).
@@ -672,6 +697,15 @@ export interface DashboardData {
   // The Compliance summary, for the score card. Null when it could not be read; absent
   // in fixtures that predate it.
   compliance?: ComplianceSummary | null;
+  // Where alerts can go: enabled channels, and how many of them have a rule that sends
+  // alerts to them. With no rule on an enabled channel, every alert reaches nobody.
+  // Absent in fixtures that predate it.
+  notify?: NotifyRoutes;
+}
+
+export interface NotifyRoutes {
+  channels: number;
+  routed: number;
 }
 
 export interface RestoreFollowUp {
@@ -699,6 +733,18 @@ export interface DashboardWaiting {
   restoreFollowUps: number;
 }
 
+// engine/coverage/restoreProof.mjs restoreProofSummary: of the kinds Keel can put back,
+// how many a live test restore proved on this tenant, how many only pass fixture tests,
+// and how many have neither. `href` is the list the number counts.
+export interface RestoreProofSummary {
+  restorable: number;
+  proven: number;
+  tested: number;
+  untested: number;
+  lastProvenAt: string | null;
+  href: string;
+}
+
 export interface ProtectionHeadline {
   state: "collection" | "proven" | "unproven";
   tone: "good" | "attention" | "critical";
@@ -706,6 +752,8 @@ export interface ProtectionHeadline {
   sentence: string;
   action: { label: string; href: string } | null;
   counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
+  proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;
   failingSince: string | null;
 }

@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { FindInput } from "@/components/list/find-input";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { byTime } from "@/lib/paging";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, UnnamedRefFields, type RecordValue } from "@/components/technical-details";
 import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
@@ -23,6 +24,8 @@ import {
   approvalCounts,
   approvalKind,
   approvalTitle,
+  approvalUnnamedRefs,
+  distinctTitles,
   approvalsVerdict,
   approveOutcome,
   decisionError,
@@ -44,7 +47,8 @@ import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { reasonProblem, writtenProblemMessage } from "@/lib/written-reason";
 
 // Approvals (portal audit, pick B): one card per request, opened in place. Four tiles
 // filter the list (`soon=`, `effects=`, `show=decided&week=`), the open request sits
@@ -115,6 +119,7 @@ function RequestRecordFields({ request }: { request: ApprovalRequestRecord }) {
       {request.decidedAt ? <RecordField copy={false} label="Decided" value={request.decidedAt} /> : null}
       <RecordField label="Params" value={(request.params ?? {}) as RecordValue} />
       <ReferenceFields references={request.references} skipPeople={["requested_by", "decided_by"]} />
+      <UnnamedRefFields refs={approvalUnnamedRefs(request)} />
     </RecordGroup>
   );
 }
@@ -200,7 +205,8 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
 }) {
   const [reason, setReason] = useState("");
   const [touched, setTouched] = useState(false);
-  const missing = reason.trim().length === 0;
+  const problem = reasonProblem(reason);
+  const missing = problem !== null;
   return (
     <div aria-label="Why reject" className="ap-reject" role="group">
       <b>Why reject {count === 1 ? `this ${noun}` : `these ${count} requests`}?</b>
@@ -215,7 +221,7 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
           rows={2}
           value={reason}
         />
-        {touched && missing ? <span className="ap-field-error" id="ap-reject-error" role="alert"><Icon name="alert" />Write a reason to reject.</span> : null}
+        {touched && missing ? <span className="ap-field-error" id="ap-reject-error" role="alert"><Icon name="alert" />{problem === "empty" ? "Write a reason to reject." : writtenProblemMessage(problem!)}</span> : null}
       </label>
       <div className="ap-reject-actions">
         <button className="btn" disabled={busy} onClick={onCancel} type="button">Keep {count === 1 ? "it" : "them"} waiting</button>
@@ -254,7 +260,7 @@ export function ApprovalInbox({
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/approvals";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const show = view.get("show") === "decided" ? "decided" : "waiting";
   const sort: WaitingSort = view.get("sort") === "newest" ? "newest" : "expiring";
   const soonOnly = view.get("soon") === "1";
@@ -270,6 +276,10 @@ export function ApprovalInbox({
   const [bulk, setBulk] = useState<string[] | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Two requests in one list never share a title: same-reading ones get the moment
+  // they were asked. Waiting and decided are separate lists, so each is checked alone.
+  const titles = useMemo(() => new Map([...distinctTitles([...pending, ...awaitingContentEffects]), ...distinctTitles(history)]), [pending, awaitingContentEffects, history]);
+  const titleOf = (request: ApprovalRequestRecord) => titles.get(request.id) ?? approvalTitle(request);
   const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now), [pending, awaitingContentEffects, history, now]);
   const waiting = useMemo(() => sortWaiting([...pending, ...awaitingContentEffects], sort), [pending, awaitingContentEffects, sort]);
   // The two waiting tiles add up: Expiring soon and Waiting on content changes show either.
@@ -333,7 +343,7 @@ export function ApprovalInbox({
         const outcome = approveOutcome(request, (result.payload ?? {}) as Parameters<typeof approveOutcome>[1]);
         toast({ tone: outcome.pending ? "info" : "success", title: outcome.title, detail: outcome.detail, href: outcome.href, hrefLabel: outcome.hrefLabel });
       } else {
-        toast({ tone: "info", title: "Request rejected", detail: approvalTitle(request) });
+        toast({ tone: "info", title: "Request rejected", detail: titleOf(request) });
       }
       setRejecting(null);
       router.refresh();
@@ -351,7 +361,7 @@ export function ApprovalInbox({
     try {
       for (const request of targets) {
         const result = await decideRequest(request.id, "reject", reason);
-        if (!result.ok) failed.push(approvalTitle(request));
+        if (!result.ok) failed.push(titleOf(request));
       }
       if (failed.length < targets.length) toast({ tone: "info", title: `${targets.length - failed.length} ${targets.length - failed.length === 1 ? "request" : "requests"} rejected`, detail: failed.length ? `${failed.length} could not be: ${failed.join("; ")}` : undefined });
       else toast({ tone: "warning", title: "Nothing was rejected", detail: "Keel could not record the decisions. The list will refresh." });
@@ -409,7 +419,7 @@ export function ApprovalInbox({
     const awaitingEffects = request.status !== "pending";
     const asked = request.references?.people.requested_by;
     const mine = viewerId !== null && request.requestedBy === viewerId;
-    const title = approvalTitle(request);
+    const title = titleOf(request);
     const left = hoursLeft(request, now);
     const expiryTone = left !== null && left <= 4 ? "urgent" : "neutral";
     const required = request.requiredApprovals ?? 1;
@@ -599,7 +609,7 @@ export function ApprovalInbox({
                 matches={(item, text) => matchText(item).includes(text)}
                 noun={NOUN}
                 renderRow={renderRequest}
-                rowName={approvalTitle}
+                rowName={titleOf}
                 sorts={REQUEST_SORTS}
                 toneOf={(item) => requestTone(item, now)}
               />
@@ -614,7 +624,7 @@ export function ApprovalInbox({
               <span className="picker-label">Find</span>
               <span className="sel-find-box">
                 <Icon name="search" />
-                <input className="bare-input" onChange={(event) => view.set({ q: event.target.value })} placeholder="Find a request or a person" type="search" value={view.get("q")} />
+                <FindInput onChange={(text) => view.set({ q: text })} placeholder="Find a request or a person" value={view.get("q")} />
               </span>
             </label>
             <ActiveFilters extra={{ open: null }} filters={decidedFilters} noun={NOUN} shown={decided.length} total={history.length} />
@@ -629,7 +639,7 @@ export function ApprovalInbox({
                     <li className="activity-item list-row ap-history-row" data-open={isOpen || undefined} key={request.id}>
                       <span aria-hidden="true" className="row-kind ap-kind"><Icon name={KIND_WORDS[kind].icon} /></span>
                       <span className="row-name">
-                        <Link href={href({ open: isOpen ? null : request.id })} onClick={(event) => { if (isOpen) { event.preventDefault(); view.set({ open: null }); } else openRequest(event, request.id); }}>{approvalTitle(request)}</Link>
+                        <Link href={href({ open: isOpen ? null : request.id })} onClick={(event) => { if (isOpen) { event.preventDefault(); view.set({ open: null }); } else openRequest(event, request.id); }}>{titleOf(request)}</Link>
                         <small>{KIND_WORDS[kind].label} · asked by {personLabel(request.references?.people.requested_by)} {ago(request.createdAt, now)}</small>
                       </span>
                       <span className="row-mid">

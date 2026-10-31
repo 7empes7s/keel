@@ -206,7 +206,7 @@ const SECRET_SHAPES = [
   /[A-Za-z0-9_~.-]{3}\dQ~[A-Za-z0-9_~.-]{20,}/, // Entra client-secret shape
 ];
 
-function secretShaped(text) {
+export function secretShaped(text) {
   return redactSecrets(text) !== text || SECRET_SHAPES.some((pattern) => pattern.test(text));
 }
 

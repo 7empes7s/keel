@@ -1,4 +1,5 @@
 import { verifyAnchoredChain } from "../../engine/govern/anchor.mjs";
+import { getEvidenceIntegrity } from "../../status/queries.mjs";
 import { evidenceChainCache } from "@/lib/evidence-chain-cache";
 import { guarded, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 
@@ -22,7 +23,25 @@ export type ChainIntegrity = {
   reason?: string;
   anchoredThroughSeq?: string;
   unanchoredRecords?: number;
+  // Only when there is no usable off-site checkpoint: the record's own chain checked
+  // instead, so a broken chain is never shown as merely "not checked".
+  ownChain?: "intact" | "broken";
 };
+
+/**
+ * The check against the off-site checkpoint, and, when there is no usable checkpoint,
+ * the record's own chain as well, so a broken chain still reads as failed.
+ */
+export async function checkAuditRecord(client: unknown, { tenantRef, anchor = {}, cache }: {
+  tenantRef: string;
+  anchor?: Record<string, unknown>;
+  cache: Map<string, unknown>;
+}): Promise<ChainIntegrity> {
+  const result = await verifyAnchoredChain(client, { ...anchor, tenantRef, chainCache: cache, authorize: async () => true }) as ChainIntegrity;
+  if (result.status !== "unanchored") return result;
+  const own = await getEvidenceIntegrity(client, { tenantRef, chainCache: cache }) as { ok: boolean };
+  return { ...result, ownChain: own.ok ? "intact" : "broken" };
+}
 
 export function guardedEvidenceList(deps: GuardDeps = {}) {
   return guarded({ action: "evidence:list", capability: "read" }, async ({ client, tenantRef, request }) => {
@@ -69,6 +88,6 @@ export function guardedEvidenceVerify(deps: GuardDeps = {},
   anchorOptions: (tenantRef: string) => Promise<Record<string, unknown>> = async () => ({}),
   cache: Map<string, unknown> = chainCache) {
   return guarded({ action: "evidence:verify", capability: "read" }, async ({ client, tenantRef }) => {
-    return Response.json(await verifyAnchoredChain(client, { ...await anchorOptions(tenantRef), tenantRef, chainCache: cache, authorize: async () => true }), { headers: NO_STORE });
+    return Response.json(await checkAuditRecord(client, { tenantRef, anchor: await anchorOptions(tenantRef), cache }), { headers: NO_STORE });
   }, deps);
 }

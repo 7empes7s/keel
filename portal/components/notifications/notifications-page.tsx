@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -61,7 +61,7 @@ import { displayEnum, formatTimestamp } from "@/lib/presentation";
 import { orderGroups } from "@/lib/selection";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // Notifications (portal audit, pick A): three tabs. "Where alerts go" lists the channels
@@ -101,19 +101,21 @@ const STATUS_TILES: FilterTile<Delivery>[] = STATUS_CHIPS.map((chip) => ({
   test: (delivery: Delivery) => (chip.value === "retrying" ? !["delivered", "failed", "cancelled"].includes(delivery.status) : delivery.status === chip.value),
 }));
 
-export function NotificationsPage({ canConfiguration, channels, subscriptions, escalationRules = [], deliveries, people = [], now = new Date().toISOString() }: {
+export function NotificationsPage({ canConfiguration, channels, subscriptions, escalationRules = [], deliveries, deliveryLimit, people = [], now = new Date().toISOString() }: {
   canConfiguration: boolean;
   channels: Channel[];
   subscriptions: Subscription[];
   escalationRules?: EscalationRule[];
   deliveries: Delivery[];
+  // How many sends the server read; a full read means older ones were left out.
+  deliveryLimit?: number;
   people?: PersonChoice[];
   now?: string;
 }) {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/notifications";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const tab: Tab = !canConfiguration ? "sent" : view.get("tab") === "rules" ? "rules" : view.get("tab") === "sent" ? "sent" : "channels";
   const opened = view.get("open");
   const adding = view.get("add");
@@ -487,6 +489,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
                 label="Sent"
                 matches={(item, text) => { const channel = channelById.get(item.channel_id); return `${deliveryTitle(item)} ${channel ? channelName(channel) : channelKindLabel(item.channel_kind)} ${deliveryBadge(item).label}`.toLowerCase().includes(text); }}
                 noun={{ one: "send", many: "sends" }}
+                partial={deliveryLimit && deliveries.length >= deliveryLimit ? `Only the newest ${deliveryLimit} sends are loaded. Older ones are left out.` : null}
                 renderRow={renderDelivery}
                 rowName={(item) => `${deliveryTitle(item)} at ${clockWords(deliveryTime(item))}`}
                 sorts={SENT_SORTS}

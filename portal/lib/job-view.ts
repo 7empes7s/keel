@@ -4,12 +4,13 @@ import type { StatTile } from "@/components/ui/stat-tiles";
 import { typeService } from "@/lib/baselines-view";
 import { workloadLabel } from "@/lib/compare-view";
 import { settingsFileWords } from "@/lib/error-words";
-import { CONTENT_WORKLOADS, holdsObjectId, incompleteTypeLabel, jobIncompleteTypes } from "@/lib/job-names";
+import { CONTENT_WORKLOADS, holdsObjectId, incompleteTypeLabel, jobDisplayStatus, jobIncompleteTypes } from "@/lib/job-names";
 import { typeName } from "@/lib/protect-view";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts, type KindPart } from "@/lib/type-groups";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { ago } from "@/lib/presentation";
+import { supportLines } from "@/lib/support-ids";
 
 // The Job page as alerts and tiles. A failed job leads with a plain cause and one next
 // step; the engine's own error text waits behind "Show details".
@@ -117,7 +118,8 @@ export function jobResultTiles(job: Pick<JobRecord, "kind" | "result" | "status"
 export function jobTiles(job: JobRecord, now: string): StatTile[] {
   const waited = jobGap(job.createdAt, job.startedAt);
   const ran = jobGap(job.startedAt, job.finishedAt ?? (job.status === "running" ? now : null));
-  const status = job.status === "failed" ? "urgent" : job.status === "succeeded" ? "fine" : job.status === "running" ? "soon" : "neutral";
+  const shown = jobDisplayStatus(job);
+  const status = shown === "failed" ? "urgent" : shown === "partial" ? "soon" : shown === "succeeded" ? "fine" : shown === "running" ? "soon" : "neutral";
   return [
     { key: "asked", label: "Asked for", icon: "calendar", value: ago(job.createdAt ?? null, now), about: "when it was queued", tone: "neutral" },
     { key: "waited", label: "Waited", icon: "clock", value: job.startedAt ? (waited ?? "Unknown") : "Not started", about: job.startedAt ? "before it started" : "still in the queue", tone: job.startedAt ? "neutral" : "low" },
@@ -160,6 +162,8 @@ export interface TypeRow {
   problem: string | null;
   // The engine's own error text, shown only when asked for.
   raw: string | null;
+  // A failed Microsoft call's request ids and time, for a support case; behind the same click.
+  support: string[];
   // Content backups: each mailbox, OneDrive or site that could not be read in full.
   items: GapItem[];
   // How many there were in all ("10 OneDrives"); the list holds at most 50.
@@ -287,6 +291,7 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
       took: state === "reading" ? jobGap(entry.startedAt, now) : jobGap(entry.startedAt, entry.completedAt),
       problem: look.problem ? (serviceError ? SERVICE_ERROR.problem : label ? itemsProblem(label, items) : readProblem(state, raw)) : null,
       raw: look.problem && !items.length ? raw : null,
+      support: look.problem && !items.length ? supportLines(entry) : [],
       items,
       itemTotal: total,
       itemsLabel: label,

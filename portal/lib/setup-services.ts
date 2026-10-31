@@ -7,6 +7,7 @@ import type { IconName } from "@/components/shell/icons";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
+import { failureReason } from "@/lib/backup-failure";
 import { backupHealth, protectCounts, type BackupHealth } from "@/lib/protect-view";
 import { SERVICES, serviceFor, serviceOrder } from "@/lib/services";
 import type { CoverageType } from "@/lib/types";
@@ -52,6 +53,17 @@ function blockerFor(item: CoverageType, code: string, now: string): { text: stri
   const name = kindName(item);
   const failed: ServiceFix = { label: "See what failed", href: `/protect?service=${encodeURIComponent(code)}&health=failed` };
   const late: ServiceFix = { label: "See what is out of date", href: `/protect?service=${encodeURIComponent(code)}&health=out-of-date` };
+  // A refused read names the permission or role it needs and opens it on Setup.
+  const reason = backupHealth(item) === "failed" ? failureReason(item) : null;
+  if (reason?.needs.length) {
+    const [first] = reason.needs;
+    return {
+      text: `${name}: ${reason.text}`,
+      fix: reason.needs.length === 1
+        ? { label: `Check ${first.name}`, href: first.href }
+        : { label: "See missing permissions", href: "/setup?perm-app=collector&perm-status=missing#setup-permissions" },
+    };
+  }
   switch (item.diagnosis?.diagnosis) {
     case "missing-scope":
       return { text: `${name}: Keel's backup app is missing a permission Microsoft asks for.`, fix: { label: "Check read access", href: "#setup-read" } };
@@ -104,7 +116,8 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
     ? { tone: "neutral", text: "Backup only: Keel cannot put these back yet" }
     : {
       tone: counts.proven ? "fine" : "low",
-      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}`,
+      // The same "restore proven" count as What's protected and the Overview.
+      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}${counts.tested ? `, ${counts.tested} ${counts.tested === 1 ? "passes" : "pass"} tests only` : ""}`,
     };
   const reads = counted.filter((item) => READ.includes(backupHealth(item)) && item.lastCollectedAt)
     .map((item) => item.lastCollectedAt!).sort();
@@ -230,13 +243,19 @@ const knownDate = (value: string | null): value is string => value !== null && N
 
 /**
  * The quiet line when nothing runs out soon: the first date a Keel app certificate
- * ends. Only when every app's date is known; otherwise null, so nothing unknown reads as fine.
+ * ends, and which app's it is, so the date can be matched to that app's row below.
+ * Only when every app's date is known; otherwise null, so nothing unknown reads as fine.
  */
 export function credentialsFine(connections: ConnectionExpiry[] | null | undefined): string | null {
   const list = connections ?? [];
   if (!list.length || !list.every((connection) => knownDate(connection.credentialExpiresAt))) return null;
   const first = list.map((connection) => Date.parse(connection.credentialExpiresAt!)).reduce((a, b) => Math.min(a, b));
-  return `Keel's app certificates are valid until at least ${dateWords(new Date(first).toISOString())}.`;
+  const day = dateWords(new Date(first).toISOString());
+  const names = list.filter((connection) => dateWords(connection.credentialExpiresAt!) === day).map((connection) => connection.name);
+  const which = list.length === 1 ? ""
+    : names.length === list.length ? " All of them end that day."
+    : ` ${names.join(" and ")} ${names.length === 1 ? "ends" : "end"} first.`;
+  return `Keel's app certificates are valid until at least ${day}.${which}`;
 }
 
 /** The apps whose certificate end date Keel does not know, by name. */

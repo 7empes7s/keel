@@ -3,6 +3,7 @@
 // approval requests, audit-record entries — built from their own fields and the
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
+import type { UnnamedReference } from "@/lib/app-names";
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
 import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
@@ -39,6 +40,8 @@ export interface ChangeRef extends EngineRef {
   resourceType?: string;
   changeType?: string;
   blastRadius?: string;
+  // What it points to that no backup names, each with a lookup link (filled in by the page).
+  unnamedRefs?: UnnamedReference[];
 }
 
 export interface SnapshotRef extends EngineRef {
@@ -168,7 +171,11 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const named = known.find((change) => change.readable && change.name && !holdsObjectId(change.name));
   if (named?.name) return `${count}, including ${named.name}`;
   const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
-  return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
+  if (first?.naturalKey) return `${count}, including ${resourceLabel(first.naturalKey)}`;
+  // No name and no readable key: say what kind of setting it is, so two such requests
+  // do not read the same.
+  const typed = known.find((change) => change.resourceType && !holdsObjectId(change.resourceType));
+  return typed?.resourceType ? `${count}, including an unnamed ${resourceTypeLabel(typed.resourceType)}` : count;
 }
 
 // A service setting change by its setting's name and service, never by an id.
@@ -376,6 +383,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       const count = typeof subject.count === "number" ? subject.count : null;
       if (count === 0) return `${actorName} cleared the ScubaGear list of ${list}`;
       return `${actorName} set the ScubaGear list of ${list}${count === null ? "" : ` to ${count} ${count === 1 ? "entry" : "entries"}`}`;
+    }
+    case "alert-action": {
+      const verb = { acknowledged: "acknowledged", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(subject.action)] ?? "changed";
+      const about = typeof subject.naturalKey === "string" && subject.naturalKey ? ` about ${namedResource(subject.naturalKey, names)}` : "";
+      const note = typeof subject.note === "string" && subject.note.trim() ? subject.note.trim() : null;
+      return `${actorName} ${verb} an alert${about}${note ? `: “${note.length > 140 ? `${note.slice(0, 139)}…` : note}”` : ""}`;
     }
     case "people-anonymity": return subject.enabled === true
       ? `${actorName} turned on "Hide people's names"`

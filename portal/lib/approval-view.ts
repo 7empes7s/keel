@@ -3,8 +3,10 @@
 // tested without a browser. Ids never appear in anything these return.
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
+import type { UnnamedReference } from "@/lib/app-names";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import type { RiskTone } from "@/lib/menu-status";
+import { formatTimestamp } from "@/lib/presentation";
 import { approvalSentence, personLabel } from "@/lib/sentences";
 
 export type ApprovalKind = "restore" | "undo" | "rollback" | "decision" | "setup" | "other";
@@ -33,6 +35,46 @@ export const KIND_ORDER: ApprovalKind[] = ["restore", "undo", "rollback", "decis
 /** The request's title: what approving it does, with names. */
 export function approvalTitle(request: Pick<ApprovalRequestRecord, "action" | "params" | "references">): string {
   return approvalSentence(request);
+}
+
+/**
+ * Each request's title, made unique: requests that would read the same get the moment
+ * they were asked ("… · asked 31 Oct 2026, 17:41 UTC"), and a number if that matches too,
+ * so a list never shows two identical lines.
+ */
+export function distinctTitles(requests: Pick<ApprovalRequestRecord, "id" | "action" | "params" | "references" | "createdAt">[]): Map<string, string> {
+  const base = new Map(requests.map((request) => [request.id, approvalTitle(request)]));
+  const groups = new Map<string, typeof requests>();
+  for (const request of requests) {
+    const title = base.get(request.id)!;
+    groups.set(title, [...(groups.get(title) ?? []), request]);
+  }
+  const titles = new Map<string, string>();
+  for (const [title, group] of groups) {
+    if (group.length === 1) { titles.set(group[0].id, title); continue; }
+    const timed = group.map((request) => ({ id: request.id, title: `${title} · asked ${formatTimestamp(request.createdAt)}`, at: request.createdAt ?? "" }));
+    const seen = new Map<string, number>();
+    for (const entry of timed) seen.set(entry.title, (seen.get(entry.title) ?? 0) + 1);
+    const numbered = new Map<string, number>();
+    for (const entry of [...timed].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
+      if ((seen.get(entry.title) ?? 0) < 2) { titles.set(entry.id, entry.title); continue; }
+      const n = (numbered.get(entry.title) ?? 0) + 1;
+      numbered.set(entry.title, n);
+      titles.set(entry.id, `${entry.title} (${n})`);
+    }
+  }
+  return titles;
+}
+
+/**
+ * What a request's changes point to that no backup names (a role, who holds it, where),
+ * once each, so Technical details lists every ID with a link that looks it up.
+ */
+export function approvalUnnamedRefs(request: Pick<ApprovalRequestRecord, "references" | "preview">): UnnamedReference[] {
+  const out = new Map<string, UnnamedReference>();
+  const lists = [...(request.references?.changes ?? []).map((change) => change?.unnamedRefs), ...(request.preview?.changes ?? []).map((change) => change.unnamedRefs)];
+  for (const refs of lists) for (const ref of refs ?? []) if (!out.has(ref.id)) out.set(ref.id, ref);
+  return [...out.values()];
 }
 
 const HOUR = 3_600_000;

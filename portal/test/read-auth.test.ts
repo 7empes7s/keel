@@ -192,6 +192,10 @@ test("the route and page inventory is closed around each declared capability", (
       assert.ok(content.includes(`, ${reference})`));
     } else if (source === "api/policies/[id]/enabled/route.ts" || source === "api/policies/[id]/clear-pause/route.ts") {
       assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyUpdate\\([^,]+,\\s*${reference}\\)`));
+    } else if (source === "api/policies/[id]/edit/route.ts") {
+      assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyEdit\\(${reference}\\)`));
+    } else if (source === "api/policies/[id]/delete/route.ts") {
+      assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyDelete\\(${reference}\\)`));
     } else if (source === "api/policies/[id]/activation-preview/route.ts") {
       // Roadmap task-92: write-only, guarded by the policies capability like the routes above.
       assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyActivationPreview\\(${reference}\\)`));

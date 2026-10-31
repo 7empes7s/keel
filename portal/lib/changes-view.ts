@@ -3,10 +3,15 @@
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
 import { NAME_FIELDS, objectName } from "../../engine/cir/objectName.mjs";
+import { HIDDEN } from "../../engine/safety/diffHygiene.mjs";
 import { plainKind } from "@/lib/baselines-view";
 import { holdsObjectId, isObjectId, objectIdsIn, replaceObjectIds } from "@/lib/object-ids";
 import { ago, resourceLabel, words } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
+
+/** A credential value (a password hint and the like) as a diff carries it, and how it reads. */
+export const HIDDEN_VALUE: string = HIDDEN;
+export const HIDDEN_WORDS = "hidden (part of a password or secret)";
 
 /** "Block legacy auth" from "conditionalAccessPolicy:Block legacy auth". */
 export function resourceName(naturalKey: string): string {
@@ -110,46 +115,72 @@ export function respondResult(action: "acknowledge" | "resolve", done: number, f
 const formatCount = (value: number) => value.toLocaleString("en-GB");
 const serviceWords = (waiting: number) => `${formatCount(waiting)} service setting ${waiting === 1 ? "change waits" : "changes wait"} for review`;
 
+/** Open changes, the one number the Overview tile, the menu badge, the Changes page and
+ * the Approved setup page all show: every open approved-setup change plus every open
+ * service setting change (waiting for review or seen, not yet resolved). `service` is the
+ * uncapped count (service-changes.ts countOpenServiceChanges), never the length of the
+ * capped list. Its list is OPEN_CHANGES_HREF. */
+export function openChangeCount(setupChanges: number, serviceChanges: number): number {
+  return setupChanges + serviceChanges;
+}
+
+export const OPEN_CHANGES_HREF = "/drift";
+
+/** Under the list, when it holds fewer service setting changes than are open. */
+export function serviceListNote(listed: number, total: number): string | null {
+  if (total <= listed) return null;
+  return `Showing the newest ${formatCount(listed)} of ${formatCount(total)} open service setting changes. Acknowledge or resolve some to see the rest.`;
+}
+
 /** "37 changes since the approved setup of 2 days ago; 2 could lock out administrators."
  * The Changes page verdict. Service setting changes (`serviceRead`) have no approved
  * setup, so they are counted apart: they wait for review, they did not move away from it.
  * The page passes the changes its service, kind and find filters leave, so the verdict
  * and the tiles below it always count the same changes. */
-export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null, now: string): { text: string; tone: "good" | "attention" | "critical" } {
+export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null, now: string, serviceTotal?: number): { text: string; tone: "good" | "attention" | "critical" } {
   const items = all.filter((item) => !item.serviceRead);
   const waiting = all.filter(isWaiting).length;
-  const services = serviceWords(waiting);
+  // Every open service setting change: the uncapped count when the page has it.
+  const service = Math.max(serviceTotal ?? 0, all.filter((item) => item.serviceRead).length);
+  const services = service === waiting ? serviceWords(waiting) : `${formatCount(service)} service setting ${service === 1 ? "change is" : "changes are"} still open`;
   if (baselineSetAt === null) {
-    return { text: `No setup is approved yet, so Keel cannot tell what changed${waiting ? `; ${services}` : ""}.`, tone: "critical" };
+    return { text: `No setup is approved yet, so Keel cannot tell what changed${service ? `; ${services}` : ""}.`, tone: "critical" };
   }
   const since = `since the approved setup of ${ago(baselineSetAt, now)}`;
   if (items.length === 0) {
-    return waiting
+    return service
       ? { text: `Nothing has changed ${since}, but ${services}.`, tone: "attention" }
       : { text: `Nothing has changed ${since}.`, tone: "good" };
   }
   const lockout = items.filter((item) => item.blastRadius === "tenant-lockout").length;
-  const changed = `${formatCount(items.length)} ${items.length === 1 ? "change" : "changes"} ${since}`;
-  const tail = waiting ? `, and ${services}` : "";
-  if (lockout) return { text: `${changed}; ${formatCount(lockout)} could lock out administrators${tail}.`, tone: "critical" };
+  // With service setting changes, the sentence leads with the open-changes total, the
+  // number the Overview and the menu show, then splits it.
+  const total = openChangeCount(items.length, service);
+  const changed = service
+    ? `${formatCount(total)} open changes: ${formatCount(items.length)} ${since}, and ${services}`
+    : `${formatCount(items.length)} ${items.length === 1 ? "change" : "changes"} ${since}`;
+  if (lockout) return { text: `${changed}; ${formatCount(lockout)} could lock out administrators.`, tone: "critical" };
   const access = items.filter((item) => item.blastRadius === "access-affecting").length;
   return access
-    ? { text: `${changed}; ${formatCount(access)} ${access === 1 ? "affects" : "affect"} access${tail}.`, tone: "attention" }
-    : { text: `${changed}; none affects access${tail}.`, tone: "attention" };
+    ? { text: `${changed}; ${formatCount(access)} ${access === 1 ? "affects" : "affect"} access.`, tone: "attention" }
+    : { text: `${changed}; none affects access.`, tone: "attention" };
 }
 
 /** Under a filtered verdict: which filters it counts, and the whole tenant's totals, so a
  * filter never hides that other services have changes waiting.
- * "Counts follow your filter: In Entra ID. Across all services: 1,159 changes, and 112
- * service setting changes wait for review." */
-export function changesScopeDetail(filters: string[], all: DriftRecord[]): string {
+ * "Counts follow your filter: In Entra ID. Across all services: 1,271 open changes: 1,159
+ * changes since the approved setup, and 112 service setting changes wait for review." */
+export function changesScopeDetail(filters: string[], all: DriftRecord[], serviceTotal?: number): string {
   const items = all.filter((item) => !item.serviceRead).length;
   const waiting = all.filter(isWaiting).length;
+  const service = Math.max(serviceTotal ?? 0, all.filter((item) => item.serviceRead).length);
+  const services = service === waiting ? serviceWords(waiting) : `${formatCount(service)} service setting ${service === 1 ? "change is" : "changes are"} still open`;
   const parts = [
-    ...(items ? [`${formatCount(items)} ${items === 1 ? "change" : "changes"}`] : []),
-    ...(waiting ? [serviceWords(waiting)] : []),
+    ...(items ? [`${formatCount(items)} ${items === 1 ? "change" : "changes"}${service ? " since the approved setup" : ""}`] : []),
+    ...(service ? [services] : []),
   ];
-  const totals = parts.length ? parts.join(", and ") : "nothing to review";
+  const total = openChangeCount(items, service);
+  const totals = parts.length > 1 ? `${formatCount(total)} open changes: ${parts.join(", and ")}` : parts.length ? parts[0] : "nothing to review";
   return `Counts follow your ${filters.length === 1 ? "filter" : "filters"}: ${filters.join(", ")}. Across all services: ${totals}.`;
 }
 
@@ -178,6 +209,7 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
   if (typeof value === "number") return value.toLocaleString("en-GB");
   if (typeof value === "string") {
     if (value === "") return "empty";
+    if (value === HIDDEN_VALUE) return HIDDEN_WORDS;
     if (names) {
       if (isObjectId(value)) return names[value.toLowerCase()] ?? "an object Keel has no name for";
       if (holdsObjectId(value)) return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "(unnamed object)");

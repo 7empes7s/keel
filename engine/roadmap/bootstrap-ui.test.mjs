@@ -16,7 +16,7 @@ import { planBootstrap } from '../bootstrap/plan.mjs';
 import { BootstrapJournal, migrateBootstrapJournal } from '../bootstrap/journal.mjs';
 import { approveBootstrapPlan, executeBootstrap } from '../bootstrap/execute.mjs';
 import {
-  firstCollectReadiness, loadSetupState, selectWorkloads, stepProgress, workloadsForScope,
+  firstCollectReadiness, firstCollection, loadSetupState, selectWorkloads, stepProgress, workloadsForScope,
 } from '../bootstrap/onboarding.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { setAnonymity } from '../insights/anonymity.mjs';
@@ -181,7 +181,43 @@ test('setup state reads the journal for each scope and reports steps not checked
   assert.ok(finished.steps.every((step) => step.progress === 'done'));
   assert.equal(done.collect.allowed, true);
   assert.equal(done.firstCollection, null);
+
+  // Audit 2026-10-31: "First backup" is the first one that finished, not the newest.
+  // Times are relative to the run.
+  const { rows: [first] } = await client.query(`INSERT INTO snapshot(tenant_ref, status, started_at, completed_at)
+    VALUES ($1, 'complete', now() - interval '26 days 1 hour', now() - interval '26 days') RETURNING id`, [tenantRef]);
+  await client.query(`INSERT INTO snapshot(tenant_ref, status, started_at, completed_at)
+    VALUES ($1, 'complete', now() - interval '10 minutes', now() - interval '7 minutes')`, [tenantRef]);
+  await client.query(`INSERT INTO snapshot(tenant_ref, status, started_at) VALUES ($1, 'running', now() - interval '30 days')`, [tenantRef]);
+  const backedUp = await loadSetupState(client, { tenantRef, viewerId: owner.id });
+  assert.equal(backedUp.firstCollection.snapshotId, first.id);
+  assert.ok(Date.now() - Date.parse(backedUp.firstCollection.completedAt) >= 26 * 86400000);
+  // Re-test 2026-10-31: a backup with no outcome digest still says how many types it saved.
+  for (const type of ['users', 'groups']) {
+    await client.query(`INSERT INTO resource_version(snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+      VALUES ($1, $2, $3, '{}', 'h', 'low', 'low', 'full', '{}')`, [first.id, `${type}:1`, type]);
+  }
+  const saved = await loadSetupState(client, { tenantRef, viewerId: owner.id });
+  assert.equal(saved.firstCollection.read, 2);
+  assert.equal(saved.firstCollection.notRead, 0);
 });
+
+test('first backup: older digest shapes count as read the way What\'s protected counts them', () => {
+  const base = { id: 's1', completed_at: '2026-09-04T10:00:00Z' };
+  // Bare item counts (the oldest backups): a non-zero count is a read, a zero proves nothing.
+  assert.deepEqual(pick(firstCollection({ ...base, coverage_digest: { users: 12, groups: 3, roles: 0 } })), { read: 2, notRead: 0 });
+  // Outcome entries: only an explicit partial or failed read is "not read".
+  assert.deepEqual(pick(firstCollection({ ...base, coverage_digest: {
+    users: { outcome: 'complete', itemCount: 5 }, apps: { outcome: 'complete-empty', itemCount: 0 },
+    mail: { outcome: 'failed' }, sites: { outcome: 'partial', itemCount: 2 }, teams: { outcome: 'not-requested' },
+  } })), { read: 2, notRead: 2 });
+  // No digest at all: the types it saved settings for.
+  assert.deepEqual(pick(firstCollection({ ...base, coverage_digest: null, saved_types: 7 })), { read: 7, notRead: 0 });
+  // A digest that says every read failed is not overruled by the rows it saved.
+  assert.deepEqual(pick(firstCollection({ ...base, coverage_digest: { users: { outcome: 'partial', itemCount: 2 } }, saved_types: 1 })), { read: 0, notRead: 1 });
+  assert.equal(firstCollection(null), null);
+});
+const pick = ({ read, notRead }) => ({ read, notRead });
 
 test('portal: setup route, first-collect gate and setup page', async (t) => {
   const { db, client, owner } = await database(t);
@@ -304,6 +340,18 @@ test('portal: setup route, first-collect gate and setup page', async (t) => {
         assert.equal(read.run.state, 'waiting-for-you');
         assert.equal(read.steps.find(s => s.kind === 'workload-rbac').progress, 'waiting-for-you');
         assert.equal(view.canProvision, true);
+
+        // Audit 2026-10-31: the connection check records its own time after the setup
+        // state is read, so the page's "now" comes after it: no app was "last checked
+        // in the future".
+        const withApps = () => ({ ...host(), apps: {
+          collector: { appId: 'collector-app', credentialRef: 'vault:collector', credentialExpiresAt: new Date(Date.now() + 400 * 86400000).toISOString() },
+          restorer: { appId: 'restorer-app', credentialRef: 'vault:restorer', credentialExpiresAt: new Date(Date.now() + 400 * 86400000).toISOString() },
+        } });
+        const checked = await (await guardedSetupState({ host: withApps })(new Request('http://localhost/api/setup', { headers: headers(...OWNER) }))).json();
+        const seen = checked.connections.filter(c => c.observed?.at);
+        assert.ok(seen.length > 0, 'the check recorded when it looked');
+        for (const c of seen) assert.ok(Date.parse(c.observed.at) <= Date.parse(checked.generatedAt), c.role + ' checked after the page time');
 
         // The page shows it as waiting, never done, to a configuration holder only.
         const page = require('./app/setup/page.tsx').default;

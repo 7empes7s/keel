@@ -1,5 +1,6 @@
 import { grantComplianceException } from "../../engine/govern/baselineCompliance.mjs";
 import { guarded, readActionParams, type GuardDeps } from "@/lib/action";
+import { refuseWeakReason } from "@/lib/written-reason";
 
 const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,8 +15,9 @@ export function guardedComplianceException(deps: GuardDeps = {}) {
     const refuse = (error: string, status = 400) => Response.json({ error }, { status, headers: NO_STORE });
     if (typeof evaluationId !== "string" || !UUID.test(evaluationId)) return refuse("invalid_request");
     if (typeof owner !== "string" || owner.trim().length === 0 || owner.length > 320) return refuse("owner_required");
-    if (typeof reason !== "string" || reason.trim().length === 0 || reason.length > 1000) return refuse("reason_required");
+    if (typeof reason !== "string" || reason.trim().length === 0) return refuse("reason_required");
     if (typeof expiresAt !== "string" || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) return refuse("expiry_in_future");
+    refuseWeakReason(reason);
 
     const { rows } = await client.query("SELECT verdict FROM benchmark_evaluation WHERE id = $1 AND tenant_ref = $2", [evaluationId, tenantRef]);
     if (!rows[0]) return refuse("not_found", 404);

@@ -12,6 +12,7 @@ import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import { recordsNoChange } from "../../engine/store/openDrift.mjs";
 import { templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
+import type { UnnamedReference } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
@@ -71,6 +72,8 @@ export interface ApprovalChange {
   line: string | null;
   fields: { field: string; now: string; after: string }[];
   moreFields: number;
+  // What it points to that no backup names, each with a lookup link (Technical details).
+  unnamedRefs?: UnnamedReference[];
 }
 
 export interface ApprovalPreview {
@@ -209,7 +212,7 @@ async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<
   const changes = ordered.slice(0, PREVIEW_CHANGES).map((row) => {
     const key = String(row.natural_key);
     const type = String(row.resource_type);
-    const base = { name: namedResource(key, names, type), kind: itemKindName(driftItem(row)) };
+    const base = { name: namedResource(key, names, type), kind: itemKindName(driftItem(row)), ...unnamedOf(key, names) };
     if (row.change_type === "added") return { ...base, line: "Removed: it is not in the approved setup", fields: [], moreFields: 0 };
     if (row.change_type === "removed") return { ...base, line: "Put back as the approved setup holds it", fields: [], moreFields: 0 };
     // Only a stored fingerprint differed: approving would put back what is there.
@@ -232,7 +235,7 @@ async function restorePreview(client: KeelClient, artifactId: string): Promise<A
   if (applied.length === 0) return null;
   const names = await savedNames(client, tenantRef(), applied);
   const changes = applied.slice(0, PREVIEW_CHANGES).map((key) => ({
-    name: namedResource(key, names, keyType(key)), kind: itemKindName(keyItem(key, names)), line: "Put back as the backup holds it", fields: [], moreFields: 0,
+    name: namedResource(key, names, keyType(key)), kind: itemKindName(keyItem(key, names)), line: "Put back as the backup holds it", fields: [], moreFields: 0, ...unnamedOf(key, names),
   }));
   return { total: applied.length, services: servicesOf(applied.map((key) => keyItem(key, names))), changes, more: Math.max(0, applied.length - changes.length) };
 }
@@ -254,6 +257,12 @@ export async function approvalPreview(client: KeelClient, request: ApprovalReque
   return null;
 }
 
+/** The ids a saved setting points to that no backup names, as a spreadable field. */
+function unnamedOf(key: string, names: NamedKeys): { unnamedRefs?: UnnamedReference[] } {
+  const refs = names[key]?.unnamedRefs;
+  return refs?.length ? { unnamedRefs: refs } : {};
+}
+
 /**
  * Each change a request rolls back, named by the name its backup holds, so the title
  * reads "Roll back 2 changes, including Finance (group)", never an id. A change whose
@@ -269,7 +278,8 @@ export function withChangeNames(request: ApprovalRequestRecord, names: NamedKeys
       changes: refs.changes.map((change) => {
         if (!change?.readable || !change.naturalKey) return change;
         const name = namedSubject(change.naturalKey, names, change.resourceType);
-        return name.includes("Unnamed ") || holdsObjectId(name) ? change : { ...change, name };
+        const named = name.includes("Unnamed ") || holdsObjectId(name) ? change : { ...change, name };
+        return { ...named, ...unnamedOf(change.naturalKey, names) };
       }),
     },
   };

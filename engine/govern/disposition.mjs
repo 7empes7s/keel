@@ -50,9 +50,11 @@ export async function applyDisposition(client, {
     // A row that records no change is refused first: there is nothing to decide.
     await refuseSameContentDriftIds(client, [driftId]);
     if (await dispositionNeedsReview(client, { driftId })) {
+      const { rows: [driftRow] } = await client.query('SELECT tenant_ref FROM drift WHERE id::text = $1', [String(driftId)]);
       const approval = await assertDispositionApproval(client, {
         approvalId,
         actor,
+        tenantRef: driftRow?.tenant_ref ?? null,
         matches: (params) => Array.isArray(params.driftIds) && params.driftIds.length === 1
           && String(params.driftIds[0]) === String(driftId) && params.action === action
           && (action !== 'ignore' || new Date(params.expiresAt).valueOf() === until.valueOf()),

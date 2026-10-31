@@ -11,6 +11,7 @@ import { EXCEPTION_EFFECT, controlName, formatDay, grantLabel, ownerName } from 
 import type { PrincipalView } from "@/lib/principals";
 import { toast } from "@/lib/toast";
 import type { ComplianceFinding } from "@/lib/types";
+import { reasonMessage } from "@/lib/written-reason";
 
 export interface Granted { owner: string; ownerName: string; reason: string; expiresAt: string }
 
@@ -70,6 +71,8 @@ export function ExceptionSheet({ findings, today, onDone, onClose }: {
     setError(null);
     if (!ownerValue) { setError("Name who owns the exception."); return; }
     if (!reason.trim()) { setError("Say why the control may fail for now."); return; }
+    const weak = reasonMessage(reason);
+    if (weak) { setError(weak); return; }
     const expiresAt = endOfDay(until);
     if (!expiresAt || until < tomorrow) { setError("Pick an end date after today."); return; }
     setBusy(true);

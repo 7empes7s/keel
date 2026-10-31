@@ -13946,3 +13946,28 @@ item that needs it stays untouched.
   4. Also for the 880 accept rows: `SELECT n, count(*) AS changes FROM (SELECT drift_id, count(*) AS n FROM disposition WHERE action = 'accept' AND decided_at >= '2026-10-31 14:06Z' AND decided_at < '2026-10-31 14:08Z' GROUP BY 1) g GROUP BY n ORDER BY n;`
   5. When each pending request expires: `SELECT min(expires_at), max(expires_at)` over the burst CTE.
 - **Report:** the numbers from steps 1–5. Don't change or reject any request; a cleanup, if needed, comes as its own item.
+
+### Q301: To Do settings: raw error in Codex's two Tier 3 backups, and five read-only variants of the call (read-only, no writes), about 5 minutes
+- Drafted by the "Fix To Do backup and Incidents error" thread (2026-10-31). Backlog G6: both Tier 3 backups on 31 Oct
+  (`fb28196f-86ce-498f-a32b-bfb29fc25550` at 20:26 and `885f3c5b-012e-44f1-9c2d-626e66123004` at 20:27) missed only To Do settings.
+  Since 28 Oct every full collect gets HTTP 500 `UnknownError` (empty message) from `GET /beta/admin/todo` (Q181, Q215, Q222 and
+  later items), while `/admin/forms` answers 200 and the Collector holds `OrgSettings-Todo.Read.All` (Q181). This item confirms the
+  31 Oct error is the same, and tries other forms of the call, so we know whether Keel can read it another way or it is a
+  Microsoft fault.
+- **Read-only: GETs with the Collector credential and SELECTs only. No writes to the tenant or the database, no grants, no restarts.**
+  Never print the token, a tenant id or a person's address.
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Do, from `/opt/keel-live`:
+  1. For each of the two backups above: the todoSettings coverage entry as stored (outcome, HTTP status, Graph code, message,
+     request id if stored, the "Microsoft service error" wording if present), and the job's status and item count.
+  2. Graph reads, one each, 5 s apart, Forms first as a control (same one-liner as Q215, with `go` taking the full path after
+     `https://graph.microsoft.com`):
+     ```
+     node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; import { randomUUID } from 'node:crypto'; const c = JSON.parse(readFileSync('/etc/keel/tenant.json','utf8')); const t = (await getToken(c)).accessToken; const go = async (p) => { const cid = randomUUID(); const r = await fetch('https://graph.microsoft.com' + p, { headers: { authorization: 'Bearer ' + t, 'accept-language': 'en-US', 'client-request-id': cid } }); const b = await r.text(); let j = null; try { j = JSON.parse(b); } catch {} console.log(new Date().toISOString(), p, r.status, 'request-id=' + r.headers.get('request-id'), j?.error ? JSON.stringify({ code: j.error.code, message: j.error.message }) : 'keys=' + Object.keys(j ?? {}).join(',') + (j?.settings ? ' settings=' + Object.keys(j.settings).join(',') : '')); }; for (const p of ['/beta/admin/forms', '/beta/admin/todo', '/beta/admin/todo?\$select=settings', '/beta/admin/todo/settings', '/v1.0/admin/todo', '/beta/admin']) { await go(p); await new Promise((r) => setTimeout(r, 5000)); }"
+     ```
+  3. Decode the token's `roles` claim (do not print the token itself) and say yes/no: does it hold `OrgSettings-Todo.Read.All`?
+- **Expected:** step 1 shows the same 500 `UnknownError`. If any variant in step 2 answers 200 with `settings`, Keel can switch to it
+  (report its keys; the three values are not secret). If every To Do variant answers 500 (or 400/404 for forms Microsoft does not
+  support) and the role is held, it is a Microsoft fault: the thread files it as a known Microsoft limit.
+- **Report:** step 1 per backup, the step 2 lines verbatim, the step 3 yes/no, and the build at `/opt/keel-live`.

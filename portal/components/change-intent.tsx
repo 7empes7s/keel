@@ -227,6 +227,8 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
 
   const until = formatTimestamp(new Date(Date.parse(now) + hours * 3_600_000).toISOString());
   const durations = WINDOW_HOURS.map((value) => ({ value, label: value < 24 ? `${value} hour${value === 1 ? "" : "s"}` : `${value / 24} day${value === 24 ? "" : "s"}` }));
+  // The settings list changes height with the chosen change, so it sits after every
+  // typed field: picking a change or a setting never moves a box under the pointer.
   return (
     <form className="pg-form change-intent-form" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <label className="filter-field pg-wide">
@@ -235,20 +237,6 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
           {changes.map((candidate) => <option key={candidate.driftId} value={candidate.driftId}>{intentResource(candidate)}, detected {formatTimestamp(candidate.detectedAt)}</option>)}
         </select>
       </label>
-      <fieldset className="pg-wide pg-picks">
-        <legend>Settings to approve</legend>
-        {change?.transitions.map((transition) => (
-          <label className="pg-pick" data-checked={fields.includes(transition.field) || undefined} key={transition.field}>
-            <input checked={fields.includes(transition.field)} onChange={(event) => setFields(event.target.checked ? [...fields, transition.field] : fields.filter((field) => field !== transition.field))} type="checkbox" />
-            <span className="pg-pick-name">{words(transition.field)}</span>
-            <span className="pg-pick-values">
-              <span data-empty={!transition.before.present || undefined} data-side="before">{transition.before.present ? valueText(transition.before.value) : "Not set"}</span>
-              <Icon name="chevron" />
-              <span data-side="after">{transition.after.present ? valueText(transition.after.value) : "Not set"}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
       <label className="filter-field">
         <span>Who made the change</span>
         <select onChange={(event) => setOwner(event.target.value)} required value={owner}>
@@ -270,6 +258,20 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
         <span>Reason</span>
         <input onChange={(event) => setReason(event.target.value)} placeholder="Why is this change needed now?" required value={reason} />
       </label>
+      <fieldset className="pg-wide pg-picks">
+        <legend>Settings to approve</legend>
+        {change?.transitions.map((transition) => (
+          <label className="pg-pick" data-checked={fields.includes(transition.field) || undefined} key={transition.field}>
+            <input checked={fields.includes(transition.field)} onChange={(event) => setFields(event.target.checked ? [...fields, transition.field] : fields.filter((field) => field !== transition.field))} type="checkbox" />
+            <span className="pg-pick-name">{words(transition.field)}</span>
+            <span className="pg-pick-values">
+              <span data-empty={!transition.before.present || undefined} data-side="before">{transition.before.present ? valueText(transition.before.value) : "Not set"}</span>
+              <Icon name="chevron" />
+              <span data-side="after">{transition.after.present ? valueText(transition.after.value) : "Not set"}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
       <div className="pg-wide pg-form-foot">
         <p className="pg-summary" aria-live="polite">{fields.length
           ? <><Icon name="pause" />KEEL will not roll back {fields.length === 1 ? "1 setting" : `${fields.length} settings`} on {change ? intentResource(change) : "this change"} until {until}.</>

@@ -11705,7 +11705,9 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .pg-pick-values [data-side="after"] { background: var(--surface); color: var(--text); font-weight: 600; }
 .pg-pick-values .icon { width: 0.875rem; height: 0.875rem; color: var(--text-muted); }
 .pg-form-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); }
-.pg-summary { display: flex; align-items: start; gap: var(--space-xs); margin: 0; color: var(--text-soft); font-size: 0.875rem; }
+/* The summary swaps a short hint for a longer sentence when a setting is picked; its
+   reserved lines keep the Approve button from moving under the pointer. */
+.pg-summary { display: flex; flex: 1 1 20rem; align-items: start; gap: var(--space-xs); min-height: calc(2 * 1.45em); margin: 0; color: var(--text-soft); font-size: 0.875rem; line-height: 1.45; }
 .pg-summary .icon { flex: none; width: 1rem; height: 1rem; margin-top: 0.125rem; }
 
 .change-intent-sentence { font-weight: 600; }
@@ -11716,6 +11718,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .pg-form { grid-template-columns: minmax(0, 1fr); padding: var(--space-sm); }
   .pg-pick { grid-template-columns: auto minmax(0, 1fr); }
   .pg-pick-values { grid-column: 2; }
+  .pg-summary { min-height: calc(3 * 1.45em); }
   .pg-card { padding: var(--space-sm) var(--space-sm) var(--space-sm) calc(var(--space-sm) + 4px); }
   .pg-table thead { display: none; }
   .pg-table, .pg-table tbody, .pg-table tr, .pg-table th, .pg-table td { display: block; }

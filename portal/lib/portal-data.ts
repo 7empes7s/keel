@@ -1551,7 +1551,13 @@ export async function getResilienceData(): Promise<ResilienceData> {
       });
     }
     // The same follow-up totals as Overview and Restore, not a count of restore attempts.
-    const followUps = (await countOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpTotals;
+    // Secondary: if it cannot be read, the page still loads and leaves the alert out.
+    let followUps: OpenFollowUpTotals | null;
+    try {
+      followUps = (await countOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpTotals;
+    } catch {
+      followUps = null;
+    }
     return { generatedAt: now.toISOString(), metrics, incidents, storage, followUps };
   });
 }

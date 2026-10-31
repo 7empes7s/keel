@@ -6,6 +6,7 @@
  * is a stronger guarantee than a flag, and it is the same separation the
  * product uses between the collection plane and the restore plane (spec §4).
  */
+import { randomUUID } from 'node:crypto';
 
 const GRAPH = {
   'v1.0': 'https://graph.microsoft.com/v1.0',
@@ -49,6 +50,51 @@ function isGraphUrl(url) {
 // A 500, 502 or 504 is a fault on Microsoft's side. A backup read tries it
 // again a few times before it reports the fault (503 is throttling, above).
 const SERVER_ERROR = new Set([500, 502, 504]);
+
+// Microsoft support asks for the request-id, client-request-id and time of a
+// failed call. Graph's ids are GUIDs; anything else is left out, so nothing
+// else Graph echoes back can reach a stored failure.
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function guidOrNull(value) {
+  return typeof value === 'string' && GUID.test(value.trim()) ? value.trim().toLowerCase() : null;
+}
+
+/**
+ * The ids of one failed Graph answer, for a Microsoft support case: the
+ * request-id and client-request-id headers (or the same fields in the error
+ * body's innerError), and when Microsoft answered. Only fields that were seen
+ * are returned.
+ */
+export function failureIds(res, body, sentClientRequestId, at = new Date()) {
+  const header = (name) => (typeof res?.headers?.get === 'function' ? res.headers.get(name) : null);
+  const inner = body?.error?.innerError ?? body?.error?.innererror ?? null;
+  const requestId = guidOrNull(header('request-id')) ?? guidOrNull(inner?.['request-id']);
+  const clientRequestId = guidOrNull(header('client-request-id')) ?? guidOrNull(inner?.['client-request-id']) ?? guidOrNull(sentClientRequestId);
+  // innerError.date has no zone; Graph means UTC.
+  const answered = [inner?.date, header('date')]
+    .map((value) => (typeof value !== 'string' ? NaN : Date.parse(/T\d\d:\d\d:\d\d(\.\d+)?$/.test(value) ? `${value}Z` : value))).find((value) => !Number.isNaN(value));
+  return {
+    ...(requestId ? { requestId } : {}),
+    ...(clientRequestId ? { clientRequestId } : {}),
+    requestAt: new Date(answered ?? at.getTime()).toISOString(),
+  };
+}
+
+/**
+ * The ids Microsoft support asks for, from a failed read: the request-id,
+ * client-request-id and time of the last call. Only ids that look like
+ * Graph's GUIDs are kept; a field that was not seen is left out.
+ */
+export function supportIds(source) {
+  const ids = {};
+  if (typeof source?.requestId === 'string' && GUID.test(source.requestId)) ids.requestId = source.requestId;
+  if (typeof source?.clientRequestId === 'string' && GUID.test(source.clientRequestId)) ids.clientRequestId = source.clientRequestId;
+  if ((ids.requestId || ids.clientRequestId) && typeof source?.requestAt === 'string' && !Number.isNaN(Date.parse(source.requestAt))) {
+    ids.requestAt = new Date(source.requestAt).toISOString();
+  }
+  return ids;
+}
 
 /** True when Graph answered with a server error: Microsoft's side, not Keel's or the tenant's. */
 export function isServerError(status) {
@@ -116,6 +162,10 @@ export class GraphReader {
 
     let serverErrorTries = 0;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // A fresh id per try, so a failure names the exact call Microsoft saw.
+      const clientRequestId = randomUUID();
+      headers['client-request-id'] = clientRequestId;
+      headers['return-client-request-id'] = 'true';
       const started = Date.now();
       const res = await fetch(url, { method: 'GET', headers });
       const elapsed = Date.now() - started;
@@ -130,7 +180,7 @@ export class GraphReader {
         this.stats.retryAfterSeconds.push(retryAfter);
         this.stats.totalWaitMs += retryAfter * 1000;
         if (attempt === maxRetries) {
-          return { ok: false, status: res.status, error: `throttled, gave up after ${maxRetries} retries` };
+          return { ok: false, status: res.status, error: `throttled, gave up after ${maxRetries} retries`, ...failureIds(res, null, clientRequestId) };
         }
         await new Promise((r) => setTimeout(r, retryAfter * 1000));
         continue;
@@ -160,6 +210,7 @@ export class GraphReader {
           error: redactSecrets(body?.error?.message ?? res.statusText),
           code: body?.error?.code,
           ...(isServerError(res.status) ? { tries: serverErrorTries + 1 } : {}),
+          ...failureIds(res, body, clientRequestId),
         };
       }
       return { ok: true, status: res.status, body, elapsed };

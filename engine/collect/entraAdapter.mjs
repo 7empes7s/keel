@@ -1,5 +1,5 @@
 import { CATALOG, catalogReadPath, catalogReadPaths } from '../../tools/tenant-probe/catalog.mjs';
-import { isServerError, redactSecrets } from '../../tools/tenant-probe/graph.mjs';
+import { isServerError, redactSecrets, supportIds } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
 import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
@@ -388,6 +388,7 @@ function errorDetail(error) {
     message: isServerError(httpStatus) ? serviceErrorMessage(httpStatus, graphCode, text, error?.tries) : (text || `HTTP ${httpStatus ?? 'unknown'}`),
     httpStatus,
     graphCode,
+    ...supportIds(error),
   };
 }
 
@@ -439,6 +440,7 @@ function outcomeEntry(raw) {
         error: detail.message,
         httpStatus: detail.httpStatus,
         graphCode: detail.graphCode,
+        ...supportIds(detail),
       };
     }
     return {
@@ -448,6 +450,7 @@ function outcomeEntry(raw) {
       error: detail.message,
       httpStatus: detail.httpStatus,
       graphCode: detail.graphCode,
+      ...supportIds(detail),
     };
   }
   if (raw.capped) {
@@ -506,6 +509,7 @@ export function progressEntry(entry, startedAt) {
     httpStatus: Number.isSafeInteger(entry?.httpStatus) ? entry.httpStatus : null,
     error: typeof entry?.error === 'string' ? entry.error.slice(0, 500) : null,
     ...(Number.isSafeInteger(entry?.throttles) ? { throttles: entry.throttles } : {}),
+    ...supportIds(entry),
   };
 }
 

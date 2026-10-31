@@ -58,6 +58,7 @@ import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
+import { supportIds } from "@/lib/support-ids";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -364,6 +365,7 @@ export function normalizeCoverageType(raw: UnknownRecord): CoverageType {
             typeof rawDetail.pagesCompleted === "number" ? rawDetail.pagesCompleted : null,
           startedAt: iso(rawDetail.startedAt),
           completedAt: iso(rawDetail.completedAt),
+          ...supportIds(rawDetail),
         }
       : null,
     fidelity: {

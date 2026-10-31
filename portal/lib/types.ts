@@ -29,6 +29,10 @@ export interface CoverageOutcomeDetail {
   pagesCompleted: number | null;
   startedAt: string | null;
   completedAt: string | null;
+  // A failed Microsoft call's ids and time, for a support case. Absent when not recorded.
+  requestId?: string;
+  clientRequestId?: string;
+  requestAt?: string;
 }
 
 // Evidence-backed operation capability (roadmap task-52), surfaced per

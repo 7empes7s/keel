@@ -619,7 +619,7 @@ export function guardedDispose(
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
         // Audit run 2, finding 3: an admin-access service change goes to a second person.
         if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
-          const waiting = await pendingDisposeRequest(client, { serviceChangeId, action: "accept" });
+          const waiting = await pendingDisposeRequest(client, { serviceChangeId, action: "accept", requestedBy: principalId });
           if (waiting) return waitingApproval(waiting);
           // The service and setting go with the request, so the approver sees what it is.
           const { rows: [change] } = await client.query(
@@ -683,7 +683,7 @@ export function guardedDispose(
       if (await dispositionNeedsReview(client, { driftId })) {
         await refuseSameContentDriftIds(client, [driftId]);
         if (action === "accept") {
-          const waiting = await pendingDisposeRequest(client, { driftId, action });
+          const waiting = await pendingDisposeRequest(client, { driftId, action, requestedBy: principalId });
           if (waiting) return waitingApproval(waiting);
         }
         const params = { driftIds: [driftId], action, reason, ...(until ? { expiresAt: until.toISOString() } : {}) };

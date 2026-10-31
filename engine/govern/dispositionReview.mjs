@@ -126,19 +126,21 @@ export async function assertDispositionApproval(client, { approvalId, actor, mat
  * A dispose request still waiting for the same decision on the same change: driftId with
  * this action, or serviceChangeId (accept only). Asking again returns this one, so a
  * second click or a retried send never puts a second request in front of an approver.
+ * Only the same person's request counts: another person asking stays their own request.
+ * Callers use it for accept only; an ignore carries its own end date, so two are not the same.
  * @param {{ query: Function }} client
- * @param {{ driftId?: string | null, serviceChangeId?: string | null, action: string }} change
+ * @param {{ driftId?: string | null, serviceChangeId?: string | null, action: string, requestedBy: string }} change
  */
-export async function pendingDisposeRequest(client, { driftId = null, serviceChangeId = null, action }) {
+export async function pendingDisposeRequest(client, { driftId = null, serviceChangeId = null, action, requestedBy }) {
   const match = driftId != null
     ? { sql: "params->'driftIds' = jsonb_build_array($2::text)", value: String(driftId) }
     : { sql: "params->>'serviceChangeId' = $2", value: String(serviceChangeId) };
   const { rows: [request] } = await client.query(
     `SELECT * FROM approval_request
       WHERE action = $1 AND status = 'pending' AND expires_at > now()
-        AND ${match.sql} AND params->>'action' = $3
+        AND ${match.sql} AND params->>'action' = $3 AND requested_by = $4
       ORDER BY created_at LIMIT 1`,
-    [DISPOSE_APPROVAL_ACTION, match.value, action],
+    [DISPOSE_APPROVAL_ACTION, match.value, action, String(requestedBy)],
   );
   return request ?? null;
 }

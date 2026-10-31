@@ -98,14 +98,16 @@ try {
      VALUES ($1, $2, 'requester', now() + interval '1 day')`,
     [DISPOSE_APPROVAL_ACTION, { serviceChangeId: 'svc-1', action: 'accept' }],
   );
-  assert.equal((await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'accept' }))?.id, waiting.id);
-  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'ignore' }), null);
-  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.alpha, action: 'accept' }), null);
-  assert.ok(await pendingDisposeRequest(client, { serviceChangeId: 'svc-1', action: 'accept' }));
-  assert.equal(await pendingDisposeRequest(client, { serviceChangeId: 'svc-2', action: 'accept' }), null);
+  assert.equal((await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'accept', requestedBy: 'requester' }))?.id, waiting.id);
+  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'ignore', requestedBy: 'requester' }), null);
+  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'accept', requestedBy: 'someone-else' }), null,
+    "another person's request is never handed back as theirs");
+  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.alpha, action: 'accept', requestedBy: 'requester' }), null);
+  assert.ok(await pendingDisposeRequest(client, { serviceChangeId: 'svc-1', action: 'accept', requestedBy: 'requester' }));
+  assert.equal(await pendingDisposeRequest(client, { serviceChangeId: 'svc-2', action: 'accept', requestedBy: 'requester' }), null);
   // One that was decided or ran out no longer counts.
   await client.query("UPDATE approval_request SET status = 'expired' WHERE id = $1", [waiting.id]);
-  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'accept' }), null);
+  assert.equal(await pendingDisposeRequest(client, { driftId: driftIds.gamma, action: 'accept', requestedBy: 'requester' }), null);
 } finally {
   await other?.end();
   await client?.end();

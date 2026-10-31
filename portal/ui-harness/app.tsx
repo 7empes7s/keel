@@ -9,6 +9,7 @@ import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
 import { ChangeFeed } from "@/components/baselines/change-feed";
 import { ChangesViews } from "@/components/baselines/changes-views";
+import { openChangeCount } from "@/lib/changes-view";
 import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
@@ -19,7 +20,7 @@ import { ContentBackupsView } from "@/components/content-backups";
 import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
-import { coverageSummary, protectStatus, protectVerdict, tierSummaries } from "@/lib/protect-view";
+import { coverageSummary, protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
@@ -77,7 +78,7 @@ import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICE
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
-import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
+import { type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
@@ -176,7 +177,15 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
   // The menu's section statuses read the Overview's data; answer at once so every
   // screenshot shows them.
-  if (url.endsWith("/api/dashboard")) return json(dashboard(0));
+  // A test sets __harnessDashboardFailures to make that many reads answer as a busy server.
+  if (url.endsWith("/api/dashboard")) {
+    const harness = window as unknown as { __harnessDashboardFailures?: number };
+    if ((harness.__harnessDashboardFailures ?? 0) > 0) {
+      harness.__harnessDashboardFailures! -= 1;
+      return new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "content-type": "application/json", "retry-after": "1" } });
+    }
+    return json(dashboard(0));
+  }
   // Settings' menu badge and the search's people and kinds of settings.
   // People: adding someone answers the new person; every change to a person succeeds.
   // Compliance: an exception is saved; the evidence export answers two records.
@@ -209,6 +218,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/activation-preview")) return json({ preview: { ...ACTIVATION_PREVIEW, id: "9a0c0000-0000-4000-8000-000000000093" } }, 201);
   // Policies: turning a rule off or on and resuming it succeed; a new rule lands on p2's page.
   if (/\/api\/policies\/[^/]+\/(enabled|clear-pause)$/.test(url)) return json({ policy: {} });
+  if (/\/api\/policies\/[^/]+\/edit$/.test(url)) return json({ policy: {} });
+  if (/\/api\/policies\/[^/]+\/delete$/.test(url)) return json({ deleted: {} });
   if (url.endsWith("/api/policies") && init?.method === "POST") return json({ policy: { id: "p2" } }, 201);
   if (url.endsWith("/activate")) return json({ error: "preview-stale", changed: ["grant"] }, 409);
   // Task-93: approving your own emergency change is refused; a revoke succeeds.
@@ -321,13 +332,19 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       guardRefusals: picked.filter((item) => item.naturalKey === "group:Finance").map((item) => ({ naturalKey: item.naturalKey, reason: "onPremisesSyncEnabled=true — source of authority is on-premises Active Directory, cloud-side restore is refused" })) });
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
-  if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
+  if (url.endsWith("/api/actions/dispose")) {
+    // A test makes one change fail: Keel stays busy for the Windows baseline.
+    const body = JSON.parse(String(init?.body ?? "{}")) as { driftId?: string; reason?: string };
+    if (body.reason === "Busy for Windows" && body.driftId === "dr5") return json({ error: "busy" }, 503);
+    return json({ disposition: { id: "d" } });
+  }
   // Alerts: the action answers the state it asked for, so a test sees rows change.
   if (url.endsWith("/api/actions/alerts") || url.endsWith("/api/actions/alerts/mute")) {
     const body = JSON.parse(String(init?.body ?? "{}")) as { alertId?: string; action?: string };
     const alert = INBOX_ALERTS.find((entry) => entry.id === body.alertId);
     const state = body.action === "acknowledge" ? "acknowledged" : body.action === "resolve" ? "resolved" : body.action === "mute" ? "suppressed" : alert?.conditionActive ? "open" : "resolved";
-    return json({ alert: { id: body.alertId, state } });
+    // The acknowledger owns it now, as the route answers (UI audit B5).
+    return json({ alert: { id: body.alertId, state, ...(body.action === "acknowledge" ? { owner: { id: "8c1e0000-0000-4000-8000-0000000000b5", name: "Marouane Defili" } } : {}) } });
   }
   // Schedules: the engine's floor refuses a backup every 10 minutes; other saves succeed.
   if (url.endsWith("/api/schedules") && init?.method === "POST") {
@@ -1387,10 +1404,13 @@ const ALERTS: DashboardData["alerts"][] = [
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
 const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+// "Restore proven" comes from the same kinds What's protected lists, so the Overview tile and that page agree.
+const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
+const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
 const HEADLINES: DashboardData["headline"][] = [
-  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
-  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, lastProvenRestoreAt: null, failingSince: null },
-  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.", action: null, counts: HEADLINE_COUNTS, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
+  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
+  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, proof: NOTHING_PROVEN, lastProvenRestoreAt: null, failingSince: null },
+  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 24 Sept 2026.", action: null, counts: HEADLINE_COUNTS, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
 ];
 function dashboard(posture: number): DashboardData {
   return {
@@ -2320,6 +2340,9 @@ const serviceChange = (id: string, workload: string, resourceKey: string, name: 
   },
   ...over,
 });
+// Open service setting changes beyond the list's row limit, for /drift/services-capped.
+const CAPPED_SERVICE_CHANGES = 300;
+
 const SERVICE_CHANGES: DriftRecord[] = [
   serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
     // One app lost its write access, and one gained read access: each reads by its name.
@@ -2663,11 +2686,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
     }
     case "/drift":
-    case "/drift/services": {
-      // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
-      const items = path === "/drift/services" ? [...DRIFT_DECIDED, ...SERVICE_CHANGES] : DRIFT_DECIDED;
-      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
-        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} /></>;
+    case "/drift/services":
+    case "/drift/services-capped": {
+      // The visual baseline is the plain Changes page; /drift/services adds service setting
+      // changes; /drift/services-capped has more open service setting changes than the list holds.
+      const items = path === "/drift" ? DRIFT_DECIDED : [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const serviceTotal = path === "/drift" ? 0 : SERVICE_CHANGES.length + (path === "/drift/services-capped" ? CAPPED_SERVICE_CHANGES : 0);
+      // As on the live page: the header counts every open change (openChangeCount).
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, serviceTotal)))}
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={serviceTotal} summary={DRIFT_SUMMARY} /></>;
     }
     case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
@@ -2710,7 +2737,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
-      const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
+      // As on the live page: the badge and the verdict count every open change,
+      // service setting changes included (openChangeCount), like the Overview.
+      const openItems = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const verdict = approvedVerdict(BASELINES[0], openItems, now, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length));
       // As on the live page: Entra ID and Intune kinds from the coverage types, the other
       // services as service reads with their changes since the previous backup.
       const isRead = (type: string) => Object.hasOwn(WORKLOAD_LABELS, type);
@@ -2720,7 +2750,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           .reduce((tally, item) => ({ ...tally, [item.changeType]: tally[item.changeType] + 1 }), { added: 0, modified: 0, removed: 0 }) }));
       // The 4,812 settings the setup holds, per kind (adds up to its resourceCount).
       const held = { conditionalAccessPolicy: 24, group: 640, namedLocation: 8, roleAssignment: 140, user: 3900, application: 100 };
-      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
+      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], openItems, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline held={held} items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
@@ -2795,15 +2825,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/alerts/anonymous": {
       const alerts = hiddenAlerts();
-      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(alerts, now)))}
-        {ANONYMOUS_NOTE}
-        <AlertsPage alerts={alerts} canMute canRespond now={now} /></>;
+      return <AlertsPage alerts={alerts} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} notice={ANONYMOUS_NOTE} now={now} />;
     }
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
-      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
-        <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
     }
     case "/setup/anonymous": {
       const state = hiddenSetup();

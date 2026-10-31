@@ -5,7 +5,7 @@ import { changeSchedule, runScheduleNow } from "@/lib/schedule-calls";
 import { forecastSentence } from "@/lib/schedule-forecast-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import {
-  cadenceWords, lastResult, loadChip, parseScheduleFilter, previewNextRun, runNowRoute, scheduleCounts, scheduleErrorWords,
+  cadenceWords, lastResult, loadChip, parseScheduleFilter, previewNextRun, runNowRoute, scheduleCounts, scheduleErrorWords, scheduleMatches,
   scheduleGroup, scheduleState, scheduleTone, schedulesStatus, schedulesVerdict, turnOffEffect, utcToZoned, zonedToUtc, zonedTime, zonedWithUtc,
 } from "@/lib/schedules-view";
 import { lastRunSentence } from "@/lib/protect-view";
@@ -161,4 +161,19 @@ test("a backup that could not read some types reads as partly done, not finished
   );
   assert.equal(lastRunSentence(partial, now), "Last run partly done 40 minutes ago: some types were not backed up.");
   assert.equal(scheduleCounts([partial], undefined).failed, 0, "partial is not counted as failed");
+});
+
+test("a partly done last run is a warning on Schedules: never 'All on time' (audit issue 2)", () => {
+  const partial = { ...TIER1, last_status: "partial" };
+  const counts = scheduleCounts([partial, TIER1], []);
+  assert.equal(counts.partial, 1);
+  assert.deepEqual(schedulesStatus(counts), { tone: "soon", label: "1 partly done" });
+  const verdict = schedulesVerdict([partial], now, []);
+  assert.equal(verdict.tone, "attention");
+  assert.match(verdict.text, /only partly done on its last run/);
+  assert.equal(schedulesVerdict([partial, { ...partial, id: "other" }], now, []).text, "2 schedules were only partly done on their last run: some types were not backed up.");
+  assert.equal(parseScheduleFilter("partial", null), "partial");
+  assert.ok(scheduleMatches(partial, undefined, "partial"));
+  assert.ok(!scheduleMatches(partial, undefined, "failed"));
+  assert.ok(!scheduleMatches(TIER1, undefined, "partial"));
 });

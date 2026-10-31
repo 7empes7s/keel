@@ -7,3 +7,7 @@ export function replaceUrl(href: string): void {
 export function pushUrl(href: string): void {
   location.hash = href;
 }
+
+export function currentQuery(): string {
+  return location.hash.slice(1).split("?")[1] ?? "";
+}

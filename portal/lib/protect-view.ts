@@ -3,7 +3,20 @@
 // a schedule the same way. Codes stay in the record layer (components/coverage-report).
 import { ago, displayEnum, formatTimestamp, fromNow, resourceTypeLabel } from "@/lib/presentation";
 import type { Schedule } from "@/lib/schedules";
-import type { CoverageData, CoverageSummary, CoverageType, WriteOperationCapability } from "@/lib/types";
+import type { CoverageData, CoverageSummary, CoverageType, RestoreProofSummary, WriteOperationCapability } from "@/lib/types";
+import {
+  hasRestoreWriter as engineHasRestoreWriter,
+  provenAt as engineProvenAt,
+  restoreProof as engineRestoreProof,
+  restoreProofSummary,
+} from "../../engine/coverage/restoreProof.mjs";
+
+export type RestoreProof = "proven" | "tested" | "untested" | "none";
+
+/** When a live test restore last proved the kind; null when it is not proven. */
+export function provenAt(item: CoverageType): string | null {
+  return engineProvenAt(item);
+}
 
 export const TIERS = [
   { id: "tier1", label: "Tier 1", description: "the critical settings, backed up most often" },
@@ -21,8 +34,9 @@ export function typeName(type: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-// The four answers the contract allows for "can Keel put this type back?".
-export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unproven";
+// The answers the contract allows for "can Keel put this type back?". "proven" is a
+// write that ran live on this tenant before any drill measured what comes back.
+export type RestoreStanding = "protected" | "partial" | "proven" | "cannot-restore" | "unproven";
 
 /**
  * Whether Keel has a tested writer for the type: an automated recovery decision and at
@@ -31,31 +45,30 @@ export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unpr
  * that declaration, is what says Keel can put the type back.
  */
 export function hasRestoreWriter(item: CoverageType): boolean {
-  if (item.qualification?.decision !== "automated" || !item.writeCapability) return false;
-  return Object.values(item.writeCapability.operations)
-    .some((capability) => capability.claim === "fixture-tested" || capability.claim === "live-qualified");
+  return engineHasRestoreWriter(item);
 }
 
-function provenLive(item: CoverageType): boolean {
-  return Object.values(item.writeCapability?.operations ?? {})
-    .some((capability) => capability.claim === "live-qualified" && capability.liveRecord?.live !== false);
+/** Proven, tested on fixtures, untested or none: the one rule every "Restore proven" number counts. */
+export function restoreProof(item: CoverageType): RestoreProof {
+  return engineRestoreProof(item) as RestoreProof;
+}
+
+/** The "Restore proven" count for a set of kinds; the Overview reads the same function. */
+export function restoreProofCounts(types: readonly CoverageType[]): RestoreProofSummary {
+  return restoreProofSummary(types) as RestoreProofSummary;
 }
 
 export function restoreStanding(item: CoverageType): RestoreStanding {
-  const declared = item.fidelity.declared;
-  if (item.protectionState === "not-covered" || item.protectionState === "unprotectable"
-    || declared === "unprotectable" || !item.adapter || item.outcome === "unavailable") {
-    return "cannot-restore";
-  }
-  const readOnly = item.protectionState === "read-only" || declared === "read-only" || !declared;
-  if (readOnly && !hasRestoreWriter(item)) return "cannot-restore";
-  if (!item.fidelity.measured) return "unproven";
-  return item.fidelity.measured === "full" && declared === "full" ? "protected" : "partial";
+  const proof = restoreProof(item);
+  if (proof === "none") return "cannot-restore";
+  if (item.fidelity.measured) return item.fidelity.measured === "full" && item.fidelity.declared === "full" ? "protected" : "partial";
+  return proof === "proven" ? "proven" : "unproven";
 }
 
 export const STANDING_LABEL: Record<RestoreStanding, string> = {
   protected: "Protected",
   partial: "Partially protected",
+  proven: "Restore proven",
   "cannot-restore": "Cannot be restored",
   unproven: "Restore not yet proven",
 };
@@ -68,8 +81,16 @@ export function standingSentence(item: CoverageType): string {
       return `Protected: restore proven on this tenant on ${proven ?? "a recorded date"}.`;
     case "partial":
       return `Partially protected: some fields Microsoft sets itself and Keel cannot restore${proven ? `; restore proven on ${proven}` : ""}.`;
+    case "proven": {
+      const at = provenAt(item);
+      return `Restore proven on this tenant by a live run${at ? ` on ${liveDate(at)}` : ""}. No restore drill has yet measured every field that comes back.`;
+    }
     case "unproven":
-      if (provenLive(item)) return "Backed up. Keel's writes for this type are proven on this tenant, but no restore drill has yet measured what comes back.";
+      if (restoreProof(item) === "tested") {
+        return item.fidelity.declared === "partial"
+          ? "Backed up, but some fields cannot be restored. Keel's restore passes its tests but has not yet been proven on this tenant."
+          : "Backed up. Keel's restore passes its tests but has not yet been proven on this tenant.";
+      }
       return item.fidelity.declared === "partial"
         ? "Backed up, but some fields cannot be restored, and no restore has been proven on this tenant yet."
         : "Backed up, but no restore has been proven on this tenant yet.";
@@ -255,6 +276,8 @@ export interface TierSummary {
   next: string;
   last: string;
   failed: boolean;
+  // The last run finished but some types were not read in full: a warning, not fine.
+  partial: boolean;
 }
 
 /** One card per tier: when it runs next and how its last run ended. */
@@ -266,6 +289,7 @@ export function tierSummaries(schedules: Schedule[], now: string): TierSummary[]
       next: schedule ? nextRunSentence(schedule, now) : "No schedule; back it up on demand.",
       last: schedule ? lastRunSentence(schedule, now) : "",
       failed: schedule?.last_status === "failed",
+      partial: schedule?.last_status === "partial",
     };
   });
 }
@@ -286,7 +310,7 @@ export function matchesHealth(item: CoverageType, filter: HealthFilter): boolean
     case "backed-up": return health === "ok" || health === "empty";
     case "failed": return health === "failed";
     case "out-of-date": return health === "stale" || health === "never";
-    case "proven": return restoreStanding(item) === "protected" || restoreStanding(item) === "partial";
+    case "proven": return restoreProof(item) === "proven";
   }
 }
 
@@ -369,16 +393,19 @@ export function coverageSentence(summary: CoverageSummary): string {
 }
 
 export interface ProtectCounts extends CoverageBuckets {
+  // From restoreProofCounts, so What's protected, Setup and the Overview agree.
   proven: number;
+  tested: number;
   restorable: number;
 }
 
 export function protectCounts(types: CoverageType[]): ProtectCounts {
-  const standing = types.map(restoreStanding);
+  const proof = restoreProofCounts(types);
   return {
     ...coverageBuckets(types),
-    proven: standing.filter((value) => value === "protected" || value === "partial").length,
-    restorable: standing.filter((value) => value !== "cannot-restore").length,
+    proven: proof.proven,
+    tested: proof.tested,
+    restorable: proof.restorable,
   };
 }
 

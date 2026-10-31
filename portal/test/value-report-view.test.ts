@@ -5,7 +5,7 @@ import {
   COUNTING_RULES, classifyChangeRemediation, classifyRestoreOutcome, estimateHours, readEstimate, summarizeOutcomes,
 } from "../../engine/reports/value.mjs";
 import {
-  estimateNote, findingLine, findingSentence, findingTitle, orderOutcomes, outcomeHref, outcomeName, outcomeReason, outcomeSentence, ownerName,
+  backupView, estimateNote, findingLine, findingSentence, findingTitle, orderOutcomes, outcomeHref, outcomeName, outcomeReason, outcomeSentence, ownerName,
   parseEntities, parseEntity, parsePeriod, periodParam, periodRange, recoverySentence, resolvePeriod, valueStatus, valueVerdict, type FindingRow, type OutcomeRow,
   type ValueReport,
 } from "@/lib/value-report-view";
@@ -315,4 +315,30 @@ test("no report card renders a list of plain text lines", async () => {
     if (/\.map\(\((?:line|text|sentence)\) => <li className="[^"]*(?:muted|soft)[^"]*"/.test(source)) offenders.push(file);
   }
   assert.deepEqual(offenders, []);
+});
+
+test("partly done settings backups are a warning on the value report, never counted as complete (audit issue 2)", () => {
+  const section = {
+    withheld: false as const,
+    settings: { backups: 3, partial: 2, lastAt: "2026-10-01T00:00:00Z" },
+    serviceSettings: { runs: 0, workloads: 0, expected: 0, lastAt: null },
+    content: { runs: 0, workloads: 0, expected: 0, lastAt: null, itemsStored: 0, bytesStored: 0 },
+  };
+  const view = backupView(section);
+  assert.equal(view.state, "shown");
+  if (view.state !== "shown") return;
+  const tile = view.tiles.find((entry) => entry.key === "settings")!;
+  assert.equal(tile.count, 3);
+  assert.equal(tile.tone, "soon");
+  assert.equal(tile.problem, "2 more only partly done");
+  assert.equal(view.headline.tone, "soon");
+  const none = backupView({ ...section, settings: { backups: 0, partial: 1, lastAt: null } });
+  if (none.state !== "shown") return assert.fail("shown");
+  assert.equal(none.tiles[0].problem, "No complete backup in this period; 1 only partly done");
+  assert.equal(none.tiles[0].tone, "urgent");
+  // Reports made before partly done backups were counted read as before.
+  const old = backupView({ ...section, settings: { backups: 3, lastAt: null } });
+  if (old.state !== "shown") return assert.fail("shown");
+  assert.equal(old.tiles[0].tone, "fine");
+  assert.equal(old.headline.tone, "fine");
 });

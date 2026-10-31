@@ -43,7 +43,7 @@ import { readList, useViewState } from "@/lib/use-view-state";
 // with `pick=` for several). The server keeps UTC; ids stay in Technical details.
 
 const plural = (count: number) => `${count} ${count === 1 ? "schedule" : "schedules"}`;
-const TILE_LABELS: Record<ScheduleFilter, string> = { on: "On", off: "Off", failed: "Failed last run", warning: "Load warnings" };
+const TILE_LABELS: Record<ScheduleFilter, string> = { on: "On", off: "Off", failed: "Failed last run", partial: "Partly done last run", warning: "Load warnings" };
 
 export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, canEdit, canRun }: Pick<SchedulesData, "schedules" | "deferrals" | "forecasts"> & {
   now: string;
@@ -157,16 +157,20 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
   }
 
   const failedOne = items.filter((schedule) => schedule.last_status === "failed" && schedule.last_job_id);
+  const partialOne = items.filter((schedule) => schedule.last_status === "partial" && schedule.last_job_id);
   const warned = items.find((schedule) => schedule.enabled && openWarnings(loadOf(schedule)).length > 0);
   const verdictAction = failedOne.length === 1
     ? { label: "Open the failed run", href: `/jobs/${encodeURIComponent(failedOne[0].last_job_id!)}` }
     : failedOne.length > 1 ? { label: "Show the failed ones", href: href({ status: "failed", load: null, closed: null }) }
+    : partialOne.length === 1 && !counts.failed ? { label: "Open the partly done run", href: `/jobs/${encodeURIComponent(partialOne[0].last_job_id!)}` }
+    : partialOne.length > 1 && !counts.failed ? { label: "Show the partly done ones", href: href({ status: "partial", load: null, closed: null }) }
     : warned && canEdit ? { label: "Review the load warning", href: openHref(warned.id) }
     : null;
 
   const tiles: { key: ScheduleFilter | "next"; label: string; icon: IconName; value: string; small: string; to: string; tone?: "urgent" | "soon" }[] = [
     { key: "on", label: "On", icon: "play", value: `${counts.on} of ${counts.total}`, small: counts.on === counts.total ? "Every schedule runs" : `${counts.total - counts.on} turned off`, to: href(pickTile("on")) },
-    { key: "failed", label: "Failed last run", icon: "x-circle", value: String(counts.failed), small: counts.failed ? "Open one to see why" : "Every last run worked", to: href(pickTile("failed")), tone: counts.failed ? "urgent" : undefined },
+    { key: "failed", label: "Failed last run", icon: "x-circle", value: String(counts.failed), small: counts.failed ? "Open one to see why" : "No last run failed", to: href(pickTile("failed")), tone: counts.failed ? "urgent" : undefined },
+    { key: "partial", label: "Partly done last run", icon: "alert", value: String(counts.partial), small: counts.partial ? "Some types were not backed up" : "Every last run read everything", to: href(pickTile("partial")), tone: counts.partial ? "soon" : undefined },
     { key: "warning", label: "Load warnings", icon: "clock", value: String(counts.warnings), small: counts.warnings ? "A slower timetable is suggested" : "Microsoft keeps up", to: href(pickTile("warning")), tone: counts.warnings ? "soon" : undefined },
     { key: "next", label: "Next run", icon: "calendar", value: counts.next ? nextRunWords(counts.next, now).replace(/^Next run /, "").replace(/^in /, "In ") : "None", small: counts.next ? scheduleName(counts.next) : "Everything is off", to: counts.next ? openHref(counts.next.id) : href({}) },
   ];
@@ -174,7 +178,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
   const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `status:${key}`, label: TILE_LABELS[key as ScheduleFilter], clear: { status: withoutTile(filter, key), load: null, closed: null } }));
 
   const groupings = useMemo<Grouping<Schedule>[]>(() => [
-    { key: "kind", label: "What it does", groupsOf: (list) => groupBy(list, (schedule) => scheduleGroup(schedule), (key, group) => ({ label: SCHEDULE_GROUPS[key as ScheduleGroup].label, icon: SCHEDULE_GROUPS[key as ScheduleGroup].icon, about: `${SCHEDULE_GROUPS[key as ScheduleGroup].about} · ${plural(group.length)}` }), (key, group) => (group.some((schedule) => schedule.last_status === "failed") ? -1 : 0) * 10 + SCHEDULE_GROUP_ORDER.indexOf(key as ScheduleGroup)) },
+    { key: "kind", label: "What it does", groupsOf: (list) => groupBy(list, (schedule) => scheduleGroup(schedule), (key, group) => ({ label: SCHEDULE_GROUPS[key as ScheduleGroup].label, icon: SCHEDULE_GROUPS[key as ScheduleGroup].icon, about: `${SCHEDULE_GROUPS[key as ScheduleGroup].about} · ${plural(group.length)}` }), (key, group) => (group.some((schedule) => schedule.last_status === "failed") ? -2 : group.some((schedule) => schedule.last_status === "partial") ? -1 : 0) * 10 + SCHEDULE_GROUP_ORDER.indexOf(key as ScheduleGroup)) },
     { key: "status", label: "State", groupsOf: (list) => groupBy(list, (schedule) => scheduleState(schedule, forecastFor(loads, schedule)), (key, group) => ({ label: STATE_WORDS[key as ScheduleState].label, icon: STATE_WORDS[key as ScheduleState].icon, about: plural(group.length) }), (key) => STATE_ORDER.indexOf(key as ScheduleState)) },
   ], [loads]);
 
@@ -423,6 +427,8 @@ function SchedulePanel({ schedule, forecast, now, timeZone, canEdit, canRun, bus
 
         {schedule.last_status === "failed" ? (
           <p className="sc-note" data-tone="urgent" role="note"><Icon name="alert" /><span>The last run failed {schedule.last_run_at ? ago(schedule.last_run_at, now) : ""}. The run&apos;s page says why and what to try.</span></p>
+        ) : schedule.last_status === "partial" ? (
+          <p className="sc-note" data-tone="soon" role="note"><Icon name="alert" /><span>The last run was only partly done {schedule.last_run_at ? ago(schedule.last_run_at, now) : ""}: some types were not backed up. The run&apos;s page names them.</span></p>
         ) : null}
 
         <section aria-labelledby="sc-load-heading" className="sc-load">

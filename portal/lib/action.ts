@@ -464,6 +464,7 @@ export function guarded(
       // The server's restore settings path is one the worker would refuse: nothing is
       // queued, and the operator is told in plain words which setting to fix.
       if (error instanceof RestoreSettingsPathError) {
+        console.error(`[keel-portal] 503 guarded action ${spec.action}: ${error.message}`);
         return Response.json(
           { error: "restore_settings_path", message: error.message },
           { status: 503, headers: NO_STORE },

@@ -1,3 +1,4 @@
+import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef } from "@/lib/sentences";
 
 export type ProtectionState =
@@ -480,6 +481,9 @@ export interface DriftRecord {
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.
   refNames?: Record<string, string>;
+  // What the setting points to (a role, who holds it, where) that no backup names: each
+  // id with a Microsoft Graph lookup link, for Technical details. Absent when all named.
+  unnamedRefs?: UnnamedReference[];
   // Task 91: who made the change, from audit evidence, and where a roll back of it
   // would be routed. Absent when the reader did not compute it.
   attribution?: ChangeAttribution | null;
@@ -549,6 +553,8 @@ export interface SemanticChange {
   total: number;
   shown: number;
   cosmetic: number;
+  // Differences that are only empty against missing or the order of a list; never listed.
+  ignored?: number;
   groups: { behaviour: number; fixed: number; "unknown-before": number };
 }
 
@@ -594,6 +600,8 @@ export interface SemanticSummary {
   behaviouralSettings: number;
   fixedSettings: number;
   cosmeticOnly: number;
+  // Changes where only empty values or the order of a list differ.
+  emptyOrOrderOnly?: number;
   unknownBefore: number;
   mismatched: number;
 }
@@ -699,6 +707,18 @@ export interface DashboardWaiting {
   restoreFollowUps: number;
 }
 
+// engine/coverage/restoreProof.mjs restoreProofSummary: of the kinds Keel can put back,
+// how many a live test restore proved on this tenant, how many only pass fixture tests,
+// and how many have neither. `href` is the list the number counts.
+export interface RestoreProofSummary {
+  restorable: number;
+  proven: number;
+  tested: number;
+  untested: number;
+  lastProvenAt: string | null;
+  href: string;
+}
+
 export interface ProtectionHeadline {
   state: "collection" | "proven" | "unproven";
   tone: "good" | "attention" | "critical";
@@ -706,6 +726,8 @@ export interface ProtectionHeadline {
   sentence: string;
   action: { label: string; href: string } | null;
   counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
+  proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;
   failingSince: string | null;
 }

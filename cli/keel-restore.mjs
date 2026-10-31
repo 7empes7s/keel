@@ -137,6 +137,7 @@ import {
 import { readUndoAssignments } from '../engine/restore/undoAssignedPolicy.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { RESTORE_APPROVALS_OFF_BASIS, effectsNeedApproval, restoreNeedsApproval } from '../engine/govern/restoreApprovalSettings.mjs';
+import { selfApprovalAllowed } from '../engine/govern/approvalMode.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import {
   ComplianceFixRefusal, fixFor, fixedPayload, isWorkloadFix, newestSnapshotWith, parseWorkloadFixTarget, planComplianceFix,
@@ -1928,18 +1929,19 @@ async function planEnforcementRun({ client, request, persistArtifactId, requeste
 
 /**
  * The approval that promoted this artifact: approved, by someone other than the
- * requester. `byPerson` refuses one approved by the customer's restore approval
+ * requester, or self-approved while the tenant's approval mode is still solo
+ * (`soloNow`, engine/govern/approvalMode.mjs). `byPerson` refuses one approved by the customer's restore approval
  * setting (approvals off): used when the setting for turning a Conditional Access
  * policy on (or for Entra) is on now, so turning one back on since never goes unseen.
  */
-async function enforcementApproval(client, artifactId, { byPerson = false } = {}) {
+async function enforcementApproval(client, artifactId, { byPerson = false, soloNow = false } = {}) {
   const { rows } = await client.query(
     `SELECT requested_by, decided_by, justification FROM approval_request
       WHERE action = 'restore' AND status = 'approved' AND params->>'artifactId' = $1
-        AND decided_by IS NOT NULL AND decided_by <> requested_by
+        AND decided_by IS NOT NULL AND (decided_by <> requested_by OR (self_approved AND $4::boolean))
         AND (NOT $2::boolean OR standing_policy IS DISTINCT FROM $3)
       ORDER BY decided_at DESC LIMIT 1`,
-    [artifactId, byPerson, RESTORE_APPROVALS_OFF_BASIS],
+    [artifactId, byPerson, RESTORE_APPROVALS_OFF_BASIS, soloNow],
   );
   return rows[0] ? { approvedBy: rows[0].decided_by, reason: rows[0].justification ?? `approved restore ${artifactId}` } : null;
 }
@@ -1951,7 +1953,8 @@ async function enforcementApproval(client, artifactId, { byPerson = false } = {}
  */
 async function promotionApproval(client, artifact) {
   const byPerson = (await restoreNeedsApproval(client, { artifact })).required;
-  return enforcementApproval(client, artifact.id, { byPerson });
+  const soloNow = await selfApprovalAllowed(client, { tenantRef: artifact.tenantRef });
+  return enforcementApproval(client, artifact.id, { byPerson, soloNow });
 }
 
 async function executeEnforcementRun({ client, artifact, collectorConfig, targetConfig, logger, deps }) {

@@ -67,6 +67,25 @@ test("each section shows its status, and a closed group keeps its count and stat
   await expect(page.locator('section[data-group="everything"] a.menu-link')).toHaveCount(8);
 });
 
+// Audit 2026-10-31: badges showed on some page loads and not on others, because one
+// busy answer (HTTP 503) from the Overview's data left the menu bare for a minute.
+test("a busy answer is retried within seconds, and a reload keeps the last badges", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await page.addInitScript(() => { (window as unknown as { __harnessDashboardFailures: number }).__harnessDashboardFailures = 1; });
+  await open(page, "/");
+  const badge = page.locator('section[data-group="everything"] a.menu-link', { hasText: "Baselines" }).locator(".menu-badge");
+  await expect(badge).toContainText("2", { timeout: 8_000 });
+  const reads = await page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/dashboard")).length);
+  expect(reads).toBe(2);
+
+  // Every read now fails: a reload still shows the badges this tab last had.
+  await page.addInitScript(() => { (window as unknown as { __harnessDashboardFailures: number }).__harnessDashboardFailures = 99; });
+  await page.reload();
+  await page.locator("main#main-content h1").waitFor();
+  await expect(badge).toContainText("2");
+  await expect(badge).toHaveAttribute("data-tone", "urgent");
+});
+
 test("pin, star and save a view: each lands at the top of the menu as a real link", async ({ page }) => {
   await page.setViewportSize(desktop);
   await open(page, "/schedules");

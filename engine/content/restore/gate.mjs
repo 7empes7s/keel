@@ -4,7 +4,9 @@
  *
  *  - The actor must hold the `content-restore` capability (engine/authz/can.mjs).
  *  - The run must carry an approved `content-restore` request for exactly this plan
- *    (params.runId is the plan digest), asked by the actor and decided by someone else.
+ *    (params.runId is the plan digest), asked by the actor and decided by someone else,
+ *    or by the actor themselves while the tenant's approval mode is solo (a request
+ *    self-approved in solo mode stops counting once the mode is two-person again).
  *  - The approval must cover the restore's approval-policy class: a restore to another
  *    location needs a request filed as `content-restore-other-location`, so the tenant's
  *    two-person rule for that class applied when it was approved.
@@ -18,6 +20,7 @@
 import { can } from '../../authz/can.mjs';
 import { findPrincipalById } from '../../authz/principals.mjs';
 import { RESTORE_APPROVALS_OFF_DECIDER, contentRestoreNeedsApproval } from '../../govern/restoreApprovalSettings.mjs';
+import { selfApprovalAllowed } from '../../govern/approvalMode.mjs';
 
 export const CONTENT_RESTORE_CAPABILITY = 'content-restore';
 export const CONTENT_RESTORE_ACTION = 'content-restore';
@@ -61,7 +64,7 @@ export async function authorizeContentRestore(client, {
   }
   if (typeof approvalId !== 'string' || !approvalId) throw new ContentRestoreRefusedError('a content restore needs --approval-id (an approved content-restore request)');
   const { rows } = await client.query(
-    `SELECT id, action, params, requested_by, decided_by, decided_at, status, policy_actions FROM approval_request WHERE id::text = $1`,
+    `SELECT id, action, params, requested_by, decided_by, decided_at, status, policy_actions, self_approved FROM approval_request WHERE id::text = $1`,
     [approvalId],
   );
   const request = rows[0];
@@ -72,8 +75,14 @@ export async function authorizeContentRestore(client, {
     throw new ContentRestoreRefusedError(`approval request ${approvalId} approved another restore plan`);
   }
   if (request.requested_by !== actor) throw new ContentRestoreRefusedError(`approval request ${approvalId} was asked by someone else`);
-  if (!request.decided_by || request.decided_by === request.requested_by) {
+  if (!request.decided_by) {
     throw new ContentRestoreRefusedError(`approval request ${approvalId} was not decided by someone other than the requester`);
+  }
+  if (request.decided_by === request.requested_by
+    && !(request.self_approved === true && await selfApprovalAllowed(client, { tenantRef }))) {
+    throw new ContentRestoreRefusedError(request.self_approved === true
+      ? `approval request ${approvalId} was self-approved, and approvals need two people again; someone else must approve a new request`
+      : `approval request ${approvalId} was not decided by someone other than the requester`);
   }
   // The CLI names the workload it runs; a request filed for another one never runs it.
   if (workload !== null && request.params?.workload !== workload) {

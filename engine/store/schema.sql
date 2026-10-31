@@ -1080,6 +1080,10 @@ ALTER TABLE alert ADD COLUMN IF NOT EXISTS ack_deadline_at timestamptz;
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_principal_id uuid;
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_source text NOT NULL DEFAULT 'unassigned'
   CHECK (owner_source IN ('rule','unassigned'));
+-- UI audit 2026-10-31 (B5): whoever acknowledges an occurrence owns it ('acknowledged').
+ALTER TABLE alert DROP CONSTRAINT IF EXISTS alert_owner_source_check;
+ALTER TABLE alert ADD CONSTRAINT alert_owner_source_check
+  CHECK (owner_source IN ('rule','unassigned','acknowledged'));
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_rule_id uuid;
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalated_occurrence int NOT NULL DEFAULT 0;
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_error text;

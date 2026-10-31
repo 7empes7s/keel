@@ -8,7 +8,16 @@ import { formatTimestamp, fromNow } from "@/lib/presentation";
 export const WINDOW_HOURS = [1, 4, 8, 24, 72, 168] as const;
 
 export interface IntentSide { present: boolean; value: unknown }
-export interface IntentTransition { field: string; before: IntentSide; after: IntentSide }
+export interface IntentTransition {
+  field: string;
+  before: IntentSide;
+  after: IntentSide;
+  /** Only an empty value against a missing one, or only list order, differs: not shown. */
+  noChange?: boolean;
+}
+
+/** The transitions a person reads: no-change ones are left out. */
+export const shownTransitions = (transitions: IntentTransition[]) => transitions.filter((transition) => !transition.noChange);
 export interface IntentPerson { id: string; email: string | null; name: string | null; readable: boolean }
 export interface ChangeIntent {
   id: string;
@@ -20,6 +29,8 @@ export interface ChangeIntent {
   transitionDigest: string;
   owner: IntentPerson;
   approver: IntentPerson;
+  /** The owner approved it themselves, under solo approval mode. */
+  selfApproved?: boolean;
   reason: string;
   externalChangeId: string | null;
   sourceDriftId: string | null;
@@ -153,7 +164,7 @@ export function intentTiles(data: ChangeIntentsData): StatTile[] {
   const next = active.map(intentEnd).sort()[0] ?? null;
   return [
     { key: "active", label: "In force", icon: "pause", value: String(active.length), tone: active.length ? "soon" : "fine",
-      about: active.length ? `${settings(active.reduce((sum, intent) => sum + intent.transitions.length, 0))} not rolled back` : "Changes roll back as usual", href: "#ec-approved" },
+      about: active.length ? `${settings(active.reduce((sum, intent) => sum + shownTransitions(intent.transitions).length, 0))} not rolled back` : "Changes roll back as usual", href: "#ec-approved" },
     { key: "next", label: "Next to end", icon: "clock", value: next ? fromNow(next, now) : "None", tone: next ? (Date.parse(next) - Date.parse(now) <= HOUR ? "soon" : "low") : "neutral",
       about: next ? formatTimestamp(next) : "Nothing is approved", href: "#ec-approved" },
     { key: "scheduled", label: "Starts later", icon: "calendar", value: String(scheduled.length), tone: scheduled.length ? "low" : "neutral",

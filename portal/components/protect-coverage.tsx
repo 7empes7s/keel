@@ -93,10 +93,11 @@ const HEALTH_GROUPS: { key: string; label: string; icon: IconName; about: string
   { key: "not-backed-up", label: "Not backed up", icon: "info", about: "Keel cannot read these, or this tenant does not have them", has: (health) => health === "not-collected" || health === "unavailable" },
 ];
 
-const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "partial", "protected"];
+const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "proven", "partial", "protected"];
 const STANDING_ABOUT: Record<RestoreStanding, string> = {
   "cannot-restore": "Kept for reference, or not read yet",
-  unproven: "Backed up; no test restore has measured them yet",
+  unproven: "No live test restore on this tenant yet",
+  proven: "A live test restore on this tenant worked",
   partial: "Some fields come back by hand",
   protected: "A test restore brought everything back",
 };
@@ -277,7 +278,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
     "backed-up": `of ${counts.total} ${counts.total === 1 ? "kind" : "kinds"}`,
     failed: counts.failed ? "Their last backup did not finish" : "Nothing failed",
     "out-of-date": `${counts.stale} out of date, ${counts.never} never`,
-    proven: "By a test restore on this tenant",
+    proven: counts.tested ? `${counts.tested} more pass tests, not yet run live` : "By a live test restore on this tenant",
   };
   const tileValue: Record<HealthFilter, string> = {
     "backed-up": String(counts.backedUp),

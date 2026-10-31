@@ -18,8 +18,8 @@ import { promisify } from 'node:util';
 
 import { grantRole } from '../authz/administration.mjs';
 import {
-  ALERT_READ_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, applyConditionEvent,
-  decideTransition, listAlerts, listAlertTransitions, suppressAlert, syncDriftAlerts, unsuppressAlert,
+  ALERT_ACTION_EVIDENCE_KIND, ALERT_READ_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, applyConditionEvent,
+  decideTransition, listAlerts, listAlertTransitions, resolveAlert, suppressAlert, syncDriftAlerts, unsuppressAlert,
 } from '../notify/alerts.mjs';
 import { createChannel, createSubscription } from '../notify/notifications.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -163,6 +163,54 @@ test('acknowledging records actor and time but does not resolve the condition', 
   const resolved = await applyConditionEvent(client, observation(tenantRef, 'resolved', 'e3', 60));
   assert.equal(resolved.outcome, 'resolved');
   assert.equal(resolved.alert.state, 'resolved');
+});
+
+// UI audit 2026-10-31 (B5): after "Acknowledge" the alert still read "No owner" and
+// the note showed nowhere. The acknowledger owns the occurrence, the note is on the
+// alert's history, and every action by a person is in the audit record for Activity.
+test('acknowledging makes the acknowledger the owner, and each action is in the audit record with its note', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = freshTenant();
+  const operator = await principal(client, 'operator');
+  const admin = await principal(client, 'admin');
+  const opened = await applyConditionEvent(client, observation(tenantRef, 'firing', 'o1', 0));
+  assert.equal(opened.alert.owner_principal_id, null);
+
+  const acknowledged = await acknowledgeAlert(client, { tenantRef, alertId: opened.alert.id, actor: operator, at: at(10), note: '  KEEL-RT- looking into it  ' });
+  assert.equal(acknowledged.owner_principal_id, operator, 'the acknowledger owns it');
+  assert.equal(acknowledged.owner_source, 'acknowledged');
+  const history = await transitions(client, opened.alert.id);
+  assert.equal(history.at(-1).evidence.note, 'KEEL-RT- looking into it');
+
+  const records = async () => (await client.query(
+    'SELECT actor, subject FROM evidence WHERE tenant_ref = $1 AND kind = $2 ORDER BY seq', [tenantRef, ALERT_ACTION_EVIDENCE_KIND],
+  )).rows;
+  const [ack] = await records();
+  assert.equal(ack.actor, operator);
+  assert.equal(ack.subject.action, 'acknowledged');
+  assert.equal(ack.subject.alertId, opened.alert.id);
+  assert.equal(ack.subject.naturalKey, opened.alert.resource_key);
+  assert.equal(ack.subject.note, 'KEEL-RT- looking into it');
+
+  // A refused acknowledge writes nothing.
+  await assert.rejects(() => acknowledgeAlert(client, { tenantRef, alertId: opened.alert.id, actor: operator }), AlertStateError);
+  assert.equal((await records()).length, 1);
+
+  await suppressAlert(client, { tenantRef, alertId: opened.alert.id, actor: admin, reason: 'planned window' });
+  await unsuppressAlert(client, { tenantRef, alertId: opened.alert.id, actor: admin });
+  await resolveAlert(client, { tenantRef, alertId: opened.alert.id, actor: operator, reason: 'fixed by hand' });
+  assert.deepEqual((await records()).map((entry) => [entry.subject.action, entry.subject.note ?? null]), [
+    ['acknowledged', 'KEEL-RT- looking into it'], ['muted', 'planned window'], ['unmuted', null], ['resolved', 'fixed by hand'],
+  ]);
+
+  // A new occurrence goes back to the rule: here nobody, until someone acknowledges it.
+  const reopened = await applyConditionEvent(client, observation(tenantRef, 'firing', 'o2', 120));
+  assert.equal(reopened.alert.owner_principal_id, null);
+  assert.equal(reopened.alert.owner_source, 'unassigned');
+
+  // An acknowledge without a note records no note.
+  await acknowledgeAlert(client, { tenantRef, alertId: opened.alert.id, actor: operator, at: at(130) });
+  assert.equal((await records()).at(-1).subject.note, undefined);
 });
 
 test('a duplicate or retried event is idempotent', async (t) => {

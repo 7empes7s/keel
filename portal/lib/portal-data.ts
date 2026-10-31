@@ -30,6 +30,7 @@ import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../e
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
+import { maskCredentials } from "../../engine/safety/diffHygiene.mjs";
 import { changeBlastRadius, itemBlastRadius } from "../../engine/safety/blastRadius.mjs";
 import { comparedSettings, driftEvidence, MAX_EVIDENCE_CHANGES, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
@@ -44,14 +45,14 @@ import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
-import { objectIds, payloadName } from "@/lib/changes-view";
+import { objectIds, openChangeCount, payloadName } from "@/lib/changes-view";
 import { objectNameSql } from "../../engine/cir/objectName.mjs";
-import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
+import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
 import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
-import { loadServiceChanges } from "@/lib/service-changes";
+import { countOpenServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
@@ -334,7 +335,7 @@ function normalizeObservation(raw: unknown): CoverageObservation | null {
   };
 }
 
-function normalizeCoverageType(raw: UnknownRecord): CoverageType {
+export function normalizeCoverageType(raw: UnknownRecord): CoverageType {
   const rawFidelity = (raw.fidelity ?? null) as UnknownRecord | null;
   const verifiedBy = (rawFidelity?.verifiedBy ?? null) as UnknownRecord | null;
   const declared = fidelity(rawFidelity?.declared);
@@ -902,12 +903,13 @@ async function withDecisionEvidence(client: KeelClient, ref: string, items: Drif
 
 /**
  * What the Changes page hands its client table: each payload without the fields
- * Microsoft sets itself, so neither the page nor its props carry them.
+ * Microsoft sets itself, so neither the page nor its props carry them, and with
+ * credential values (password hints and the like) hidden.
  */
 export function displayItems(items: DriftRecord[]): DriftRecord[] {
   return items.map((item) => item.semantic
-    ? { ...item, before: comparedSettings(item.resourceType, item.before), after: comparedSettings(item.resourceType, item.after) }
-    : item);
+    ? { ...item, before: maskCredentials(comparedSettings(item.resourceType, item.before)), after: maskCredentials(comparedSettings(item.resourceType, item.after)) }
+    : { ...item, before: maskCredentials(item.before), after: maskCredentials(item.after) });
 }
 
 // At most this many ids are named per page load; the rest read "no name" (bounded).
@@ -983,9 +985,12 @@ async function withAppNames(client: KeelClient, ref: string, items: DriftRecord[
   const refs = unnamed.map(({ index, payload }) => referencedIds(items[index].resourceType, items[index].naturalKey, payload));
   const lookup = await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles));
   const out = [...items];
+  const known = new Set(Object.keys(lookup.ids));
   for (const { index, payload } of unnamed) {
     const name = derivedName(items[index].resourceType, items[index].naturalKey, payload, lookup);
-    if (name) out[index] = { ...items[index], name };
+    // What it points to that no backup names, listed with a lookup link under Technical details.
+    const unnamedRefs = unnamedReferences(items[index].resourceType, items[index].naturalKey, payload, known);
+    if (name || unnamedRefs.length) out[index] = { ...items[index], ...(name ? { name } : {}), ...(unnamedRefs.length ? { unnamedRefs } : {}) };
   }
   return out;
 }
@@ -1472,12 +1477,13 @@ export async function getDashboardData(): Promise<DashboardData> {
     })) as { ok: boolean; chainLength: number };
     const generatedAt = new Date();
     // Open changes in every service: the approved-setup changes (Entra ID and Intune)
-    // and the service setting changes the Changes page lists beside them.
-    const serviceChanges = await loadServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
+    // and the service setting changes the Changes page lists beside them, counted
+    // without the list's row limit (openChangeCount, the same as the Changes page).
+    const serviceChanges = await countOpenServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
       console.error("[keel-portal] overview service changes unavailable", error);
-      return [] as DriftRecord[];
+      return { total: 0, byBlastRadius: {} as Record<string, number> };
     });
-    const drift = [...await activeDriftFor(client, ref, activeBaseline?.id ?? null), ...serviceChanges];
+    const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
     const rawCoverage = await rawCoverageReport(client, ref);
     const coverageData = await coverageFor(client, ref, rawCoverage);
     // Task-129: the Overview sentence comes from this same report, never a constant.
@@ -1488,10 +1494,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     const openDriftByBlastRadius = [...new Set([
       ...BLAST_RADIUS_ORDER,
       ...drift.map((item) => item.blastRadius),
+      ...Object.keys(serviceChanges.byBlastRadius),
     ])]
       .map((blastRadius) => ({
         blastRadius,
-        count: drift.filter((item) => item.blastRadius === blastRadius).length,
+        count: drift.filter((item) => item.blastRadius === blastRadius).length + (serviceChanges.byBlastRadius[blastRadius] ?? 0),
       }))
       .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
     const lastCollection = lastCollectionRaw
@@ -1506,7 +1513,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       lastCollection,
       lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
       openDriftByBlastRadius,
-      openDriftTotal: drift.length,
+      openDriftTotal: openChangeCount(drift.length, serviceChanges.total),
       driftTrend,
       coverage: coverageData.summary,
       evidence: {

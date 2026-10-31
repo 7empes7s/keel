@@ -426,7 +426,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(amber).toHaveCount(1);
   await expect(amber).toHaveText("Run the Tier 1 backup again");
   const tiles = page.locator(".ac-tile");
-  await expect(tiles).toHaveCount(4);
+  await expect(tiles).toHaveCount(5);
   const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
   for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/activity/);
@@ -605,7 +605,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
 
 test("Activity · a viewer sees the timeline and no way to run anything", async ({ page }) => {
   await open(page, "/activity/viewer");
-  await expect(page.locator(".ac-tile")).toHaveCount(4);
+  await expect(page.locator(".ac-tile")).toHaveCount(5);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run again" })).toHaveCount(0);
   await expect(page.locator(".sel-row").first()).toBeVisible();
@@ -1015,6 +1015,29 @@ test("accepting chosen changes says what it does, asks why, and clears them from
   await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
   await expect(sheet).toBeHidden();
   await expect(page.locator(".bl-row-link", { hasText: /^Old project team$/ })).toHaveCount(0);
+  await expect(page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count")).toHaveText("5");
+});
+
+// Accepting many changes goes on past one that fails: the others are saved, and the
+// panel stays open on the one that was not, saying which and why.
+test("a change that could not be accepted stays chosen and is named, the rest are saved", async ({ page }) => {
+  await open(page, "/drift");
+  await page.getByLabel("Select Old project team (group)").check();
+  await page.getByRole("checkbox", { name: /^Select Windows baseline/ }).check();
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 2 changes" }).click();
+  let sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
+  await sheet.getByPlaceholder("Why is this decision right?").fill("Busy for Windows");
+  await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
+  await expect(page.locator(".toast", { hasText: "Accepted 1 change" })).toBeVisible();
+  sheet = page.getByRole("dialog", { name: "Accept 1 change into the approved setup" });
+  await expect(sheet.getByRole("alert")).toHaveText(/^1 of 2 changes went through\. 1 change could not be saved and is still chosen: Windows baseline/);
+  await sheet.locator(".bl-not-saved summary").click();
+  await expect(sheet.locator(".bl-not-saved")).toContainText("Keel was busy");
+  await expect(page.locator(".bl-row-link", { hasText: /^Old project team$/ })).toHaveCount(0);
+  // Trying again with another reason saves it.
+  await sheet.getByPlaceholder("Why is this decision right?").fill("Planned baseline update");
+  await sheet.getByRole("button", { name: "Accept 1 change" }).click();
+  await expect(sheet).toBeHidden();
   await expect(page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count")).toHaveText("5");
 });
 
@@ -1982,13 +2005,37 @@ test("Changes · the verdict follows the service filter like the tiles", async (
     await expect(verdict.locator(".verdict-sentence")).not.toContainText("service setting");
     const all = await tile("All open changes").innerText();
     await expect(verdict.locator(".verdict-sentence")).toContainText(new RegExp(`^${all} changes? since the approved setup`));
-    await expect(verdict.locator(".verdict-detail")).toHaveText(/^Counts follow your filter: In Entra ID\. Across all services: \d+ changes?, and 5 service setting changes wait for review\.$/);
+    await expect(verdict.locator(".verdict-detail")).toHaveText(/^Counts follow your filter: In Entra ID\. Across all services: \d+ open changes: \d+ changes? since the approved setup, and 5 service setting changes wait for review\.$/);
     await page.screenshot({ path: test.info().outputPath(`verdict-filtered-${width}.png`), fullPage: false });
 
     await page.getByRole("button", { name: "Remove filter: In Entra ID" }).click();
     await expect(tile("Service settings")).toHaveText("5");
     await expect(verdict.locator(".verdict-sentence")).toContainText("5 service setting changes wait for review");
     await expect(verdict.locator(".verdict-detail")).toHaveCount(0);
+  }
+});
+
+// Audit 31 Oct 2026: the Overview said 703 open changes, the Changes header 591.
+// The header badge and the verdict show the same open-changes total, and a list
+// that holds fewer service setting changes than are open says so.
+test("Changes · the header and the verdict show one open-changes total", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/drift/services");
+    const verdict = page.locator('[data-layer="verdict"] .verdict-sentence');
+    const all = Number(await page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count").innerText());
+    await expect(page.locator(".page-header")).toContainText(`${all} changes to review`);
+    await expect(verdict).toContainText(new RegExp(`^${all} open changes: \\d+ since the approved setup`));
+
+    await open(page, "/drift/services-capped");
+    const setup = all - 5;
+    await expect(page.locator(".page-header")).toContainText(`${all + 300} changes to review`);
+    await expect(verdict).toContainText(new RegExp(`^${all + 300} open changes: ${setup} since the approved setup .*, and 305 service setting changes are still open`));
+    const tile = (name: string) => page.locator(".bl-tile", { hasText: name }).locator(".bl-tile-count");
+    await expect(tile("All open changes")).toHaveText(String(all + 300));
+    await expect(tile("Service settings")).toHaveText("305");
+    await expect(page.locator(".bl-note", { hasText: "Showing the newest" })).toHaveText("Showing the newest 5 of 305 open service setting changes. Acknowledge or resolve some to see the rest.");
+    await page.screenshot({ path: test.info().outputPath(`open-changes-${width}.png`), fullPage: false });
   }
 });
 
@@ -2975,7 +3022,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
   test(`the approved setup sums up each service and fits ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await open(page, "/baselines", viewport.width < 600 ? "light" : "dark");
-    await expect(page.locator(".status-pill")).toContainText("7 changes to review");
+    // Every open change, service setting changes included: 7 approved-setup changes and
+    // 5 service setting changes, the same total as the Overview and the Changes page.
+    await expect(page.locator(".status-pill")).toContainText("12 changes to review");
+    await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toContainText(/^12 changes since/);
     const current = page.locator(".bl-current");
     await expect(current).toContainText("Post-migration golden state");
     await expect(current).toContainText("4,812 settings in 6 kinds");
@@ -3172,7 +3222,8 @@ test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page
   await sheet.getByRole("button", { name: /^Account/ }).click();
   await page.locator(".option-panel [role='option']", { hasText: "Marouane Defili" }).click();
   await sheet.getByLabel("Name", { exact: true }).fill("Undo changes to admin groups");
-  await expect(sheet.locator(".po-check")).toContainText("Undoes changes to anything.");
+  // The hourly limit starts at a real 50, so the check sentence says so.
+  await expect(sheet.locator(".po-check")).toContainText("Undoes changes to anything, up to 50 an hour.");
   await sheet.getByRole("button", { name: "Create rule" }).click();
   const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/policies");
   expect(created.length).toBe(1);
@@ -3215,6 +3266,53 @@ test("Policies · a rule's page: the sentence once, actions open their jobs, Res
   type Call = { url: string; method: string };
   const posts = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls.filter((call) => call.method === "POST").map((call) => call.url));
   expect(posts).toContain("/api/policies/7a1d0f3e-0000-4000-8000-000000000005/clear-pause");
+});
+
+test("Policies · a rule is edited in its sheet and deleted after a confirm; a new rule starts at 50 an hour", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  type Call = { url: string; method: string; body?: string };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  // Edit: the sheet opens filled in with the rule; what it does is fixed; an undo rule that is on is turned off by saving.
+  await open(page, "/policies/p1");
+  await page.getByRole("button", { name: "Edit" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit Undo low-risk changes" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByLabel("Name", { exact: true })).toHaveValue("Undo low-risk changes");
+  await expect(sheet.getByLabel("Actions an hour")).toHaveValue("50");
+  await expect(sheet.getByRole("radio", { name: "Undo automatically" })).toHaveCount(0);
+  await expect(sheet).toContainText("Saving turns it off.");
+  await sheet.getByLabel("Actions an hour").fill("");
+  await expect(sheet).toContainText("No limit: it acts on every matching change.");
+  await sheet.getByLabel("Actions an hour").fill("10");
+  await sheet.getByLabel("Name", { exact: true }).fill("Undo low-risk changes (capped)");
+  await sheet.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.locator(".toast", { hasText: "Undo low-risk changes (capped) saved" })).toBeVisible();
+  await expect(sheet).toBeHidden();
+  const edits = (await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/edit"));
+  expect(edits.map((call) => call.url)).toEqual(["/api/policies/7a1d0f3e-0000-4000-8000-000000000001/edit"]);
+  expect(JSON.parse(edits[0].body ?? "{}")).toMatchObject({ name: "Undo low-risk changes (capped)", maxActionsPerWindow: 10, windowSeconds: 3600, maxBlastRadius: "cosmetic" });
+
+  // Delete: a red confirm behind a tick box, then back to the list.
+  await page.getByRole("button", { name: "Delete" }).click();
+  const dialog = page.locator("dialog[open]");
+  await expect(dialog).toContainText("What it already did stays in Activity");
+  const confirm = dialog.getByRole("button", { name: "Delete rule" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await confirm.click();
+  await expect(page.locator(".toast", { hasText: "Undo low-risk changes deleted" })).toBeVisible();
+  expect((await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/delete")).map((call) => call.url)).toEqual(["/api/policies/7a1d0f3e-0000-4000-8000-000000000001/delete"]);
+  await expect(page).toHaveURL(/#\/policies$/);
+
+  // New rule: the hourly limit is a real 50, so the saved body says 50.
+  await page.getByRole("link", { name: "New rule" }).click();
+  const fresh = page.getByRole("dialog", { name: "New rule" });
+  await expect(fresh.getByLabel("Actions an hour")).toHaveValue("50");
+  await fresh.getByLabel("Name", { exact: true }).fill("Alert on anything");
+  await fresh.getByRole("button", { name: "Create rule" }).click();
+  const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/policies");
+  expect(JSON.parse(created[0].body ?? "{}")).toMatchObject({ maxActionsPerWindow: 50, windowSeconds: 3600 });
+
 });
 
 test("Policies · a viewer sees the rules and no controls", async ({ page }) => {
@@ -4437,6 +4535,45 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
+// UI audit 2026-10-31 (B5): after Acknowledge the banner moved but the header pill did
+// not, the alert kept "No owner" and the note showed nowhere. The harness never reloads
+// the server data, like a refresh that has not come back yet: the page alone must agree.
+test("Alerts · acknowledge moves the pill, banner and tiles together, makes you the owner and keeps the note", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/alerts");
+  const pill = page.locator(".status-pill");
+  const verdict = page.locator('[data-layer="verdict"] .verdict-sentence');
+  const waiting = page.locator(".al-tile").filter({ hasText: "Needs someone" }).locator(".al-tile-count");
+  await expect(pill).toHaveText("1 overdue");
+  await expect(waiting).toHaveText("3");
+
+  // Acknowledge Finance from its panel, with a note.
+  await page.locator(".al-row-link", { hasText: "Finance (group)" }).click();
+  let sheet = page.getByRole("dialog", { name: "Finance (group)" });
+  await sheet.getByLabel("Note (optional)").fill("KEEL-RT- looking into it with the network team");
+  await sheet.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(page.locator(".toast", { hasText: "Alert acknowledged" })).toBeVisible();
+  await expect(verdict).toHaveText("2 alerts need someone to acknowledge them; 1 is past the deadline.");
+  await expect(waiting).toHaveText("2");
+  await expect(pill).toHaveText("1 overdue");
+  // The panel now names the owner and shows the note, in the facts and the history.
+  await expect(sheet).toContainText("Marouane Defili");
+  await expect(sheet.locator(".al-ack-note")).toContainText("KEEL-RT- looking into it with the network team");
+  await expect(sheet.locator(".al-timeline > li").first()).toContainText("KEEL-RT- looking into it with the network team");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".sel-row", { hasText: "Finance (group)" })).not.toContainText("No owner");
+  await expect(page.locator(".sel-row", { hasText: "Finance (group)" })).toContainText("Marouane Defili");
+
+  // The overdue one: the pill and the banner change in the same step.
+  await page.getByRole("button", { name: "Acknowledge the overdue one" }).click();
+  await expect(verdict).toHaveText("1 alert needs someone to acknowledge it.");
+  await expect(pill).toHaveText("1 waiting");
+  await expect(waiting).toHaveText("1");
+  sheet = page.getByRole("dialog");
+  await expect(sheet).toHaveCount(0);
+});
+
 test("Alerts · a viewer sees the alerts, no amber action and no controls", async ({ page }) => {
   await open(page, "/alerts/viewer");
   await expect(page.locator(".al-tile")).toHaveCount(4);
@@ -4490,7 +4627,7 @@ test("Schedules · tiles, groups, panel, editor refusal, suggested timetable, Ru
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator('[data-layer="verdict"] a.btn-primary')).toHaveAttribute("href", /jobs\/a4$/);
   const tiles = page.locator(".sc-tile");
-  await expect(tiles).toHaveCount(4);
+  await expect(tiles).toHaveCount(5);
   for (const tile of await tiles.all()) await expect(tile).toHaveAttribute("href", /.+/);
   await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Backups", "Settings and content backups", "Checks", "Upkeep"]);
   const rows = page.locator(".sel-row");
@@ -4563,7 +4700,7 @@ test("Schedules · tiles, groups, panel, editor refusal, suggested timetable, Ru
 
 test("Schedules · a viewer sees every schedule, no amber action other than the failed run, and no controls", async ({ page }) => {
   await open(page, "/schedules/viewer");
-  await expect(page.locator(".sc-tile")).toHaveCount(4);
+  await expect(page.locator(".sc-tile")).toHaveCount(5);
   await expect(page.locator(".sel-check")).toHaveCount(0);
   await page.locator(".sc-row-link", { hasText: "Backup of Tier 1" }).click();
   const sheet = page.getByRole("dialog", { name: "Backup of Tier 1" });
@@ -4585,7 +4722,7 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".sc-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-        expect(tiles.length).toBe(4);
+        expect(tiles.length).toBe(5);
         expect(new Set(tiles).size).toBe(1);
         const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .sc-tile, .sc-row-link")]
           .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))

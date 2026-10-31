@@ -564,6 +564,8 @@ test('backups in the period count every service: settings, service settings and 
   const tenantRef = 'sha256:value-backups';
   await snapshot(tenantRef, { completedAt: '2026-09-20T03:00:00Z' });
   await snapshot(tenantRef, { completedAt: '2026-08-01T03:00:00Z' });
+  // #447: a settings backup that could not read one type is partly done, not complete.
+  await snapshot(tenantRef, { completedAt: '2026-09-21T03:00:00Z', digest: { group: ok(), user: { outcome: 'failed', itemCount: null } } });
   const workload = (name, outcome, at) => client.query(
     `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
      VALUES ($1, $2, $3, $4, $4, $4)`,
@@ -589,6 +591,8 @@ test('backups in the period count every service: settings, service settings and 
   const result = await report(tenantRef);
   assert.equal(result.backups.withheld, false);
   assert.equal(result.backups.settings.backups, 1, 'only the settings backup inside the period');
+  assert.equal(result.backups.settings.partial, 1, 'a partly done settings backup is counted apart');
+  assert.equal(result.backups.settings.lastAt, '2026-09-20T03:00:00.000Z', 'the last complete backup, not the partly done one');
   assert.deepEqual(result.backups.serviceSettings, {
     runs: 2, workloads: 1, expected: 2, partial: 0, failed: 1, notRun: 0, lastAt: '2026-09-22T02:00:00.000Z',
     areas: [

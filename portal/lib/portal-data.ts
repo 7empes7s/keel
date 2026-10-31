@@ -332,7 +332,7 @@ function normalizeObservation(raw: unknown): CoverageObservation | null {
   };
 }
 
-function normalizeCoverageType(raw: UnknownRecord): CoverageType {
+export function normalizeCoverageType(raw: UnknownRecord): CoverageType {
   const rawFidelity = (raw.fidelity ?? null) as UnknownRecord | null;
   const verifiedBy = (rawFidelity?.verifiedBy ?? null) as UnknownRecord | null;
   const declared = fidelity(rawFidelity?.declared);

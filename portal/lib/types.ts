@@ -687,6 +687,18 @@ export interface DashboardWaiting {
   restoreFollowUps: number;
 }
 
+// engine/coverage/restoreProof.mjs restoreProofSummary: of the kinds Keel can put back,
+// how many a live test restore proved on this tenant, how many only pass fixture tests,
+// and how many have neither. `href` is the list the number counts.
+export interface RestoreProofSummary {
+  restorable: number;
+  proven: number;
+  tested: number;
+  untested: number;
+  lastProvenAt: string | null;
+  href: string;
+}
+
 export interface ProtectionHeadline {
   state: "collection" | "proven" | "unproven";
   tone: "good" | "attention" | "critical";
@@ -694,6 +706,8 @@ export interface ProtectionHeadline {
   sentence: string;
   action: { label: string; href: string } | null;
   counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
+  proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;
   failingSince: string | null;
 }

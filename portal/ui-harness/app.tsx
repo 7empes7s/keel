@@ -19,7 +19,7 @@ import { ContentBackupsView } from "@/components/content-backups";
 import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
-import { protectStatus, protectVerdict, tierSummaries } from "@/lib/protect-view";
+import { protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
@@ -1377,10 +1377,13 @@ const ALERTS: DashboardData["alerts"][] = [
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
 const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+// "Restore proven" comes from the same kinds What's protected lists, so the Overview tile and that page agree.
+const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
+const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
 const HEADLINES: DashboardData["headline"][] = [
-  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
-  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, lastProvenRestoreAt: null, failingSince: null },
-  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.", action: null, counts: HEADLINE_COUNTS, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
+  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
+  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, proof: NOTHING_PROVEN, lastProvenRestoreAt: null, failingSince: null },
+  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 24 Sept 2026.", action: null, counts: HEADLINE_COUNTS, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
 ];
 function dashboard(posture: number): DashboardData {
   return {

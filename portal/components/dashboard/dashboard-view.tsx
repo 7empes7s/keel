@@ -134,7 +134,10 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="Failed" value={data.headline.counts.failed} />
           <RecordField copy={false} label="Stale" value={data.headline.counts.stale} />
           <RecordField copy={false} label="Never collected" value={data.headline.counts.neverCollected} />
-          <RecordField copy={false} label="Last fidelity drill" value={data.headline.lastProvenRestoreAt} />
+          <RecordField copy={false} label="Restore proven" usage={data.headline.proof.href} value={data.headline.proof.proven} />
+          <RecordField copy={false} label="Restore tested only" value={data.headline.proof.tested} />
+          <RecordField copy={false} label="Can be put back" value={data.headline.proof.restorable} />
+          <RecordField copy={false} label="Last proven restore" value={data.headline.lastProvenRestoreAt} />
           <RecordField copy={false} label="Engine sentence" value={data.headline.sentence} />
         </RecordGroup>
         <RecordGroup title="Snapshots">

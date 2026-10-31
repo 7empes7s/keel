@@ -88,7 +88,7 @@ test("pinned items move and come out in place", () => {
 
 test("section statuses come from the Overview's data, in plain words", () => {
   const base: Parameters<typeof menuStatuses>[0] = {
-    headline: { state: "unproven", tone: "attention", headline: "Backups need attention", sentence: "", action: null, counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, lastProvenRestoreAt: null, failingSince: null },
+    headline: { state: "unproven", tone: "attention", headline: "Backups need attention", sentence: "", action: null, counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, proof: { restorable: 0, proven: 0, tested: 0, untested: 0, lastProvenAt: null, href: "/protect?health=proven" }, lastProvenRestoreAt: null, failingSince: null },
     coverage: { covered: 142, failed: 4, notCovered: 21, neverCollected: 2, stale: 3, total: 167 },
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: 2 }, { blastRadius: "cosmetic", count: 5 }],
     openDriftTotal: 7,

@@ -57,7 +57,7 @@ const DASHBOARD: DashboardData = {
   alerts: [],
   headline: {
     state: "collection", tone: "attention", headline: "Not protected yet", sentence: "Nothing backed up.", action: null,
-    counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, lastProvenRestoreAt: null, failingSince: null,
+    counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, proof: { restorable: 0, proven: 0, tested: 0, untested: 0, lastProvenAt: null, href: "/protect?health=proven" }, lastProvenRestoreAt: null, failingSince: null,
   } as DashboardData["headline"],
 };
 

@@ -13,39 +13,23 @@
 //      "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet."
 //
 // A type counts as backed up when its latest collection completed and is fresh for
-// its tier. It counts as restorable when it is backed up and either a drill measured
-// its fidelity as full or partial, or, with no drill yet, it declares full or partial
-// fidelity or KEEL has a tested writer for it (the Protect page's rule, #336: most
-// types declare "read-only" only because no drill measured them). "Not covered"
+// its tier. It counts as restorable when it is backed up and Keel can put it back
+// (restoreProof.mjs canRestore: a drill measured full or partial fidelity, or, with no
+// drill yet, it declares full or partial fidelity or KEEL has a tested writer for it).
+// A restore counts as proven when a live test restore on this tenant succeeded
+// (restoreProof.mjs), the same rule every page's "Restore proven" number uses. "Not covered"
 // types (no collector exists) are a coverage gap reported elsewhere, not a failure,
 // and so are types Microsoft refused for a missing licence or tenant feature
 // (outcome "unavailable").
 
-const RESTORABLE = new Set(['full', 'partial']);
-const TESTED_CLAIMS = new Set(['fixture-tested', 'live-qualified']);
+import { canRestore, hasRestoreWriter, restoreProofSummary } from './restoreProof.mjs';
+
+export { hasRestoreWriter };
 
 const DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export function formatHeadlineDate(value) {
   return DATE.format(new Date(value));
-}
-
-/**
- * Whether KEEL has a tested writer for the type: an automated recovery decision and at
- * least one write operation tested on fixtures or proven live. Mirrors
- * hasRestoreWriter in portal/lib/protect-view.ts.
- */
-export function hasRestoreWriter(entry) {
-  if (entry.qualification?.decision !== 'automated' || !entry.writeCapability) return false;
-  return Object.values(entry.writeCapability.operations ?? {}).some((capability) => TESTED_CLAIMS.has(capability?.claim));
-}
-
-function restorable(entry) {
-  const measured = entry.fidelity?.verifiedBy?.measuredFidelity ?? null;
-  if (measured) return RESTORABLE.has(measured);
-  const declared = entry.fidelity?.declared ?? null;
-  if (declared === 'unprotectable') return false;
-  return RESTORABLE.has(declared ?? '') || hasRestoreWriter(entry);
 }
 
 function plural(count, one, many) {
@@ -57,19 +41,18 @@ function plural(count, one, many) {
  *   fidelity?: { declared?: string | null, verifiedBy?: { at?: string | Date, measuredFidelity?: string | null } | null } }>} types
  * @returns {{ state: 'collection' | 'proven' | 'unproven', tone: 'good' | 'attention' | 'critical', headline: string,
  *   sentence: string, action: { label: string, href: string } | null, counts: { backedUp: number, restorable: number,
- *   failing: number, failed: number, stale: number, neverCollected: number }, lastProvenRestoreAt: string | null, failingSince: string | null }}
+ *   failing: number, failed: number, stale: number, neverCollected: number },
+ *   proof: ReturnType<typeof restoreProofSummary>, lastProvenRestoreAt: string | null, failingSince: string | null }}
  */
 export function protectionHeadline(types) {
   const failing = types.filter((entry) => (entry.status === 'failed' && entry.outcome !== 'unavailable')
     || entry.status === 'never-collected' || (entry.status === 'covered' && entry.stale === true));
   const backedUp = types.filter((entry) => entry.status === 'covered' && entry.stale !== true);
-  const restorableTypes = backedUp.filter(restorable);
-  const drills = types
-    .map((entry) => entry.fidelity?.verifiedBy?.at ?? null)
-    .filter((at) => at !== null)
-    .map((at) => new Date(at))
-    .filter((at) => Number.isFinite(at.getTime()));
-  const lastProven = drills.length ? new Date(Math.max(...drills.map((at) => at.getTime()))) : null;
+  const restorableTypes = backedUp.filter(canRestore);
+  // "Restore proven" has one definition (restoreProof.mjs): the Overview tile, What's
+  // protected and Setup all read it, and so does "Last proven restore" here.
+  const proof = restoreProofSummary(types);
+  const lastProven = proof.lastProvenAt ? new Date(proof.lastProvenAt) : null;
   const neverCollected = failing.filter((entry) => entry.status === 'never-collected');
   const failed = failing.filter((entry) => entry.status === 'failed');
   const stale = failing.filter((entry) => entry.status === 'covered');
@@ -83,7 +66,7 @@ export function protectionHeadline(types) {
     backedUp: backedUp.length, restorable: restorableTypes.length, failing: failing.length,
     failed: failed.length, stale: stale.length, neverCollected: neverCollected.length,
   };
-  const base = { counts, lastProvenRestoreAt: lastProven?.toISOString() ?? null, failingSince: failingSince?.toISOString() ?? null };
+  const base = { counts, proof, lastProvenRestoreAt: lastProven?.toISOString() ?? null, failingSince: failingSince?.toISOString() ?? null };
 
   if (failing.length > 0) {
     const subject = plural(failing.length, 'configuration type has', 'configuration types have');

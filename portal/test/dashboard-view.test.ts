@@ -22,6 +22,7 @@ test("the verdict keeps the engine's sentence; alerts can only make its tone wor
     state: "proven", tone: "good", headline: "Protected",
     sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.",
     action: null, counts: { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 },
+    proof: { restorable: 48, proven: 48, tested: 0, untested: 0, lastProvenAt: "2026-09-20T14:00:00Z", href: "/protect?health=proven" },
     lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null,
   };
   assert.deepEqual(overviewVerdict(proven, []), { tone: "good", headline: "Protected", sentence: proven.sentence, action: null });

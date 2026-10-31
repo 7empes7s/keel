@@ -80,9 +80,11 @@ const LOOKUP_TYPES = [
 ];
 
 /**
- * Names for the apps, people and app roles that settings point to by id, from the
- * tenant's newest backup that holds enterprise apps (or from the backup given, when a
- * page shows one backup). An app is found by its object id
+ * Names for the apps, people and app roles that settings point to by id. Each type is
+ * read from the tenant's newest backup that holds that type (the backup given first,
+ * when a page shows one backup and it holds the type): backups run by tier, so people,
+ * Exchange and Defender roles and access packages (Tier 2) sit in other backups than
+ * enterprise apps and directory roles (Tier 1). An app is found by its object id
  * or its app id (the enterprise app's name first), an admin role by its id or template
  * id, a partner organization by its tenant id, an app role by its id in an
  * enterprise app's appRoles. A failed read leaves them unnamed, never the page down.
@@ -94,11 +96,27 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
   let rows: Record<string, unknown>[];
   try {
     ({ rows } = await client.query(
-      `WITH latest AS (
+      // The newest complete backup of each type comes from type_coverage_latest (one row
+      // per tenant and type, kept by triggers), so no backup history is walked. A type it
+      // has no row for falls back to the newest backup holding enterprise apps.
+      `WITH covered AS (
+         SELECT tcl.resource_type AS type, tcl.snapshot_id AS id
+           FROM type_coverage_latest tcl JOIN snapshot s ON s.id = tcl.snapshot_id
+          WHERE tcl.tenant_ref = $1 AND tcl.resource_type = ANY($4::text[])
+       ),
+       apps AS (
          SELECT s.id FROM snapshot s
-          WHERE s.tenant_ref = $1 AND ($5::uuid IS NULL OR s.id = $5::uuid)
+          WHERE s.tenant_ref = $1
             AND EXISTS (SELECT 1 FROM resource_version r WHERE r.snapshot_id = s.id AND r.resource_type = 'servicePrincipal')
           ORDER BY s.started_at DESC LIMIT 1
+       ),
+       latest AS (
+         SELECT type, id FROM covered
+         UNION
+         SELECT types.type, apps.id FROM unnest($4::text[]) AS types(type), apps
+          WHERE types.type NOT IN (SELECT type FROM covered)
+         UNION
+         SELECT types.type, s.id FROM unnest($4::text[]) AS types(type), snapshot s WHERE s.id = $5::uuid AND s.tenant_ref = $1
        )
        SELECT rv.resource_type, lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
               lower(COALESCE(rv.payload->>'templateId', rv.payload->>'roleTemplateId')) AS template_id,
@@ -107,15 +125,14 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
               CASE WHEN rv.resource_type = 'servicePrincipal' AND jsonb_typeof(rv.payload->'appRoles') = 'array'
                    THEN rv.payload->'appRoles' END AS roles
          FROM resource_version rv
-        WHERE rv.snapshot_id IN (SELECT id FROM latest)
-          AND rv.resource_type = ANY($4::text[])
+        WHERE (rv.snapshot_id, rv.resource_type) IN (SELECT id, type FROM latest)
           AND (lower(rv.payload->>'id') = ANY($2::text[])
             OR lower(rv.payload->>'appId') = ANY($2::text[])
             OR lower(COALESCE(rv.payload->>'templateId', rv.payload->>'roleTemplateId')) = ANY($2::text[])
             OR (rv.resource_type = 'crossTenantIdentitySyncPolicyPartner' AND lower(rv.payload->>'tenantId') = ANY($2::text[]))
             OR (rv.resource_type = 'servicePrincipal' AND jsonb_typeof(rv.payload->'appRoles') = 'array'
                 AND EXISTS (SELECT 1 FROM jsonb_array_elements(rv.payload->'appRoles') role WHERE lower(role->>'id') = ANY($3::text[]))))
-        ORDER BY (rv.resource_type = 'servicePrincipal') DESC`,
+        ORDER BY (rv.resource_type = 'servicePrincipal') DESC, (rv.snapshot_id = $5::uuid) IS TRUE DESC`,
       [tenantRef, wantedIds, wantedRoles, LOOKUP_TYPES, snapshotId],
     ));
   } catch (error) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
+import { FindInput } from "@/components/list/find-input";
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { SavedFilters } from "@/components/list/saved-filters";
 import { Segmented } from "@/components/pickers/segmented";
@@ -321,7 +322,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
             <span className="picker-label">Find</span>
             <span className="sel-find-box">
               <Icon name="search" />
-              <input className="bare-input" onChange={(event) => view.set({ q: event.target.value, ...paging.resetPage })} placeholder={`Find ${noun.many}`} type="search" value={query} />
+              <FindInput onChange={(text) => view.set({ q: text, ...paging.resetPage })} placeholder={`Find ${noun.many}`} value={query} />
             </span>
           </label>
         ) : null}

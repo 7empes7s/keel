@@ -1,7 +1,7 @@
 // The setting that changed, with its value before and after, in words. Shared by the
 // Activity panel and Compare, so a value reads the same on both. Pure, so the UI
 // harness and the unit tests use the real code.
-import { entryWords, fieldWords, valueWords } from "@/lib/changes-view";
+import { entryWords, fieldWords, HIDDEN_VALUE, HIDDEN_WORDS, valueWords } from "@/lib/changes-view";
 import { holdsObjectId, replaceObjectIds } from "@/lib/object-ids";
 import { resourceTypeLabel } from "@/lib/presentation";
 
@@ -56,6 +56,7 @@ export const CHANGE_LABELS: Record<ChangeKind, string> = { changed: "Changed", a
 export function readableValue(value: unknown, names: Readonly<Record<string, string>> = {}): unknown {
   if (typeof value === "string") {
     if (value === "<id>") return "an object Keel could not name";
+    if (value === HIDDEN_VALUE) return HIDDEN_WORDS;
     const ref = /^ref:([A-Za-z]+):(.+)$/.exec(value);
     if (ref) return `${ref[2]} (${resourceTypeLabel(ref[1])})`;
     if (value === "ref:unresolved") return "an object Keel could not name";

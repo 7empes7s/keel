@@ -121,7 +121,7 @@ function inventoryWithout(inventory, deletes) {
  */
 export function breakGlassLockoutGate({ configured = true, accounts = [], inventory = {}, groupMembers = () => null, now = new Date() } = {}) {
   const readinessUnder = (proposed, when) => {
-    const evaluated = accounts.map((account) => ({ ...account, ...evaluateAccountReadiness({ account, inventory: proposed, groupMembers, now }) }));
+    const evaluated = accounts.map((account) => ({ ...account, ...evaluateAccountReadiness({ account, inventory: proposed, groupMembers, now, lockout: true }) }));
     const verdict = tenantReadiness(evaluated);
     if (verdict.overall === 'ready') return { allowed: true, reason: `every break-glass account stays ready ${when}` };
     const blocking = evaluated

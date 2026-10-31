@@ -116,7 +116,8 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
     ? { tone: "neutral", text: "Backup only: Keel cannot put these back yet" }
     : {
       tone: counts.proven ? "fine" : "low",
-      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}`,
+      // The same "restore proven" count as What's protected and the Overview.
+      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}${counts.tested ? `, ${counts.tested} ${counts.tested === 1 ? "passes" : "pass"} tests only` : ""}`,
     };
   const reads = counted.filter((item) => READ.includes(backupHealth(item)) && item.lastCollectedAt)
     .map((item) => item.lastCollectedAt!).sort();
@@ -242,13 +243,19 @@ const knownDate = (value: string | null): value is string => value !== null && N
 
 /**
  * The quiet line when nothing runs out soon: the first date a Keel app certificate
- * ends. Only when every app's date is known; otherwise null, so nothing unknown reads as fine.
+ * ends, and which app's it is, so the date can be matched to that app's row below.
+ * Only when every app's date is known; otherwise null, so nothing unknown reads as fine.
  */
 export function credentialsFine(connections: ConnectionExpiry[] | null | undefined): string | null {
   const list = connections ?? [];
   if (!list.length || !list.every((connection) => knownDate(connection.credentialExpiresAt))) return null;
   const first = list.map((connection) => Date.parse(connection.credentialExpiresAt!)).reduce((a, b) => Math.min(a, b));
-  return `Keel's app certificates are valid until at least ${dateWords(new Date(first).toISOString())}.`;
+  const day = dateWords(new Date(first).toISOString());
+  const names = list.filter((connection) => dateWords(connection.credentialExpiresAt!) === day).map((connection) => connection.name);
+  const which = list.length === 1 ? ""
+    : names.length === list.length ? " All of them end that day."
+    : ` ${names.join(" and ")} ${names.length === 1 ? "ends" : "end"} first.`;
+  return `Keel's app certificates are valid until at least ${day}.${which}`;
 }
 
 /** The apps whose certificate end date Keel does not know, by name. */

@@ -118,7 +118,8 @@ export interface BackupFamily {
 /** Backups that finished well in the period, per family (engine/reports/value.mjs). */
 export interface BackupSection {
   withheld: false;
-  settings: { backups: number; lastAt: string | null };
+  // `partial`: settings backups that could not read some types in full. Absent on older reports.
+  settings: { backups: number; partial?: number; lastAt: string | null };
   serviceSettings: BackupFamily;
   content: BackupFamily & { itemsStored: number; bytesStored: number };
 }
@@ -444,12 +445,15 @@ export function backupView(backups: BackupSection | Withheld | undefined): Backu
   if (!backups) return { state: "missing", text: "This report was made before backups of every service were counted." };
   if (isWithheld(backups)) return { state: "withheld", text: "Backups cover the whole tenant, so they are shown only to people who can read all of it." };
   const { settings, serviceSettings, content } = backups;
+  const settingsPartial = settings.partial ?? 0;
   const tiles: BackupTile[] = [
     {
       key: "settings", label: "Entra ID and Intune", icon: "service-entra", count: settings.backups, of: null, word: null,
       detail: settings.backups === 1 ? "complete backup" : "complete backups",
-      problem: settings.backups ? null : "No complete backup in this period", problemTone: "urgent",
-      tone: settings.backups ? "fine" : "urgent", meter: null,
+      problem: !settings.backups ? `No complete backup in this period${settingsPartial ? `; ${settingsPartial} only partly done` : ""}`
+        : settingsPartial ? `${settingsPartial} more only partly done` : null,
+      problemTone: settings.backups ? "soon" : "urgent",
+      tone: !settings.backups ? "urgent" : settingsPartial ? "soon" : "fine", meter: null,
     },
     {
       key: "service-settings", label: "Service settings", icon: "settings",
@@ -479,7 +483,7 @@ export function backupView(backups: BackupSection | Withheld | undefined): Backu
     .filter((group) => group.rows.length > 0)
     .sort((a, b) => worstRank(a) - worstRank(b));
   const needsLook = [serviceSettings, content].reduce((sum, family) => { const c = familyCounts(family); return sum + c.partial + c.failed + c.notRun; }, 0)
-    + (settings.backups ? 0 : 1);
+    + (settings.backups && !settingsPartial ? 0 : 1);
   const urgent = !settings.backups || [serviceSettings, content].some((family) => familyTone(family) === "urgent");
   const headline = needsLook
     ? { text: `${plural(needsLook, "area needs", "areas need")} a look`, tone: urgent ? "urgent" as const : "soon" as const }

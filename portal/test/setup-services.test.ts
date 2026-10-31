@@ -99,8 +99,8 @@ function connection(extra: Partial<ConnectionExpiry>): ConnectionExpiry {
 
 test(`a Keel app certificate warns ${EXPIRY_WARNING_DAYS} days before it ends, with the Entra page to renew it`, () => {
   assert.deepEqual(credentialWarnings([connection({})], NOW), []);
-  assert.equal(credentialsFine([connection({}), connection({ role: "settings-restorer", appId: "app-restorer", credentialExpiresAt: "2027-03-01T00:00:00.000Z" })]),
-    "Keel's app certificates are valid until at least 1 Mar 2027.");
+  assert.equal(credentialsFine([connection({}), connection({ role: "settings-restorer", name: "Keel Settings Restorer", appId: "app-restorer", credentialExpiresAt: "2027-03-01T00:00:00.000Z" })]),
+    "Keel's app certificates are valid until at least 1 Mar 2027. Keel Settings Restorer ends first.");
 
   const [soon] = credentialWarnings([connection({ credentialExpiresAt: "2026-11-12T00:00:00.000Z" })], NOW);
   assert.equal(soon.tone, "soon");
@@ -136,7 +136,15 @@ test("an unknown date is never shown as fine, and the soonest certificate comes 
   assert.deepEqual(credentialsUnknown(garbage), ["Keel Settings Reader"]);
   // The earliest date wins whatever the offset format.
   assert.equal(credentialsFine([connection({ credentialExpiresAt: "2027-03-01T01:00:00+02:00" }), connection({ credentialExpiresAt: "2027-02-28T23:30:00Z" })]),
-    "Keel's app certificates are valid until at least 28 Feb 2027.");
+    "Keel's app certificates are valid until at least 28 Feb 2027. All of them end that day.");
+  // Audit 2026-10-31: the line names the app whose certificate ends first, so its date
+  // matches that app's row and is not read as a date for every certificate.
+  assert.equal(credentialsFine([
+    connection({ name: "Keel Settings Reader", credentialExpiresAt: "2028-10-13T10:00:00Z" }),
+    connection({ role: "settings-restorer", name: "Keel Settings Restorer", credentialExpiresAt: "2027-10-29T23:47:51Z" }),
+    connection({ role: "content-reader", name: "Keel Content Reader", credentialExpiresAt: "2028-10-13T09:00:00Z" }),
+  ]), "Keel's app certificates are valid until at least 29 Oct 2027. Keel Settings Restorer ends first.");
+  assert.equal(credentialsFine([connection({})]), "Keel's app certificates are valid until at least 1 Jun 2027.");
   const both = credentialWarnings([
     connection({ credentialExpiresAt: "2026-11-15T00:00:00.000Z" }),
     connection({ role: "content-reader", name: "Keel Content Reader", credentialExpiresAt: "2026-11-01T00:00:00.000Z" }),

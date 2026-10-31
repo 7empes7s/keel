@@ -193,6 +193,10 @@ const CSS = `
 .bl-decision-what { margin: 0; font-size: 0.9375rem; line-height: 1.5; }
 .bl-decision-scope { margin: 0; color: var(--text-soft); font-size: 0.875rem; overflow-wrap: anywhere; }
 .bl-decision-scope b { color: var(--text); }
+.bl-not-saved { font-size: 0.875rem; color: var(--text-soft); }
+.bl-not-saved summary { cursor: pointer; color: var(--text); }
+.bl-not-saved ul { margin: 0.5rem 0 0; padding-left: 1.25rem; max-height: 12rem; overflow: auto; }
+.bl-not-saved b { color: var(--text); }
 .bl-reason small { color: var(--text-soft); font-size: 0.75rem; }
 .bl-input { width: 100%; min-height: 2.5rem; padding: 0 var(--space-sm); border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--text); font: inherit; }
 .bl-input:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }

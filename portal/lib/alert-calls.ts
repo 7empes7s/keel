@@ -8,6 +8,8 @@ export interface AlertCallResult {
   ok: boolean;
   status: number;
   state: string | null;
+  // After an acknowledge: who owns the alert now (the acknowledger), when Keel named them.
+  owner?: { id: string; name: string; pseudonym?: boolean } | null;
 }
 
 export const ALERT_ROUTES: Record<AlertAction, string> = {
@@ -25,9 +27,16 @@ export async function alertCall(alertId: string, action: AlertAction, note?: str
     headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
     body: JSON.stringify(body),
   });
-  const payload = (await response.json().catch(() => null)) as { alert?: { state?: unknown } } | null;
+  const payload = (await response.json().catch(() => null)) as { alert?: { state?: unknown; owner?: unknown } } | null;
   const state = typeof payload?.alert?.state === "string" ? payload.alert.state : null;
-  return { ok: response.ok, status: response.status, state };
+  const owner = ownerOf(payload?.alert?.owner);
+  return { ok: response.ok, status: response.status, state, ...(owner ? { owner } : {}) };
+}
+
+function ownerOf(value: unknown): AlertCallResult["owner"] {
+  const owner = value as { id?: unknown; name?: unknown; pseudonym?: unknown } | null | undefined;
+  if (typeof owner?.id !== "string" || typeof owner.name !== "string" || !owner.name) return null;
+  return { id: owner.id, name: owner.name, ...(owner.pseudonym === true ? { pseudonym: true } : {}) };
 }
 
 /** The API's answer in words, for a toast. */

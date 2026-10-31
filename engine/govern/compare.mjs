@@ -39,6 +39,7 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
 import { templateFamilyOf } from '../insights/taxonomy.mjs';
+import { diffNormal, maskCredentials, sameForDiff } from '../safety/diffHygiene.mjs';
 
 export const COMPARE_VERSION = 1;
 export const COMPARE_SECTIONS = Object.freeze(['settings', 'workloads', 'content']);
@@ -140,8 +141,10 @@ export function portablePayload(payload, references = []) {
 // server-owned would differ from one hashed after (issue #288), so both sides are
 // projected under the current rules.
 function settingsFingerprint(row, { portable }) {
-  if (portable) return sha(comparedSettings(row.resource_type, portablePayload(row.payload, row.references)));
-  return sha(comparedSettings(row.resource_type, row.payload));
+  // In the form diffs compare (engine/safety/diffHygiene.mjs): two copies that differ
+  // only in empty values or list order are the same.
+  if (portable) return sha(diffNormal(comparedSettings(row.resource_type, portablePayload(row.payload, row.references))));
+  return sha(diffNormal(comparedSettings(row.resource_type, row.payload)));
 }
 
 function fieldDifferences(resourceType, before, after) {
@@ -348,7 +351,7 @@ export function compareWorkloads(left, right, { portable = false } = {}) {
         }
         const x = clean(fa.get(path));
         const y = clean(fb.get(path));
-        if (JSON.stringify(x) !== JSON.stringify(y)) fields.push({ path, kind: 'changed', before: x, after: y });
+        if (!sameForDiff(x, y)) fields.push({ path, kind: 'changed', before: maskCredentials(x, path), after: maskCredentials(y, path) });
       }
       if (fields.length === 0) { counts.unchanged += 1; continue; }
       counts.changed += 1;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { ApprovalModeProvider } from "@/components/approval-mode-context";
 import { type NavSection } from "@/components/nav-links";
 import { AppShell } from "@/components/shell/app-shell";
 import { KitPage } from "./kit";
@@ -2636,7 +2637,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   const data = { newest: { id: "snap-4", takenAt: RESTORE_SNAPSHOTS[0].completedAt }, changes, more: 0, earlier: isNewest ? { id: "snap-3", takenAt: RESTORE_SNAPSHOTS[1].completedAt, count: earlierCount } : null };
   const count = changes.length;
   return <>
-    <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes." generatedAt={now} section="Restore"
+    <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and nothing changes until it is approved." generatedAt={now} section="Restore"
       status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore" />
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
@@ -2733,6 +2734,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       const items = DRIFT_DECIDED.map(hideActors);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items))}
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
+    }
+    case "/drift/solo": {
+      // Approval mode Solo: the undo lines say the person who asked may approve.
+      const items = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      return <ApprovalModeProvider mode="solo">{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={SERVICE_CHANGES.length} summary={DRIFT_SUMMARY} /></ApprovalModeProvider>;
     }
     case "/drift":
     case "/drift/services":

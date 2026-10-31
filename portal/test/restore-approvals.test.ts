@@ -112,7 +112,7 @@ test("a high-risk kind of restore turns off only with the risk warning confirmed
 test("the audit record says who turned a service's or a kind of restore's approvals on or off, under Approvals", () => {
   assert.equal(
     evidenceSentence({ kind: "restore-approval-setting", actor: ADMIN, subject: { service: "SharePoint", approvalRequired: false } }, "Ada Admin"),
-    "Ada Admin turned off restore approvals for SharePoint and OneDrive, so its high-impact restore changes no longer wait for a second person",
+    "Ada Admin turned off restore approvals for SharePoint and OneDrive, so its high-impact restore changes no longer wait for approval",
   );
   assert.equal(
     evidenceSentence({ kind: "restore-approval-setting", actor: ADMIN, subject: { service: "Entra", approvalRequired: true } }, "Ada Admin"),

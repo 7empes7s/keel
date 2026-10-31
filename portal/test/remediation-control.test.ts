@@ -33,6 +33,8 @@ test("undoing changes previews before confirming, blocks refusals, and invalidat
       }];
     },
     useMemo<T>(compute: () => T) { return compute(); },
+    // Context reads (the approval mode) return the default: two people.
+    useContext<T>(context: { _currentValue: T }) { return context._currentValue; },
   };
   // The chosen changes come from the shared list; changing the choice re-renders the
   // decision with different items.

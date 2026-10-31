@@ -29,7 +29,7 @@ import { getRestoreWorkloads, type RestoreWorkload } from "@/lib/restore-workloa
 import type { OpenFollowUpWork } from "@/lib/types";
 
 const RESTORE_JOB_KINDS = ["restore"];
-const DESCRIPTION = "Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes.";
+const DESCRIPTION = "Put settings back as they were in a backup. Pick the day, choose what to undo, and nothing changes until it is approved.";
 
 // Plan task 17 (portal-design §4.1): the restore surface. Selection here is
 // dependency-closed — the page lists a snapshot's resources, the client component

@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import { useState } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -15,7 +16,7 @@ import { reasonProblem } from "@/lib/written-reason";
 // says plainly that KEEL does not back up content and that restoring the old
 // setting later does not bring back what was deleted or disclosed. Promotion
 // needs a separate approval of exactly these effects by someone other than
-// the requester.
+// the requester, or by the requester when the approval mode is Solo.
 export type ContentEffectName =
   | "retention-reducing"
   | "hold-releasing"
@@ -127,6 +128,7 @@ interface PanelProps {
 export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approvals, canApprove, onApproved, names }: PanelProps) {
   const [justification, setJustification] = useState("");
   const [busy, setBusy] = useState(false);
+  const approvalWords = useApprovalWords();
   if (effects.length === 0) return null;
 
   async function approve() {
@@ -162,7 +164,7 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
         </p>
       ) : (
         <p className="content-effect-pending">
-          Not yet approved. The restore will be refused until someone other than the person who asked approves these changes.
+          Not yet approved. The restore will be refused until {approvalWords.approver} approves these changes.
         </p>
       )}
       {canApprove && approvals.length === 0 ? (

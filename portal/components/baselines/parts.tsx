@@ -16,7 +16,7 @@ export function RiskChip({ tone, children }: { tone: RiskTone | null; children: 
 }
 
 /** A heading with one plain line under it that says what the section is for. */
-export function SectionHead({ id, title, about, extra }: { id: string; title: string; about: string; extra?: ReactNode }) {
+export function SectionHead({ id, title, about, extra }: { id: string; title: string; about: ReactNode; extra?: ReactNode }) {
   return (
     <div className="bl-section-head">
       <div>

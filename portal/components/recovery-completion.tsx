@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import { useEffect, useState } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -87,6 +88,7 @@ interface ChecklistProps {
 
 export function CompletionChecklist({ resources, canComplete, busyItem = null, onComplete, onReopen }: ChecklistProps) {
   const [openItem, setOpenItem] = useState<string | null>(null);
+  const approvalWords = useApprovalWords();
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   if (resources.length === 0) {
     return <p className="ui-calm"><Icon name="check-circle" />Nothing to follow up: everything was restored in full.</p>;
@@ -133,7 +135,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       ) : null}
                       {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
                         <small className="completion-evidence completion-next-step">
-                          Next: ask for the enforcement step. A second person approves it, and KEEL closes this once the policy reads back as on.
+                          Next: ask for the enforcement step. {approvalWords.approvesIt}, and KEEL closes this once the policy reads back as on.
                         </small>
                       ) : null}
                     </div>

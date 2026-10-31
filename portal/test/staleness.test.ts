@@ -39,10 +39,11 @@ function coverageData(type: CoverageType): CoverageData {
     generatedAt: "2026-09-08T13:00:00.000Z",
     snapshot: null,
     summary: {
-      covered: 1,
+      covered: type.stale ? 0 : 1,
       failed: 0,
       notCovered: 0,
       neverCollected: 0,
+      unavailable: 0,
       stale: type.stale ? 1 : 0,
       total: 1,
     },
@@ -69,10 +70,11 @@ function dashboardData(stale: number): Pick<
       status: "complete",
     },
     coverage: {
-      covered: 1,
+      covered: 1 - stale,
       failed: 0,
       notCovered: 0,
       neverCollected: 0,
+      unavailable: 0,
       stale,
       total: 1,
     },
@@ -109,8 +111,8 @@ test("the dashboard alert appears only when at least one type is stale", () => {
   assert.deepEqual(staleAlerts, [{
     key: "stale",
     severity: "warning",
-    title: "1 kind of setting is out of date",
-    detail: "They were backed up, but not recently enough for how critical they are. Run a backup.",
+    title: "1 kind of setting is out of date or never backed up",
+    detail: "They have no backup recent enough for how critical they are. Run a backup.",
     href: "/protect?health=out-of-date",
   }]);
   assert.equal(freshAlerts.some((alert) => alert.title.includes("out of date")), false);

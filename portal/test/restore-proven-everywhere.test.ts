@@ -52,18 +52,18 @@ function dashboard(headline: ProtectionHeadline): DashboardData {
   return {
     generatedAt: NOW, activeBaseline: null, lastCollection: null, lastCompletedCollectionAt: null,
     openDriftByBlastRadius: [], openDriftTotal: 0, driftTrend: [],
-    coverage: { covered: 0, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, total: 0 },
+    coverage: { covered: 0, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 0 },
     evidence: { ok: true, chainLength: 0 }, alerts: [], headline,
   } as DashboardData;
 }
 
 test("the Overview tile, What's protected and Setup show the same restore proven count", () => {
-  // Overview: the engine headline over the report's entries plus the workloads.
-  const headline = protectionHeadline([...RAW, ...headlineEntries(WORKLOADS)] as never) as ProtectionHeadline;
-  const tile = overviewTiles(dashboard(headline), null).find((entry) => entry.key === "restore")!;
-
   // What's protected and Setup: the portal's normalised kinds, workloads added.
   const kinds = [...RAW.map((entry) => normalizeCoverageType(entry)), ...WORKLOADS];
+
+  // Overview: the engine headline over the same kinds, as getDashboardData builds it.
+  const headline = protectionHeadline(headlineEntries(RAW, kinds) as never) as ProtectionHeadline;
+  const tile = overviewTiles(dashboard(headline), null).find((entry) => entry.key === "restore")!;
   const counts = protectCounts(kinds);
 
   // Two writes ran live and one drill measured the group; the workload with a declared

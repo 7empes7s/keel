@@ -50,11 +50,12 @@ import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
-import { headlineEntries, withWorkloadCoverage, workloadKinds } from "@/lib/workload-kinds";
+import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
+import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
 import { countOpenServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
-import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
+import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
@@ -442,8 +443,8 @@ const RESTORABLE_WORKLOADS: ReadonlySet<string> = new Set(
 
 async function coverageFor(client: KeelClient, ref: string, report?: UnknownRecord): Promise<CoverageData> {
   const raw = report ?? await rawCoverageReport(client, ref);
-  const rawSummary = raw.summary as UnknownRecord;
   const types = (raw.types as UnknownRecord[]).map(normalizeCoverageType);
+  const workloads = workloadKinds(raw.workloads, RESTORABLE_WORKLOADS);
 
   return {
     generatedAt: iso(raw.generatedAt) ?? new Date().toISOString(),
@@ -455,16 +456,10 @@ async function coverageFor(client: KeelClient, ref: string, report?: UnknownReco
           completedAt: iso((raw.snapshot as UnknownRecord).completedAt),
         }
       : null,
-    summary: {
-      covered: Number(rawSummary.covered ?? 0),
-      failed: Number(rawSummary.failed ?? 0),
-      notCovered: Number(rawSummary.notCovered ?? 0),
-      neverCollected: Number(rawSummary.neverCollected ?? 0),
-      stale: Number(rawSummary.stale ?? 0),
-      total: types.length,
-    },
+    // One count for every page: the types and workloads by backupHealth, adding up to total.
+    summary: coverageSummary([...types, ...workloads]),
     types,
-    workloads: workloadKinds(raw.workloads, RESTORABLE_WORKLOADS),
+    workloads,
     liveEvidence: normalizeLiveEvidence(raw.liveEvidence),
   };
 }
@@ -1393,23 +1388,25 @@ export function buildAlerts({
     });
   }
 
-  if (coverage.stale > 0) {
+  // The same buckets as the ring and What's protected: out of date and never backed up
+  // share the "out-of-date" list there, so they share one row here.
+  const late = coverage.stale + coverage.neverCollected;
+  if (late > 0) {
     alerts.push({
       key: "stale",
       severity: "warning",
-      title: `${kinds(coverage.stale, "kind of setting is", "kinds of settings are")} out of date`,
-      detail: "They were backed up, but not recently enough for how critical they are. Run a backup.",
+      title: `${kinds(late, "kind of setting is", "kinds of settings are")} out of date or never backed up`,
+      detail: "They have no backup recent enough for how critical they are. Run a backup.",
       href: "/protect?health=out-of-date",
     });
   }
 
-  const uncovered = coverage.notCovered + coverage.neverCollected;
-  if (uncovered > 0) {
+  if (coverage.notCovered > 0) {
     alerts.push({
       key: "uncovered",
       severity: "warning",
-      title: `${kinds(uncovered, "kind of setting is", "kinds of settings are")} not backed up`,
-      detail: "Keel knows these kinds of settings but has no backup of them.",
+      title: `${kinds(coverage.notCovered, "kind of setting is", "kinds of settings are")} not backed up by Keel yet`,
+      detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.",
       href: "/protect",
     });
   }
@@ -1491,7 +1488,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     const coverageData = await coverageFor(client, ref, rawCoverage);
     // Task-129: the Overview sentence comes from this same report, never a constant.
     // The workloads join the Entra ID and Intune types, as on What's protected.
-    const headline = protectionHeadline([...(rawCoverage.types as unknown[]), ...headlineEntries(coverageData.workloads)] as never) as ProtectionHeadline;
+    const headline = protectionHeadline(headlineEntries(rawCoverage.types as unknown[], withWorkloadKinds(coverageData).types) as never) as ProtectionHeadline;
     const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
 
     const openDriftByBlastRadius = [...new Set([
@@ -1518,7 +1515,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       openDriftByBlastRadius,
       openDriftTotal: openChangeCount(drift.length, serviceChanges.total),
       driftTrend,
-      coverage: withWorkloadCoverage(coverageData.summary, coverageData.workloads),
+      coverage: coverageData.summary,
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
@@ -1572,7 +1569,9 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
-    return { generatedAt: now.toISOString(), metrics, incidents, storage };
+    // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
+    const kinds = resilienceKinds((await coverageFor(client, ref)).types);
+    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage };
   });
 }
 

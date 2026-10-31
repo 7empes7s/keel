@@ -74,24 +74,28 @@ export function verdictAction(headline: ProtectionHeadline): { label: string; hr
 export const COVERAGE_LINKS = {
   covered: "/protect?health=backed-up",
   failed: "/protect?health=failed",
+  late: "/protect?health=out-of-date",
   uncovered: "/protect",
+  unavailable: "/protect",
 } as const;
 
 export interface CoverageSegment { key: keyof typeof COVERAGE_LINKS; label: string; value: number; href: string }
 
-/** The ring's three parts, each a link to its list. */
+/**
+ * The ring's parts, each a link to its list. They are the coverage buckets
+ * (lib/protect-view.ts coverageSummary), so they add up to every kind Keel knows.
+ * "Not on this tenant" is left out when there are none.
+ */
 export function coverageSegments(coverage: CoverageSummary): { segments: CoverageSegment[]; total: number; percent: number } {
-  const uncovered = coverage.notCovered + coverage.neverCollected;
-  const total = Math.max(coverage.total, coverage.covered + coverage.failed + uncovered, 1);
-  return {
-    segments: [
-      { key: "covered", label: "Backed up", value: coverage.covered, href: COVERAGE_LINKS.covered },
-      { key: "failed", label: "Failed", value: coverage.failed, href: COVERAGE_LINKS.failed },
-      { key: "uncovered", label: "Not backed up", value: uncovered, href: COVERAGE_LINKS.uncovered },
-    ],
-    total,
-    percent: Math.round((coverage.covered / total) * 100),
-  };
+  const total = Math.max(coverage.total, 1);
+  const segments: CoverageSegment[] = [
+    { key: "covered", label: "Backed up", value: coverage.covered, href: COVERAGE_LINKS.covered },
+    { key: "failed", label: "Failed", value: coverage.failed, href: COVERAGE_LINKS.failed },
+    { key: "late", label: "Out of date or never", value: coverage.stale + coverage.neverCollected, href: COVERAGE_LINKS.late },
+    { key: "uncovered", label: "Not backed up by Keel yet", value: coverage.notCovered, href: COVERAGE_LINKS.uncovered },
+  ];
+  if (coverage.unavailable) segments.push({ key: "unavailable", label: "Not on this tenant", value: coverage.unavailable, href: COVERAGE_LINKS.unavailable });
+  return { segments, total, percent: Math.round((coverage.covered / total) * 100) };
 }
 
 const RISK_ORDER = ["tenant-lockout", "access-affecting", "cosmetic"];
@@ -215,15 +219,16 @@ export interface OverviewTile {
 export function overviewTiles(data: DashboardData, pendingApprovals: number | null): OverviewTile[] {
   const { coverage, headline } = data;
   const { segments, total } = coverageSegments(coverage);
-  const [covered, failed, uncovered] = segments.map((segment) => segment.value);
-  const late = coverage.stale + coverage.neverCollected;
+  const value = (key: CoverageSegment["key"]) => segments.find((segment) => segment.key === key)?.value ?? 0;
+  const [covered, failed, late] = [value("covered"), value("failed"), value("late")];
+  const uncovered = value("uncovered") + value("unavailable");
   const tiles: OverviewTile[] = [{
     key: "backups", label: "Backups", icon: "backup",
     value: failed ? `${failed.toLocaleString("en-GB")} failed` : late ? `${late.toLocaleString("en-GB")} out of date` : `${covered.toLocaleString("en-GB")} backed up`,
     detail: `${covered.toLocaleString("en-GB")} of ${plural(total, "kind", "kinds")} backed up`,
-    href: failed ? COVERAGE_LINKS.failed : late ? "/protect?health=out-of-date" : "/protect",
+    href: failed ? COVERAGE_LINKS.failed : late ? COVERAGE_LINKS.late : "/protect",
     tone: failed ? "urgent" : late ? "soon" : undefined,
-    meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "neutral", share: uncovered / total }],
+    meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "soon", share: late / total }, { tone: "neutral", share: uncovered / total }],
   }];
 
   // "Restore proven" is counted once (engine/coverage/restoreProof.mjs), so this tile,

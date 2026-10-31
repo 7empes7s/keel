@@ -520,6 +520,19 @@ function storageFrom(): StorageResidency {
   return { ...storage, basis: storage.configured ? basis : null };
 }
 
+// The storage risk the Resilience page marks Check soon: storage that cannot lock
+// backups, or no storage details at all. Undefined when the details could not be read.
+function backupStorageRisk(): DashboardData["backupStorage"] {
+  try {
+    const storage = storageFrom();
+    if (!storage.configured) return "unknown";
+    return storage.immutability === "unsupported" ? "deletable" : "other";
+  } catch (error) {
+    console.error("[keel-portal] overview backup storage state unavailable", error);
+    return undefined;
+  }
+}
+
 export async function getComplianceData(): Promise<ComplianceData> {
   const ref = tenantRef();
   const now = new Date();
@@ -1335,10 +1348,11 @@ export function buildAlerts({
   coverage,
   evidence,
   offsite,
+  backupStorage,
 }: Pick<
   DashboardData,
   "activeBaseline" | "lastCollection" | "coverage" | "evidence"
-> & Partial<Pick<DashboardData, "offsite">>): DashboardAlert[] {
+> & Partial<Pick<DashboardData, "offsite" | "backupStorage">>): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
   const kinds = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -1413,16 +1427,33 @@ export function buildAlerts({
     });
   }
 
-  // No safe off-site copy: one Check soon item, linked to Resilience (the same recoverable
-  // point that page shows). Left out while nothing is backed up yet: that alert comes first.
-  if (offsite && !offsite.measured && coverage.covered > 0) {
-    alerts.push({
-      key: "no-offsite",
-      severity: "warning",
-      title: "No safe copy outside this server",
-      detail: "If this server is lost, its backups are lost with it. Fix the daily off-site copy.",
-      href: "/resilience",
-    });
+  // Backup safety is one Check soon item, linked to Resilience (the same recoverable point
+  // and storage that page shows): no safe off-site copy, backups that can be deleted where
+  // they are kept, or both in one sentence. Left out while nothing is backed up yet: that
+  // alert comes first.
+  const noOffsite = Boolean(offsite && !offsite.measured);
+  const storageRisk = backupStorage === "deletable" || backupStorage === "unknown" ? backupStorage : null;
+  if (coverage.covered > 0 && (noOffsite || storageRisk)) {
+    const storageSentence = storageRisk === "deletable"
+      ? " They can also be deleted where they are kept."
+      : storageRisk === "unknown" ? " Keel also cannot tell whether they can be deleted where they are kept." : "";
+    alerts.push(noOffsite
+      ? {
+        key: "no-offsite",
+        severity: "warning",
+        title: "No safe copy outside this server",
+        detail: `If this server is lost, its backups are lost with it.${storageSentence} Fix the daily off-site copy.`,
+        href: "/resilience",
+      }
+      : {
+        key: "deletable",
+        severity: "warning",
+        title: storageRisk === "deletable" ? "Backups can be deleted" : "Backup storage unknown",
+        detail: storageRisk === "deletable"
+          ? "They are kept on storage that cannot lock them, so anyone with access can delete them. Move them to storage that blocks deletion."
+          : "Keel cannot tell whether backups can be deleted where they are kept. Set the storage details on the Keel server.",
+        href: "/resilience",
+      });
   }
 
   // getEvidenceIntegrity checks the record's own hash chain, not the off-site checkpoint,
@@ -1544,6 +1575,7 @@ export async function getDashboardData(): Promise<DashboardData> {
           console.error("[keel-portal] overview off-site copy state unavailable", error);
           return undefined;
         }),
+      backupStorage: backupStorageRisk(),
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),

@@ -16,6 +16,7 @@
 // gets them; the portal only turns the refusal into an approval request.
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { MAX_IGNORE_DAYS } from '../store/openDrift.mjs';
+import { selfApprovalAllowed } from './approvalMode.mjs';
 
 export const DISPOSE_APPROVAL_ACTION = 'dispose';
 export { MAX_IGNORE_DAYS };
@@ -96,21 +97,26 @@ export function serviceChangeNeedsReview({ workload, blastRadius, changeType }) 
 
 /**
  * The approval that lets this decision run, checked, or a refusal. It must be an
- * approved 'dispose' request, made by the person now acting, decided by someone else,
- * and for exactly this decision (`matches` compares its params).
+ * approved 'dispose' request, made by the person now acting, decided by someone else
+ * (or self-approved while `tenantRef`'s approval mode is solo, approvalMode.mjs), and
+ * for exactly this decision (`matches` compares its params).
  */
-export async function assertDispositionApproval(client, { approvalId, actor, matches }) {
+export async function assertDispositionApproval(client, { approvalId, actor, matches, tenantRef = null }) {
   if (typeof approvalId !== 'string' || approvalId.length === 0) throw new DispositionReviewRequiredError();
   const { rows: [request] } = await client.query(
-    `SELECT id, action, params, requested_by, decided_by, status, created_at FROM approval_request
+    `SELECT id, action, params, requested_by, decided_by, status, created_at, self_approved FROM approval_request
       WHERE id::text = $1`,
     [approvalId],
   );
   if (!request || request.action !== DISPOSE_APPROVAL_ACTION) throw new DispositionApprovalError('no such decision approval');
   if (request.status !== 'approved') throw new DispositionApprovalError(`the decision approval is ${request.status}, not approved`);
   if (request.requested_by !== actor) throw new DispositionApprovalError('the decision approval was asked for by someone else');
-  if (!request.decided_by || request.decided_by === request.requested_by) {
-    throw new DispositionApprovalError('the decision approval was not made by a second person');
+  if (!request.decided_by) throw new DispositionApprovalError('the decision approval was not made by a second person');
+  if (request.decided_by === request.requested_by
+    && !(request.self_approved === true && await selfApprovalAllowed(client, { tenantRef }))) {
+    throw new DispositionApprovalError(request.self_approved === true
+      ? 'the decision approval was self-approved, and approvals need two people again; ask again'
+      : 'the decision approval was not made by a second person');
   }
   if (!matches(request.params ?? {})) throw new DispositionApprovalError('the decision approval is for another decision');
   return request;

@@ -20,6 +20,8 @@ export interface ChangeIntent {
   transitionDigest: string;
   owner: IntentPerson;
   approver: IntentPerson;
+  /** The owner approved it themselves, under solo approval mode. */
+  selfApproved?: boolean;
   reason: string;
   externalChangeId: string | null;
   sourceDriftId: string | null;

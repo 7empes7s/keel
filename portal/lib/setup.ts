@@ -52,7 +52,10 @@ export function guardedSetupState(deps: SetupReadDeps = {}) {
       console.error(error instanceof Error ? error.message : "setup: connections could not be recorded");
     }
     return Response.json(
-      { ...state, connections, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
+      // The page's "now" is when this answer was put together, after the connection check
+      // above: that check records its own time, so the setup state's earlier time would
+      // make every app read "last checked in the future".
+      { ...state, generatedAt: new Date().toISOString(), connections, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
       { headers: NO_STORE },
     );
   }, deps);

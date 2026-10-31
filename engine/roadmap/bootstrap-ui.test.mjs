@@ -181,6 +181,17 @@ test('setup state reads the journal for each scope and reports steps not checked
   assert.ok(finished.steps.every((step) => step.progress === 'done'));
   assert.equal(done.collect.allowed, true);
   assert.equal(done.firstCollection, null);
+
+  // Audit 2026-10-31: "First backup" is the first one that finished, not the newest.
+  // Times are relative to the run.
+  const { rows: [first] } = await client.query(`INSERT INTO snapshot(tenant_ref, status, started_at, completed_at)
+    VALUES ($1, 'complete', now() - interval '26 days 1 hour', now() - interval '26 days') RETURNING id`, [tenantRef]);
+  await client.query(`INSERT INTO snapshot(tenant_ref, status, started_at, completed_at)
+    VALUES ($1, 'complete', now() - interval '10 minutes', now() - interval '7 minutes')`, [tenantRef]);
+  await client.query(`INSERT INTO snapshot(tenant_ref, status, started_at) VALUES ($1, 'running', now() - interval '30 days')`, [tenantRef]);
+  const backedUp = await loadSetupState(client, { tenantRef, viewerId: owner.id });
+  assert.equal(backedUp.firstCollection.snapshotId, first.id);
+  assert.ok(Date.now() - Date.parse(backedUp.firstCollection.completedAt) >= 26 * 86400000);
 });
 
 test('portal: setup route, first-collect gate and setup page', async (t) => {
@@ -304,6 +315,18 @@ test('portal: setup route, first-collect gate and setup page', async (t) => {
         assert.equal(read.run.state, 'waiting-for-you');
         assert.equal(read.steps.find(s => s.kind === 'workload-rbac').progress, 'waiting-for-you');
         assert.equal(view.canProvision, true);
+
+        // Audit 2026-10-31: the connection check records its own time after the setup
+        // state is read, so the page's "now" comes after it: no app was "last checked
+        // in the future".
+        const withApps = () => ({ ...host(), apps: {
+          collector: { appId: 'collector-app', credentialRef: 'vault:collector', credentialExpiresAt: new Date(Date.now() + 400 * 86400000).toISOString() },
+          restorer: { appId: 'restorer-app', credentialRef: 'vault:restorer', credentialExpiresAt: new Date(Date.now() + 400 * 86400000).toISOString() },
+        } });
+        const checked = await (await guardedSetupState({ host: withApps })(new Request('http://localhost/api/setup', { headers: headers(...OWNER) }))).json();
+        const seen = checked.connections.filter(c => c.observed?.at);
+        assert.ok(seen.length > 0, 'the check recorded when it looked');
+        for (const c of seen) assert.ok(Date.parse(c.observed.at) <= Date.parse(checked.generatedAt), c.role + ' checked after the page time');
 
         // The page shows it as waiting, never done, to a configuration holder only.
         const page = require('./app/setup/page.tsx').default;

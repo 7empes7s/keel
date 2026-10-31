@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -4162,6 +4162,31 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   await expect(page.locator("#ec-attention .ui-calm")).toBeVisible();
   await expect(page.locator(".pg-empty")).toContainText("No open change to approve");
 });
+
+// Audit B3: picking a change or a setting must not move a field under the pointer.
+// The settings list follows every typed field and the summary keeps its lines.
+for (const width of [1278, 390]) {
+  test(`emergency change form keeps its fields still at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/emergency-changes", "light");
+    const form = page.locator("form.change-intent-form");
+    const top = (locator: Locator) => locator.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
+    const fields = [form.getByLabel("Who made the change"), form.getByLabel("Change ticket (optional)"), form.getByLabel("Reason")];
+    const submit = form.getByRole("button", { name: "Approve emergency change" });
+    const before = await Promise.all(fields.map(top));
+    // The first select is the change picker; its label text includes the chosen option.
+    await form.locator("select").first().selectOption({ label: "Sales CRM (app registration), detected 2 Oct 2026, 09:10 UTC" });
+    await expect(form.locator(".pg-pick")).toHaveCount(4);
+    expect(await Promise.all(fields.map(top))).toEqual(before);
+    const button = await top(submit);
+    for (const name of ["Web.redirect Uris", "Notes"]) {
+      await form.getByLabel(name).check();
+      await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back");
+      expect(await Promise.all(fields.map(top))).toEqual(before);
+      expect(await top(submit)).toBe(button);
+    }
+  });
+}
 
 // Integrations: held-back updates lead as red alerts with the raw error behind Show
 // details; ServiceNow and each destination carry a coloured state and counts.

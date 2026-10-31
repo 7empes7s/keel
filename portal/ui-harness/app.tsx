@@ -719,6 +719,16 @@ const INTENT_CHANGES: IntentCandidate[] = [{
     { field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } },
     { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
   ],
+}, {
+  // A change with many settings and long values: switching to it must not move the
+  // fields under the settings list.
+  driftId: "d9300000-0000-4000-8000-000000000004", naturalKey: "application:Sales CRM", resourceType: "application", detectedAt: "2026-10-02T09:10:00Z",
+  transitions: [
+    { field: "displayName", before: { present: true, value: "Sales CRM" }, after: { present: true, value: "Sales CRM (migration)" } },
+    { field: "signInAudience", before: { present: true, value: "AzureADMyOrg" }, after: { present: true, value: "AzureADMultipleOrgs" } },
+    { field: "web.redirectUris", before: { present: true, value: ["https://crm.contoso.com/signin-oidc"] }, after: { present: true, value: ["https://crm.contoso.com/signin-oidc", "https://crm-migration.contoso.com/signin-oidc", "https://localhost:44321/signin-oidc"] } },
+    { field: "notes", before: { present: false, value: null }, after: { present: true, value: "Opened to the partner tenant for the weekend migration; close again once the data copy has finished and the partner has signed off." } },
+  ],
 }];
 const CHANNELS = [
   { id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true, created_at: "2026-09-01T08:00:00Z" },

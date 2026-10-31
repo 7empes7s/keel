@@ -368,9 +368,15 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
     || (ownRows.has(evaluation.control_id) && !ownRows.get(evaluation.control_id).removed_at));
   if (evaluations.length === 0) return { findings: [], summary: summarize([]) };
 
-  const workloads = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
-    .map((window) => window.resourceType)
-    .filter((type) => WORKLOAD_FACT_TYPES.has(type))))];
+  const windowTypes = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
+    .map((window) => window?.resourceType)
+    .filter((type) => typeof type === 'string')))];
+  const workloads = windowTypes.filter((type) => WORKLOAD_FACT_TYPES.has(type));
+  // Only the kinds some evaluation was checked on can match its evidence, so each
+  // backup's coverage is read for those kinds alone, and a backup that read none of
+  // them is not read at all. Reading every kind of every backup ever taken grew with
+  // each hourly backup and was most of this read's time.
+  const snapshotTypes = windowTypes.filter((type) => !WORKLOAD_FACT_TYPES.has(type));
   const [{ rows: exceptions }, { rows: snapshotRows }, { rows: driftRows }, { rows: planRows }, { rows: collections }] = await Promise.all([
     client.query(
       `SELECT * FROM benchmark_exception
@@ -378,11 +384,17 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
        ORDER BY granted_at DESC, id DESC`,
       [tenantRef, evaluations.map((evaluation) => evaluation.id)],
     ),
-    client.query(
-      `SELECT id, tenant_ref, started_at, completed_at, coverage_digest
-       FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL`,
-      [tenantRef],
-    ),
+    snapshotTypes.length
+      ? client.query(
+        `SELECT id, tenant_ref, started_at, completed_at,
+                CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN
+                  (SELECT jsonb_object_agg(entry.key, entry.value) FROM jsonb_each(coverage_digest) AS entry
+                    WHERE entry.key = ANY($2::text[]))
+                END AS coverage_digest
+         FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL AND coverage_digest ?| $2::text[]`,
+        [tenantRef, snapshotTypes],
+      )
+      : { rows: [] },
     client.query(
       // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
       `WITH latest AS (

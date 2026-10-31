@@ -115,12 +115,20 @@ const LOOKUP_SQL = `
       JOIN resource_version rv ON rv.natural_key = w.id
       JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
     UNION ALL
+    -- A bare object id ($3, lower case) by the version's id or app id. Each side reads its
+    -- own index (store/schema.d/91) instead of every saved payload. A version found by both
+    -- is listed twice, which the DISTINCT ON reads below do not change.
     SELECT w.id, rv.natural_key, rv.resource_type, ${NAME_SQL}, rv.payload->>'id', s.started_at, s.id
-      FROM wanted w
-      JOIN snapshot s ON s.tenant_ref = $1
-      JOIN resource_version rv ON rv.snapshot_id = s.id
-     WHERE cardinality($3::text[]) > 0 AND w.id = ANY($3::text[])
-       AND (lower(rv.payload->>'id') = lower(w.id) OR lower(rv.payload->>'appId') = lower(w.id))
+      FROM resource_version rv
+      JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
+      JOIN wanted w ON lower(w.id) = lower(rv.payload->>'id')
+     WHERE lower(rv.payload->>'id') = ANY($3::text[])
+    UNION ALL
+    SELECT w.id, rv.natural_key, rv.resource_type, ${NAME_SQL}, rv.payload->>'id', s.started_at, s.id
+      FROM resource_version rv
+      JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
+      JOIN wanted w ON lower(w.id) = lower(rv.payload->>'appId')
+     WHERE lower(rv.payload->>'appId') = ANY($3::text[])
   ),
   newest AS (
     SELECT DISTINCT ON (wanted) wanted, natural_key, resource_type, object_id, started_at AS last_seen, snapshot_id AS last_snapshot
@@ -187,7 +195,7 @@ export async function lookupNames(client, { tenantRef, ids }) {
   const asked = unique.slice(0, MAX_NAME_IDS);
   if (asked.length) {
     // Only bare object ids are matched against saved object ids: a backup key never is.
-    const objectIds = asked.filter((id) => BARE_GUID.test(id));
+    const objectIds = [...new Set(asked.filter((id) => BARE_GUID.test(id)).map((id) => id.toLowerCase()))];
     const { rows } = await client.query(LOOKUP_SQL, [tenantRef, asked, objectIds]);
     for (const row of rows) {
       if (row.last_snapshot) lastSnapshots.set(String(row.wanted), String(row.last_snapshot));

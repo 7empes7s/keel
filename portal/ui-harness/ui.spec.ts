@@ -43,6 +43,7 @@ const PAGES = [
   { name: "approvals-solo", hash: "/approvals/solo" },
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
+  { name: "baselines-put-back", hash: "/baselines/put-back" },
   { name: "benchmarks", hash: "/benchmarks" },
   { name: "benchmarks-scuba-lists", hash: "/benchmarks/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/benchmarks/scuba?lists=edit" },
@@ -2305,6 +2306,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
+  "baselines-put-back": ["b1190000-0000-4000-8000-000000000119", "b1160000-0000-4000-8000-000000000116"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
   incidents: ["1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "7e000000-0000-4000-8000-000000000071", "9b000000-0000-4000-8000-000000000071", "3f9c2b1e-0000-4000-8000-0000000000aa"],
   "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
@@ -3167,6 +3169,33 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     // A replaced setup offers no actions.
     await expect(page.locator(".bl-version", { hasText: "Replaced by a newer version" }).getByRole("button")).toHaveCount(0);
     await expect(page.locator(".bl-version", { hasText: "Before migration (v2)" }).getByRole("button", { name: "Use this one" })).toBeVisible();
+  });
+}
+
+// Backlog B12 and D16: a version put back from an older one says so, with both dates,
+// and a disabled "Capture new version" says what the newest backup missed. Every page
+// that lists versions orders them by when they were approved and shows both dates.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`a put-back approved setup explains its dates and why capture is off at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/baselines/put-back", viewport.width < 600 ? "dark" : "light");
+    const current = page.locator(".bl-current");
+    await expect(current.locator(".bl-fact", { hasText: "Approved by" })).toContainText("4 hours ago, on");
+    await expect(current.locator(".bl-fact", { hasText: "Settings from" })).toContainText("43 days ago");
+    await expect(current.locator("[data-part='put-back']")).toHaveText(
+      "Put back This version is a copy of version 1, put back 4 hours ago. It holds the settings version 1 held, as they were 43 days ago: 2 kinds of setting. Version 2, which it replaced, held 6 kinds, so 4 kinds are not checked until you capture a new version.");
+    const reason = current.locator("[data-part='capture-reason']");
+    await expect(reason).toContainText("Not available yet");
+    await expect(reason).toContainText("Capture new version needs a newer complete backup: one that read every kind of setting in full. The newest backup, finished 2 hours ago, was not complete: Microsoft To Do setting could not be read and Group was read only in part.");
+    await expect(reason.getByRole("link", { name: "What's protected" })).toHaveAttribute("href", /\/protect$/);
+    await expect(current.getByRole("button", { name: /Capture new version/ })).toBeDisabled();
+    // Older versions: newest approved first, both dates, and the reason said once above.
+    const versions = page.locator(".bl-version");
+    await expect(versions.locator(".bl-version-name small")).toHaveText([/^Version 2 ·/, /^Version 1 ·/]);
+    await expect(versions.first().locator(".bl-version-when")).toContainText(/^Approved 31 days ago\s*Settings from 31 days ago · Not compared yet$/);
+    await expect(page.locator("#bl-versions-heading").locator("xpath=..")).toContainText("until a backup reads every kind in full, they show Not compared yet");
+    await expect(page.getByText("No complete backup to compare with yet")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 }
 

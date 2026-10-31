@@ -175,7 +175,7 @@ function serviceSummaries(types: CoverageType[]): ServiceSummary[] {
 }
 
 function serviceBadge(service: ServiceSummary): { tone: BadgeTone; label: string } {
-  if (service.failed) return { tone: "urgent", label: `${service.failed} failed` };
+  if (service.failed) return { tone: "urgent", label: `${service.failed} failed${service.partial ? `, ${service.partial} partly done` : ""}` };
   if (service.partial) return { tone: "soon", label: `${service.partial} partly done` };
   if (service.outOfDate) return { tone: "soon", label: `${service.outOfDate} out of date` };
   if (service.backedUp === service.kinds.length) return { tone: "fine", label: "Backed up" };
@@ -386,7 +386,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                 <Meter service={entry} />
                 <ul className="pt-service-lines">
                   {ordered_problems.length ? ordered_problems.map((item) => (
-                    <li data-tone={healthRisk(item)} key={item.type}><Icon name={backupHealth(item) === "failed" ? "x-circle" : healthRisk(item) ? "clock" : "info"} />{problemLine(item)}</li>
+                    <li data-tone={healthRisk(item)} key={item.type}><Icon name={backupHealth(item) === "failed" ? "x-circle" : backupHealth(item) === "partial" ? "alert" : healthRisk(item) ? "clock" : "info"} />{problemLine(item)}</li>
                   )) : (
                     <>
                       {newest ? <li data-tone="fine"><Icon name="check-circle" />All backed up {ago(newest, now)}</li> : null}

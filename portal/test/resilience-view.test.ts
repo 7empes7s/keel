@@ -142,6 +142,14 @@ test("a service backup failure is reported once, by its service, never against E
   assert.equal(entra.rows[0].status, "Backed up");
 });
 
+test("a service backup that was only ever partly done is amber, never \"Never worked\"", () => {
+  const entry = {
+    kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", switchedOn: true,
+    latest: { id: "c1", outcome: "partial", at: "2026-10-03T01:00:00.000Z" }, lastGood: null, stored: null,
+  } as ServiceBackup;
+  assert.deepEqual(serviceState(entry, "2026-10-03T12:00:00.000Z"), { tone: "soon", status: "Last try partly done" });
+});
+
 test("a workload whose latest run was switched off reads as switched off, not failed", () => {
   const off: ServiceBackup = {
     kind: "service-settings", workload: "teams-org-policies", name: "Teams organization policy", service: "Teams", switchedOn: true,
@@ -244,7 +252,7 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
   assert.equal(buckets.backedUp + buckets.failed + buckets.partial + buckets.stale + buckets.never + buckets.notCollected + buckets.unavailable, buckets.total);
 
   const [entra] = serviceGroups(data.metrics, data.kinds, NOW);
-  assert.equal(entra.rows[0].status, `${counts.failed} failed`);
+  assert.equal(entra.rows[0].status, `${counts.failed} failed, ${counts.partial} partly done`);
   assert.equal(entra.rows[0].tone, "urgent");
 
   const alerts = resilienceAlerts(data);

@@ -463,6 +463,8 @@ function age(at: string | null | undefined, now: string): number {
 export function serviceState(entry: ServiceBackup, now: string): { tone: ResilienceTone; status: string } {
   // A run recorded as "disabled" means the workload's live check switched it off.
   if (!entry.switchedOn || entry.latest?.outcome === "disabled") return { tone: "neutral", status: "Switched off" };
+  // Only ever partly done: amber, never "Never worked" (decision 31 Oct 2026).
+  if (!entry.lastGood && entry.latest?.outcome === "partial") return { tone: "soon", status: "Last try partly done" };
   if (!entry.lastGood) return entry.latest ? { tone: "urgent", status: "Never worked" } : { tone: "soon", status: "Not run yet" };
   if (entry.latest && entry.latest.id !== entry.lastGood.id) {
     return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try partly done" : "Last try failed" };
@@ -493,7 +495,7 @@ function entraRow(metrics: RecoveryMetrics, kinds: ResilienceKinds, now: string)
   const base = { key: "entra-intune", name: "Users, groups, sign-in rules, devices and apps", what: "Settings" as const, holds: "" };
   const { summary } = kinds;
   const late = summary.stale + summary.neverCollected;
-  if (summary.failed) return { ...base, tone: "urgent", status: `${summary.failed} failed`, last };
+  if (summary.failed) return { ...base, tone: "urgent", status: `${summary.failed} failed${summary.partial ? `, ${summary.partial} partly done` : ""}`, last };
   if (summary.partial) return { ...base, tone: "soon", status: `${summary.partial} partly done`, last };
   if (late) return { ...base, tone: "soon", status: `${late} out of date or never`, last };
   if (summary.covered) return { ...base, tone: "fine", status: "Backed up", last };
@@ -609,7 +611,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       key: "service-never-worked", tone: "urgent", icon: "x-circle",
       title: broken.length === 1 ? `${broken[0].name}: never backed up` : `${broken.length} service backups never worked`,
       todo: "No copy to restore yet. Open the failed runs.",
-      more: broken.map((entry) => `${entry.name}: last try ${entry.latest?.outcome === "partial" ? "stopped part way" : "failed"} ${ago(entry.latest?.at ?? null, now)}`),
+      more: broken.map((entry) => `${entry.name}: last try failed ${ago(entry.latest?.at ?? null, now)}`),
       action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
     });
   }

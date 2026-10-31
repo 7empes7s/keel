@@ -111,7 +111,7 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
   const counts = protectCounts(counted);
   const outOfDate = counts.stale + counts.never;
   const backup: ServiceStatus["backup"] = counts.failed
-    ? { tone: "urgent", text: `${kinds(counts.failed)} failed, ${counts.backedUp} of ${counted.length} backed up` }
+    ? { tone: "urgent", text: `${kinds(counts.failed)} failed${counts.partial ? `, ${counts.partial} partly done` : ""}, ${counts.backedUp} of ${counted.length} backed up` }
     : counts.partial
       ? { tone: "soon", text: `${kinds(counts.partial)} partly done${outOfDate ? `, ${outOfDate} out of date` : ""}, ${counts.backedUp} of ${counted.length} backed up` }
       : outOfDate

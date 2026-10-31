@@ -1597,10 +1597,13 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   expect(tones).toEqual([...tones].sort((a, b) => ["urgent", "soon", "low"].indexOf(a!) - ["urgent", "soon", "low"].indexOf(b!)));
   for (const alert of await alerts.all()) await expect(alert.locator(".ui-alert-todo")).toContainText("What to do:");
   // Error details are hidden until asked for.
-  const mail = page.locator('.ui-alert[data-alert="service-never-worked"]');
+  // Mail was only ever partly done: amber "partly done", never red "Never worked" (decision 31 Oct 2026).
+  const mail = page.locator('.ui-alert[data-alert="service-partial-last"]');
+  await expect(mail).toHaveAttribute("data-tone", "soon");
   await expect(mail.locator(".ui-alert-more li")).toBeHidden();
   await mail.getByText("Show details").click();
-  await expect(mail.locator(".ui-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
+  await expect(mail.locator(".ui-alert-more li")).toContainText("Mail, calendars and contacts: partly done");
+  await expect(mail.getByRole("link", { name: "See them" })).toHaveAttribute("href", /outcome=partial/);
   // Failed restores: the engine's one count with its window, linking to the Restore list.
   const failedRestores = page.locator('.ui-alert[data-alert="restore-failed"]');
   await expect(failedRestores).toContainText("47 restores failed · 3 in the last 30 days");
@@ -1609,11 +1612,11 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   // Tiles and the service table.
   await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
   await expect(page.locator('.ui-tile[data-tile="services"] .ui-tile-value')).toHaveText("4 of 8");
-  await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
+  await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Last try partly done");
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
   // Entra ID and Intune count kinds as What's protected does (same fixture): 1 failed, 1 partly
   // done (its own amber alert, never failed), 2 out of date or never.
-  await expect(page.locator('.rs-table tr[data-row="entra-intune"]')).toContainText("1 failed");
+  await expect(page.locator('.rs-table tr[data-row="entra-intune"]')).toContainText("1 failed, 1 partly done");
   await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("failed its last backup");
   await expect(page.locator('.ui-alert[data-alert="kinds-partial"]')).toContainText("was only partly backed up");
   await expect(page.locator('.ui-alert[data-alert="kinds-partial"]')).toHaveAttribute("data-tone", "soon");

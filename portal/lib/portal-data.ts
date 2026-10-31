@@ -17,6 +17,7 @@ import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionSteps, listOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { alertStateCounts } from "../../engine/notify/alerts.mjs";
 import {
   getActiveBaseline,
   listLatestOpenDrift,
@@ -1476,12 +1477,12 @@ export function buildAlerts({
 
 export async function waitingFor(client: KeelClient, ref: string): Promise<DashboardWaiting> {
   const { rows: [row] } = await client.query(
-    `SELECT (SELECT count(*)::int FROM alert WHERE tenant_ref = $1 AND state IN ('open','reopened')) AS open_alerts,
-            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents`,
+    `SELECT count(*)::int AS open_incidents FROM incident WHERE tenant_ref = $1 AND status = 'open'`,
     [ref],
   );
   return {
-    openAlerts: Number(row?.open_alerts ?? 0),
+    // The same count as the Alerts page's "Needs someone" tile.
+    openAlerts: (await alertStateCounts(client, { tenantRef: ref })).waiting,
     openIncidents: Number(row?.open_incidents ?? 0),
     // A step a later restore replaced is not waiting on anyone.
     restoreFollowUps: await countOpenCompletionSteps(client, { tenantRef: ref }),

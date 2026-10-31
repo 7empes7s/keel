@@ -444,7 +444,11 @@ export async function unsuppressAlert(client, { tenantRef, alertId, actor, at = 
   return changed;
 }
 
-/** Alerts of one tenant, newest change first. Same gate as listAlertTransitions. */
+/**
+ * Alerts of one tenant, newest change first. Same gate as listAlertTransitions.
+ * @param {any} client
+ * @param {{ tenantRef: string, actor: string, states?: string[] | null, limit?: number, at?: Date }} options
+ */
 export async function listAlerts(client, { tenantRef, actor, states = null, limit = 100, at = new Date() }) {
   await authorize(client, { tenantRef, actor, capability: ALERT_READ_CAPABILITY, at });
   if (states && states.some((state) => !ALERT_STATES.includes(state))) throw new Error('unknown alert state');
@@ -454,6 +458,36 @@ export async function listAlerts(client, { tenantRef, actor, states = null, limi
     [tenantRef, states, limit],
   );
   return rows;
+}
+
+/**
+ * The one count of a tenant's alerts by state: the Overview, the bell, the menu and the
+ * Alerts page all show these numbers, so none of them counts a shortened list.
+ * waiting = open or back again; overdue = waiting past its acknowledge deadline;
+ * resolvedWeek = resolved in the 7 days before `now`. No authorization: callers are
+ * already gated (the Overview's read, the Alerts route's read).
+ */
+export async function alertStateCounts(client, { tenantRef, now = new Date() }) {
+  const { rows: [row] } = await client.query(
+    `SELECT count(*) FILTER (WHERE state IN ('open','reopened'))::int AS waiting,
+            count(*) FILTER (WHERE state IN ('open','reopened') AND ack_deadline_at IS NOT NULL AND ack_deadline_at <= $2)::int AS overdue,
+            count(*) FILTER (WHERE state = 'acknowledged')::int AS acknowledged,
+            count(*) FILTER (WHERE state = 'suppressed')::int AS muted,
+            count(*) FILTER (WHERE state = 'resolved')::int AS resolved,
+            count(*) FILTER (WHERE state = 'resolved' AND resolved_at >= $2::timestamptz - interval '168 hours')::int AS resolved_week,
+            count(*)::int AS total
+       FROM alert WHERE tenant_ref = $1`,
+    [tenantRef, now],
+  );
+  return {
+    waiting: row?.waiting ?? 0,
+    overdue: row?.overdue ?? 0,
+    acknowledged: row?.acknowledged ?? 0,
+    muted: row?.muted ?? 0,
+    resolved: row?.resolved ?? 0,
+    resolvedWeek: row?.resolved_week ?? 0,
+    total: row?.total ?? 0,
+  };
 }
 
 /** The immutable history of one alert, oldest first, only within the caller's tenant. */

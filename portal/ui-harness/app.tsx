@@ -78,7 +78,7 @@ import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICE
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
-import { type AlertItem } from "@/lib/alerts-view";
+import { alertCounts, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
@@ -2843,6 +2843,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/alerts/anonymous": {
       const alerts = hiddenAlerts();
       return <AlertsPage alerts={alerts} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} notice={ANONYMOUS_NOTE} now={now} />;
+    }
+    case "/alerts/many": {
+      // The tenant holds far more alerts than the page lists: the tiles, the verdict and
+      // the pill show the whole count, and the list says it holds fewer.
+      const counts = { ...alertCounts(INBOX_ALERTS, now), waiting: 1722, overdue: 15, resolved: 2400, resolvedWeek: 240, total: 4200 };
+      return <AlertsPage alerts={INBOX_ALERTS} canMute canRespond counts={counts} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
     }
     case "/alerts":
     case "/alerts/viewer": {

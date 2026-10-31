@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { failureReason } from "@/lib/backup-failure";
 import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import {
   backupSentence,
@@ -200,8 +202,29 @@ export function TypeDetails({ item, now, name }: { item: CoverageType; now: stri
   const standing = restoreStanding(item);
   // A type Keel cannot read for want of a grant is fixed on Setup.
   const needsGrant = item.diagnosis && /grant|permission|consent|scope|role/i.test(`${item.diagnosis.diagnosis} ${item.diagnosis.reason ?? ""}`);
+  // Why the last backup failed comes first, with each permission or role it needs.
+  const failure = failureReason(item);
   return (
     <div className="pt-details">
+      {failure ? (
+        <section aria-label="Why the last backup failed" className="pt-details-why" data-tone={failure.tone} role={failure.tone === "urgent" ? "alert" : undefined}>
+          <h3>Why the last backup failed</h3>
+          <p>{failure.text}</p>
+          {failure.needs.length ? (
+            <ul>
+              {failure.needs.map((need) => (
+                <li key={`${need.type}:${need.name}`}>
+                  <Link className="bf-need" href={need.href}>
+                    <Icon name={need.type === "role" ? "person" : "settings"} /><code>{need.name}</code>
+                  </Link>
+                  <span>{need.words ?? (need.type === "role" ? "Admin role" : "Microsoft permission")}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {failure.needs.length ? <p>Open one to see on Setup whether Keel&apos;s backup app holds it, and approve it there. Then press Retry.</p> : null}
+        </section>
+      ) : null}
       <p className="pt-details-standing">{standingSentence(item)}</p>
       <section aria-label="What a restore brings back" className="pt-details-part">
         <h3>What a restore brings back</h3>
@@ -231,7 +254,7 @@ export function TypeDetails({ item, now, name }: { item: CoverageType; now: stri
       <p className="pt-details-links">
         {standing !== "cannot-restore" ? <Link className="pt-inline-link" href={`/restore?q=${encodeURIComponent(name)}`}>Restore this kind</Link> : null}
         {standing === "unproven" ? <Link className="pt-inline-link" href="/restore">Plan a test restore</Link> : null}
-        {needsGrant ? <Link className="pt-inline-link" href="/setup">Give Keel the permission it needs</Link> : null}
+        {needsGrant && !failure?.needs.length ? <Link className="pt-inline-link" href="/setup#setup-permissions">Give Keel the permission it needs</Link> : null}
       </p>
       <TechnicalDetails>
         <TypeRecordFields item={item} />

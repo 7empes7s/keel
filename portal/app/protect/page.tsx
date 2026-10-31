@@ -33,6 +33,7 @@ export default async function ProtectPage() {
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.protectPage);
   const canBackup = access.capabilities.includes("backup");
+  const canCollect = access.capabilities.includes("collect");
   const canEditSchedules = access.capabilities.includes("configuration");
 
   let data: CoverageData;
@@ -78,6 +79,7 @@ export default async function ProtectPage() {
       {/* The coverage list draws the verdict, so it follows the service filter like the tiles. */}
       <ProtectCoverage
         canBackup={canBackup}
+        canCollect={canCollect}
         data={data}
         now={now}
         tierStrip={<>

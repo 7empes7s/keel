@@ -214,13 +214,14 @@ export function acknowledgeNote(alert: Pick<AlertItem, "state" | "occurrence" | 
  * server's next read: the new state, the acknowledger as owner and the note in the
  * history. The banner, tiles and header pill all count this one list.
  */
-export interface LocalChange { state: AlertState; owner?: AlertItem["owner"]; note?: string | null; at: string; by: string }
+// `acknowledged` marks the page's own acknowledge; an unmute that lands on "acknowledged" changes the state only.
+export interface LocalChange { state: AlertState; acknowledged?: boolean; owner?: AlertItem["owner"]; note?: string | null; at: string; by: string }
 
 export function withLocalChanges(alerts: AlertItem[], changes: Record<string, LocalChange>): AlertItem[] {
   return alerts.map((alert) => {
     const change = changes[alert.id];
     if (!change || change.state === alert.state) return alert;
-    if (change.state !== "acknowledged") return { ...alert, state: change.state };
+    if (change.state !== "acknowledged" || !change.acknowledged) return { ...alert, state: change.state };
     return {
       ...alert,
       state: change.state,

@@ -102,18 +102,24 @@ export const ALERT_ACTION_EVIDENCE_KIND = 'alert-action';
 
 // The audit record of a person's action on an alert, written after the alert's own
 // transaction commits (appendEvidence runs its own). The note or reason goes with it.
+// A failed audit write is logged, never turned into a failed action: the alert change
+// is already committed, and a retry would only meet a conflict.
 async function recordAlertAction(client, alert, { action, actor, note = null }) {
   const text = typeof note === 'string' && note.trim() ? note.trim() : null;
-  await appendEvidence(client, {
-    tenantRef: alert.tenant_ref,
-    kind: ALERT_ACTION_EVIDENCE_KIND,
-    subject: {
-      action, alertId: String(alert.id), naturalKey: alert.resource_key, control: alert.control,
-      condition: alert.condition, severity: alert.severity, occurrence: alert.occurrence, state: alert.state,
-      ...(text ? { note: text } : {}),
-    },
-    actor,
-  });
+  try {
+    await appendEvidence(client, {
+      tenantRef: alert.tenant_ref,
+      kind: ALERT_ACTION_EVIDENCE_KIND,
+      subject: {
+        action, alertId: String(alert.id), naturalKey: alert.resource_key, control: alert.control,
+        condition: alert.condition, severity: alert.severity, occurrence: alert.occurrence, state: alert.state,
+        ...(text ? { note: text } : {}),
+      },
+      actor,
+    });
+  } catch (error) {
+    console.error('[keel] alert action audit record failed', error);
+  }
 }
 
 async function recordTransition(client, alert, {

@@ -158,7 +158,9 @@ export function AlertsPage({ alerts, now, canRespond, canMute, header, notice }:
         const result = await alertCall(alert.id, action, text);
         const why = alertCallWords(result);
         if (why) failed.push({ alert, why });
-        else if (result.state) next[alert.id] = { state: result.state as AlertItem["state"], owner: result.owner ?? undefined, note: action === "acknowledge" ? text ?? null : null, at, by: "you" };
+        else if (result.state) next[alert.id] = action === "acknowledge"
+          ? { state: result.state as AlertItem["state"], acknowledged: true, owner: result.owner ?? undefined, note: text ?? null, at, by: "you" }
+          : { state: result.state as AlertItem["state"], at, by: "you" };
       }
       setChanged((current) => ({ ...current, ...next }));
       const done = chosen.length - failed.length;

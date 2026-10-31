@@ -29,7 +29,7 @@ const ALERTS = [alert(1), alert(2), alert(3)];
 test("an acknowledge made on the page moves the pill, the banner and the tiles together", () => {
   const before = alertCounts(ALERTS, NOW);
   assert.equal(alertsStatus(before).label, "3 waiting");
-  const after = withLocalChanges(ALERTS, { [ALERTS[0].id]: { state: "acknowledged", owner: ME, note: "  KEEL-RT- on it ", at: NOW, by: "you" } });
+  const after = withLocalChanges(ALERTS, { [ALERTS[0].id]: { state: "acknowledged", acknowledged: true, owner: ME, note: "  KEEL-RT- on it ", at: NOW, by: "you" } });
   const counts = alertCounts(after, NOW);
   assert.equal(alertsStatus(counts).label, "2 waiting");
   assert.match(alertsVerdict(after, NOW).text, /^2 alerts need someone/);
@@ -41,6 +41,11 @@ test("an acknowledge made on the page moves the pill, the banner and the tiles t
   assert.equal(after[0].history.at(-1)?.note, "KEEL-RT- on it");
   // Untouched alerts are the same objects.
   assert.equal(after[1], ALERTS[1]);
+  // An unmute that lands on "acknowledged" changes the state only: no made-up entry.
+  const unmuted = withLocalChanges([alert(5, { state: "suppressed" })], { [alert(5).id]: { state: "acknowledged", at: NOW, by: "you" } });
+  assert.equal(unmuted[0].state, "acknowledged");
+  assert.deepEqual(unmuted[0].history, []);
+  assert.equal(unmuted[0].owner, null);
 });
 
 test("the note shown is this occurrence's: an earlier occurrence's note does not carry over", () => {

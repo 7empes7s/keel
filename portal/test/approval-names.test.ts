@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ApprovalRequestRecord, withChangeNames } from "@/lib/approval-inbox";
 import { EMPTY_REFERENCES, approvalSentence, personLabel } from "@/lib/sentences";
-import { approvalTitle, distinctTitles } from "@/lib/approval-view";
+import { approvalTitle, approvalUnnamedRefs, distinctTitles } from "@/lib/approval-view";
 
 import { renderApprovalInboxAt } from "./render-approval-inbox";
 
@@ -95,4 +95,40 @@ test("requests that would read the same get the moment they were asked, then a n
   assert.equal(titles.get("c"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 UTC (2)");
   assert.equal(titles.get("d"), approvalTitle(other));
   assert.equal(new Set(titles.values()).size, 4);
+});
+
+const GHOST = "6a0b0000-0000-4000-8000-0000000000c9";
+const GHOST_LOOKUP = `https://developer.microsoft.com/en-us/graph/graph-explorer?request=directoryObjects%2F${GHOST}&method=GET&version=v1.0&GraphUrl=https://graph.microsoft.com`;
+const GHOST_REF = { id: GHOST, what: "Who holds the role", lookup: GHOST_LOOKUP };
+
+test("an unnamed change keeps the ids no backup names, with a lookup link each", () => {
+  const assignment = rollback({
+    references: {
+      ...rollback().references!,
+      changes: [{ kind: "change", id: DRIFT, name: null, readable: true, naturalKey: `roleAssignment:${GHOST}`, resourceType: "roleAssignment" }],
+    },
+  });
+  const named = withChangeNames(assignment, { [`roleAssignment:${GHOST}`]: { name: null, resourceType: "roleAssignment", unnamedRefs: [GHOST_REF] } });
+  assert.deepEqual(named.references?.changes[0]?.unnamedRefs, [GHOST_REF]);
+  assert.equal(named.references?.changes[0]?.name, null, "it stays unnamed in words");
+  // The same id from the preview and the change is listed once.
+  const both = { ...named, preview: { total: 1, services: [], more: 0, changes: [{ name: "Unnamed role assignment", kind: "Role assignments", line: null, fields: [], moreFields: 0, unnamedRefs: [GHOST_REF] }] } };
+  assert.deepEqual(approvalUnnamedRefs(both), [GHOST_REF]);
+  assert.deepEqual(approvalUnnamedRefs(rollback()), []);
+});
+
+test("Approvals lists each unnamed id with its lookup link under Technical details only", async () => {
+  const request = rollback({
+    references: {
+      ...rollback().references!,
+      changes: [{ kind: "change", id: DRIFT, name: null, readable: true, naturalKey: `roleAssignment:${GHOST}`, resourceType: "roleAssignment", unnamedRefs: [GHOST_REF] }],
+    },
+  });
+  const html = await renderApprovalInboxAt("open=req-1", { pending: [request], history: [], now: "2026-10-17T10:00:00.000Z" });
+  const details = [...html.matchAll(/<details[\s\S]*?<\/details>/g)].map((match) => match[0]).join("");
+  assert.ok(details.includes(GHOST), "the id is in Technical details");
+  assert.ok(details.includes(GHOST_LOOKUP.replaceAll("&", "&amp;")), "with its lookup link");
+  assert.match(details, /Who holds the role: not named by any backup|Who holds the role \(no name in any backup\)/);
+  const visible = html.replace(/<details[\s\S]*?<\/details>/g, "").replace(/ title="[^"]*"/g, "");
+  assert.ok(!visible.includes(GHOST), "never outside Technical details");
 });

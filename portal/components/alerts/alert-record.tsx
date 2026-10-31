@@ -1,6 +1,6 @@
 "use client";
 
-import { RecordField } from "@/components/technical-details";
+import { RecordField, UnnamedRefFields } from "@/components/technical-details";
 import type { AlertItem } from "@/lib/alerts-view";
 import { deletedSinceWords } from "@/lib/object-label";
 
@@ -11,6 +11,7 @@ export function AlertRecord({ alert }: { alert: AlertItem }) {
       <RecordField label="Alert ID" usage="the alert's history and actions" value={alert.id} />
       <RecordField label="Resource" usage="the object the alert is about" value={alert.resourceKey} />
       {alert.object?.objectId ? <RecordField label="Object ID" usage="the object's id in Microsoft 365" value={alert.object.objectId} /> : null}
+      <UnnamedRefFields refs={alert.unnamedRefs} />
       {alert.object ? <RecordField copy={false} label="In the newest backup" value={alert.object.status === "found" ? "Yes" : alert.object.status === "deleted" ? `No. ${deletedSinceWords(alert.object.deletedSince)}` : "Never backed up"} /> : null}
       <RecordField copy={false} label="Condition" usage="what raised it" value={`${alert.control} / ${alert.condition}`} />
       <RecordField copy={false} label="Severity" value={alert.severity} />

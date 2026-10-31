@@ -74,13 +74,22 @@ export function guardedScheduleList(deps: GuardDeps = {}) {
   return guarded({ action: "schedules:list", capability: "read" }, async ({ client, tenantRef, principalId }) => {
     const { rows: schedules } = await client.query(
       // Issue #447: a finished backup that could not read some types in full is "partial".
-      `SELECT s.*, j.started_at AS last_run_at,
+      `SELECT s.*, COALESCE(j.started_at, j.created_at) AS last_run_at,
               CASE WHEN j.status = 'succeeded' AND j.result->>'partial' = 'true'
                    AND jsonb_typeof(j.result->'incompleteTypes') = 'array'
                    AND jsonb_array_length(j.result->'incompleteTypes') > 0
                    THEN 'partial' ELSE j.status END AS last_status,
               j.error AS last_error
-       FROM schedule s LEFT JOIN job j ON j.id = s.last_job_id AND j.params->>'tenantRef' = s.tenant_ref
+       FROM schedule s
+       -- The newest run of the schedule's tier, its own or one started by hand: a manual
+       -- Tier 3 backup is that tier's last run too.
+       LEFT JOIN LATERAL (
+         SELECT * FROM job r
+          WHERE r.params->>'tenantRef' = s.tenant_ref
+            AND (r.id = s.last_job_id
+                 OR (s.tier IS NOT NULL AND s.job_kind IN ('collect', 'backup')
+                     AND r.kind IN ('collect', 'backup') AND r.params->>'tier' = s.tier))
+          ORDER BY COALESCE(r.started_at, r.created_at) DESC, r.id DESC LIMIT 1) j ON true
        WHERE s.tenant_ref = $1 ORDER BY s.job_kind, s.tier NULLS LAST, s.id`, [tenantRef],
     );
     const { rows: deferrals } = await client.query(

@@ -176,7 +176,15 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
   // The menu's section statuses read the Overview's data; answer at once so every
   // screenshot shows them.
-  if (url.endsWith("/api/dashboard")) return json(dashboard(0));
+  // A test sets __harnessDashboardFailures to make that many reads answer as a busy server.
+  if (url.endsWith("/api/dashboard")) {
+    const harness = window as unknown as { __harnessDashboardFailures?: number };
+    if ((harness.__harnessDashboardFailures ?? 0) > 0) {
+      harness.__harnessDashboardFailures! -= 1;
+      return new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "content-type": "application/json", "retry-after": "1" } });
+    }
+    return json(dashboard(0));
+  }
   // Settings' menu badge and the search's people and kinds of settings.
   // People: adding someone answers the new person; every change to a person succeeds.
   // Compliance: an exception is saved; the evidence export answers two records.

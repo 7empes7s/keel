@@ -13776,3 +13776,20 @@ item that needs it stays untouched.
      first and last time. Say plainly if there is no access log.
   4. Same journal counts as step 2 for the whole of 2026-10-31 (per hour), so we know if this is constant or only during the walk.
 - **Report:** the commit, the counts, the quoted lines, and which 503 path it was (busy sign-in check, or a failed data read and its error).
+
+### Q297: Read the end date of each Keel app certificate on the host and in Entra (read-only), about 5 minutes
+- Drafted by the "Fix wrong dates on Setup" thread (2026-10-31, PR #838). In Marouane's 31 Oct audit, Setup said "Keel's app
+  certificates are valid until at least 29 Oct 2027" while each app row seemed to end in 2028. Both come from the same stored value
+  (the host certificate file's end date, `access_connection.credential_expires_at`). This item checks whether one certificate really
+  ends 29 Oct 2027, or whether the stored date is stale. **Read-only: no tenant writes, no database writes, no restarts.** Never print
+  a key, a certificate body, a token or a tenant id.
+- Needs: nothing. **Quick: take it between other items.**
+- Status: todo
+- Do, on Mulinux:
+  1. For each credential file Keel signs in with (collector `/etc/keel/tenant.json`, restorer `/etc/keel/restorer.json`, content reader,
+     Engage writer): read its `certPath` and run `openssl x509 -in <certPath> -noout -enddate -subject`. Report role, subject CN and end date.
+  2. From the portal database: `SELECT role, credential_expires_at, updated_at, observed->>'at' AS observed_at FROM access_connection;`
+  3. GET only, Collector credential: for each of the 4 apps, `GET /applications(appId='<appId>')?$select=displayName,keyCredentials`
+     and report each keyCredential's `displayName` and `endDateTime` only (no `key`, no thumbprint).
+- **Report:** one table: app, host file end date, stored end date, Entra end date(s). Say which app ends 29 Oct 2027, if any, and
+  whether any stored date differs from its host file.

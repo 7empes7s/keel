@@ -4279,38 +4279,38 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
 // and refuses an approval by the person who made the change.
 test("emergency changes put alerts first, show each approved value, and refuse self-approval", async ({ page }) => {
   await open(page, "/emergency-changes");
-  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("One emergency change is approved right now; KEEL will not roll it back. The next approval ends in 3 hours.");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("One emergency change is approved right now; automatic rules will not undo it. The next approval ends in 3 hours.");
   // A change still there after its approval ended leads; the approval in force follows.
   const alerts = page.locator("#ec-attention .ui-alert");
   await expect(alerts).toHaveCount(2);
   await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
   await expect(alerts.nth(0)).toContainText("Finance (group) is still changed after its approval ended");
   await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /drift/);
-  await expect(alerts.nth(1)).toContainText("Block legacy auth (Conditional Access policy) is not rolled back until");
+  await expect(alerts.nth(1)).toContainText("Automatic rules leave Block legacy auth (Conditional Access policy) alone until");
   await expect(page.locator('.ui-tile[data-tile="active"] .ui-tile-value')).toHaveText("1");
   await expect(page.locator('.ui-tile[data-tile="next"] .ui-tile-value')).toHaveText("in 3 hours");
 
   const active = page.locator("li.change-intent.is-active");
   await expect(active.locator(".badge").first()).toHaveText("In force");
-  await expect(active.locator(".change-intent-sentence")).toHaveText(/^KEEL will not roll back the state change until .+ \(in 3 hours\)\.$/);
+  await expect(active.locator(".change-intent-sentence")).toHaveText(/^Automatic rules will not undo the state change until .+ \(in 3 hours\)\.$/);
   // The approved setting, as the baseline has it and as the approval allows it.
   const row = active.locator(".cv-row");
   await expect(row.locator('[data-side="before"]')).toContainText("enabled");
   await expect(row.locator('[data-side="after"]')).toContainText("enabled for reporting but not enforced");
-  await expect(active).toContainText("Other changes to this Conditional Access policy still roll back as usual.");
+  await expect(active).toContainText("Other changes to this Conditional Access policy follow your automatic rules as usual. When the approval ends, Keel checks it again but does not put the setting back by itself.");
   await expect(active).toContainText("CHG0031337");
 
   // Ended approvals sit last, in one table, each with how it ended and what KEEL found.
   const ended = page.locator("#ec-ended tr.change-intent.is-ended");
   await expect(ended.locator(".badge", { hasText: "Still changed" })).toHaveAttribute("data-tone", "soon");
-  await expect(ended.locator(".change-intent-settled")).toHaveText("Its policies acted on it as usual.");
+  await expect(ended.locator(".change-intent-settled")).toHaveText("Keel did not put it back. Review it on Changes.");
   await expect(page.locator("#ec-ended tr.change-intent.is-revoked .change-intent-sentence")).toHaveText("Revoked 47 hours ago by Amara Okafor: migration finished early.");
 
   const form = page.locator("form.change-intent-form");
   const submit = form.getByRole("button", { name: "Approve emergency change" });
   await expect(submit).toBeDisabled();
   await form.getByLabel("Visibility").check();
-  await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back 1 setting on Old project team (group) until");
+  await expect(form.locator(".pg-summary")).toContainText("Automatic rules will not undo 1 setting on Old project team (group) until");
   await form.getByLabel("Who made the change").selectOption({ label: "Amara Okafor" });
   await form.getByLabel("Reason").fill("Responders need the group open");
   await submit.click();
@@ -4346,7 +4346,7 @@ for (const width of [1278, 390]) {
     const button = await top(submit);
     for (const name of ["Web.redirect Uris", "Notes"]) {
       await form.getByLabel(name).check();
-      await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back");
+      await expect(form.locator(".pg-summary")).toContainText("Automatic rules will not undo");
       expect(await Promise.all(fields.map(top))).toEqual(before);
       expect(await top(submit)).toBe(button);
     }
@@ -4826,7 +4826,13 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
   const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks", "notifications"];
-  for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
+  // Codex review: the Waiting tile never adds approvals, alerts and incidents into one
+  // number; each part is its own link.
+  const waiting = page.locator('.ov-tile[data-tile="waiting"]');
+  await expect(waiting.locator(".ov-tile-count")).toHaveCount(0);
+  expect(await waiting.locator(".ov-tile-list a").evaluateAll((links) => links.map((link) => [link.textContent?.trim(), link.getAttribute("href")])))
+    .toEqual([["2 approvals", "#/approvals"], ["3 alerts", "#/alerts"], ["1 incident", "#/incidents"]]);
+  for (const link of await page.locator(".ov-tile:not(.ov-tile-parts), .ov-tile-list a, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
     expect(await link.evaluate((item) => item.tagName)).toBe("A");
     const href = (await link.getAttribute("href")) ?? "";
     expect(routes.some((route) => new RegExp(`^#?/${route}([?#]|$)`).test(href)), href).toBe(true);

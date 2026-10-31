@@ -1732,6 +1732,12 @@ dd {
   background: var(--failed-bg);
 }
 .evidence-broken h2 { color: var(--failed); }
+.evidence-unchecked {
+  border-color: color-mix(in oklab, var(--check-soon) 55%, var(--line));
+  border-left-color: var(--check-soon);
+  background: var(--check-soon-bg);
+}
+.evidence-unchecked h2 { color: var(--check-soon); }
 .evidence-filters {
   display: flex;
   margin-bottom: var(--space-lg);
@@ -11041,6 +11047,14 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .ov-tile[data-tone="soon"] .ov-tile-label { color: var(--check-soon); }
 .ov-tile-count { font-size: 1.75rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .ov-tile > small, .ov-side-card > small { color: var(--text-soft); font-size: 0.8125rem; line-height: 1.35; overflow-wrap: anywhere; }
+.ov-tile-parts { grid-template-rows: auto 1fr; }
+.ov-tile-parts:hover { border-color: var(--line); box-shadow: none; }
+.ov-tile-list { display: grid; gap: 0.125rem; margin: 0; padding: 0; list-style: none; }
+.ov-tile-list a { display: flex; align-items: center; gap: 0.375rem; min-height: 1.75rem; padding: 0.125rem 0.25rem; margin-inline: -0.25rem; border-radius: var(--radius-md); color: inherit; font-size: 0.875rem; text-decoration: none; }
+.ov-tile-list a b { font-size: 1.125rem; font-weight: 650; font-variant-numeric: tabular-nums; min-width: 1.75rem; }
+.ov-tile-list a .icon { width: 0.875rem; height: 0.875rem; margin-inline-start: auto; color: var(--text-soft); }
+.ov-tile-list a:hover { background: var(--surface-muted); }
+.ov-tile-list a:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ov-meter { display: flex; height: 0.375rem; overflow: hidden; gap: 2px; border-radius: 999px; background: var(--surface-muted); }
 .ov-meter i { display: block; height: 100%; }
 .ov-meter i[data-tone="fine"] { background: var(--fine); }

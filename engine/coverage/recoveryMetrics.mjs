@@ -469,6 +469,40 @@ async function loadRequiredRelationships(client, { tenantRef }) {
   return rows.map((row) => relationshipDependency(row.parent_type, row.family));
 }
 
+// The recoverable point from already loaded required types and observations.
+async function recoverablePointFrom(client, { tenantRef, required, observations, now }) {
+  // A type the tenant does not use is not required of an off-site copy either.
+  const inUse = splitNotUsed(required, observations).required;
+  const copies = await loadOffsiteCopies(client, { tenantRef });
+  const listed = copies.flatMap((copy) => (Array.isArray(copy.subject?.observationIds) ? copy.subject.observationIds : []));
+  const { observationsById, relationshipsBySnapshot } = await loadListedObservations(client, { tenantRef, observationIds: listed });
+  return {
+    ...computeRecoverablePoint({ required: inUse, copies, observationsById, relationshipsBySnapshot, tenantRef, now }),
+    scope: 'entra-intune-settings',
+  };
+}
+
+/**
+ * Only the recoverable point, the same one loadRecoveryMetrics reports, without the
+ * freshness, service, restore and readiness reads. The Overview needs no more.
+ */
+export async function loadRecoverablePoint(client, { tenantRef, requiredTypes, now = new Date() }) {
+  assertTenantRef(tenantRef);
+  if (!Array.isArray(requiredTypes)) throw new TypeError('requiredTypes must be an array of type names');
+  const generatedAt = instant(now) ?? new Date();
+  const required = [
+    ...[...new Set(requiredTypes)].sort().map(typeDependency),
+    ...await loadRequiredRelationships(client, { tenantRef }),
+  ];
+  const services = await loadServiceObservations(client, { tenantRef });
+  const observations = [
+    ...await loadTypeObservations(client, { tenantRef }),
+    ...await loadRelationshipObservations(client, { tenantRef }),
+    ...services.observations,
+  ];
+  return recoverablePointFrom(client, { tenantRef, required, observations, now: generatedAt });
+}
+
 /**
  * The tenant's recovery metrics. requiredTypes are the configuration types KEEL
  * collects (the collector descriptors); required relationship families are every
@@ -494,11 +528,7 @@ export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, no
     ...await loadRelationshipObservations(client, { tenantRef }),
     ...services.observations,
   ];
-  // A type the tenant does not use is not required of an off-site copy either.
-  const inUse = splitNotUsed(required, observations).required;
-  const copies = await loadOffsiteCopies(client, { tenantRef });
-  const listed = copies.flatMap((copy) => (Array.isArray(copy.subject?.observationIds) ? copy.subject.observationIds : []));
-  const { observationsById, relationshipsBySnapshot } = await loadListedObservations(client, { tenantRef, observationIds: listed });
+  const point = await recoverablePointFrom(client, { tenantRef, required, observations, now: generatedAt });
   const { rows: drills } = await client.query(
     `SELECT seq, tenant_ref, occurred_at, subject FROM evidence
       WHERE tenant_ref = $1 AND kind = $2 ORDER BY occurred_at, seq`,
@@ -515,10 +545,7 @@ export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, no
     tenantRef,
     generatedAt: generatedAt.toISOString(),
     freshness: computeFreshness({ required: [...required, ...services.required], observations, now: generatedAt }),
-    recoverablePoint: {
-      ...computeRecoverablePoint({ required: inUse, copies, observationsById, relationshipsBySnapshot, tenantRef, now: generatedAt }),
-      scope: 'entra-intune-settings',
-    },
+    recoverablePoint: point,
     // The latest and last good run of every service-settings and content workload.
     services: await loadServiceBackups(client, { tenantRef }),
     recoveryTime: computeRecoveryTime({ drills, restores, tenantRef }),

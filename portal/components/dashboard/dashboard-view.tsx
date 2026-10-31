@@ -53,7 +53,19 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
 
         <div className="ov-body" data-layer="explanation">
           <section aria-label="At a glance" className="ov-tiles" style={{ ["--ov-tiles" as string]: tiles.length }}>
-            {tiles.map((tile) => (
+            {tiles.map((tile) => tile.parts ? (
+              // Unlike kinds of work are never added up: the tile lists each one as its own link.
+              <div className="ov-tile ov-tile-parts" data-tile={tile.key} data-tone={tile.tone} key={tile.key}>
+                <span className="ov-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+                <ul className="ov-tile-list">
+                  {tile.parts.map((part) => (
+                    <li key={part.key}>
+                      <Link data-part={part.key} href={part.href}><b>{part.count.toLocaleString("en-GB")}</b> {part.label}<Icon name="chevron" /></Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
               <Link className="ov-tile" data-tile={tile.key} data-tone={tile.tone} href={tile.href} key={tile.key}>
                 <span className="ov-tile-label"><Icon name={tile.icon} />{tile.label}</span>
                 <b className="ov-tile-count">{tile.value}</b>

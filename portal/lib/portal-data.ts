@@ -1,7 +1,7 @@
 import { readNamer } from "../../engine/insights/anonymity.mjs";
 import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
-import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
+import { loadRecoverablePoint, loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
@@ -1334,10 +1334,11 @@ export function buildAlerts({
   lastCollection,
   coverage,
   evidence,
+  offsite,
 }: Pick<
   DashboardData,
   "activeBaseline" | "lastCollection" | "coverage" | "evidence"
->): DashboardAlert[] {
+> & Partial<Pick<DashboardData, "offsite">>): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
   const kinds = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -1412,6 +1413,21 @@ export function buildAlerts({
     });
   }
 
+  // No safe off-site copy: one Check soon item, linked to Resilience (the same recoverable
+  // point that page shows). Left out while nothing is backed up yet: that alert comes first.
+  if (offsite && !offsite.measured && coverage.covered > 0) {
+    alerts.push({
+      key: "no-offsite",
+      severity: "warning",
+      title: "No safe copy outside this server",
+      detail: "If this server is lost, its backups are lost with it. Fix the daily off-site copy.",
+      href: "/resilience",
+    });
+  }
+
+  // getEvidenceIntegrity checks the record's own hash chain, not the off-site checkpoint,
+  // so ok false here is a real failed check. "Not checked" lives on Activity, which reads
+  // the off-site checkpoint.
   if (!evidence.ok) {
     alerts.push({
       key: "audit",
@@ -1521,6 +1537,13 @@ export async function getDashboardData(): Promise<DashboardData> {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
       },
+      // The same recoverable point the Resilience page shows; a failed read shows no item.
+      offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
+        .then((point) => ({ measured: (point as RecoveryMetrics["recoverablePoint"]).state === "measured" && Boolean((point as RecoveryMetrics["recoverablePoint"]).point) }))
+        .catch((error: unknown) => {
+          console.error("[keel-portal] overview off-site copy state unavailable", error);
+          return undefined;
+        }),
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),

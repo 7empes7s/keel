@@ -33,6 +33,9 @@ const SORTS: ListSort<CoverageRow>[] = [
 const PREFIX = "std-";
 const RESULT_KEY = `${PREFIX}result`;
 const STANDARD_KEY = "std";
+// The policy table stays folded until asked for (`std-list=open`) or a filter, sort or
+// page of it is in the address: the page's own list already shows each control.
+const LIST_KEY = `${PREFIX}list`;
 
 // Measure against a known standard (CISA SCuBA, NIST SP 800-53): for each published
 // policy, the Keel checks that cover it and how they stand, worst first. Policies no
@@ -57,6 +60,7 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
     // `filter` is read from the address on every render; its text is the dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checked, filter.join(","), paging.sort, paging.dir]);
+  const open = view.get(LIST_KEY) === "open" || [RESULT_KEY, `${PREFIX}page`, `${PREFIX}sort`, `${PREFIX}size`].some((key) => Boolean(view.get(key)));
   if (!standard || !coverage) return null;
   const unchecked = coverage.rows.filter((row) => row.result === "not-checked");
   const areas = [...new Set(unchecked.map((row) => row.areaName ?? row.area))];
@@ -66,7 +70,7 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
   const { start, end } = pageWindow(paging.pageOf(shown.length), shown.length, paging.size);
   const pick = (id: string) => {
     if (id === standard.id) return;
-    view.set({ [STANDARD_KEY]: id === standards[0]?.id ? null : id, [RESULT_KEY]: null, ...paging.resetPage });
+    view.set({ [STANDARD_KEY]: id === standards[0]?.id ? null : id, [RESULT_KEY]: null, [LIST_KEY]: null, ...paging.resetPage });
   };
 
   return (
@@ -83,7 +87,7 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
       {checked.length ? (
         <>
           <div className="cp-known-bar">
-            {chips.length > 1 || filter.length ? (
+            {chips.length > 1 || filter.length || !open ? (
               <div aria-label="Show results" className="cp-known-chips" role="group">
                 {chips.map((key) => {
                   const words = RESULTS[key];
@@ -106,8 +110,17 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
                 })}
               </div>
             ) : null}
-            <SortControl paging={paging} sorts={SORTS} />
+            {open ? <SortControl paging={paging} sorts={SORTS} /> : null}
           </div>
+          {!open ? (
+            <button aria-expanded="false" className="btn btn-sm cp-known-toggle" onClick={() => view.set({ [LIST_KEY]: "open" })} type="button">
+              <Icon name="down" />Show each policy ({checked.length})
+            </button>
+          ) : (
+          <>
+          <button aria-expanded="true" className="btn btn-sm cp-known-toggle" onClick={() => view.set({ [LIST_KEY]: null, [RESULT_KEY]: null, [`${PREFIX}sort`]: null, [`${PREFIX}dir`]: null, ...paging.resetPage })} type="button">
+            <Icon name="up" />Hide the policies
+          </button>
           {shown.length ? (
           <table className="cp-misses cp-known-table">
             <thead><tr><th scope="col">Policy</th><th scope="col">Keel check</th>{anyPartial ? <th scope="col">How much</th> : null}<th scope="col">Result</th></tr></thead>
@@ -117,6 +130,8 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
           </table>
           ) : <p className="cp-muted">No policy has these results. Pick another result above.</p>}
           <ListPager label={`${standard.name} policies`} noun={{ one: "policy", many: "policies" }} paging={paging} total={shown.length} />
+          </>
+          )}
         </>
       ) : <p className="cp-muted">No Keel check covers a policy of this standard yet.</p>}
 

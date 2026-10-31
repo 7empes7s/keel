@@ -14,6 +14,7 @@ import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { listControls } from './registry.mjs';
 import { runComplianceChecks } from './runChecks.mjs';
+import { KEEL_TWINS, foldTwins } from './standards.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -234,10 +235,16 @@ test('a Conditional Access read with no legacy block is recorded as not set up y
   assert.equal(result.notConfigured, 1);
   const { findings, summary } = await complianceFindings(client, { tenantRef, now });
   assert.equal(findings.find((finding) => finding.controlId === legacy.control_id).reason, 'not-configured');
-  assert.equal(summary.notConfigured, 1);
   // CISA ScubaGear's sign-in rules run on the same backup and fail here too (no legacy
   // block, no phishing-resistant MFA...); of Keel's own controls only this one is exposed.
   assert.equal(findings.filter((finding) => finding.exposed && !finding.controlId.startsWith('scubagear.')).length, 1);
-  assert.equal(summary.exposed, findings.filter((finding) => finding.exposed).length);
   assert.ok(findings.some((finding) => finding.controlId === 'scubagear.MS.AAD.1.1v1' && finding.verdict === 'fail'));
+  // The summary counts one result per setting: Keel's legacy check tests what CISA
+  // MS.AAD.1.1v1 tests, so the pair counts once, as CISA's fail.
+  assert.equal(summary.notConfigured, 0);
+  const folded = foldTwins(findings);
+  assert.equal(summary.exposed, folded.filter((finding) => finding.exposed).length);
+  assert.equal(summary.exposed, findings.filter((finding) => finding.exposed).length - 1);
+  assert.equal(summary.controls, folded.length);
+  assert.equal(summary.controls, findings.length - Object.keys(KEEL_TWINS).length, 'every Keel check and its CISA twin ran, so each pair counts once');
 });

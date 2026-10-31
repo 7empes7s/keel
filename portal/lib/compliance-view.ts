@@ -1,3 +1,4 @@
+import { BY_HAND_REASON, SCUBA_CONTROL_PREFIX, SCUBA_VERSION, foldTwins } from "../../engine/benchmarks/standards.mjs";
 import type { IconName } from "@/components/shell/icons";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { changeName } from "@/lib/changes-view";
@@ -484,6 +485,8 @@ export interface Coverage {
   partlyPassing: number;
   notPassing: number;
   unknown: number;
+  // Policies CISA marks as checks to do by hand.
+  byHand: number;
 }
 
 /**
@@ -506,11 +509,14 @@ export function standardCoverage(standard: KnownStandard, findings: ComplianceFi
   return {
     rows,
     total: rows.length,
-    checked: checked.length,
+    // Only the policies with a result count as checked: never those that could not be
+    // checked, or that CISA leaves to a person.
+    checked: checked.filter((row) => row.result !== "unknown" && row.result !== "by-hand").length,
     passing: checked.filter((row) => (row.result === "passing" || row.result === "not-relevant") && !partOnly(row)).length,
     partlyPassing: checked.filter((row) => (row.result === "passing" || row.result === "not-relevant") && partOnly(row)).length,
     notPassing: checked.filter((row) => row.result === "failing" || row.result === "not-set-up" || row.result === "excepted").length,
     unknown: checked.filter((row) => row.result === "unknown").length,
+    byHand: checked.filter((row) => row.result === "by-hand").length,
   };
 }
 
@@ -518,18 +524,31 @@ function partOnly(row: CoverageRow): boolean {
   return row.mapped.every((item) => item.match === "partial");
 }
 
-/** "Keel checks 3 of 43 CISA SCuBA policies: 1 passes, 2 do not." */
+/** "Keel checks 3 of 43 CISA SCuBA policies: 1 passes, 2 do not. 40 are not checked: 30 are
+ * checks to do by hand, 10 could not be checked." Only policies with a result count as checked. */
 export function coverageSentence(standard: KnownStandard, coverage: Coverage): string {
   const scope = standard.complete
     ? `Keel checks ${coverage.checked} of ${plural(coverage.total, `${standard.name} policy`, `${standard.name} policies`)}`
-    : `Keel maps ${plural(coverage.checked, `${standard.name} control`)}`;
-  const parts = [
+    : `Keel maps ${plural(coverage.checked + coverage.unknown + coverage.byHand, `${standard.name} control`)}`;
+  const results = [
     coverage.passing ? `${coverage.passing} ${coverage.passing === 1 ? "passes" : "pass"}` : null,
     coverage.partlyPassing ? `${coverage.partlyPassing} ${coverage.partlyPassing === 1 ? "passes" : "pass"} in part` : null,
     coverage.notPassing ? `${coverage.notPassing} ${coverage.notPassing === 1 ? "does not" : "do not"}` : null,
+  ].filter(Boolean);
+  const open = [
+    coverage.byHand ? `${coverage.byHand} ${coverage.byHand === 1 ? "is a check" : "are checks"} to do by hand` : null,
     coverage.unknown ? `${coverage.unknown} could not be checked` : null,
   ].filter(Boolean);
-  return parts.length ? `${scope}: ${parts.join(", ")}.` : `${scope}.`;
+  const first = results.length ? `${scope}: ${results.join(", ")}.` : `${scope}.`;
+  if (!open.length) return first;
+  const missing = coverage.byHand + coverage.unknown;
+  // A part with no result is named in one clause; both kinds are counted apart.
+  if (open.length === 1) return `${first} ${capital(open[0]!)}.`;
+  return `${first} ${missing} ${missing === 1 ? "is" : "are"} not checked: ${open.join(", ")}.`;
+}
+
+function capital(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 export const COVERAGE_WORDS: Record<"full" | "partial", string> = { full: "Checks this", partial: "Checks part of this" };
@@ -547,23 +566,26 @@ export function orderCoverageRows(rows: CoverageRow[]): CoverageRow[] {
 /** Why a checked policy has no pass or fail, in plain words: the reason of its first
  * check that could not be run, or that the check has not run yet. */
 export function coverageReason(row: CoverageRow): string | null {
-  if (row.result !== "unknown") return null;
-  const stuck = row.mapped.find((item) => !item.finding || resultOf(item.finding) === "unknown");
+  if (row.result !== "unknown" && row.result !== "by-hand") return null;
+  const stuck = row.mapped.find((item) => !item.finding || resultOf(item.finding) === row.result);
   if (!stuck) return null;
   return stuck.finding ? reasonWords(stuck.finding) : "It runs after the next backup.";
 }
 
 // The four states a control can be in (Fails, Not set up yet, Passes, Accepted exception),
 // plus two that say Keel could not judge it: no usable backup, or nothing to check here.
-export type ControlResult = "failing" | "not-set-up" | "unknown" | "excepted" | "passing" | "not-relevant";
+export type ControlResult = "failing" | "not-set-up" | "unknown" | "by-hand" | "excepted" | "passing" | "not-relevant";
 
 export const RESULTS: Record<ControlResult, { label: string; plural: string; tone: RiskTone | null; badge: "urgent" | "soon" | "fine" | "neutral"; icon: IconName; rank: number }> = {
   failing: { label: "Fails", plural: "Fails", tone: "urgent", badge: "urgent", icon: "x-circle", rank: 0 },
   "not-set-up": { label: "Not set up yet", plural: "Not set up yet", tone: "soon", badge: "soon", icon: "plus", rank: 1 },
   unknown: { label: "Could not check", plural: "Could not be checked", tone: "soon", badge: "soon", icon: "info", rank: 2 },
-  excepted: { label: "Accepted exception", plural: "Accepted exceptions", tone: null, badge: "neutral", icon: "pause", rank: 3 },
-  passing: { label: "Passes", plural: "Passes", tone: "fine", badge: "fine", icon: "check-circle", rank: 4 },
-  "not-relevant": { label: "Not relevant here", plural: "Not relevant here", tone: null, badge: "neutral", icon: "hide", rank: 5 },
+  // CISA marks the rule as a check a person does: no backup can answer it, so it is
+  // never "could not check" and never offers a backup.
+  "by-hand": { label: "Check by hand", plural: "Checks to do by hand", tone: null, badge: "neutral", icon: "person", rank: 3 },
+  excepted: { label: "Accepted exception", plural: "Accepted exceptions", tone: null, badge: "neutral", icon: "pause", rank: 4 },
+  passing: { label: "Passes", plural: "Passes", tone: "fine", badge: "fine", icon: "check-circle", rank: 5 },
+  "not-relevant": { label: "Not relevant here", plural: "Not relevant here", tone: null, badge: "neutral", icon: "hide", rank: 6 },
 };
 
 export function isResult(value: string | null): value is ControlResult {
@@ -583,7 +605,7 @@ export function resultOf(finding: ComplianceFinding): ControlResult {
     if (!finding.exposed) return "excepted";
     return finding.reason === NOT_CONFIGURED ? "not-set-up" : "failing";
   }
-  if (finding.verdict === "unknown") return "unknown";
+  if (finding.verdict === "unknown") return finding.reason === BY_HAND_REASON ? "by-hand" : "unknown";
   if (finding.verdict === "pass") return "passing";
   return "not-relevant";
 }
@@ -595,9 +617,11 @@ export function findingStatus(finding: ComplianceFinding): string {
 export type ComplianceCounts = Record<ControlResult, number> & { total: number; ended: number };
 
 export function complianceCounts(findings: ComplianceFinding[]): ComplianceCounts {
-  const counts: ComplianceCounts = { failing: 0, "not-set-up": 0, excepted: 0, unknown: 0, passing: 0, "not-relevant": 0, total: findings.length, ended: 0 };
-  for (const finding of findings) {
+  const counts: ComplianceCounts = { failing: 0, "not-set-up": 0, excepted: 0, unknown: 0, "by-hand": 0, passing: 0, "not-relevant": 0, total: 0, ended: 0 };
+  // One count per setting: a Keel check and its CISA twin count once.
+  for (const finding of foldTwins(findings) as ComplianceFinding[]) {
     counts[resultOf(finding)] += 1;
+    counts.total += 1;
     if (finding.exposed && finding.exceptionState === "expired") counts.ended += 1;
   }
   return counts;
@@ -605,7 +629,8 @@ export function complianceCounts(findings: ComplianceFinding[]): ComplianceCount
 
 export function countsFromSummary(summary: ComplianceSummary): ComplianceCounts {
   return {
-    failing: summary.exposed - (summary.notConfigured ?? 0), "not-set-up": summary.notConfigured ?? 0, excepted: summary.excepted, unknown: summary.unknown, passing: summary.passing,
+    failing: summary.exposed - (summary.notConfigured ?? 0), "not-set-up": summary.notConfigured ?? 0, excepted: summary.excepted,
+    unknown: summary.unknown - (summary.byHand ?? 0), "by-hand": summary.byHand ?? 0, passing: summary.passing,
     "not-relevant": summary.notApplicable, total: summary.controls, ended: summary.expiredExceptions,
   };
 }
@@ -622,14 +647,15 @@ export function complianceStatus(counts: ComplianceCounts): { tone: RiskTone; la
 export interface ComplianceVerdict { text: string; detail?: string; tone: "urgent" | "soon" | "fine" | "neutral" }
 
 export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
-  const counts = complianceCounts(data.findings);
+  const findings = foldTwins(data.findings) as ComplianceFinding[];
+  const counts = complianceCounts(findings);
   const now = data.generatedAt;
   if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: NOT_CHECKED_YET, tone: "neutral" };
   const notSetUp = counts["not-set-up"]
     ? `; ${plural(counts["not-set-up"], "control is", "controls are")} not set up yet`
     : "";
   if (counts.failing === 1) {
-    const finding = data.findings.find((entry) => resultOf(entry) === "failing")!;
+    const finding = findings.find((entry) => resultOf(entry) === "failing")!;
     const text = finding.exceptionState === "expired"
       ? `1 control fails, and its exception ended ${ago(finding.exception?.expiresAt ?? null, now)}${notSetUp}.`
       : finding.exceptionState === "incomplete"
@@ -643,14 +669,22 @@ export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
     return { text: `${plural(counts.failing, "control fails", "controls fail")}${ended}${notSetUp}.`, detail: "Open each one to see what it rests on, then fix it or accept it with an exception.", tone: "urgent" };
   }
   if (counts["not-set-up"] === 1) {
-    const finding = data.findings.find((entry) => resultOf(entry) === "not-set-up")!;
+    const finding = findings.find((entry) => resultOf(entry) === "not-set-up")!;
     return { text: "No control fails, but 1 is not set up yet.", detail: `${controlName(finding)}: the setting it looks for does not exist in Microsoft 365 yet.`, tone: "soon" };
   }
   if (counts["not-set-up"] > 1) {
     return { text: `No control fails, but ${counts["not-set-up"]} are not set up yet.`, detail: "The settings they look for do not exist in Microsoft 365 yet. Open each one to see what to set up.", tone: "soon" };
   }
   if (counts.unknown) {
-    return { text: `No control fails; ${plural(counts.unknown, "control")} could not be checked.`, detail: "The backup each one needs is missing or too old.", tone: "soon" };
+    const backup = findings.filter((entry) => resultOf(entry) === "unknown").every((entry) => unknownAction(entry).kind === "backup");
+    return {
+      text: `No control fails; ${plural(counts.unknown, "control")} could not be checked.`,
+      detail: backup ? "The backup each one needs is missing or too old." : "Open each one to see why, and what you can do about it.",
+      tone: "soon",
+    };
+  }
+  if (counts["by-hand"]) {
+    return { text: `No control fails; ${plural(counts["by-hand"], "control is a check", "controls are checks")} to do by hand.`, detail: "CISA has no automatic rule for these. Each one links to CISA's steps.", tone: "fine" };
   }
   return { text: `All ${plural(counts.total, "checked control")} pass or have a current exception.`, tone: "fine" };
 }
@@ -683,6 +717,47 @@ function scubaReasonWords(code: string): string {
   return "Keel could not run this rule.";
 }
 
+/** What a control that has no result can do next: run a backup (only when a backup is
+ * what is missing), set a ScubaGear list, or follow CISA's own steps to check it by hand.
+ * Never "Run a backup" for a rule no backup can answer. */
+export function unknownAction(finding: ComplianceFinding): { kind: "backup" | "list" | "how-to" | null; href: string | null } {
+  const result = resultOf(finding);
+  if (result !== "unknown" && result !== "by-hand") return { kind: null, href: null };
+  if (neededList(finding)) return { kind: "list", href: null };
+  const reason = finding.reason ?? "";
+  if (reason.startsWith("scubagear:")) {
+    const href = scubaPolicyUrl(finding.controlId);
+    return href ? { kind: "how-to", href } : { kind: null, href: null };
+  }
+  return { kind: "backup", href: "/protect" };
+}
+
+/** CISA's own text and steps for a ScubaGear policy, at the pinned release, or null. */
+export function scubaPolicyUrl(controlId: string): string | null {
+  if (!controlId.startsWith(SCUBA_CONTROL_PREFIX)) return null;
+  const ref = controlId.slice(SCUBA_CONTROL_PREFIX.length);
+  const match = /^MS\.([A-Z]+)\./.exec(ref);
+  if (!match) return null;
+  return `https://github.com/cisagov/ScubaGear/blob/v${SCUBA_VERSION}/PowerShell/ScubaGear/baselines/${match[1].toLowerCase()}.md#${ref.toLowerCase().replace(/\./g, "")}`;
+}
+
+/** The page's controls, one per setting: a Keel check and the CISA rule that tests the
+ * same thing show once (the CISA one, unless only Keel's could be judged). */
+export function foldedFindings(findings: ComplianceFinding[]): ComplianceFinding[] {
+  return foldTwins(findings) as ComplianceFinding[];
+}
+
+/** "Keel's own check gives the same result" or "CISA MS.AAD.1.1v1 could not be checked",
+ * said on a row that stands for two checks of the same thing. */
+export function twinLine(finding: ComplianceFinding): string | null {
+  const twin = finding.twin;
+  if (!twin) return null;
+  const same = resultOf(twin) === resultOf(finding);
+  const who = twin.controlId.startsWith(SCUBA_CONTROL_PREFIX) ? `CISA ${twin.controlId.slice(SCUBA_CONTROL_PREFIX.length)}` : "Keel's own check";
+  if (same) return `${who} tests the same and agrees`;
+  return `${who} tests the same: ${RESULTS[resultOf(twin)].label.toLowerCase()}`;
+}
+
 /** The ScubaGear list a control waits for before it can run, or null. */
 export function neededList(finding: ComplianceFinding): ScubaListName | null {
   const reason = finding.reason ?? "";
@@ -702,6 +777,7 @@ export function resultLine(finding: ComplianceFinding, now: string): string {
     case "excepted":
       return `Accepted until ${formatDay(finding.exception?.expiresAt ?? null)}`;
     case "unknown":
+    case "by-hand":
       return reasonWords(finding).replace(/\.$/, "");
     case "passing":
       return "Met on the last check";
@@ -1024,6 +1100,9 @@ export const NOT_A_CERTIFICATION =
   "This states where backups are kept. It is not a certification of compliance with any regulation.";
 
 /** How the checks run, said where results are shown. */
+/** What "Check by hand" means, said on the control's panel. */
+export const BY_HAND_HELP = "CISA has no automatic rule for this policy, so no backup can answer it. Follow CISA's steps to check it in Microsoft 365. It does not count for or against the score.";
+
 export const NOT_RUN_YET = "Keel checks these after each backup. Results come from the last check.";
 
 /** The empty state's next step. */

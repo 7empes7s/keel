@@ -346,6 +346,9 @@ export interface ComplianceFinding {
   fix?: { resourceType: string; field: string | null; to: unknown; settings?: Record<string, unknown> } | null;
   // A check the tenant wrote itself; null or absent for Keel's own controls.
   own?: OwnCheck | null;
+  // The Keel check or CISA rule that tests the same thing, folded into this one so the
+  // page shows the pair once (engine/benchmarks/standards.mjs foldTwins).
+  twin?: ComplianceFinding;
   fixCandidates?: ComplianceFixCandidate[];
 }
 
@@ -371,6 +374,8 @@ export interface ComplianceSummary {
   notApplicable: number;
   // Of the exposed fails, those where the setting does not exist yet. Absent in older reads.
   notConfigured?: number;
+  // Of the unknowns, the rules CISA marks as checks to do by hand. Absent in older reads.
+  byHand?: number;
 }
 
 export interface StorageResidency {

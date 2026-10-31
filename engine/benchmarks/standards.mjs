@@ -165,3 +165,39 @@ export const STANDARDS = freeze([
 export function standardFor(id) {
   return STANDARDS.find((standard) => standard.id === id) ?? null;
 }
+
+// Keel's own checks that test exactly what a CISA SCuBA policy tests, in other words.
+// The page shows each pair once (`foldTwins`), so one setting is never counted twice.
+// Checks that only resemble a policy (other settings, other limits) are not listed:
+// they can disagree with it, so both stay.
+export const KEEL_TWINS = Object.freeze({
+  'keel-custom.conditional-access.block-legacy': 'MS.AAD.1.1v1',
+  'keel-custom.defender-email.anti-spam-no-allowed-domains': 'MS.SECURITYSUITE.6.2v1',
+});
+
+/** The reason ScubaGear gives a rule CISA marks as a check to do by hand. */
+export const BY_HAND_REASON = 'scubagear:check-by-hand';
+
+/**
+ * One result per Keel check and its CISA twin. The CISA rule's result stays, unless
+ * it could not be judged and Keel's check could: then Keel's stays. The one kept
+ * carries the other as `twin`. Findings without a twin pass through unchanged.
+ * @template {{ controlId: string, verdict: string }} T
+ * @param {T[]} findings
+ * @returns {(T & { twin?: T })[]}
+ */
+export function foldTwins(findings) {
+  const byControl = new Map(findings.map((finding) => [finding.controlId, finding]));
+  const dropped = new Set();
+  const kept = new Map();
+  for (const [keelId, ref] of Object.entries(KEEL_TWINS)) {
+    const keel = byControl.get(keelId);
+    const cisa = byControl.get(`${SCUBA_CONTROL_PREFIX}${ref}`);
+    if (!keel || !cisa) continue;
+    const keepKeel = cisa.verdict === 'unknown' && keel.verdict !== 'unknown';
+    const [stay, go] = keepKeel ? [keel, cisa] : [cisa, keel];
+    dropped.add(go);
+    kept.set(stay, go);
+  }
+  return findings.filter((finding) => !dropped.has(finding)).map((finding) => (kept.has(finding) ? { ...finding, twin: kept.get(finding) } : finding));
+}

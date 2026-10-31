@@ -22,7 +22,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FAILED_RESTORE_WHERE = `
       j.kind = 'restore' AND j.status = 'failed' AND rd.tenant_ref = $1
   AND (j.params ->> 'mode' = 'enforce'
-       OR (j.params ? 'artifactId' AND (SELECT count(*) FROM jsonb_object_keys(j.params)) = 1))`;
+       OR (jsonb_typeof(j.params) = 'object' AND j.params ? 'artifactId'
+           AND (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(j.params) = 'object' THEN j.params ELSE '{}'::jsonb END)) = 1))`;
 
 const FAILED_RESTORE_FROM = `
        FROM job j

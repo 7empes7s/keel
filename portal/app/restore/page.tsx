@@ -204,6 +204,9 @@ export default async function RestorePage({
             }}
           />
         ) : null}
+        {onlyFailed && !failedJobs ? (
+          <p className="action-error">KEEL could not read the failed restores. Reload in a minute; the list below shows every recent restore and check.</p>
+        ) : null}
         {onlyFailed && failedJobs ? (
           <JobTable
             empty="No restore has failed."

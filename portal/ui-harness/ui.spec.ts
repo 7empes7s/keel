@@ -3324,6 +3324,35 @@ test("Policies · a viewer sees the rules and no controls", async ({ page }) => 
   await expect(page.locator(".sel-row")).toHaveCount(5);
 });
 
+// The rule sheet looks the same from the list (New rule) and from a rule's page (Edit):
+// a styled panel beside the page on a desktop, full screen on a phone, and no choice
+// runs past its edge or clips its label.
+for (const width of [375, 390, 1278]) {
+  test(`Policies · ${width} · New rule and Edit open as a styled sheet with every choice inside it`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 600 ? 812 : 900 });
+    for (const [hash, opener, name] of [["/policies", "New rule", "New rule"], ["/policies/p1", "Edit", "Edit Undo low-risk changes"]] as const) {
+      await open(page, hash);
+      await page.getByRole(opener === "Edit" ? "button" : "link", { name: opener, exact: true }).click();
+      const sheet = page.getByRole("dialog", { name });
+      await expect(sheet).toBeVisible();
+      const box = await sheet.evaluate((panel) => {
+        const rect = panel.getBoundingClientRect();
+        const body = panel.querySelector(".bl-sheet-body")!.getBoundingClientRect();
+        const choices = [...panel.querySelectorAll<HTMLElement>(".segmented")].map((group) => group.getBoundingClientRect());
+        const clipped = [...panel.querySelectorAll<HTMLElement>(".segment")].filter((segment) => segment.scrollWidth > segment.clientWidth + 1).map((segment) => segment.textContent);
+        return { position: getComputedStyle(panel).position, left: rect.left, width: rect.width, bodyRight: body.right, widest: Math.max(...choices.map((group) => group.right)), clipped };
+      });
+      expect(box.position).toBe("absolute");
+      if (width >= 1000) { expect(box.width).toBeLessThanOrEqual(481); expect(box.left).toBeGreaterThan(width / 2); }
+      else expect(box.width).toBe(width);
+      expect(box.widest).toBeLessThanOrEqual(box.bodyRight);
+      expect(box.clipped).toEqual([]);
+      await sheet.getByRole("button", { name: "Cancel" }).click();
+      await expect(sheet).toBeHidden();
+    }
+  });
+}
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
     for (const hash of ["/policies", "/policies?group=state", "/policies/p1", "/policies/p2"]) {

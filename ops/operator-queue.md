@@ -13738,3 +13738,17 @@ item that needs it stays untouched.
   `node tools/scubagear-pim-check.mjs --config /etc/keel/tenant.json`
 - **Report:** the exit code (0 agree, 1 differ, 2 error) and the JSON it prints, verbatim. The output holds counts, role names and
   "set"/"not set" only: no ids, user names or dates. If it exits 2 with a 403, report which read failed and stop; do not grant anything.
+
+### Q295: Rerun the PIM comparison at PR #833's head, to confirm Keel now matches ScubaGear on start dates for MS.AAD.7.5 (GET only), about 5 minutes
+- Drafted by the "Match ScubaGear on PIM start dates" thread (2026-10-31). Follows Q294 (15 assignments: start date set in Keel's v1.0
+  schedules, not set in ScubaGear's beta instances). PR #833 treats a v1.0 schedule with `createdUsing` and `createdDateTime` both null
+  (made outside PIM) as having no start date, and adds a `startDateClues` tally to the tool's output.
+- Needs: nothing deployed. Run the tool from a checkout of PR #833's head (branch `claude/project-thread-02spx7`, commit 73d3545e or later).
+- Status: todo
+- **Tenant:** GET only, Collector credential from `/etc/keel/tenant.json` (`RoleManagement.Read.Directory`, already held). Same reads as
+  Q294. Grant, assign, activate, create or change nothing. No PIM change of any kind.
+- Do: `git fetch origin claude/project-thread-02spx7 && git checkout FETCH_HEAD`, then
+  `node tools/scubagear-pim-check.mjs --config /etc/keel/tenant.json`
+- **Report:** the commit, the exit code (0 agree, 1 differ, 2 error) and the JSON verbatim, including `startDateClues`. The output holds
+  counts, role names and "set"/"not set" only: no ids, user names or dates. Expected: exit 0. If it exits 1, the clues show which field
+  would have predicted ScubaGear's start date; report them and stop.

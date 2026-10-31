@@ -271,8 +271,9 @@ export function ApprovalInbox({
   const [bulk, setBulk] = useState<string[] | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Two requests never share a title: same-reading ones get the moment they were asked.
-  const titles = useMemo(() => distinctTitles([...pending, ...awaitingContentEffects, ...history]), [pending, awaitingContentEffects, history]);
+  // Two requests in one list never share a title: same-reading ones get the moment
+  // they were asked. Waiting and decided are separate lists, so each is checked alone.
+  const titles = useMemo(() => new Map([...distinctTitles([...pending, ...awaitingContentEffects]), ...distinctTitles(history)]), [pending, awaitingContentEffects, history]);
   const titleOf = (request: ApprovalRequestRecord) => titles.get(request.id) ?? approvalTitle(request);
   const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now), [pending, awaitingContentEffects, history, now]);
   const waiting = useMemo(() => sortWaiting([...pending, ...awaitingContentEffects], sort), [pending, awaitingContentEffects, sort]);

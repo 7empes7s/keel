@@ -121,3 +121,33 @@ export async function assertDispositionApproval(client, { approvalId, actor, mat
   if (!matches(request.params ?? {})) throw new DispositionApprovalError('the decision approval is for another decision');
   return request;
 }
+
+/**
+ * A dispose request still waiting for the same decision on the same change: driftId with
+ * this action, or serviceChangeId (accept only). Asking again returns this one, so a
+ * second click or a retried send never puts a second request in front of an approver.
+ * @param {{ query: Function }} client
+ * @param {{ driftId?: string | null, serviceChangeId?: string | null, action: string }} change
+ */
+export async function pendingDisposeRequest(client, { driftId = null, serviceChangeId = null, action }) {
+  const match = driftId != null
+    ? { sql: "params->'driftIds' = jsonb_build_array($2::text)", value: String(driftId) }
+    : { sql: "params->>'serviceChangeId' = $2", value: String(serviceChangeId) };
+  const { rows: [request] } = await client.query(
+    `SELECT * FROM approval_request
+      WHERE action = $1 AND status = 'pending' AND expires_at > now()
+        AND ${match.sql} AND params->>'action' = $3
+      ORDER BY created_at LIMIT 1`,
+    [DISPOSE_APPROVAL_ACTION, match.value, action],
+  );
+  return request ?? null;
+}
+
+/** Whether this drift row already has an accept recorded. */
+export async function driftAlreadyAccepted(client, { driftId }) {
+  const { rows } = await client.query(
+    "SELECT 1 FROM disposition WHERE drift_id::text = $1 AND action = 'accept' LIMIT 1",
+    [String(driftId)],
+  );
+  return rows.length > 0;
+}

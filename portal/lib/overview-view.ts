@@ -214,7 +214,8 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
     value: `${proven.toLocaleString("en-GB")} of ${restorable.toLocaleString("en-GB")}`,
     detail: lastProvenAt
       ? `Last proven ${ago(lastProvenAt, data.generatedAt)}`
-      : tested ? `${tested.toLocaleString("en-GB")} pass tests, none run live yet` : "No test restore yet",
+      : proven ? "Proven by a live test restore"
+        : tested ? `${tested.toLocaleString("en-GB")} pass tests, none run live yet` : "No test restore yet",
     href,
     tone: proven ? undefined : "soon",
     meter: [{ tone: "fine", share: restorable ? proven / restorable : 0 }],

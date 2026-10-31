@@ -97,13 +97,13 @@ export function protectionHeadline(types) {
       action: { label: 'Review backups', href: '/protect' },
     };
   }
-  if (lastProven) {
+  if (proof.proven > 0) {
     return {
       ...base,
       state: 'proven',
       tone: 'good',
       headline: 'Protected',
-      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(backedUp.length, 'configuration type', 'configuration types')} today. Last proven restore: ${formatHeadlineDate(lastProven)}.`,
+      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(backedUp.length, 'configuration type', 'configuration types')} today.${lastProven ? ` Last proven restore: ${formatHeadlineDate(lastProven)}.` : ''}`,
       action: null,
     };
   }

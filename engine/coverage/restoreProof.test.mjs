@@ -79,3 +79,15 @@ test('the Overview headline carries the same count, and its last proven restore'
   assert.equal(nothingLive.proof.tested, 1);
   assert.equal(nothingLive.lastProvenRestoreAt, null);
 });
+
+test('a proven kind with no recorded date still makes the headline proven, and an unknown measurement is ignored', () => {
+  const undated = entry('undated', writer('live-qualified'));
+  const headline = protectionHeadline([undated]);
+  assert.equal(headline.proof.proven, 1);
+  assert.equal(headline.state, 'proven');
+  assert.equal(headline.lastProvenRestoreAt, null);
+  assert.doesNotMatch(headline.sentence, /Last proven restore/);
+
+  const odd = entry('odd', { ...writer('fixture-tested'), fidelity: { declared: 'read-only', verifiedBy: { at, measuredFidelity: 'none' } } });
+  assert.equal(restoreProof(odd), 'tested', 'an unknown measured value falls back to the declared rule, as the portal does');
+});

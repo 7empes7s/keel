@@ -32,8 +32,12 @@ function operations(entry) {
   return Object.values(entry?.writeCapability?.operations ?? {}).filter(Boolean);
 }
 
+const FIDELITIES = new Set(['full', 'partial', 'read-only', 'unprotectable']);
+
+// Only the four known values count, as in the portal's normaliser, so both paths agree.
 function measuredFidelity(entry) {
-  return entry?.fidelity?.verifiedBy?.measuredFidelity ?? entry?.fidelity?.measured ?? null;
+  const value = entry?.fidelity?.verifiedBy?.measuredFidelity ?? entry?.fidelity?.measured ?? null;
+  return FIDELITIES.has(value) ? value : null;
 }
 
 function drillAt(entry) {

@@ -13757,3 +13757,22 @@ item that needs it stays untouched.
 - **Report:** the commit, the exit code (0 agree, 1 differ, 2 error) and the JSON verbatim, including `startDateClues`. The output holds
   counts, role names and "set"/"not set" only: no ids, user names or dates. Expected: exit 0. If it exits 1, the clues show which field
   would have predicted ScubaGear's start date; report them and stop.
+
+### Q296: Find why the menu's background reads got HTTP 503 during the 31 Oct audit (read-only, no tenant), about 10 minutes
+- Drafted by the "Fix sidebar badges vanishing" thread (2026-10-31). In Marouane's portal walk on 31 Oct 2026, 17:37–17:50 UTC, the
+  menu's badges showed on some page loads and not on others (What's protected, Incidents, the 404 page), and background calls returned
+  HTTP 503 repeatedly. The menu reads `/api/dashboard` (and `/api/principals`, `/api/deliveries`, `/api/approvals`). Two code paths
+  send 503: the sign-in check when the database pool is full (`portal/proxy.ts`, "Keel is busy"), and any failure inside a data read
+  (`portal/lib/api-response.ts`, logs `[keel-portal] data request failed`). This item finds which one, and the error behind it.
+  **Read-only: no tenant calls, no database writes, no restarts, no config changes.** Never print the database URL, a password, a token or a tenant id.
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Do, on Mulinux:
+  1. `git -C /opt/keel-live log --oneline -1` and `systemctl show keel-portal -p MainPID -p MemoryCurrent -p NRestarts -p ActiveEnterTimestamp`.
+  2. `journalctl -u keel-portal --since "2026-10-31 17:30" --until "2026-10-31 18:00" --no-pager`: per minute, the count of
+     `database pool full`, `data request failed`, `DatabaseBusyError` and any other `Error` lines, and every start/stop. Quote the first 3
+     `data request failed` lines verbatim with up to 15 lines of stack after each (redact ids), and the first 3 `database pool full` lines.
+  3. If Caddy keeps an access log for the portal, the 503 responses in the same window: per path (query string dropped), count and the
+     first and last time. Say plainly if there is no access log.
+  4. Same journal counts as step 2 for the whole of 2026-10-31 (per hour), so we know if this is constant or only during the walk.
+- **Report:** the commit, the counts, the quoted lines, and which 503 path it was (busy sign-in check, or a failed data read and its error).

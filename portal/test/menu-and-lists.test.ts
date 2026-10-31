@@ -89,7 +89,7 @@ test("pinned items move and come out in place", () => {
 test("section statuses come from the Overview's data, in plain words", () => {
   const base: Parameters<typeof menuStatuses>[0] = {
     headline: { state: "unproven", tone: "attention", headline: "Backups need attention", sentence: "", action: null, counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, lastProvenRestoreAt: null, failingSince: null },
-    coverage: { covered: 142, failed: 4, notCovered: 21, neverCollected: 2, stale: 3, total: 167 },
+    coverage: { covered: 142, failed: 4, notCovered: 21, neverCollected: 2, stale: 3, unavailable: 0, total: 172 },
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: 2 }, { blastRadius: "cosmetic", count: 5 }],
     openDriftTotal: 7,
     evidence: { ok: false, chainLength: 10 },

@@ -469,6 +469,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Open changes": count("Changes to review", "Changes waiting for a decision.", { zeroIsGood: true }),
   "Covered": count("Covered", "Types Keel backs up."),
   "Not covered": count("Not covered", "Types Keel does not back up yet.", { zeroIsGood: true }),
+  Unavailable: count("Not on this tenant", "Types Microsoft refused for a missing licence or tenant feature.", { zeroIsGood: true }),
   "Total types": count("All types", "Every type of setting Keel knows."),
 
   // Decision workbook.

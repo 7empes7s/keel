@@ -176,12 +176,15 @@ export interface CoverageType {
   observation?: CoverageObservation | null;
 }
 
+// Every kind in exactly one bucket, so the buckets add up to total
+// (lib/protect-view.ts coverageSummary). covered is backed up and current.
 export interface CoverageSummary {
   covered: number;
   failed: number;
-  notCovered: number;
-  neverCollected: number;
   stale: number;
+  neverCollected: number;
+  notCovered: number;
+  unavailable: number;
   total: number;
 }
 

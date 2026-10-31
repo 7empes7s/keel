@@ -1243,6 +1243,11 @@ test("a kind's details panel states its standing and keeps the recovery decision
   await expect(page).not.toHaveURL(/open=/);
 });
 
+test("What's protected · one line counts every kind, and its parts add up", async ({ page }) => {
+  await open(page, "/protect");
+  await expect(page.locator(".pt-tiles-sum")).toHaveText("15 kinds: 8 backed up, 2 failed, 3 out of date or never, 1 not backed up by Keel yet and 1 not on this tenant.");
+});
+
 test("What's protected sorts failed and out-of-date kinds first, each with a run of its tier", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
@@ -4632,6 +4637,10 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   }
   await expect(page.locator('.ov-legend-link[href*="risk=tenant-lockout"]')).toContainText("2");
   await expect(page.locator('.ov-legend-link[href*="health=failed"]')).toContainText("4");
+  // Audit 31 Oct 2026: the ring's parts add up to every kind Keel knows.
+  const ringValues = await page.locator('#ov-coverage-heading').locator("xpath=ancestor::section[1]").locator(".ov-legend-link b").allTextContents();
+  expect(ringValues.reduce((sum, value) => sum + Number(value.replace(/,/g, "")), 0)).toBe(167);
+  await expect(page.locator(".ov-sub", { hasText: "kinds of settings Keel knows" })).toHaveText("167 kinds of settings Keel knows");
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
   // With no notification channel, alerts reach nobody: an Urgent row, first, opens Notifications.

@@ -30,6 +30,8 @@ import {
   backupSentence,
   healthRisk,
   matchesHealth,
+  coverageSentence,
+  coverageSummary,
   protectCounts,
   protectScopeDetail,
   protectVerdict,
@@ -327,6 +329,8 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
           );
         })}
       </section>
+      {/* The tiles leave out kinds Keel does not back up yet; this line counts every kind, so the parts add up. */}
+      <p className="pt-tiles-sum">{coverageSentence(coverageSummary(scoped))}</p>
 
       {tierStrip}
 

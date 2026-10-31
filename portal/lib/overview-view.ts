@@ -226,14 +226,19 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
     meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "neutral", share: uncovered / total }],
   }];
 
-  const { restorable, backedUp } = headline.counts;
+  // "Restore proven" is counted once (engine/coverage/restoreProof.mjs), so this tile,
+  // What's protected and Setup show the same number and link to the same list.
+  const { proven, tested, restorable, lastProvenAt, href } = headline.proof;
   tiles.push({
     key: "restore", label: "Restore proven", icon: "restore",
-    value: `${restorable.toLocaleString("en-GB")} of ${backedUp.toLocaleString("en-GB")}`,
-    detail: headline.lastProvenRestoreAt ? `Last test restore ${ago(headline.lastProvenRestoreAt, data.generatedAt)}` : "No test restore yet",
-    href: "/resilience",
-    tone: headline.lastProvenRestoreAt ? undefined : "soon",
-    meter: [{ tone: "fine", share: backedUp ? restorable / backedUp : 0 }],
+    value: `${proven.toLocaleString("en-GB")} of ${restorable.toLocaleString("en-GB")}`,
+    detail: lastProvenAt
+      ? `Last proven ${ago(lastProvenAt, data.generatedAt)}`
+      : proven ? "Proven by a live test restore"
+        : tested ? `${tested.toLocaleString("en-GB")} pass tests, none run live yet` : "No test restore yet",
+    href,
+    tone: proven ? undefined : "soon",
+    meter: [{ tone: "fine", share: restorable ? proven / restorable : 0 }],
   });
 
   const risks = riskRows(data.openDriftByBlastRadius);

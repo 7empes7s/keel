@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { backupHealth, backupSentence, protectProblems, protectVerdict, restoreStanding, standingSentence } from "@/lib/protect-view";
+import { backupHealth, backupSentence, matchesHealth, protectProblems, protectVerdict, provenAt, restoreProof, restoreStanding, standingSentence } from "@/lib/protect-view";
 import type { CapabilityClaim, CoverageData, CoverageType, WriteOperationCapability } from "@/lib/types";
 
 const NOW = "2026-10-15T18:00:00.000Z";
@@ -39,21 +39,34 @@ function readOnlyType(overrides: Partial<CoverageType> = {}): CoverageType {
   };
 }
 
-test("a read-only-declared type with a tested writer is restorable, not yet proven", () => {
+test("a read-only-declared type with a tested writer is restorable, tested but not yet proven", () => {
   const item = readOnlyType();
   assert.equal(restoreStanding(item), "unproven");
-  assert.equal(standingSentence(item), "Backed up, but no restore has been proven on this tenant yet.");
+  assert.equal(restoreProof(item), "tested");
+  assert.equal(standingSentence(item), "Backed up. Keel's restore passes its tests but has not yet been proven on this tenant.");
 });
 
-test("a live-qualified writer says its writes are proven on this tenant", () => {
+test("a write that ran live on this tenant proves the restore, the same rule every count uses", () => {
   const item = readOnlyType({
     writeCapability: {
       resourceType: "tokenLifetimePolicy",
       operations: { create: op("live-qualified", true), update: op("live-qualified", true), delete: op("unsupported"), "restore-soft-deleted": op("unsupported") },
     },
   });
-  assert.equal(restoreStanding(item), "unproven");
-  assert.match(standingSentence(item), /writes for this type are proven on this tenant/);
+  assert.equal(restoreStanding(item), "proven");
+  assert.equal(restoreProof(item), "proven");
+  assert.equal(provenAt(item), "2026-10-14T10:00:00.000Z");
+  assert.match(standingSentence(item), /^Restore proven on this tenant by a live run on 14 Oct 2026\./);
+  assert.equal(matchesHealth(item, "proven"), true, "the Restore proven filter lists it");
+  // A live record that no longer counts does not prove anything.
+  const lapsed = readOnlyType({
+    writeCapability: {
+      resourceType: "tokenLifetimePolicy",
+      operations: { create: op("live-qualified", false), update: op("fixture-tested"), delete: op("unsupported"), "restore-soft-deleted": op("unsupported") },
+    },
+  });
+  assert.equal(restoreProof(lapsed), "tested");
+  assert.equal(matchesHealth(lapsed, "proven"), false);
 });
 
 test("read-only types without an automated, tested writer still cannot be restored", () => {

@@ -78,6 +78,8 @@ test("other failures say what happened in plain words, without a permission", ()
   assert.deepEqual(timeout.needs, []);
   const throttled = failureReason(kind("user", { detail: detail({ httpStatus: 429 }) }))!;
   assert.match(throttled.text, /slowed Keel down/);
+  // "blocked" is not "locked".
+  assert.doesNotMatch(failureReason(kind("user", { detail: detail({ message: "request blocked upstream" }) }))!.text, /locked/);
   const unknown = failureReason(kind("user"))!;
   assert.match(unknown.text, /Keel could not read it/);
 });

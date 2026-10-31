@@ -467,7 +467,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                       className="btn btn-sm"
                       disabled={!canRetry(plan) || busy !== null}
                       onClick={() => void retry(plan, kindName(item), item.type)}
-                      title={canRetry(plan) ? retryTitle(plan) : "You need the backup permission to run this again."}
+                      title={canRetry(plan) ? retryTitle(plan) : `You need the ${plan.kind === "tier" ? "backup" : "collect"} permission to run this again.`}
                       type="button"
                     >
                       <Icon name="play" />Retry

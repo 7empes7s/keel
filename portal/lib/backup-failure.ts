@@ -57,7 +57,7 @@ function need(name: string, type: FailureNeed["type"]): FailureNeed {
 const AUTHZ = /\b40[13]\b|access ?denied|forbidden|unauthori[sz]ed|insufficient privileges|authorization_requestdenied|not authorized|requires one of|required scopes/i;
 const CAUSES: Array<[RegExp, string, FailureTone]> = [
   [/\b429\b|throttl|too many requests/i, "Microsoft 365 slowed Keel down (too many requests). Retrying later usually works.", "soon"],
-  [/\b423\b|locked/i, "Microsoft had it locked while Keel read it. Retrying usually works.", "soon"],
+  [/\b423\b|\blocked\b/i, "Microsoft had it locked while Keel read it. Retrying usually works.", "soon"],
   [/timed? ?out|ETIMEDOUT|ECONNRESET|fetch failed|socket hang up|\b50[0234]\b|gateway|service ?unavailable/i, "Microsoft 365 did not answer in time. Retrying usually works.", "soon"],
   [/\b404\b|not ?found/i, "Microsoft could not find part of it; it may have been moved or deleted during the backup.", "soon"],
   [/not licensed|licen[cs]e/i, "This tenant does not have the licence Microsoft needs for it.", "neutral"],

@@ -415,13 +415,22 @@ function shortTime(value: string | null): string {
 export function askTiles(answer: GroundedAnswer): StatTile[] {
   const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of backup" : "change";
   const found = answer.status === "unknown" || answer.status === "refused" ? "Not known" : answer.total.toLocaleString("en-GB");
+  if (answer.coverage) {
+    // The kinds in the shared buckets, as the verdict counts them; content backups are rows, not kinds.
+    const kinds = answer.coverage.total;
+    const content = answer.records.filter((record) => record.kind === "coverage" && !record.health).length;
+    const [, ...rest] = askTiles({ ...answer, coverage: null });
+    return [{ key: "found", label: "Found", icon: "search", value: kinds.toLocaleString("en-GB"),
+      about: `${kinds === 1 ? "kind of backup" : "kinds of backup"}${content ? `, and ${plural(content, "other backup")}` : ""}`, tone: "neutral" },
+    { ...rest[0], value: "Latest reads", about: "Each kind's newest backup" }, ...rest.slice(1)];
+  }
   const window = answer.plan?.params.from || answer.plan?.params.to ? { from: answer.plan.params.from, to: answer.plan.params.to } : answer.window;
   return [
     { key: "found", label: "Found", icon: "search", value: found,
       about: found === "Not known" ? "No record covers this" : answer.total ? `${answer.intent === "coverage" ? (answer.total === 1 ? "kind of backup" : "kinds of backup") : `${noun}${answer.total === 1 ? "" : "s"}`}${answer.truncated ? `, newest ${answer.shown} shown` : ""}` : `No ${noun}s in what KEEL knows`,
       tone: found === "Not known" ? "soon" : answer.intent === "failed-jobs" && answer.total ? "urgent" : "neutral" },
-    { key: "period", label: "Period", icon: "calendar", value: window ? shortTime(window.from).split(",")[0] : answer.coverage ? "Latest reads" : "Latest backup",
-      about: window ? `${shortTime(window.from)} to ${shortTime(window.to)}` : answer.coverage ? "Each kind's newest backup" : "The newest complete copy", tone: "neutral" },
+    { key: "period", label: "Period", icon: "calendar", value: window ? shortTime(window.from).split(",")[0] : "Latest backup",
+      about: window ? `${shortTime(window.from)} to ${shortTime(window.to)}` : "The newest complete copy", tone: "neutral" },
     { key: "unknown", label: "Not known", icon: "clock", value: answer.gaps.length ? `${answer.gaps.length} period${answer.gaps.length === 1 ? "" : "s"}` : "None",
       about: answer.gaps.length ? "KEEL has no comparison there" : "KEEL has records for all of it", tone: answer.gaps.length ? "soon" : "fine" },
     { key: "scope", label: "Owned by", icon: "person", value: answer.scope.central ? (answer.plan?.params.entity ?? "Anyone") : answer.scope.entities.join(", "),

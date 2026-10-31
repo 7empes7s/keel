@@ -108,6 +108,10 @@ test("service settings take the shared state and keep their settings count; cont
   const mail = shared.records.find((record) => record.kind === "coverage" && record.backup === "content") as CoverageRecord;
   assert.equal(mail.health, undefined);
   assert.equal(shared.total, shared.records.length);
+  // The Found tile counts the kinds the verdict counts, and names the content rows apart.
+  const found = askTiles(shared).find((tile) => tile.key === "found")!;
+  assert.equal(found.value, String(shared.coverage?.total));
+  assert.equal(found.about, "kinds of backup, and 1 other backup");
 });
 
 test("an owner's answer, a part-only question and a refusal keep the engine's answer", () => {

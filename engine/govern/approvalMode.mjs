@@ -30,7 +30,7 @@ export const APPROVAL_MODE_EVIDENCE_KIND = 'approval-mode';
 export class ApprovalModeError extends Error {}
 
 // A self-approval has no second person to question it, so its reason must say something:
-// at least this many characters and two words, not a placeholder such as "ok" or "test".
+// at least this many characters and two different words, not a placeholder such as "ok".
 export const SELF_APPROVAL_REASON_MIN_LENGTH = 10;
 const PLACEHOLDER_REASONS = new Set([
   'n/a', 'na', 'none', 'test', 'testing', 'ok', 'okay', 'fine', 'yes', 'approve', 'approved',
@@ -44,10 +44,16 @@ const PLACEHOLDER_REASONS = new Set([
 export function selfApprovalReasonProblem(text) {
   const reason = typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : '';
   if (reason.length === 0) return 'a self-approval needs a reason: say why you are approving your own request';
-  const words = reason.split(' ').filter((word) => /\p{L}/u.test(word));
+  // Two different words, so "ok ok ok" is no reason. Scripts written without spaces
+  // (Chinese, Japanese, Thai) count letters instead.
+  const words = new Set(reason.toLowerCase().split(' ').filter((word) => /\p{L}/u.test(word)));
+  const unspaced = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u.test(reason);
+  const enough = unspaced
+    ? (reason.match(/\p{L}/gu) ?? []).length >= 4
+    : reason.length >= SELF_APPROVAL_REASON_MIN_LENGTH && words.size >= 2;
   const placeholder = PLACEHOLDER_REASONS.has(reason.toLowerCase().replace(/[.!]+$/, ''))
     || /^(.)\1*$/u.test(reason.replace(/\s/g, ''));
-  if (placeholder || reason.length < SELF_APPROVAL_REASON_MIN_LENGTH || words.length < 2) {
+  if (placeholder || !enough) {
     return 'a self-approval needs a reason that says why, in a few words (for example "Restore the policy deleted by mistake this morning")';
   }
   return null;

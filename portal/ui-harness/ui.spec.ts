@@ -195,8 +195,11 @@ test("Approvals · approval mode switches to Solo only with the risk confirmed, 
   await expect(request.getByText("You can self-approve")).toBeVisible();
   // A self-approval needs a reason that says why: the button waits for one.
   const approveMyself = request.getByRole("button", { name: "Approve myself" });
+  const why = request.getByLabel("Why are you approving this yourself?");
+  await expect(why).toHaveValue("Nobody meant to add the contractors to Finance.");
+  await why.fill("");
   await expect(approveMyself).toBeDisabled();
-  await request.getByLabel("Why are you approving this yourself?").fill("Restore the policy deleted by mistake");
+  await why.fill("Restore the policy deleted by mistake");
   await expect(approveMyself).toBeEnabled();
   await approveMyself.click();
   const decisions = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))

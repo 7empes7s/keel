@@ -127,6 +127,9 @@ test('solo has no two-person exceptions, but never lets a standing policy self-a
   assert.equal(twoNeeded.required_approvals, 2);
   const decided = await approveRequest(client, { tenantRef, id: twoNeeded.id, decidedBy: admin, reason: 'Restore the KEEL-RT- policy changed by mistake' });
   assert.equal(decided.request.status, 'approved', 'a self-approval decides even a two-person-rule request in solo');
+  const [waived] = (await evidenceOf(client, tenantRef, APPROVAL_DECISION_EVIDENCE_KIND)).map((row) => row.subject);
+  assert.equal(waived.twoPersonRuleWaived, true);
+  assert.equal(waived.requiredApprovals, undefined);
   assert.equal(decided.request.self_approved, true);
   assert.ok(decided.job);
 
@@ -160,6 +163,8 @@ test('a self-approval needs a reason that says why', async (t) => {
   assert.equal(decision.selfApproved, true);
 
   assert.equal(selfApprovalReasonProblem('Restore the deleted policy'), null);
+  assert.match(selfApprovalReasonProblem('ok ok ok ok ok'), /reason/, 'the same word again is not a reason');
+  assert.equal(selfApprovalReasonProblem('誤って削除したポリシーを戻す'), null, 'a language without spaces counts letters');
   assert.match(selfApprovalReasonProblem('n/a'), /reason/);
 });
 

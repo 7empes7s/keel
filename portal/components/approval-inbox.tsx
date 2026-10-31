@@ -428,7 +428,8 @@ export function ApprovalInbox({
     // Two-person mode: the viewer never decides their own request. Solo: they may.
     const blockedAsRequester = mine && approvalMode !== "solo";
     const selfApproval = mine && approvalMode === "solo";
-    const selfReason = selfReasons[request.id] ?? "";
+    // Starts from the reason given when it was asked for; the server checks it either way.
+    const selfReason = selfReasons[request.id] ?? request.justification ?? "";
     const title = titleOf(request);
     const left = hoursLeft(request, now);
     const expiryTone = left !== null && left <= 4 ? "urgent" : "neutral";
@@ -535,7 +536,7 @@ export function ApprovalInbox({
                   aria-busy={(isBusy && busy?.decision === "approve") || undefined}
                   className="btn btn-primary"
                   disabled={isBusy || (selfApproval && selfReason.trim().length < SELF_REASON_MIN_LENGTH)}
-                  onClick={() => void decide(request, "approve", selfApproval ? selfReason.trim() : "")}
+                  onClick={() => void decide(request, "approve", selfApproval && selfReason.trim() !== (request.justification ?? "").trim() ? selfReason.trim() : "")}
                   title={selfApproval && selfReason.trim().length < SELF_REASON_MIN_LENGTH ? "Write why you are approving it yourself first" : undefined}
                   type="button"
                 >

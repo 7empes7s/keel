@@ -678,7 +678,9 @@ export async function approveRequest(client, {
       decision: 'approved',
       executor: decided.request.executor,
       jobId: decided.job?.id ?? null,
-      ...(decided.requiredApprovals > 1 ? { approvers: decided.approvers, requiredApprovals: decided.requiredApprovals } : {}),
+      ...(decided.requiredApprovals > 1 && !decided.request.self_approved ? { approvers: decided.approvers, requiredApprovals: decided.requiredApprovals } : {}),
+      // Solo approval mode has no exceptions: the record says a two-person rule was set aside.
+      ...(decided.requiredApprovals > 1 && decided.request.self_approved ? { twoPersonRuleWaived: true } : {}),
       ...(standingPolicy != null ? { standingPolicy } : {}),
       ...(decided.request.self_approved ? { selfApproved: true, approvalMode: 'solo', reason: decided.request.reason ?? decided.request.justification } : {}),
     },

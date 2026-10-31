@@ -1,3 +1,4 @@
+import type { AuditCheck } from "@/lib/audit-check";
 import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef } from "@/lib/sentences";
 
@@ -671,7 +672,9 @@ export interface DashboardData {
   // entry per day for the trend window (zero-filled), so the sparkline is to scale.
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
-  evidence: { ok: boolean; chainLength: number };
+  // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
+  // "unchecked" when there is none to compare with; undefined when it could not be read.
+  evidence: { ok: boolean; chainLength: number; check?: AuditCheck };
   // Whether a checked off-site copy holds every backed-up type (the Resilience page's
   // recoverable point). Undefined when it could not be read.
   offsite?: { measured: boolean };

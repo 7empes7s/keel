@@ -4,6 +4,7 @@ import type { AlertItem } from "@/components/ui/alert-list";
 import type { StatTile } from "@/components/ui/stat-tiles";
 import type { Destination, DestinationStatus } from "@/lib/integrations";
 import type { ServiceNowHeldBack, ServiceNowStatus } from "@/lib/servicenow";
+import { AUDIT_CHECK_WORDS, AUDIT_RECORD_HREF, type AuditCheck } from "@/lib/audit-check";
 
 /** "Webhook" / "CEF over HTTPS" / "CEF over UDP (syslog)". */
 export function destinationKind(destination: Pick<Destination, "kind" | "config">): string {
@@ -68,13 +69,16 @@ export function heldBackSentence(event: ServiceNowHeldBack): string {
 }
 
 /** The page verdict: a ServiceNow problem outranks the audit-record destinations. */
-export function integrationsPageVerdict(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null): { text: string; tone: "good" | "attention" } {
+export function integrationsPageVerdict(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null, record: AuditCheck = "unknown"): { text: string; tone: "good" | "attention" } {
+  // A failed audit record check outranks everything: the copies sent out are of a record
+  // that cannot be trusted.
+  if (record === "failed") return { text: `${AUDIT_CHECK_WORDS.failed.title}. Investigate before trusting the copies sent out.`, tone: "attention" };
   if (servicenow && servicenow.configured && (!servicenow.enabled || servicenow.mirror.heldBack > 0)) {
     return { text: serviceNowSentence(servicenow), tone: "attention" };
   }
   return {
     text: integrationsVerdict(destinations, statuses),
-    tone: statuses.some((status) => status.quarantined > 0) ? "attention" : "good",
+    tone: statuses.some((status) => status.quarantined > 0) || record === "unchecked" ? "attention" : "good",
   };
 }
 
@@ -118,10 +122,27 @@ export function serviceNowBadge(status: ServiceNowStatus | null): { tone: Integr
 }
 
 /** What needs the reader, worst first. */
-export function integrationAlerts(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null): AlertItem[] {
+export function integrationAlerts(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null, record: AuditCheck = "unknown"): AlertItem[] {
   const urgent: AlertItem[] = [];
   const soon: AlertItem[] = [];
   const low: AlertItem[] = [];
+  // The audit record these destinations copy, in the same words and colour as Activity
+  // and the Overview, so the page never says "Working" over a record nobody checked.
+  if (record === "failed") {
+    urgent.push({
+      key: "audit-failed", tone: "urgent", icon: "x-circle",
+      title: AUDIT_CHECK_WORDS.failed.title,
+      todo: AUDIT_CHECK_WORDS.failed.detail,
+      action: { label: "Open the audit record", href: AUDIT_RECORD_HREF },
+    });
+  } else if (record === "unchecked") {
+    soon.push({
+      key: "audit-unchecked", tone: "soon", icon: "alert",
+      title: AUDIT_CHECK_WORDS.unchecked.title,
+      todo: AUDIT_CHECK_WORDS.unchecked.detail,
+      action: { label: "Open the audit record", href: AUDIT_RECORD_HREF },
+    });
+  }
   if (servicenow && servicenow.mirror.heldBack > 0) {
     urgent.push({
       key: "servicenow-held", tone: "urgent", icon: "x-circle",

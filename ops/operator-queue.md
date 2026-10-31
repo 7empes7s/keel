@@ -13905,3 +13905,38 @@ item that needs it stays untouched.
   6. Leave it on. To find 503s later: `jq -c 'select(.status==503) | {ts, uri: .request.uri, ray: .request.headers["Cf-Ray"]}' /var/log/caddy/keel-access.log`.
 - **Report:** the Caddy version, the block as added, the validate and reload output, the two sample lines (status, path, ray only), and the
   grep count from step 5.
+
+### Q300: Count the duplicates among the 115 pending dispose approvals left by the 31 Oct burst (read-only, no tenant), about 5 minutes
+- Drafted by the "Stop duplicate accepts on busy database" thread (2026-10-31). Q298 found 880 accept rows on 571 changes and 115
+  pending dispose approval requests from the 14:06–14:07 bulk accept, which was sent twice. Before an approver works those 115, we need
+  to know how many ask for the same decision twice. **Read-only: SELECTs only. No tenant calls, no database writes, no status changes,
+  no restarts.** Never print the database URL, a password, a token, a tenant id or a person's address (say "the operator" or "user A").
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Result:
+- Do, on Mulinux, against the live database:
+  1. Groups of pending dispose requests from the burst that ask for the same thing:
+     ```sql
+     WITH burst AS (
+       SELECT id, created_at,
+              COALESCE(params->'driftIds'->>0, params->>'serviceChangeId') AS change_id,
+              CASE WHEN params ? 'serviceChangeId' THEN 'service' ELSE 'drift' END AS kind,
+              params->>'action' AS action
+         FROM approval_request
+        WHERE action = 'dispose' AND status = 'pending'
+          AND created_at >= '2026-10-31 14:00Z' AND created_at < '2026-10-31 14:20Z')
+     SELECT count(*) AS requests,
+            count(DISTINCT (kind, change_id, action)) AS distinct_decisions,
+            count(*) - count(DISTINCT (kind, change_id, action)) AS duplicates,
+            count(*) FILTER (WHERE kind = 'drift') AS drift_requests,
+            count(*) FILTER (WHERE kind = 'service') AS service_requests
+       FROM burst;
+     ```
+  2. The size of each duplicate group: same CTE, then
+     `SELECT n, count(*) AS groups FROM (SELECT kind, change_id, action, count(*) AS n FROM burst GROUP BY 1,2,3) g GROUP BY n ORDER BY n;`
+  3. How many of the burst's pending drift requests point at a change that already has an accept row (approving those would be refused
+     as "already decided"): same CTE, then
+     `SELECT count(*) FROM burst b WHERE b.kind = 'drift' AND EXISTS (SELECT 1 FROM disposition d WHERE d.drift_id::text = b.change_id AND d.action = 'accept');`
+  4. Also for the 880 accept rows: `SELECT n, count(*) AS changes FROM (SELECT drift_id, count(*) AS n FROM disposition WHERE action = 'accept' AND decided_at >= '2026-10-31 14:06Z' AND decided_at < '2026-10-31 14:08Z' GROUP BY 1) g GROUP BY n ORDER BY n;`
+  5. When each pending request expires: `SELECT min(expires_at), max(expires_at)` over the burst CTE.
+- **Report:** the numbers from steps 1–5. Don't change or reject any request; a cleanup, if needed, comes as its own item.

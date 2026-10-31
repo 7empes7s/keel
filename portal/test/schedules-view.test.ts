@@ -177,3 +177,10 @@ test("a partly done last run is a warning on Schedules: never 'All on time' (aud
   assert.ok(!scheduleMatches(partial, undefined, "failed"));
   assert.ok(!scheduleMatches(TIER1, undefined, "partial"));
 });
+
+test("partly done keeps its own amber tile, and the Failed tile names it when none failed", async () => {
+  const partial = { ...TIER1, last_status: "partial" };
+  const html = await renderSchedulesAt("", { schedules: [partial, { ...partial, id: "5c4e0000-0000-4000-8000-000000000009" }], deferrals: [], forecasts: [], now, timeZone: "Europe/Paris", canEdit: true, canRun: true });
+  assert.match(html, /Failed last run[\s\S]*?>0<[\s\S]*?None failed; 2 partly done/);
+  assert.match(html, /Partly done last run[\s\S]*?>2</);
+});

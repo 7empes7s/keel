@@ -8,7 +8,16 @@ import { formatTimestamp, fromNow } from "@/lib/presentation";
 export const WINDOW_HOURS = [1, 4, 8, 24, 72, 168] as const;
 
 export interface IntentSide { present: boolean; value: unknown }
-export interface IntentTransition { field: string; before: IntentSide; after: IntentSide }
+export interface IntentTransition {
+  field: string;
+  before: IntentSide;
+  after: IntentSide;
+  /** Only an empty value against a missing one, or only list order, differs: not shown. */
+  noChange?: boolean;
+}
+
+/** The transitions a person reads: no-change ones are left out. */
+export const shownTransitions = (transitions: IntentTransition[]) => transitions.filter((transition) => !transition.noChange);
 export interface IntentPerson { id: string; email: string | null; name: string | null; readable: boolean }
 export interface ChangeIntent {
   id: string;
@@ -52,10 +61,10 @@ export function intentResource(item: { naturalKey: string; resourceType: string;
 /** The page's one sentence. Under 25 words, no codes. */
 export function changeIntentsVerdict(intents: ChangeIntent[], now: string): { text: string; tone: "good" | "attention" } {
   const active = intents.filter((intent) => intent.state === "active");
-  if (active.length === 0) return { text: "No emergency change is approved right now. KEEL rolls changes back as its policies say.", tone: "good" };
+  if (active.length === 0) return { text: "No emergency change is approved right now. Changes follow your automatic rules as usual.", tone: "good" };
   const next = active.map((intent) => intent.revokedAt && intent.revokedAt < intent.windowEnd ? intent.revokedAt : intent.windowEnd).sort()[0];
   const count = active.length === 1 ? "One emergency change is" : `${active.length} emergency changes are`;
-  return { text: `${count} approved right now; KEEL will not roll ${active.length === 1 ? "it" : "them"} back. The next approval ends ${fromNow(next, now)}.`, tone: "attention" };
+  return { text: `${count} approved right now; automatic rules will not undo ${active.length === 1 ? "it" : "them"}. The next approval ends ${fromNow(next, now)}.`, tone: "attention" };
 }
 
 
@@ -67,12 +76,12 @@ export type IntentTone = "urgent" | "soon" | "low" | "fine" | "neutral";
 const HOUR = 3_600_000;
 const WEEK = 7 * 24 * HOUR;
 
-/** When an approval stops holding back the roll back: its end, or its revoke if earlier. */
+/** When automatic rules may act on the change again: the approval's end, or its revoke if earlier. */
 export function intentEnd(intent: ChangeIntent): string {
   return intent.revokedAt && intent.revokedAt < intent.windowEnd ? intent.revokedAt : intent.windowEnd;
 }
 
-/** The approval's state as a badge. Amber while KEEL is holding a roll back off. */
+/** The approval's state as a badge. Amber while automatic rules leave the change alone. */
 export function intentBadge(intent: ChangeIntent): { tone: IntentTone; label: string } {
   switch (intent.state) {
     case "active": return { tone: "soon", label: "In force" };
@@ -84,9 +93,9 @@ export function intentBadge(intent: ChangeIntent): { tone: IntentTone; label: st
 
 /** What KEEL found when it checked the resource again after the approval ended. */
 export const SETTLED_BADGES: Record<string, { tone: IntentTone; label: string; about: string }> = {
-  "matches-baseline": { tone: "fine", label: "Back to baseline", about: "Nothing was rolled back." },
-  drifted: { tone: "soon", label: "Still changed", about: "Its policies acted on it as usual." },
-  ignored: { tone: "neutral", label: "Change ignored", about: "Nothing was rolled back." },
+  "matches-baseline": { tone: "fine", label: "Back to baseline", about: "Nothing was undone." },
+  drifted: { tone: "soon", label: "Still changed", about: "Keel did not put it back. Review it on Changes." },
+  ignored: { tone: "neutral", label: "Change ignored", about: "Nothing was undone." },
   "awaiting-detection": { tone: "low", label: "Not checked yet", about: "The next check decides." },
   unknown: { tone: "neutral", label: "Nothing to compare", about: "No baseline or backup of this kind." },
 };
@@ -114,7 +123,7 @@ export function intentAlerts(data: Pick<ChangeIntentsData, "intents" | "generate
       const endsSoon = Date.parse(intent.windowEnd) - nowMs <= HOUR;
       (endsSoon ? soon : low).push({
         key: `active-${intent.id}`, tone: endsSoon ? "soon" : "low", icon: "pause",
-        title: `${resource} is not rolled back until ${formatTimestamp(intent.windowEnd)} (${fromNow(intent.windowEnd, now)})`,
+        title: `Automatic rules leave ${resource} alone until ${formatTimestamp(intent.windowEnd)} (${fromNow(intent.windowEnd, now)})`,
         todo: endsSoon ? "Finish the work now, or approve it again if it needs longer." : "Revoke the approval as soon as the work is done.",
         action: { label: "Review", href },
       });
@@ -155,7 +164,7 @@ export function intentTiles(data: ChangeIntentsData): StatTile[] {
   const next = active.map(intentEnd).sort()[0] ?? null;
   return [
     { key: "active", label: "In force", icon: "pause", value: String(active.length), tone: active.length ? "soon" : "fine",
-      about: active.length ? `${settings(active.reduce((sum, intent) => sum + intent.transitions.length, 0))} not rolled back` : "Changes roll back as usual", href: "#ec-approved" },
+      about: active.length ? `${settings(active.reduce((sum, intent) => sum + shownTransitions(intent.transitions).length, 0))} left alone by automatic rules` : "Changes follow your automatic rules", href: "#ec-approved" },
     { key: "next", label: "Next to end", icon: "clock", value: next ? fromNow(next, now) : "None", tone: next ? (Date.parse(next) - Date.parse(now) <= HOUR ? "soon" : "low") : "neutral",
       about: next ? formatTimestamp(next) : "Nothing is approved", href: "#ec-approved" },
     { key: "scheduled", label: "Starts later", icon: "calendar", value: String(scheduled.length), tone: scheduled.length ? "low" : "neutral",

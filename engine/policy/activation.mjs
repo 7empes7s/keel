@@ -218,7 +218,7 @@ export async function buildActivationPreview(client, {
   resolveScope = resolveRestoreScope,
 }) {
   const { rows: [policy] } = await client.query(
-    'SELECT * FROM policy WHERE id::text = $1 AND tenant_ref = $2',
+    'SELECT * FROM policy WHERE id::text = $1 AND tenant_ref = $2 AND deleted_at IS NULL',
     [String(policyId), tenantRef],
   );
   if (!policy) throw new ActivationNotFoundError(`policy not found: ${policyId}`);

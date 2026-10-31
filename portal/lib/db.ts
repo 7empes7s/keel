@@ -33,6 +33,16 @@ export class DatabaseBusyError extends Error {
   }
 }
 
+/** Said to the person whenever a full pool turns a request away. */
+export const BUSY_MESSAGE = "Keel is busy, try again in a moment.";
+/** The retry-after a busy answer carries. */
+export const BUSY_RETRY_SECONDS = 5;
+
+/** Whether an error is a full pool (checked by name too, across module copies). */
+export function isDatabaseBusy(error: unknown): boolean {
+  return error instanceof DatabaseBusyError || (error as Error | null)?.name === "DatabaseBusyError";
+}
+
 // When each pooled connection was handed out, so a full pool can say how long the
 // holders have had theirs: many short holds mean too many requests at once, one very
 // old hold means a caller that never gave its connection back.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
@@ -30,6 +30,8 @@ import {
   backupSentence,
   healthRisk,
   matchesHealth,
+  coverageSentence,
+  coverageSummary,
   protectCounts,
   protectScopeDetail,
   protectVerdict,
@@ -48,7 +50,7 @@ import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts } from "@/lib/type-groups";
 import type { CoverageData, CoverageType } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // What's protected (portal audit: one grouped list on a desktop, pick A; service cards
@@ -91,10 +93,11 @@ const HEALTH_GROUPS: { key: string; label: string; icon: IconName; about: string
   { key: "not-backed-up", label: "Not backed up", icon: "info", about: "Keel cannot read these, or this tenant does not have them", has: (health) => health === "not-collected" || health === "unavailable" },
 ];
 
-const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "partial", "protected"];
+const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "proven", "partial", "protected"];
 const STANDING_ABOUT: Record<RestoreStanding, string> = {
   "cannot-restore": "Kept for reference, or not read yet",
-  unproven: "Backed up; no test restore has measured them yet",
+  unproven: "No live test restore on this tenant yet",
+  proven: "A live test restore on this tenant worked",
   partial: "Some fields come back by hand",
   protected: "A test restore brought everything back",
 };
@@ -229,7 +232,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const { backUp, busy, feedback } = useBackup();
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
@@ -275,7 +278,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
     "backed-up": `of ${counts.total} ${counts.total === 1 ? "kind" : "kinds"}`,
     failed: counts.failed ? "Their last backup did not finish" : "Nothing failed",
     "out-of-date": `${counts.stale} out of date, ${counts.never} never`,
-    proven: "By a test restore on this tenant",
+    proven: counts.tested ? `${counts.tested} more pass tests, not yet run live` : "By a live test restore on this tenant",
   };
   const tileValue: Record<HealthFilter, string> = {
     "backed-up": String(counts.backedUp),
@@ -327,6 +330,8 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
           );
         })}
       </section>
+      {/* The tiles leave out kinds Keel does not back up yet; this line counts every kind, so the parts add up. */}
+      <p className="pt-tiles-sum">{coverageSentence(coverageSummary(scoped))}</p>
 
       {tierStrip}
 

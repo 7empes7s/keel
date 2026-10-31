@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
@@ -41,7 +41,7 @@ import { serviceFor, serviceOrder } from "@/lib/services";
 import { itemKind, kindParts } from "@/lib/type-groups";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 const toneOf = (item: DriftRecord): RiskTone => impactTone(item.blastRadius);
 
@@ -156,7 +156,7 @@ export function ChangeList({
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/drift";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const router = useRouter();
   const [settled, setSettled] = useState<string[]>([]);
   // Service changes acknowledged here, shown as seen until the server read says so too.
@@ -167,6 +167,8 @@ export function ChangeList({
   const itemsRef = useRef(items);
   useEffect(() => { if (itemsRef.current !== items) { itemsRef.current = items; setSeen([]); } }, [items]);
   const [deciding, setDeciding] = useState<{ decision: Decision; ids: string[] } | null>(null);
+  // While a decision is being sent its panel stays open: closing it would not stop it.
+  const sendingDecision = useRef(false);
   const { canDispose, canRemediate } = driftActionControls(capabilities);
   const canRestore = capabilities.includes("restore");
   const canApprove = capabilities.includes("approve");
@@ -502,16 +504,18 @@ export function ChangeList({
       {deciding && deciding_items.length ? (
         <DetailsSheet
           kicker={<span>{deciding_items.length === 1 ? changeName(deciding_items[0]) : `${deciding_items.length} changes`}</span>}
-          onClose={() => setDeciding(null)}
+          onClose={() => { if (!sendingDecision.current) setDeciding(null); }}
           title={decisionWords(deciding.decision, deciding_items.length).title}
         >
           <ChangeDecision
             decision={deciding.decision}
             items={deciding_items}
+            onBusy={(busy) => { sendingDecision.current = busy; }}
             onCancel={() => setDeciding(null)}
-            onDone={(done, message) => {
+            onDone={(done, message, kept = []) => {
               setSettled((current) => [...new Set([...current, ...done])]);
-              setDeciding(null);
+              // Changes that could not be saved stay chosen, with the panel open on them.
+              setDeciding(kept.length ? { decision: deciding.decision, ids: kept } : null);
               if (done.length) view.set({ open: null });
               toast(done.length ? { title: message } : { tone: "info", title: "Sent to approvers", detail: "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
             }}

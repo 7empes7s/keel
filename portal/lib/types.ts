@@ -177,12 +177,15 @@ export interface CoverageType {
   observation?: CoverageObservation | null;
 }
 
+// Every kind in exactly one bucket, so the buckets add up to total
+// (lib/protect-view.ts coverageSummary). covered is backed up and current.
 export interface CoverageSummary {
   covered: number;
   failed: number;
-  notCovered: number;
-  neverCollected: number;
   stale: number;
+  neverCollected: number;
+  notCovered: number;
+  unavailable: number;
   total: number;
 }
 
@@ -550,6 +553,8 @@ export interface SemanticChange {
   total: number;
   shown: number;
   cosmetic: number;
+  // Differences that are only empty against missing or the order of a list; never listed.
+  ignored?: number;
   groups: { behaviour: number; fixed: number; "unknown-before": number };
 }
 
@@ -595,6 +600,8 @@ export interface SemanticSummary {
   behaviouralSettings: number;
   fixedSettings: number;
   cosmeticOnly: number;
+  // Changes where only empty values or the order of a list differ.
+  emptyOrOrderOnly?: number;
   unknownBefore: number;
   mismatched: number;
 }
@@ -646,7 +653,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite";
   href?: string;
 }
 
@@ -665,6 +672,9 @@ export interface DashboardData {
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
   evidence: { ok: boolean; chainLength: number };
+  // Whether a checked off-site copy holds every backed-up type (the Resilience page's
+  // recoverable point). Undefined when it could not be read.
+  offsite?: { measured: boolean };
   alerts: DashboardAlert[];
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).
@@ -700,6 +710,18 @@ export interface DashboardWaiting {
   restoreFollowUps: number;
 }
 
+// engine/coverage/restoreProof.mjs restoreProofSummary: of the kinds Keel can put back,
+// how many a live test restore proved on this tenant, how many only pass fixture tests,
+// and how many have neither. `href` is the list the number counts.
+export interface RestoreProofSummary {
+  restorable: number;
+  proven: number;
+  tested: number;
+  untested: number;
+  lastProvenAt: string | null;
+  href: string;
+}
+
 export interface ProtectionHeadline {
   state: "collection" | "proven" | "unproven";
   tone: "good" | "attention" | "critical";
@@ -707,6 +729,8 @@ export interface ProtectionHeadline {
   sentence: string;
   action: { label: string; href: string } | null;
   counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
+  proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;
   failingSince: string | null;
 }

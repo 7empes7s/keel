@@ -104,7 +104,8 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
     ? { tone: "neutral", text: "Backup only: Keel cannot put these back yet" }
     : {
       tone: counts.proven ? "fine" : "low",
-      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}`,
+      // The same "restore proven" count as What's protected and the Overview.
+      text: `${counts.restorable} of ${counted.length} can be put back, ${counts.proven ? `${counts.proven} proven on this tenant` : "none proven yet"}${counts.tested ? `, ${counts.tested} ${counts.tested === 1 ? "passes" : "pass"} tests only` : ""}`,
     };
   const reads = counted.filter((item) => READ.includes(backupHealth(item)) && item.lastCollectedAt)
     .map((item) => item.lastCollectedAt!).sort();

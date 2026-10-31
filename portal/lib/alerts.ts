@@ -154,7 +154,10 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
     const objects = await alertObjects(client as QueryClient, tenantRef, keys);
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
-      const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : null;
+      // Alerts acknowledged before the acknowledger became the owner (2026-10-31) have no
+      // owner stored: the person who acknowledged the current occurrence owns it.
+      const ackOwner = row.state === "acknowledged" && typeof row.acknowledged_by === "string" && UUID.test(row.acknowledged_by) ? row.acknowledged_by : null;
+      const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : ackOwner;
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),

@@ -235,3 +235,10 @@ test("a sign-in log with skipped entries is not called watched or read completel
   assert.match(sentence, /^KEEL is not watching reliably: it skipped some sign-in entries/);
   assert.doesNotMatch(sentence, /completely/);
 });
+
+test("a sign-in log read for part of the lookback is called partly read, not unread", () => {
+  const dimension = { status: "unknown" as const, reason: "sign-in-log-partly-read", evidence: { lookbackDays: 30 } };
+  const sentence = dimensionSentence("dedicatedAccount", dimension, NOW);
+  assert.match(sentence, /reads the sign-in log but has not yet read all of the last 30 days/);
+  assert.doesNotMatch(sentence, /not reading/);
+});

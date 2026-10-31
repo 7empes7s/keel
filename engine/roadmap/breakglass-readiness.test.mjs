@@ -556,9 +556,11 @@ test('a custom domain or a day-to-day account never passes as an emergency accou
   assert.deepEqual([bg1.dimensions.dedicatedAccount.reason, bg1.dimensions.dedicatedAccount.evidence.keelPerson], ['keel-person-signs-in-with-it', { displayName: 'Ada Admin' }]);
 
   // A log read for the last ten days is watched, but ten days are not thirty: not known.
+  // The reason says the log is partly read, not unread, since the canary already uses it
+  // (re-test 2026-10-31: "not reading the sign-in log" next to "Unplanned uses: 2").
   await ctx.collect(B, healthyInventory());
   await ctx.register(B, 'bg2');
   await ctx.ingest(B, 'sign-in', []);
   const short = await ctx.readiness(B);
-  assert.deepEqual([short.canary.status, short.accounts[0].dimensions.dedicatedAccount.reason], ['watching', 'sign-in-log-not-read']);
+  assert.deepEqual([short.canary.status, short.accounts[0].dimensions.dedicatedAccount.reason], ['watching', 'sign-in-log-partly-read']);
 });

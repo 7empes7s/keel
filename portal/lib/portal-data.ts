@@ -1,7 +1,7 @@
 import { readNamer } from "../../engine/insights/anonymity.mjs";
 import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
-import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
+import { loadRecoverablePoint, loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
@@ -30,6 +30,7 @@ import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../e
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
+import { maskCredentials } from "../../engine/safety/diffHygiene.mjs";
 import { changeBlastRadius, itemBlastRadius } from "../../engine/safety/blastRadius.mjs";
 import { comparedSettings, driftEvidence, MAX_EVIDENCE_CHANGES, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
@@ -49,11 +50,13 @@ import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
-import { headlineEntries, withWorkloadCoverage, workloadKinds } from "@/lib/workload-kinds";
+import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
+import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
+import { withSharedCoverage } from "@/lib/ask-coverage";
 import { countOpenServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
-import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
+import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
@@ -333,7 +336,7 @@ function normalizeObservation(raw: unknown): CoverageObservation | null {
   };
 }
 
-function normalizeCoverageType(raw: UnknownRecord): CoverageType {
+export function normalizeCoverageType(raw: UnknownRecord): CoverageType {
   const rawFidelity = (raw.fidelity ?? null) as UnknownRecord | null;
   const verifiedBy = (rawFidelity?.verifiedBy ?? null) as UnknownRecord | null;
   const declared = fidelity(rawFidelity?.declared);
@@ -441,8 +444,8 @@ const RESTORABLE_WORKLOADS: ReadonlySet<string> = new Set(
 
 async function coverageFor(client: KeelClient, ref: string, report?: UnknownRecord): Promise<CoverageData> {
   const raw = report ?? await rawCoverageReport(client, ref);
-  const rawSummary = raw.summary as UnknownRecord;
   const types = (raw.types as UnknownRecord[]).map(normalizeCoverageType);
+  const workloads = workloadKinds(raw.workloads, RESTORABLE_WORKLOADS);
 
   return {
     generatedAt: iso(raw.generatedAt) ?? new Date().toISOString(),
@@ -454,16 +457,10 @@ async function coverageFor(client: KeelClient, ref: string, report?: UnknownReco
           completedAt: iso((raw.snapshot as UnknownRecord).completedAt),
         }
       : null,
-    summary: {
-      covered: Number(rawSummary.covered ?? 0),
-      failed: Number(rawSummary.failed ?? 0),
-      notCovered: Number(rawSummary.notCovered ?? 0),
-      neverCollected: Number(rawSummary.neverCollected ?? 0),
-      stale: Number(rawSummary.stale ?? 0),
-      total: types.length,
-    },
+    // One count for every page: the types and workloads by backupHealth, adding up to total.
+    summary: coverageSummary([...types, ...workloads]),
     types,
-    workloads: workloadKinds(raw.workloads, RESTORABLE_WORKLOADS),
+    workloads,
     liveEvidence: normalizeLiveEvidence(raw.liveEvidence),
   };
 }
@@ -907,12 +904,13 @@ async function withDecisionEvidence(client: KeelClient, ref: string, items: Drif
 
 /**
  * What the Changes page hands its client table: each payload without the fields
- * Microsoft sets itself, so neither the page nor its props carry them.
+ * Microsoft sets itself, so neither the page nor its props carry them, and with
+ * credential values (password hints and the like) hidden.
  */
 export function displayItems(items: DriftRecord[]): DriftRecord[] {
   return items.map((item) => item.semantic
-    ? { ...item, before: comparedSettings(item.resourceType, item.before), after: comparedSettings(item.resourceType, item.after) }
-    : item);
+    ? { ...item, before: maskCredentials(comparedSettings(item.resourceType, item.before)), after: maskCredentials(comparedSettings(item.resourceType, item.after)) }
+    : { ...item, before: maskCredentials(item.before), after: maskCredentials(item.after) });
 }
 
 // At most this many ids are named per page load; the rest read "no name" (bounded).
@@ -1336,10 +1334,11 @@ export function buildAlerts({
   lastCollection,
   coverage,
   evidence,
+  offsite,
 }: Pick<
   DashboardData,
   "activeBaseline" | "lastCollection" | "coverage" | "evidence"
->): DashboardAlert[] {
+> & Partial<Pick<DashboardData, "offsite">>): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
   const kinds = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -1391,27 +1390,44 @@ export function buildAlerts({
     });
   }
 
-  if (coverage.stale > 0) {
+  // The same buckets as the ring and What's protected: out of date and never backed up
+  // share the "out-of-date" list there, so they share one row here.
+  const late = coverage.stale + coverage.neverCollected;
+  if (late > 0) {
     alerts.push({
       key: "stale",
       severity: "warning",
-      title: `${kinds(coverage.stale, "kind of setting is", "kinds of settings are")} out of date`,
-      detail: "They were backed up, but not recently enough for how critical they are. Run a backup.",
+      title: `${kinds(late, "kind of setting is", "kinds of settings are")} out of date or never backed up`,
+      detail: "They have no backup recent enough for how critical they are. Run a backup.",
       href: "/protect?health=out-of-date",
     });
   }
 
-  const uncovered = coverage.notCovered + coverage.neverCollected;
-  if (uncovered > 0) {
+  if (coverage.notCovered > 0) {
     alerts.push({
       key: "uncovered",
       severity: "warning",
-      title: `${kinds(uncovered, "kind of setting is", "kinds of settings are")} not backed up`,
-      detail: "Keel knows these kinds of settings but has no backup of them.",
+      title: `${kinds(coverage.notCovered, "kind of setting is", "kinds of settings are")} not backed up by Keel yet`,
+      detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.",
       href: "/protect",
     });
   }
 
+  // No safe off-site copy: one Check soon item, linked to Resilience (the same recoverable
+  // point that page shows). Left out while nothing is backed up yet: that alert comes first.
+  if (offsite && !offsite.measured && coverage.covered > 0) {
+    alerts.push({
+      key: "no-offsite",
+      severity: "warning",
+      title: "No safe copy outside this server",
+      detail: "If this server is lost, its backups are lost with it. Fix the daily off-site copy.",
+      href: "/resilience",
+    });
+  }
+
+  // getEvidenceIntegrity checks the record's own hash chain, not the off-site checkpoint,
+  // so ok false here is a real failed check. "Not checked" lives on Activity, which reads
+  // the off-site checkpoint.
   if (!evidence.ok) {
     alerts.push({
       key: "audit",
@@ -1489,7 +1505,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     const coverageData = await coverageFor(client, ref, rawCoverage);
     // Task-129: the Overview sentence comes from this same report, never a constant.
     // The workloads join the Entra ID and Intune types, as on What's protected.
-    const headline = protectionHeadline([...(rawCoverage.types as unknown[]), ...headlineEntries(coverageData.workloads)] as never) as ProtectionHeadline;
+    const headline = protectionHeadline(headlineEntries(rawCoverage.types as unknown[], withWorkloadKinds(coverageData).types) as never) as ProtectionHeadline;
     const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
 
     const openDriftByBlastRadius = [...new Set([
@@ -1516,11 +1532,18 @@ export async function getDashboardData(): Promise<DashboardData> {
       openDriftByBlastRadius,
       openDriftTotal: openChangeCount(drift.length, serviceChanges.total),
       driftTrend,
-      coverage: withWorkloadCoverage(coverageData.summary, coverageData.workloads),
+      coverage: coverageData.summary,
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
       },
+      // The same recoverable point the Resilience page shows; a failed read shows no item.
+      offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
+        .then((point) => ({ measured: (point as RecoveryMetrics["recoverablePoint"]).state === "measured" && Boolean((point as RecoveryMetrics["recoverablePoint"]).point) }))
+        .catch((error: unknown) => {
+          console.error("[keel-portal] overview off-site copy state unavailable", error);
+          return undefined;
+        }),
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),
@@ -1570,7 +1593,9 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
-    return { generatedAt: now.toISOString(), metrics, incidents, storage };
+    // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
+    const kinds = resilienceKinds((await coverageFor(client, ref)).types);
+    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage };
   });
 }
 
@@ -1611,6 +1636,15 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
         const name = saved[record.naturalKey]?.name;
         return name ? { ...record, name } : record;
       });
+    }
+    // "Is Intune backed up?" counts kinds the way Setup and What's protected do, from the
+    // same coverage report (lib/ask-coverage.ts). Without the report the engine's answer stands.
+    if (answer.intent === "coverage" && readerScope.central) {
+      const coverage = await coverageFor(client, ref).catch((error) => {
+        console.error("[keel-portal] ask coverage report unavailable", error);
+        return null;
+      });
+      if (coverage) return { generatedAt: now.toISOString(), answer: withSharedCoverage(answer, coverage, now.toISOString()), entities, scope: readerScope };
     }
     return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
   });

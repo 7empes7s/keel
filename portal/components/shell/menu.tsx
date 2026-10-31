@@ -5,7 +5,7 @@ import Link from "next/link";
 // link cost a full layout render (identity, approvals count, name) on the server for
 // each link in view, twice over on a desktop, before anyone clicked. A click still
 // shows the loading skeleton as soon as the page starts streaming.
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { SearchTrigger } from "@/components/command-palette";
@@ -31,6 +31,7 @@ import { inboxNote, worstTone, type MenuStatuses, type SectionStatus } from "@/l
 import { personLabel } from "@/lib/sentences";
 import { SERVICES } from "@/lib/services";
 import type { ThemePreference } from "@/lib/theme";
+import { useLiveSearchParams } from "@/lib/use-view-state";
 
 export interface Person {
   email: string;
@@ -57,7 +58,7 @@ export function StatusBadge({ status }: { status: SectionStatus | undefined }) {
 /** The current location as the menu stores it: path plus any view state in the query. */
 export function useCurrentHref(): string {
   const pathname = usePathname() ?? "/";
-  const search = useSearchParams()?.toString() ?? "";
+  const search = useLiveSearchParams()?.toString() ?? "";
   return search ? `${pathname}?${search}` : pathname;
 }
 

@@ -6,7 +6,7 @@ import "../../engine/coverage/report.mjs";
 import { SERVICE_FILES } from "../../engine/insights/taxonomy.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 import { typeService } from "@/lib/baselines-view";
-import { backupHealth, backupSentence, restoreStanding, withWorkloadKinds } from "@/lib/protect-view";
+import { backupHealth, backupSentence, protectScopeDetail, restoreStanding, withWorkloadKinds } from "@/lib/protect-view";
 import type { CoverageData, CoverageType } from "@/lib/types";
 import { workloadKinds } from "@/lib/workload-kinds";
 
@@ -75,4 +75,18 @@ test("a report without workloads leaves the page as it was", () => {
   const data = coverage(undefined);
   assert.deepEqual(data.workloads, []);
   assert.equal(withWorkloadKinds(data), data);
+});
+
+test("a filtered Protect verdict names its filter and every service's totals", () => {
+  const ok = catalogKind("conditionalAccessPolicies");
+  const failed = { ...catalogKind("namedLocations"), outcome: "failed" as const, reportStatus: "failed" as const };
+  const never = { ...catalogKind("groups"), lastCollectedAt: null, itemCount: null, outcome: null, reportStatus: "never-collected" as const };
+  assert.equal(backupHealth(failed), "failed");
+  assert.equal(backupHealth(never), "never");
+  assert.equal(
+    protectScopeDetail(["In Intune"], [ok, failed, never]),
+    "Counts follow your filter: In Intune. Across all services: 1 of 3 kinds backed up, 1 failed, 1 out of date or never.",
+  );
+  // Nothing wrong anywhere: only the backed-up total.
+  assert.equal(protectScopeDetail(["In Teams"], [ok]), "Counts follow your filter: In Teams. Across all services: 1 of 1 kind backed up.");
 });

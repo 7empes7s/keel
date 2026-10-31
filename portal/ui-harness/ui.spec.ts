@@ -1308,6 +1308,36 @@ test("What's protected · tiles filter in the address, selection names its tiers
   for (const title of await page.locator(".job-list .row-name a").all()) expect(await title.getAttribute("href")).toMatch(/^#?\/jobs\//);
 });
 
+// The verdict and the tiles count what the service filter leaves, like the list; the
+// verdict's detail then names the filter and keeps every service's totals in view.
+test("What's protected · the verdict and tiles follow the service filter", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/protect");
+    const verdict = page.locator('[data-layer="verdict"]');
+    const tile = (name: string) => page.locator(".pt-tile", { hasText: name });
+    const allSentence = await verdict.locator(".verdict-sentence").innerText();
+    const allBackedUp = await tile("Backed up").locator(".pt-tile-count").innerText();
+    await expect(verdict.locator(".verdict-sentence")).toHaveText("2 types failed their last backup.");
+    await expect(tile("Backed up").locator("small").first()).toHaveText("of 15 kinds");
+
+    await open(page, "/protect?service=Intune");
+    await expect(page.locator(".sel-row")).toHaveCount(2);
+    await expect(tile("Backed up").locator("small").first()).toHaveText("of 2 kinds");
+    await expect(tile("Failed").locator(".pt-tile-count")).toHaveText("0");
+    await expect(tile("Out of date").locator(".pt-tile-count")).toHaveText("1");
+    await expect(verdict.locator(".verdict-sentence")).toHaveText("1 type has not been backed up recently enough.");
+    await expect(verdict.locator(".verdict-detail")).toHaveText(`Counts follow your filter: In Intune. Across all services: ${allBackedUp} of 15 kinds backed up, 2 failed, 3 out of date or never.`);
+    await page.screenshot({ path: test.info().outputPath(`protect-verdict-filtered-${width}.png`), fullPage: false });
+
+    await page.getByRole("button", { name: "Remove filter: In Intune" }).first().click();
+    await expect(page).not.toHaveURL(/service=/);
+    await expect(verdict.locator(".verdict-sentence")).toHaveText(allSentence);
+    await expect(tile("Backed up").locator("small").first()).toHaveText("of 15 kinds");
+    await expect(verdict.locator(".verdict-detail")).not.toContainText("Counts follow");
+  }
+});
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
     test(`What's protected · ${width} · ${theme}: no sideways scroll or clipped text`, async ({ page }) => {

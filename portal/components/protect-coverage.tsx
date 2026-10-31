@@ -14,6 +14,7 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { Verdict } from "@/components/verdict";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
@@ -30,6 +31,9 @@ import {
   healthRisk,
   matchesHealth,
   protectCounts,
+  protectScopeDetail,
+  protectVerdict,
+  protectVerdictDetail,
   restoreStanding,
   tierLabel,
   typeName,
@@ -215,11 +219,13 @@ const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
 ];
 const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
 
-export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
+export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
   data: CoverageData;
   now: string;
   canBackup: boolean;
   tierStrip?: ReactNode;
+  // The rest of the page's explanation layer (content backups, recent jobs), after the list.
+  children?: ReactNode;
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
@@ -231,7 +237,10 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
   const healthFilter = readPicked(HEALTH_TILES, view.get("health"));
   const pickedKey = healthFilter.join(",");
   const service = view.get("service");
-  const counts = useMemo(() => protectCounts(data.types), [data.types]);
+  // The verdict and the tiles count the kinds the service filter leaves, like the list.
+  // Health tile picks don't narrow them, so each tile still says what it would add.
+  const scoped = useMemo(() => (service ? data.types.filter((item) => serviceCode(item) === service) : data.types), [data.types, service]);
+  const counts = useMemo(() => protectCounts(scoped), [scoped]);
   const services = useMemo(() => serviceSummaries(data.types), [data.types]);
   const others = useMemo(() => (service ? [(item: CoverageType) => serviceCode(item) === service] : []), [service]);
   const shown = useMemo(() => applyFilters(data.types, HEALTH_TILES, pickedKey ? pickedKey.split(",") : [], others), [data.types, pickedKey, others]);
@@ -284,7 +293,16 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
     ...(service ? [{ key: "service", label: `In ${serviceFor(service).name}`, clear: { service: null } }] : []),
   ];
 
+  const verdict = protectVerdict({ ...data, types: scoped }, now);
+  const narrowing = activeFilters.filter((filter) => !filter.key.startsWith("health:")).map((filter) => filter.label);
+  const verdictDetail = narrowing.length
+    ? protectScopeDetail(narrowing, data.types)
+    : protectVerdictDetail(scoped, (type) => typeService(type).name, now);
+
   return (
+    <>
+    <Verdict detail={verdictDetail} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation">
     <div className="pt-page">
       <section aria-label="Backup health" className="pt-tiles">
         {TILES.map((tile) => {
@@ -483,5 +501,8 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
         </DetailsSheet>
       ) : null}
     </div>
+    {children}
+    </div>
+    </>
   );
 }

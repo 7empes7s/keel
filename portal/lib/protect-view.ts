@@ -370,6 +370,20 @@ export function protectVerdictDetail(types: CoverageType[], serviceOf: (type: st
   return `In ${listWords(services)}.${newest ? ` Everything else was backed up ${ago(newest, now)}.` : ""}`;
 }
 
+/** Under a filtered verdict: which filters it counts, and every service's totals, so a
+ * filter never hides failures elsewhere.
+ * "Counts follow your filter: In Intune. Across all services: 11 of 15 kinds backed up, 2 failed, 2 out of date or never." */
+export function protectScopeDetail(filters: string[], types: CoverageType[]): string {
+  const counts = protectCounts(types);
+  const late = counts.stale + counts.never;
+  const parts = [
+    `${counts.backedUp} of ${plural(counts.total, "kind", "kinds")} backed up`,
+    ...(counts.failed ? [`${counts.failed} failed`] : []),
+    ...(late ? [`${late} out of date or never`] : []),
+  ];
+  return `Counts follow your ${filters.length === 1 ? "filter" : "filters"}: ${filters.join(", ")}. Across all services: ${parts.join(", ")}.`;
+}
+
 /** The header's status pill: failures first, then out of date, else backed up. */
 export function protectStatus(data: CoverageData): { tone: "urgent" | "soon" | "fine"; label: string } {
   const counts = protectCounts(data.types);

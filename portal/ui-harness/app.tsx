@@ -19,7 +19,7 @@ import { ContentBackupsView } from "@/components/content-backups";
 import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
-import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
+import { protectStatus, protectVerdict, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
@@ -2594,14 +2594,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>
         <PageHeader actions={<BackUpNow disabled={false} urgent={verdict.tone !== "good"} />} description="Whether every kind of setting and content is backed up, how often, and whether Keel can put it back."
           generatedAt={now} section="Backup" status={protectStatus(COVERAGE)} title="What's protected" />
-        <Verdict detail={protectVerdictDetail(COVERAGE.types, (type) => typeService(type).name, now)} text={verdict.text} tone={verdict.tone} />
-        <div data-layer="explanation">
-          <ProtectCoverage canBackup data={COVERAGE} now={now} tierStrip={<TierStrip canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />} />
+        <ProtectCoverage canBackup data={COVERAGE} now={now} tierStrip={<TierStrip canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />}>
           <ContentBackupsView data={CONTENT_BACKUPS} now={now} />
           <div className="pt-recent">
             <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup" || item.kind === "collect")} now={now} title="Recent backups" />
           </div>
-        </div></>;
+        </ProtectCoverage></>;
     }
     case "/schedules/anonymous": {
       const forecasts = hiddenForecasts();

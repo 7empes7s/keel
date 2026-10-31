@@ -276,6 +276,7 @@ test("an approver can list and decide another principal's request", async () => 
     status: "pending",
     decidedBy: null,
     decidedAt: null,
+    selfApproved: false,
     reason: null,
     createdAt: request.createdAt,
     expiresAt: request.expiresAt,

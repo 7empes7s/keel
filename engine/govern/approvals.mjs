@@ -147,7 +147,7 @@ export async function listApprovalRequests(client, {
   const { rows } = await client.query(
     `SELECT id, action, params, requested_by, justification, status, executor,
             decided_by, decided_at, reason, created_at, expires_at, entity_scope, route,
-            required_approvals,
+            required_approvals, self_approved,
             CASE
               WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
               ELSE status

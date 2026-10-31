@@ -55,9 +55,11 @@ export interface ContentEffectReviewView {
   createdAt: string | null;
   requestedByName: string;
   viewerIsRequester: boolean;
+  // Solo approval mode: the person who asked may approve these changes themselves.
+  selfApprovalAllowed?: boolean;
   effects: ContentEffect[];
   effectsDigest: string | null;
-  approvals: { approvedBy: string; approvedAt: string | null }[];
+  approvals: { approvedBy: string; approvedAt: string | null; selfApproved?: boolean }[];
   // False when restore approvals are turned off for every service these changes are in.
   approvalRequired: boolean;
   approvalWaivedFor: string[];
@@ -73,8 +75,9 @@ export interface EngineContentEffectReview {
   resources: number;
   effects: ContentEffect[];
   effectsDigest: string | null;
-  approvals: { approvedBy: string; approvedAt: unknown }[];
+  approvals: { approvedBy: string; approvedAt: unknown; selfApproved?: boolean }[];
   approvalRequired?: boolean;
+  selfApprovalAllowed?: boolean;
   approvalWaivedFor?: string[];
 }
 
@@ -99,9 +102,10 @@ export function contentEffectReviewView(
     createdAt: iso(review.createdAt),
     requestedByName: nameOf(review.requestedBy),
     viewerIsRequester: review.requestedBy !== null && String(review.requestedBy) === String(viewerId),
+    selfApprovalAllowed: review.selfApprovalAllowed === true,
     effects: review.effects,
     effectsDigest: review.effectsDigest,
-    approvals: review.approvals.map((approval) => ({ approvedBy: nameOf(approval.approvedBy), approvedAt: iso(approval.approvedAt) })),
+    approvals: review.approvals.map((approval) => ({ approvedBy: nameOf(approval.approvedBy), approvedAt: iso(approval.approvedAt), selfApproved: approval.selfApproved === true })),
     approvalRequired: review.approvalRequired !== false,
     approvalWaivedFor: review.approvalWaivedFor ?? [],
     names,
@@ -119,6 +123,7 @@ export function contentEffectVerdict(review: ContentEffectReviewView): string {
   if (review.effects.length === 0) return "This restore changes no kept or shared content. It needs only the usual approval.";
   if (!review.approvalRequired) return `Restore approvals are turned off for ${listOf(review.approvalWaivedFor)}, so these content changes are made with the restore. No second approval is needed.`;
   if (review.approvals.length > 0) return "These content changes are approved. The restore can run once its own request is approved.";
+  if (review.viewerIsRequester && review.selfApprovalAllowed) return "You asked for this restore. Approval mode is Solo, so you can approve its content changes yourself; it is recorded as self-approved.";
   if (review.viewerIsRequester) return "You asked for this restore, so someone else must approve its content changes.";
   return "This restore changes kept or shared content. It cannot run until you approve those changes.";
 }

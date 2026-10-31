@@ -244,7 +244,11 @@ export function ApprovalInbox({
   now = new Date().toISOString(),
   viewerId = null,
   notice = null,
+  approvalMode = "two-person",
 }: {
+  // Who may approve: in "solo" mode the viewer may approve their own requests, and each
+  // such approval is recorded as self-approved.
+  approvalMode?: "two-person" | "solo";
   // A page-wide note shown under the verdict, such as "Names hidden".
   notice?: ReactNode;
   pending: ApprovalRequestRecord[];
@@ -383,7 +387,7 @@ export function ApprovalInbox({
     },
   ], [now]);
 
-  const verdict = approvalsVerdict(counts, soonest, now);
+  const verdict = approvalsVerdict(counts, soonest, now, approvalMode);
   const waitFilters: ActiveFilter[] = [
     ...(soonOnly ? [{ key: "soon", label: "Expiring within 4 hours", clear: { soon: null } }] : []),
     ...(effectsOnly ? [{ key: "effects", label: "Waiting on content changes", clear: { effects: null } }] : []),
@@ -415,6 +419,9 @@ export function ApprovalInbox({
     const awaitingEffects = request.status !== "pending";
     const asked = request.references?.people.requested_by;
     const mine = viewerId !== null && request.requestedBy === viewerId;
+    // Two-person mode: the viewer never decides their own request. Solo: they may.
+    const blockedAsRequester = mine && approvalMode !== "solo";
+    const selfApproval = mine && approvalMode === "solo";
     const title = titleOf(request);
     const left = hoursLeft(request, now);
     const expiryTone = left !== null && left <= 4 ? "urgent" : "neutral";
@@ -447,8 +454,12 @@ export function ApprovalInbox({
     }
 
     const who = personLabel(asked);
-    const help = mine
-      ? "You asked for this, so someone else must decide it."
+    const help = blockedAsRequester
+      ? "You asked for this, so someone else must decide it. Approvals need two people."
+      : selfApproval && required > 1
+        ? `You asked for this. This kind of change needs ${required} approvers other than you, even in solo approval mode.`
+      : selfApproval && !awaitingEffects
+        ? `You asked for this. Approval mode is solo, so you can approve it yourself; it is recorded as self-approved. Keel runs ${words.verb} right after.`
       : awaitingEffects
         ? "The restore is approved. It runs once its content changes are approved too."
         : required > 1 && signed + 1 >= required
@@ -468,6 +479,7 @@ export function ApprovalInbox({
           </div>
           <div className="ap-card-badges">
             {impact ? <Badge icon={impact.icon} tone={impact.tone}>{impact.label}</Badge> : null}
+            {selfApproval && required === 1 && !awaitingEffects ? <Badge icon="person" tone="soon">You can self-approve</Badge> : null}
             {awaitingEffects ? <Badge tone="soon" icon="page">Waiting on content changes</Badge> : <Badge icon="clock" tone={expiryTone === "urgent" ? "urgent" : "neutral"} title={`Expires ${formatTimestamp(request.expiresAt)}`}>Expires {timeLeft(request, now).replace(" left", "").replace(/^(\d+ (?:min|h|days?))$/, "in $1")}</Badge>}
           </div>
           <button aria-expanded className="icon-button ap-collapse" onClick={closeRequest} title="Collapse" type="button"><Icon name="up" /><span className="visually-hidden">Collapse</span></button>
@@ -490,7 +502,7 @@ export function ApprovalInbox({
         {!awaitingEffects ? (
           <footer className="ap-card-foot">
             <p className="ap-help">{help}</p>
-            {!mine ? (
+            {!blockedAsRequester && !(selfApproval && required > 1) ? (
               <span className="ap-decide">
                 <button
                   aria-busy={(isBusy && busy?.decision === "reject") || undefined}
@@ -509,7 +521,7 @@ export function ApprovalInbox({
                   onClick={() => void decide(request, "approve")}
                   type="button"
                 >
-                  <Icon name="check" />Approve
+                  <Icon name="check" />{selfApproval ? "Approve myself" : "Approve"}
                 </button>
               </span>
             ) : null}
@@ -639,7 +651,10 @@ export function ApprovalInbox({
                         <small>{KIND_WORDS[kind].label} · asked by {personLabel(request.references?.people.requested_by)} {ago(request.createdAt, now)}</small>
                       </span>
                       <span className="row-mid">
-                        <span className="row-status"><Badge icon={badge.icon} tone={badge.tone}>{badge.label}</Badge></span>
+                        <span className="row-status">
+                          <Badge icon={badge.icon} tone={badge.tone}>{badge.label}</Badge>
+                          {request.selfApproved ? <Badge icon="person" tone="soon" title="The person who asked approved it, under solo approval mode">Self-approved</Badge> : null}
+                        </span>
                         <span className="row-meta">
                           {request.status === "expired"
                             ? <>Expired <time dateTime={request.expiresAt ?? undefined} title={formatTimestamp(request.expiresAt)}>{ago(request.expiresAt, now)}</time> without a decision</>

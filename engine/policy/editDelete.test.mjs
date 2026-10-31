@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import {
   createPolicy, deletePolicy, evaluateDrift, getPolicy, listPolicies, setPolicyEnabled, clearPolicyPause, updatePolicy,
 } from './evaluate.mjs';
+import { assertExecutableAutomationPolicy } from './execute.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
@@ -75,6 +76,10 @@ try {
   await assert.rejects(updatePolicy(client, { tenantRef, policyId: other.id, name: 'x', maxBlastRadius: 'cosmetic' }), /not found/, 'a deleted rule cannot be edited');
   await assert.rejects(deletePolicy(client, { tenantRef, policyId: other.id, deletedBy: 'admin' }), /not found/, 'deleting twice reads as not found');
   await assert.rejects(deletePolicy(client, { tenantRef: 'sha256:other', policyId: alert.id, deletedBy: 'admin' }), /not found/, 'another tenant cannot delete it');
+  // A deleted undo rule never acts, even if something later left it marked on.
+  await deletePolicy(client, { tenantRef, policyId: undo.id, deletedBy: 'admin' });
+  const { rows: [forcedOn] } = await client.query('UPDATE policy SET enabled = true WHERE id = $1 RETURNING *', [undo.id]);
+  await assert.rejects(assertExecutableAutomationPolicy(client, forcedOn), /is deleted/);
   const { rows } = await client.query('SELECT id FROM policy WHERE id = $1', [other.id]);
   assert.equal(rows.length, 1, 'the row is kept so its history still resolves');
   const { rows: evaluations } = await client.query("SELECT count(*)::int AS n FROM evidence WHERE kind = 'policy-evaluation' AND tenant_ref = $1", [tenantRef]);

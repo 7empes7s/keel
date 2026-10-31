@@ -226,9 +226,10 @@ export async function clearPolicyPause(client, { policyId }) {
   }
   const { rows: updated } = await client.query(
     `UPDATE policy SET paused_at = NULL, run_as_repair_required = false
-      WHERE id = $1 RETURNING *`,
+      WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
     [policyId],
   );
+  if (!updated[0]) throw new Error(`policy not found: ${policyId}`);
   return updated[0];
 }
 
@@ -276,10 +277,12 @@ export async function setPolicyEnabled(client, { policyId, enabled }) {
               WHEN $2 AND action = 'auto_remediate' AND run_as_repair_required THEN NULL
               ELSE paused_at
             END
-      WHERE id = $1
+      WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
     [policyId, enabled],
   );
+  // A delete that commits after the read above leaves the rule deleted and off.
+  if (!updated[0]) throw new Error(`policy not found: ${policyId}`);
   return updated[0];
 }
 

@@ -748,6 +748,7 @@ test("Automatic rules: edit saves the whole rule, delete hides it and keeps its 
   assert.equal((await edit({ name: "", maxBlastRadius: "cosmetic" })).status, 400);
   assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic", maxActionsPerWindow: 5 })).status, 400, "a limit needs its window");
   assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic", changeType: "renamed" })).status, 400);
+  assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic", maxActionsPerWindow: 2 ** 40, windowSeconds: 3600 })).status, 400, "a database refusal is not reported as a deleted rule");
   const saved = await edit({ name: "Edited", maxBlastRadius: "access-affecting", resourceType: "user", changeType: "removed", maxActionsPerWindow: 20, windowSeconds: 3600 });
   assert.equal(saved.status, 200);
   const after = (await saved.json()).policy;

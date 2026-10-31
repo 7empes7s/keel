@@ -314,8 +314,9 @@ export function guardedPolicyEdit(surface: DataSurface, deps: GuardDeps = {}) {
         maxActionsPerWindow: body.maxActionsPerWindow, windowSeconds: body.windowSeconds,
       });
       return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0] }, { headers: NO_STORE });
-    } catch {
-      return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    } catch (error) {
+      if (/policy not found/.test(String((error as Error)?.message))) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+      return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
     }
   }, deps);
 }
@@ -328,8 +329,9 @@ export function guardedPolicyDelete(surface: DataSurface, deps: GuardDeps = {}) 
     try {
       const policy = await deletePolicy(client, { tenantRef, policyId: id, deletedBy: principalId });
       return Response.json({ deleted: { id: String(policy.id), name: policy.name } }, { headers: NO_STORE });
-    } catch {
-      return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    } catch (error) {
+      if (/policy not found/.test(String((error as Error)?.message))) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+      throw error;
     }
   }, deps);
 }

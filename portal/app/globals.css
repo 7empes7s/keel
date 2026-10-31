@@ -9650,6 +9650,9 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .po-form .field-help { margin: 0; }
 .po-form .segmented { max-width: 100%; }
 .po-form .picker-button { max-width: 100%; }
+/* What to do: three long choices, one per row, so they never run past the sheet. */
+.po-does .segmented { display: grid; width: 100%; height: auto; }
+.po-does .segment { min-height: 2.25rem; justify-content: start; }
 .po-check { display: flex; align-items: start; gap: var(--space-xs); margin: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); font-size: 0.9375rem; line-height: 1.45; }
 .po-check .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; color: var(--fine); }
 .po-error { display: flex; align-items: start; gap: var(--space-xs); margin: 0; color: var(--urgent); font-size: 0.875rem; }
@@ -9667,7 +9670,8 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .po-action .po-row-mid, .po-action .po-row-acts { grid-column: 2; }
   .po-action .po-row-acts { justify-content: start; }
   .po-form .segmented { width: 100%; }
-  .po-form .segmented > * { flex: 1; justify-content: center; min-width: 0; }
+  .po-form .segmented > * { flex: 1 1 auto; justify-content: center; min-width: 0; padding: 0 var(--space-xs); }
+  .po-form .po-does .segment { justify-content: start; padding: 0 var(--space-sm); }
   .po-form .picker-button { width: 100%; min-width: 0; }
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { AlertRecord } from "@/components/alerts/alert-record";
@@ -63,7 +63,7 @@ import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Alerts (portal audit, one design): a status pill and a verdict whose one amber action
 // acknowledges the overdue alerts; four tiles that set `state=` in the address; the
@@ -97,7 +97,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute, header, notice }:
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/alerts";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const stateTiles = useMemo<FilterTile<AlertItem>[]>(() => ALERT_FILTERS.map((key) => ({ key, test: (alert: AlertItem) => alertMatches(alert, key, now) })), [now]);
   // The tiles add up: `state=waiting,overdue` shows alerts in either.
   const filter = readPicked(stateTiles, params?.get("state"));

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
@@ -62,7 +62,7 @@ import { displayAccount } from "@/lib/record-refs";
 import { type EngineRef, jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Activity (portal audit, pick A): a timeline by day. Four tiles count the last day's
 // jobs, what failed, what is running or waiting, and whether the audit record is intact;
@@ -103,7 +103,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/activity";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const opened = view.get("open");

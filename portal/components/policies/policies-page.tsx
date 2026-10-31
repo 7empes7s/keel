@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -45,7 +45,7 @@ import { addsWords, tileCounts, tileParam, withoutTile, type FilterTile } from "
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Policies (portal audit, one design): automatic rules as one grouped list. Four count
 // tiles (Running, Paused or stopped, Off, Actions this week) are links that set a
@@ -65,7 +65,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/policies";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const creating = Boolean(view.get("new"));

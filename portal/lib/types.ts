@@ -177,12 +177,15 @@ export interface CoverageType {
   observation?: CoverageObservation | null;
 }
 
+// Every kind in exactly one bucket, so the buckets add up to total
+// (lib/protect-view.ts coverageSummary). covered is backed up and current.
 export interface CoverageSummary {
   covered: number;
   failed: number;
-  notCovered: number;
-  neverCollected: number;
   stale: number;
+  neverCollected: number;
+  notCovered: number;
+  unavailable: number;
   total: number;
 }
 
@@ -650,7 +653,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite";
   href?: string;
 }
 
@@ -669,6 +672,9 @@ export interface DashboardData {
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
   evidence: { ok: boolean; chainLength: number };
+  // Whether a checked off-site copy holds every backed-up type (the Resilience page's
+  // recoverable point). Undefined when it could not be read.
+  offsite?: { measured: boolean };
   alerts: DashboardAlert[];
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).

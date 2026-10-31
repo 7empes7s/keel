@@ -41,6 +41,10 @@ test("a rule's sentence says what it does to what, in plain words", () => {
   assert.equal(kindWords({ resource_type: "conditionalAccessPolicy", natural_key_glob: null }), "sign-in rules");
   assert.equal(kindWords({ resource_type: null, natural_key_glob: "group:Admin*" }), "groups");
   assert.equal(namePattern({ natural_key_glob: "group:*" }), null);
+  // A name pattern with no kind watches anything, never "*s".
+  assert.equal(kindWords({ resource_type: null, natural_key_glob: "*:Admin*" }), "anything");
+  assert.equal(matchWords({ ...undo, resource_type: null, natural_key_glob: "*:Admin*" }), "low-risk changes to anything with a name like “Admin*”");
+  assert.deepEqual(watchChips({ ...undo, resource_type: null, natural_key_glob: "*:Admin*" }).map((chip) => chip.label), ["Anything", "Changed", "Low risk", "Name like “Admin*”"]);
   assert.equal(rateWords({ max_actions_per_window: 3, window_seconds: 86_400 }), "3 a day");
   assert.equal(rateWords({ max_actions_per_window: null, window_seconds: null }), null);
   assert.equal(ceilingWords(off), "Affects access");

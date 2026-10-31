@@ -328,8 +328,10 @@ const personalProfile = (payload) => PERSONAL_PROFILE_FIELDS
 
 /**
  * Is the account kept for emergencies only? `account.usage` is filled by
- * loadBreakGlassReadiness: { signInLogRead, signInDays, lastSignInAt, keelPerson }.
- * Any sign of day-to-day use fails; with none, an unread sign-in log is unknown.
+ * loadBreakGlassReadiness: { signInLogRead, signInLogPartlyRead, signInDays, lastSignInAt,
+ * keelPerson }. Any sign of day-to-day use fails; with none, a sign-in log not read for
+ * the whole lookback is unknown. When some of it was read (the usage canary may already
+ * show sign-ins from it), the reason says so instead of calling the log unread.
  */
 function evaluateDedicated(account, inventory) {
   const usage = account.usage ?? null;
@@ -345,7 +347,7 @@ function evaluateDedicated(account, inventory) {
   if (usage?.keelPerson) return dimension('fail', 'keel-person-signs-in-with-it', evidence);
   if ((usage?.signInDays ?? 0) >= DAILY_USE_DAYS) return dimension('fail', 'signs-in-day-to-day', evidence);
   if (profile.length) return dimension('fail', 'personal-profile', evidence);
-  if (!usage?.signInLogRead) return dimension('unknown', 'sign-in-log-not-read', evidence);
+  if (!usage?.signInLogRead) return dimension('unknown', usage?.signInLogPartlyRead ? 'sign-in-log-partly-read' : 'sign-in-log-not-read', evidence);
   if (!user) return dimension('unknown', 'account-not-in-inventory', evidence);
   return dimension('pass', 'emergency-only', evidence);
 }
@@ -685,8 +687,8 @@ export async function loadLockoutGateInputs(client, { tenantRef, now = new Date(
  * in to Keel with the same sign-in name, and on how many separate days the sign-in log
  * shows it signing in, leaving out sign-ins near a recorded emergency test. Read-only.
  */
-async function loadAccountUsage(client, { tenantRef, accounts, inventory, now, signInLogRead }) {
-  const usage = new Map(accounts.map((account) => [account.accountId, { signInLogRead, signInDays: 0, lastSignInAt: null, keelPerson: null }]));
+async function loadAccountUsage(client, { tenantRef, accounts, inventory, now, signInLogRead, signInLogPartlyRead = false }) {
+  const usage = new Map(accounts.map((account) => [account.accountId, { signInLogRead, signInLogPartlyRead, signInDays: 0, lastSignInAt: null, keelPerson: null }]));
   if (!accounts.length) return usage;
   const ids = accounts.map((account) => account.accountId);
   const signInNames = new Map();
@@ -760,7 +762,12 @@ export async function loadBreakGlassReadiness(client, { tenantRef, now = new Dat
   const inventory = await loadInventory(client, tenantRef);
   const groupMembers = await loadGroupMembership(client, tenantRef, inventory);
   const canary = await signInCoverage(client, tenantRef, now);
-  const usage = await loadAccountUsage(client, { tenantRef, accounts: accountsLoaded, inventory, now, signInLogRead: canary.sources?.['sign-in']?.lookbackCovered === true });
+  const signInSource = canary.sources?.['sign-in'];
+  const signInLogRead = signInSource?.lookbackCovered === true;
+  const usage = await loadAccountUsage(client, {
+    tenantRef, accounts: accountsLoaded, inventory, now, signInLogRead,
+    signInLogPartlyRead: !signInLogRead && typeof signInSource?.readUntil === 'string',
+  });
   const accountsRaw = accountsLoaded.map((account) => ({ ...account, usage: usage.get(account.accountId) }));
   const accounts = accountsRaw.map(({ usage: _usage, ...account }) => ({
     ...account, ...accountNames(account.accountId, inventory), ...evaluateAccountReadiness({ account: { ...account, usage: _usage }, inventory, groupMembers, now }),

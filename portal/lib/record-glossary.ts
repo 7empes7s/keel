@@ -56,6 +56,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   // Shared everywhere.
   "Status": fact("Status", "Where this stands now."),
   "State": fact("Status", "Where this stands now."),
+  "Stored status (API)": support("Stored status", "The status code the API returns. A partly done backup is stored as succeeded."),
   "Reason": fact("Why", "Keel's reason for this result."),
   "Reasons": fact("Why", "Keel's reasons for this result."),
   "Kind": fact("Kind", "What sort of item this is."),
@@ -472,6 +473,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Open changes": count("Changes to review", "Changes waiting for a decision.", { zeroIsGood: true }),
   "Covered": count("Covered", "Types Keel backs up."),
   "Not covered": count("Not covered", "Types Keel does not back up yet.", { zeroIsGood: true }),
+  Unavailable: count("Not on this tenant", "Types Microsoft refused for a missing licence or tenant feature.", { zeroIsGood: true }),
   "Total types": count("All types", "Every type of setting Keel knows."),
 
   // Decision workbook.

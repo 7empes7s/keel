@@ -3,7 +3,7 @@
 // a schedule the same way. Codes stay in the record layer (components/coverage-report).
 import { ago, displayEnum, formatTimestamp, fromNow, resourceTypeLabel } from "@/lib/presentation";
 import type { Schedule } from "@/lib/schedules";
-import type { CoverageData, CoverageType, RestoreProofSummary, WriteOperationCapability } from "@/lib/types";
+import type { CoverageData, CoverageSummary, CoverageType, RestoreProofSummary, WriteOperationCapability } from "@/lib/types";
 import {
   hasRestoreWriter as engineHasRestoreWriter,
   provenAt as engineProvenAt,
@@ -332,12 +332,67 @@ export function healthRisk(item: CoverageType): "urgent" | "soon" | undefined {
   return tone === "urgent" || tone === "soon" ? tone : undefined;
 }
 
-export interface ProtectCounts {
+/**
+ * The one coverage count (audit 31 Oct 2026, metrics 3 and 4). Every kind lands in exactly
+ * one bucket by its backupHealth, so the buckets add up to the total. A kind whose last
+ * read was only partly done counts as failed. Overview, the menu badge, What's protected
+ * and Setup all count with this, from the same kinds (withWorkloadKinds).
+ */
+export interface CoverageBuckets {
   total: number;
   backedUp: number;
   failed: number;
   stale: number;
   never: number;
+  // No collector yet, or a workload not switched on for this tenant.
+  notCollected: number;
+  // Microsoft refused the read for a missing licence or tenant feature.
+  unavailable: number;
+}
+
+export function coverageBuckets(types: readonly CoverageType[]): CoverageBuckets {
+  const buckets: CoverageBuckets = { total: types.length, backedUp: 0, failed: 0, stale: 0, never: 0, notCollected: 0, unavailable: 0 };
+  for (const item of types) {
+    switch (backupHealth(item)) {
+      case "ok": case "empty": buckets.backedUp += 1; break;
+      case "failed": buckets.failed += 1; break;
+      case "stale": buckets.stale += 1; break;
+      case "never": buckets.never += 1; break;
+      case "not-collected": buckets.notCollected += 1; break;
+      case "unavailable": buckets.unavailable += 1; break;
+    }
+  }
+  return buckets;
+}
+
+/** The buckets in the Overview's summary shape (lib/types.ts CoverageSummary). */
+export function coverageSummary(types: readonly CoverageType[]): CoverageSummary {
+  const buckets = coverageBuckets(types);
+  return {
+    covered: buckets.backedUp,
+    failed: buckets.failed,
+    stale: buckets.stale,
+    neverCollected: buckets.never,
+    notCovered: buckets.notCollected,
+    unavailable: buckets.unavailable,
+    total: buckets.total,
+  };
+}
+
+/** "203 kinds: 190 backed up, 4 failed, 3 out of date or never, 5 not backed up by Keel yet, 1 not on this tenant." */
+export function coverageSentence(summary: CoverageSummary): string {
+  const late = summary.stale + summary.neverCollected;
+  const parts = [
+    `${summary.covered.toLocaleString("en-GB")} backed up`,
+    ...(summary.failed ? [`${summary.failed.toLocaleString("en-GB")} failed`] : []),
+    ...(late ? [`${late.toLocaleString("en-GB")} out of date or never`] : []),
+    ...(summary.notCovered ? [`${summary.notCovered.toLocaleString("en-GB")} not backed up by Keel yet`] : []),
+    ...(summary.unavailable ? [`${summary.unavailable.toLocaleString("en-GB")} not on this tenant`] : []),
+  ];
+  return `${plural(summary.total, "kind", "kinds")}: ${listWords(parts)}.`;
+}
+
+export interface ProtectCounts extends CoverageBuckets {
   // From restoreProofCounts, so What's protected, Setup and the Overview agree.
   proven: number;
   tested: number;
@@ -345,14 +400,9 @@ export interface ProtectCounts {
 }
 
 export function protectCounts(types: CoverageType[]): ProtectCounts {
-  const health = types.map(backupHealth);
   const proof = restoreProofCounts(types);
   return {
-    total: types.length,
-    backedUp: health.filter((value) => value === "ok" || value === "empty").length,
-    failed: health.filter((value) => value === "failed").length,
-    stale: health.filter((value) => value === "stale").length,
-    never: health.filter((value) => value === "never").length,
+    ...coverageBuckets(types),
     proven: proof.proven,
     tested: proof.tested,
     restorable: proof.restorable,

@@ -7,7 +7,7 @@ import { AlertList } from "@/components/ui/alert-list";
 import { Badge } from "@/components/ui/badge";
 import { StatTiles } from "@/components/ui/stat-tiles";
 import {
-  ASK_INTENTS, ASK_PERIODS, answerBadge, answerSummary, askAlerts, askTiles, understoodAs, understoodFilters,
+  ASK_INTENTS, ASK_PERIODS, answerBadge, answerSummary, askAlerts, coverageAnswerSummary, askTiles, understoodAs, understoodFilters,
   type AskData, type GroundedAnswer, type SummaryRow,
 } from "@/lib/ask-view";
 import { RESOURCE_TYPE_LABELS, formatTimestamp } from "@/lib/presentation";
@@ -112,6 +112,18 @@ function AnswerSummary({ answer }: { answer: GroundedAnswer }) {
   );
 }
 
+/** A coverage answer's kinds by state, in the shared buckets, and by service. */
+function CoverageSummaryCards({ answer }: { answer: GroundedAnswer }) {
+  const summary = coverageAnswerSummary(answer);
+  if (!summary) return null;
+  return (
+    <section aria-label="Summary of every kind" className="ak-summary">
+      <SummaryList icon="backup" rows={summary.states} title="By state" total={summary.total} />
+      {summary.services.length ? <SummaryList icon="service-keel" rows={summary.services} title="By service" total={summary.total} /> : null}
+    </section>
+  );
+}
+
 export function AnswerView({ answer }: { answer: GroundedAnswer }) {
   const understood = understoodAs(answer);
   const badge = answerBadge(answer);
@@ -141,6 +153,7 @@ export function AnswerView({ answer }: { answer: GroundedAnswer }) {
         <p className="pg-empty"><Icon name="info" />Nothing matched in the part of this period KEEL has records for.</p>
       ) : null}
       <AnswerSummary answer={answer} />
+      <CoverageSummaryCards answer={answer} />
       {answer.records.length ? <AskRecords records={answer.records} /> : null}
       {answer.truncated ? <p className="pg-help ask-truncated"><Icon name="info" />The table lists the newest {answer.shown.toLocaleString("en-GB")} of {answer.total.toLocaleString("en-GB")}; the summary counts all of them. Narrow the question to list the rest.</p> : null}
       <p className="ask-foot">Answered {formatTimestamp(answer.generatedAt)} from KEEL&apos;s own records. Nothing was changed.</p>

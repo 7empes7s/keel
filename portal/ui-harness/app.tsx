@@ -2572,7 +2572,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity/anonymous": {
       const all = activityJobs(jobs).map(hidePeople);
       return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}

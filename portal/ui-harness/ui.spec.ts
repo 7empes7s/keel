@@ -4596,7 +4596,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks"];
+  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks", "notifications"];
   for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
     expect(await link.evaluate((item) => item.tagName)).toBe("A");
     const href = (await link.getAttribute("href")) ?? "";
@@ -4606,6 +4606,12 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('.ov-legend-link[href*="health=failed"]')).toContainText("4");
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
+  // With no notification channel, alerts reach nobody: an Urgent row, first, opens Notifications.
+  const nobody = page.locator(".ov-row").first();
+  await expect(nobody).toContainText("No notification channel");
+  await expect(nobody).toContainText("3 open alerts reach nobody.");
+  await expect(nobody).toContainText("Urgent");
+  await expect(nobody).toHaveAttribute("href", /\/notifications$/);
   await expect(page.locator(".ov-side-card", { hasText: "Approved setup" })).toContainText("by Marouane Defili");
   // The compliance score opens Compliance on what fails.
   const compliance = page.locator(".ov-score-card");

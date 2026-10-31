@@ -8,10 +8,14 @@
  * ScubaGear's provider (Get-PrivilegedRole) lists each privileged role's active
  * assignments from Graph beta roleAssignmentScheduleInstances. Keel backs up the
  * assignment schedules and every active assignment (v1.0), and its adapter builds the
- * same list from them (adapters.mjs roleAssignmentsOf): an assignment with no schedule
- * was made outside PIM, so it has no start date and never ends. Rule 7.4 asks whether
- * any assignment never ends, and 7.5 whether any has no start date. Until a live read
- * shows the two lists agree, 7.5 stays "could not check".
+ * same list from them (adapters.mjs roleAssignmentsOf): an assignment with no schedule,
+ * or whose schedule names no PIM request and no creation time, was made outside PIM, so
+ * it has no start date. Rule 7.4 asks whether any assignment never ends, and 7.5
+ * whether any has no start date.
+ *
+ * Beside the comparison it counts, for every Keel schedule ScubaGear also lists, which
+ * of the fields Keel reads its start date from are set (`startDateClues`), so a live
+ * difference in start dates shows which field would have predicted it.
  *
  * This tool reads both live with the collector credential, GET only (the same
  * read-only transport the scheduled collection uses), and prints, per privileged
@@ -40,6 +44,8 @@ export const KEEL_READS = Object.freeze({
 });
 export const SCUBA_READ = '/beta/roleManagement/directory/roleAssignmentScheduleInstances';
 const MAX_PAGES = 100;
+// Graph's two values; anything else prints as "other" so no free text reaches the output.
+const ASSIGNMENT_TYPES = new Set(['Assigned', 'Activated']);
 
 const state = (value) => (value === null || value === undefined ? 'not set' : 'set');
 const keyOf = (assignment) => `${assignment.principalId}|${assignment.directoryScopeId ?? '/'}`;
@@ -92,6 +98,7 @@ export async function readPimLive(transport) {
  */
 export function comparePim({ facts, instances }) {
   const roles = [];
+  const clues = {};
   let differences = 0;
   for (const role of privilegedRoleTemplates(facts, 'privileged_roles')) {
     // Keel's adapter side, keyed like the instances (who holds the role, and where).
@@ -105,6 +112,17 @@ export function comparePim({ facts, instances }) {
       // Keel cannot build a role held through a group (its rules read "could not check"), so those are only counted.
       if (instance.memberType === 'Group') { throughGroup += 1; continue; }
       merge(scuba, keyOf(instance), { start: state(instance.startDateTime), end: state(instance.endDateTime) });
+    }
+    for (const schedule of facts.roleAssignmentSchedule ?? []) {
+      const theirs = schedule.roleDefinitionId === role.templateId ? scuba.get(keyOf(schedule)) : null;
+      if (!theirs) continue;
+      const clue = [
+        `ScubaGear start ${theirs.start}`,
+        `createdUsing ${state(schedule.createdUsing)}`,
+        `createdDateTime ${state(schedule.createdDateTime)}`,
+        `assignmentType ${ASSIGNMENT_TYPES.has(schedule.assignmentType) ? schedule.assignmentType : 'other'}`,
+      ].join(', ');
+      clues[clue] = (clues[clue] ?? 0) + 1;
     }
     const found = [];
     for (const [key, mine] of keel) {
@@ -124,7 +142,7 @@ export function comparePim({ facts, instances }) {
   // A role held through a group is one Keel cannot check, and ScubaGear's verdict would rest on holders left out
   // here, so the two cannot be said to agree.
   const heldThroughGroup = roles.some((entry) => entry.throughGroup > 0);
-  return { agree: differences === 0 && !heldThroughGroup, heldThroughGroup, roles, privilegedRoles: PRIVILEGED_ROLES.length, instances: instances.length };
+  return { agree: differences === 0 && !heldThroughGroup, heldThroughGroup, roles, privilegedRoles: PRIVILEGED_ROLES.length, instances: instances.length, startDateClues: clues };
 }
 
 async function main(argv) {

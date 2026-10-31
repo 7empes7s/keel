@@ -12,32 +12,29 @@ function evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor })
 }
 
 /** Spec M2.6.4. Append-only, tamper-evident: each record embeds the previous record's hash. */
-export async function appendEvidence(client, {
-  tenantRef, kind, subject, actor,
-  correlationId = process.env.KEEL_EVENT_CORRELATION_ID,
-  eventSink = createEventSink(),
-}) {
-  let record;
+export async function appendEvidence(client, { eventSink = createEventSink(), ...entry }) {
+  let written;
   await client.query('BEGIN');
   try {
-    record = await appendEvidenceInTransaction(client, { tenantRef, kind, subject, actor, correlationId });
+    written = await appendEvidenceInTransaction(client, { ...entry, eventSink });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   }
-  // A logging failure must never roll back or misreport committed audit evidence.
-  try { eventSink(envelopeForEvidence(record)); } catch { /* best-effort projection */ }
-  return record;
+  written.emit();
+  return written.record;
 }
 
-// The same append for a caller that already holds an open transaction (accepting a
-// change writes its record in the same transaction as the accept). Every writer of the
-// evidence table goes through here: it takes the tenant's lock, chains onto the stored
-// head and moves the head, so the chain check sees one unbroken record.
+/**
+ * The same record, written inside a transaction the caller has open, so the record and
+ * the change it describes commit or roll back together. The caller calls `emit()` after
+ * its COMMIT (never after a ROLLBACK) to project the record as an event.
+ */
 export async function appendEvidenceInTransaction(client, {
   tenantRef, kind, subject, actor,
   correlationId = process.env.KEEL_EVENT_CORRELATION_ID,
+  eventSink = createEventSink(),
 }) {
   subject = redactPayload(subject);
   actor = redactPayload(actor);
@@ -74,8 +71,11 @@ export async function appendEvidenceInTransaction(client, {
     [tenantRef, rows[0].seq, recordHash, BigInt(headRows[0]?.record_count ?? 0) + 1n],
   );
 
-  return { seq: rows[0].seq, tenant_ref: tenantRef, occurred_at: occurredAt,
+  const record = { seq: rows[0].seq, tenant_ref: tenantRef, occurred_at: occurredAt,
     kind, subject, actor, prev_hash: prevHash, record_hash: recordHash };
+  // A logging failure must never roll back or misreport committed audit evidence.
+  const emit = () => { try { eventSink(envelopeForEvidence(record)); } catch { /* best-effort projection */ } };
+  return { record, emit };
 }
 
 // Walks the chain from `start` (a prefix verified earlier: { seq, hash, count }) or from

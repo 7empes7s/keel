@@ -14251,3 +14251,38 @@ item that needs it stays untouched.
      `ONLY='changes|baselines getDriftData|compliance getComplianceData'`, then with `ONLY='resilience|protect|activity|alerts'`.
   2. `journalctl -u keel-portal --since "<deploy time>" --no-pager | grep "slow query" | sed 's/^.*slow query/slow query/' | sort | uniq -c | sort -rn | head -20`.
 - **Report:** the commit, both outputs verbatim, and the slow-query lines.
+
+### Q306: Write the one explanation entry for the 31 Oct audit record break (after PR #887 deploys; one append, no tenant), about 10 minutes
+- Drafted by the "Mark the 31 Oct audit break as known" thread (2026-10-31). PR #887 adds `keel-govern.mjs evidence explain-break`.
+  It appends **one** `chain-break-explained` entry through the normal locked writer. It **never edits or deletes an audit
+  row and never touches `evidence_head` by hand**. It refuses, and writes nothing, unless every break lies in the stretch and
+  has the bug's shape. Once the entry exists, the Overview shows "Known break, explained" in amber, not red Urgent.
+  No tenant calls. Never print the database URL, a password, a token or a tenant id (say "tenant A").
+- Needs: PR #887 merged **and** deployed (`/opt/keel-live` at a commit that contains it).
+- Status: todo
+- Do, on Mulinux, from `/opt/keel-live`, with `/etc/keel/db.env` sourced. Use the Keel **admin principal** you normally use for
+  CLI actions; if you have none, use the owner's admin principal.
+  1. Record the deployed commit.
+  2. Dry run (no `--confirm`):
+     ```
+     node cli/keel-govern.mjs evidence explain-break --from 425262 --through 428902 \
+       --cause "accepting a change wrote its audit entry without the tenant lock and did not move the head" \
+       --fix "PR #876" --principal-id <admin principal id>
+     ```
+     Expected: `"ok": true`, `"written": false`, `"breaks": 903`, `"headCountShortBy": "881"`, firstBreak 425262,
+     lastBreak 428902. **If it refuses or the numbers differ, stop and report the output verbatim. Do not use `--confirm`.**
+  3. Only if step 2 matched: run the same command with `--confirm`. Expected `"written": true` with an `explainedBySeq`.
+  4. Check, read-only:
+     ```
+     node --input-type=module -e "import { connect } from './engine/store/db.mjs'; import { verifyChain } from './engine/govern/evidence.mjs';
+       const c = await connect(process.env.KEEL_DB_URL); await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+       const { rows } = await c.query('SELECT tenant_ref FROM evidence_head');
+       for (const r of rows) { const v = await verifyChain(c, { tenantRef: r.tenant_ref }); console.log(JSON.stringify({ ok: v.ok, reason: v.reason, brokenAtSeq: v.brokenAtSeq, known: v.knownBreaks?.map((k) => ({ seq: k.explainedBySeq, from: k.fromSeq, through: k.throughSeq, n: k.breakCount })) })); }
+       await c.query('ROLLBACK'); await c.end();"
+     ```
+     Expected: `ok: true` with one known break (903).
+  5. After about 2 minutes (the portal's background check refreshes every minute, and its first walk after the entry takes
+     a few seconds), check the Overview from the host the way you usually check pages. Its audit row should read "The audit
+     record has a known break, explained" in amber (Check soon), plus "not checked: no off-site copy", and it should not read
+     "failed the check".
+- **Report:** the commit, the dry-run and confirm outputs verbatim, the step 4 output and what the Overview showed.

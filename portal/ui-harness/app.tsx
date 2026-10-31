@@ -2778,6 +2778,13 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         {ANONYMOUS_NOTE}
         <AlertsPage alerts={alerts} canMute canRespond now={now} /></>;
     }
+    case "/alerts/many": {
+      // The tenant holds far more alerts than the page lists: the tiles, the verdict and
+      // the pill show the whole count, and the list says it holds fewer.
+      const counts = { ...alertCounts(INBOX_ALERTS, now), waiting: 1722, overdue: 15, resolved: 2400, resolvedWeek: 240, total: 4200 };
+      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(counts))}
+        <AlertsPage alerts={INBOX_ALERTS} canMute canRespond counts={counts} now={now} /></>;
+    }
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";

@@ -4408,9 +4408,20 @@ test("Alerts · a viewer sees the alerts, no amber action and no controls", asyn
   await expect(sheet.getByRole("link", { name: /Resolve|Mute/ })).toHaveCount(0);
 });
 
+// Audit 31 Oct 2026: the page said 197 waiting while the bell said 722. The tiles, the
+// verdict and the pill count every alert; the list says when it holds fewer.
+test("Alerts · the counts are the tenant's, not the list's", async ({ page }) => {
+  await open(page, "/alerts/many");
+  await expect(page.locator(".al-tile", { hasText: "Needs someone" }).locator(".al-tile-count")).toHaveText("1,722");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toContainText("1,722 alerts need someone");
+  await expect(page.locator(".al-listed")).toContainText("of 4,200 alerts");
+  await open(page, "/alerts");
+  await expect(page.locator(".al-listed")).toHaveCount(0);
+});
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001"]) {
+    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001", "/alerts/many"]) {
       test(`Alerts · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);

@@ -1970,13 +1970,37 @@ test("Changes · the verdict follows the service filter like the tiles", async (
     await expect(verdict.locator(".verdict-sentence")).not.toContainText("service setting");
     const all = await tile("All open changes").innerText();
     await expect(verdict.locator(".verdict-sentence")).toContainText(new RegExp(`^${all} changes? since the approved setup`));
-    await expect(verdict.locator(".verdict-detail")).toHaveText(/^Counts follow your filter: In Entra ID\. Across all services: \d+ changes?, and 5 service setting changes wait for review\.$/);
+    await expect(verdict.locator(".verdict-detail")).toHaveText(/^Counts follow your filter: In Entra ID\. Across all services: \d+ open changes: \d+ changes? since the approved setup, and 5 service setting changes wait for review\.$/);
     await page.screenshot({ path: test.info().outputPath(`verdict-filtered-${width}.png`), fullPage: false });
 
     await page.getByRole("button", { name: "Remove filter: In Entra ID" }).click();
     await expect(tile("Service settings")).toHaveText("5");
     await expect(verdict.locator(".verdict-sentence")).toContainText("5 service setting changes wait for review");
     await expect(verdict.locator(".verdict-detail")).toHaveCount(0);
+  }
+});
+
+// Audit 31 Oct 2026: the Overview said 703 open changes, the Changes header 591.
+// The header badge and the verdict show the same open-changes total, and a list
+// that holds fewer service setting changes than are open says so.
+test("Changes · the header and the verdict show one open-changes total", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/drift/services");
+    const verdict = page.locator('[data-layer="verdict"] .verdict-sentence');
+    const all = Number(await page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count").innerText());
+    await expect(page.locator(".page-header")).toContainText(`${all} changes to review`);
+    await expect(verdict).toContainText(new RegExp(`^${all} open changes: \\d+ since the approved setup`));
+
+    await open(page, "/drift/services-capped");
+    const setup = all - 5;
+    await expect(page.locator(".page-header")).toContainText(`${all + 300} changes to review`);
+    await expect(verdict).toContainText(new RegExp(`^${all + 300} open changes: ${setup} since the approved setup .*, and 305 service setting changes are still open`));
+    const tile = (name: string) => page.locator(".bl-tile", { hasText: name }).locator(".bl-tile-count");
+    await expect(tile("All open changes")).toHaveText(String(all + 300));
+    await expect(tile("Service settings")).toHaveText("305");
+    await expect(page.locator(".bl-note", { hasText: "Showing the newest" })).toHaveText("Showing the newest 5 of 305 open service setting changes. Acknowledge or resolve some to see the rest.");
+    await page.screenshot({ path: test.info().outputPath(`open-changes-${width}.png`), fullPage: false });
   }
 });
 
@@ -2963,7 +2987,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
   test(`the approved setup sums up each service and fits ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await open(page, "/baselines", viewport.width < 600 ? "light" : "dark");
-    await expect(page.locator(".status-pill")).toContainText("7 changes to review");
+    // Every open change, service setting changes included: 7 approved-setup changes and
+    // 5 service setting changes, the same total as the Overview and the Changes page.
+    await expect(page.locator(".status-pill")).toContainText("12 changes to review");
+    await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toContainText(/^12 changes since/);
     const current = page.locator(".bl-current");
     await expect(current).toContainText("Post-migration golden state");
     await expect(current).toContainText("4,812 settings in 6 kinds");

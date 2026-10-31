@@ -25,7 +25,7 @@ import {
   changedBy, decisionWords, impactTone, impactWords, itemKindName, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { alertCall, alertCallWords } from "@/lib/alert-calls";
-import { changeLabel, changeName, changesScopeDetail, changesVerdict, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
+import { changeLabel, changeName, changesScopeDetail, changesVerdict, isWaiting, serviceListNote, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
 import { backupPointWords } from "@/lib/restore-workloads-view";
 import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
@@ -138,6 +138,7 @@ export function ChangeList({
   notice,
   now,
   scopeNote,
+  serviceTotal,
   summary,
 }: {
   // Null when no setup is approved yet: the list then holds service setting changes only.
@@ -149,6 +150,8 @@ export function ChangeList({
   now: string;
   // For a reader scoped to some entities: whose changes they see.
   scopeNote?: string | null;
+  // Every open service setting change, counted without the list's row limit.
+  serviceTotal?: number;
   summary?: SemanticSummary;
 }) {
   const view = useViewState();
@@ -237,10 +240,14 @@ export function ChangeList({
     view.set(changes);
   };
 
-  const notes = summary ? [
+  const listedService = items.filter((item) => item.serviceRead).length;
+  const notes = [
+    serviceListNote(listedService, serviceTotal ?? listedService),
+    ...(summary ? [
     summary.mismatched ? `${summary.mismatched} ${summary.mismatched === 1 ? "change could not be fully checked. Its details say why." : "changes could not be fully checked. Their details say why."}` : null,
     summary.unknownBefore ? `${summary.unknownBefore} ${summary.unknownBefore === 1 ? "change was" : "changes were"} not in the approved setup, so the earlier values are not known.` : null,
-  ].filter((note): note is string => note !== null) : [];
+    ] : []),
+  ].filter((note): note is string => note !== null);
 
   // Service setting changes are accepted with the rest. They have no ignore, and each
   // is undone on its own through its service restore.
@@ -308,12 +315,16 @@ export function ChangeList({
   // its detail then names the filters and gives every service's totals.
   const narrowed = useMemo(() => applyFilters(open, tiles, [], others), [open, tiles, others]);
   const narrowing = activeFilters.filter((filter) => !filter.key.startsWith("tile:")).map((filter) => filter.label);
-  const verdict = changesVerdict(narrowed, baseline?.setAt ?? null, now);
+  // Unfiltered, it counts every open service setting change, not only the listed ones.
+  const unlisted = Math.max(0, (serviceTotal ?? listedService) - listedService);
+  // Unfiltered, the totals tiles count the open service setting changes the list leaves out.
+  const uncounted = narrowing.length ? 0 : unlisted;
+  const verdict = changesVerdict(narrowed, baseline?.setAt ?? null, now, narrowing.length ? undefined : narrowed.filter((item) => item.serviceRead).length + unlisted);
   return (
     <>
     <Verdict
       action={baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
-      detail={narrowing.length ? changesScopeDetail(narrowing, open) : undefined}
+      detail={narrowing.length ? changesScopeDetail(narrowing, open, open.filter((item) => item.serviceRead).length + unlisted) : undefined}
       text={verdict.text}
       tone={verdict.tone}
     />
@@ -335,13 +346,13 @@ export function ChangeList({
         })}
         <Link aria-current={!picked.length || undefined} className="bl-card bl-tile bl-link" {...tileLink(null)}>
           <span className="bl-tile-label"><Icon name="baselines" />All open changes</span>
-          <b className="bl-tile-count">{narrowed.length}</b>
+          <b className="bl-tile-count">{narrowed.length + uncounted}</b>
           <small>{baseline && !serviceReads.length ? "Everything that differs from the approved setup" : "Everything waiting for review"}</small>
         </Link>
         {serviceIds.size ? (
           <Link aria-current={picked.includes(SERVICES_TILE) || undefined} className="bl-card bl-tile bl-link" data-tone={waiting ? "soon" : undefined} title={picked.includes(SERVICES_TILE) ? "Picked: click to remove it from the view" : "Click to add these to the view"} {...tileLink(SERVICES_TILE)}>
             <span className="bl-tile-label"><Icon name="cloud" />Service settings{picked.includes(SERVICES_TILE) ? <Icon className="bl-tile-check" name="check" /> : null}</span>
-            <b className="bl-tile-count">{counts.get(SERVICES_TILE)?.count ?? 0}</b>
+            <b className="bl-tile-count">{(counts.get(SERVICES_TILE)?.count ?? 0) + uncounted}</b>
             <small>{waiting === serviceIds.size ? "Waiting for review" : waiting ? `${waiting} waiting for review; ${serviceIds.size - waiting} seen` : "All seen; accept or undo them"}</small>
             {addsWords(SERVICES_TILE) ? <small className="bl-tile-adds">{addsWords(SERVICES_TILE)}</small> : null}
           </Link>

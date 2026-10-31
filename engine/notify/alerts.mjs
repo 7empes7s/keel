@@ -435,7 +435,7 @@ export async function alertStateCounts(client, { tenantRef, now = new Date() }) 
             count(*) FILTER (WHERE state = 'acknowledged')::int AS acknowledged,
             count(*) FILTER (WHERE state = 'suppressed')::int AS muted,
             count(*) FILTER (WHERE state = 'resolved')::int AS resolved,
-            count(*) FILTER (WHERE state = 'resolved' AND resolved_at >= $2::timestamptz - interval '7 days')::int AS resolved_week,
+            count(*) FILTER (WHERE state = 'resolved' AND resolved_at >= $2::timestamptz - interval '168 hours')::int AS resolved_week,
             count(*)::int AS total
        FROM alert WHERE tenant_ref = $1`,
     [tenantRef, now],

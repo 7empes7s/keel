@@ -5,6 +5,8 @@ import { itemKind } from "@/lib/type-groups";
 import { fieldWords } from "@/lib/changes-view";
 import { namedSubject } from "@/lib/job-names";
 import { displayEnum, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
+import { coverageSentence, HEALTH_BADGE, type BackupHealth } from "@/lib/protect-view";
+import type { CoverageSummary } from "@/lib/types";
 
 // Roadmap task-99: the shapes engine/query/execute.mjs returns, and the words the Ask
 // page shows for them. Sentences are built from counts and dates only; a record's own
@@ -64,6 +66,10 @@ export interface CoverageRecord {
   count: number | null;
   bytes?: number | null;
   lastGoodAt?: string | null;
+  // Set by the portal from the shared coverage report (lib/ask-coverage.ts): the kind's
+  // state as every other page counts it, and that state in words.
+  health?: BackupHealth;
+  note?: string;
   window: AnswerWindow;
   source: AnswerSource;
 }
@@ -116,6 +122,9 @@ export interface GroundedAnswer {
   assumed?: string[];
   // When KEEL next reads the kind asked about, from its backup schedule.
   nextRead?: { every: string | null; n: number; dueAt: string | null } | null;
+  // Coverage only: the kinds asked about in the shared coverage buckets (lib/ask-coverage.ts),
+  // the same count as Setup, What's protected and the Overview.
+  coverage?: CoverageSummary | null;
   refusal?: { code: string; message: string };
   readBy?: "rules" | "helper" | "form";
   question?: string | null;
@@ -202,6 +211,10 @@ export function askVerdict(answer: GroundedAnswer | null): { text: string; tone:
       ? { text: "Not known: KEEL has no record covering this, so it cannot say either way.", tone: "attention" }
       : { text: "KEEL cannot answer this question. It answers questions about changes, coverage and failed jobs.", tone: "attention" };
   }
+  if (answer.intent === "coverage" && answer.coverage) {
+    const late = answer.coverage.failed + answer.coverage.stale + answer.coverage.neverCollected;
+    return { text: coverageSentence(answer.coverage), tone: late ? "attention" : "good" };
+  }
   const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of backup" : "matching change";
   const found = answer.total === 0 ? `No ${noun}s found` : `${plural(answer.total, noun)} found`;
   if (answer.status === "partial") return { text: `${found}, but part of this period is not known yet.`, tone: "attention" };
@@ -271,6 +284,7 @@ export function recordSentence(record: AnswerRecord): string {
       return `${what}. ${displayEnum("blastRadius", record.impact)}.${decided}`;
     }
     case "coverage": {
+      if (record.health && record.note) return `${HEALTH_BADGE[record.health].label}. ${record.note}`;
       const outcome = OUTCOME_LABEL[record.outcome] ?? "Not recorded";
       if (record.backup === "content") {
         return record.count === null ? `${outcome}. Nothing is stored yet.` : `${outcome}. ${plural(record.count, "item")} stored.`;
@@ -404,10 +418,10 @@ export function askTiles(answer: GroundedAnswer): StatTile[] {
   const window = answer.plan?.params.from || answer.plan?.params.to ? { from: answer.plan.params.from, to: answer.plan.params.to } : answer.window;
   return [
     { key: "found", label: "Found", icon: "search", value: found,
-      about: found === "Not known" ? "No record covers this" : answer.total ? `${noun}${answer.total === 1 ? "" : "s"}${answer.truncated ? `, newest ${answer.shown} shown` : ""}` : `No ${noun}s in what KEEL knows`,
+      about: found === "Not known" ? "No record covers this" : answer.total ? `${answer.intent === "coverage" ? (answer.total === 1 ? "kind of backup" : "kinds of backup") : `${noun}${answer.total === 1 ? "" : "s"}`}${answer.truncated ? `, newest ${answer.shown} shown` : ""}` : `No ${noun}s in what KEEL knows`,
       tone: found === "Not known" ? "soon" : answer.intent === "failed-jobs" && answer.total ? "urgent" : "neutral" },
-    { key: "period", label: "Period", icon: "calendar", value: window ? shortTime(window.from).split(",")[0] : "Latest backup",
-      about: window ? `${shortTime(window.from)} to ${shortTime(window.to)}` : "The newest complete copy", tone: "neutral" },
+    { key: "period", label: "Period", icon: "calendar", value: window ? shortTime(window.from).split(",")[0] : answer.coverage ? "Latest reads" : "Latest backup",
+      about: window ? `${shortTime(window.from)} to ${shortTime(window.to)}` : answer.coverage ? "Each kind's newest backup" : "The newest complete copy", tone: "neutral" },
     { key: "unknown", label: "Not known", icon: "clock", value: answer.gaps.length ? `${answer.gaps.length} period${answer.gaps.length === 1 ? "" : "s"}` : "None",
       about: answer.gaps.length ? "KEEL has no comparison there" : "KEEL has records for all of it", tone: answer.gaps.length ? "soon" : "fine" },
     { key: "scope", label: "Owned by", icon: "person", value: answer.scope.central ? (answer.plan?.params.entity ?? "Anyone") : answer.scope.entities.join(", "),
@@ -426,7 +440,9 @@ export function recordBadges(record: AnswerRecord): { tone: AskTone; label: stri
       { tone: CHANGE_TONES[record.changeType] ?? "neutral", label: displayEnum("changeType", record.changeType) },
       { tone: IMPACT_TONES[record.impact] ?? "neutral", label: displayEnum("blastRadius", record.impact) },
     ];
-    case "coverage": return [{ tone: OUTCOME_TONES[record.outcome] ?? "neutral", label: OUTCOME_LABEL[record.outcome] ?? "Not recorded" }];
+    case "coverage": return record.health
+      ? [HEALTH_BADGE[record.health]]
+      : [{ tone: OUTCOME_TONES[record.outcome] ?? "neutral", label: OUTCOME_LABEL[record.outcome] ?? "Not recorded" }];
     default: return [{ tone: "urgent", label: "Failed" }];
   }
 }
@@ -532,6 +548,30 @@ export function answerSummary(answer: GroundedAnswer): { services: SummaryRow[];
     risks: [...risks.values()].sort((a, b) => RISK_ORDER.indexOf(a.key) - RISK_ORDER.indexOf(b.key)),
     changes: [...changes.values()].sort((a, b) => CHANGE_ORDER.indexOf(a.key) - CHANGE_ORDER.indexOf(b.key)),
   };
+}
+
+const STATE_ROWS: { key: string; label: string; tone: AskTone; count: (summary: CoverageSummary) => number }[] = [
+  { key: "failed", label: "Failed", tone: "urgent", count: (summary) => summary.failed },
+  { key: "late", label: "Out of date or never", tone: "soon", count: (summary) => summary.stale + summary.neverCollected },
+  { key: "backed-up", label: "Backed up", tone: "fine", count: (summary) => summary.covered },
+  { key: "not-collected", label: "Not backed up by Keel yet", tone: "neutral", count: (summary) => summary.notCovered },
+  { key: "unavailable", label: "Not on this tenant", tone: "neutral", count: (summary) => summary.unavailable },
+];
+
+/** A coverage answer's kinds by state (the shared buckets, worst first) and by service. */
+export function coverageAnswerSummary(answer: GroundedAnswer): { states: SummaryRow[]; services: SummaryRow[]; total: number } | null {
+  if (answer.intent !== "coverage" || !answer.coverage) return null;
+  const summary = answer.coverage;
+  const states = STATE_ROWS.map((row) => ({ key: row.key, label: row.label, tone: row.tone, count: row.count(summary) })).filter((row) => row.count > 0);
+  const services = new Map<string, SummaryRow>();
+  for (const record of answer.records) {
+    if (record.kind !== "coverage" || !record.health) continue;
+    const service = recordService(record);
+    const row = services.get(service.code) ?? { key: service.code, label: service.name, tone: "neutral", icon: service.icon, count: 0 };
+    row.count += 1;
+    services.set(service.code, row);
+  }
+  return { states, services: [...services.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)), total: summary.total };
 }
 
 /** Where a record sits: its service. */

@@ -52,6 +52,7 @@ import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
 import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
+import { withSharedCoverage } from "@/lib/ask-coverage";
 import { countOpenServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
@@ -1612,6 +1613,15 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
         const name = saved[record.naturalKey]?.name;
         return name ? { ...record, name } : record;
       });
+    }
+    // "Is Intune backed up?" counts kinds the way Setup and What's protected do, from the
+    // same coverage report (lib/ask-coverage.ts). Without the report the engine's answer stands.
+    if (answer.intent === "coverage" && readerScope.central) {
+      const coverage = await coverageFor(client, ref).catch((error) => {
+        console.error("[keel-portal] ask coverage report unavailable", error);
+        return null;
+      });
+      if (coverage) return { generatedAt: now.toISOString(), answer: withSharedCoverage(answer, coverage, now.toISOString()), entities, scope: readerScope };
     }
     return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
   });

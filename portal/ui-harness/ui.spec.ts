@@ -4038,6 +4038,29 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
 
+// Backlog G2: "Is Intune backed up?" counts the kinds Setup counts, with the shared buckets,
+// not the newest run's "Not part of this backup".
+test("ask coverage counts Intune kinds as Setup does", async ({ page }) => {
+  await open(page, "/setup/checked", "dark");
+  const setupLine = await page.locator(".su-svc-tile", { hasText: "Intune" }).first().innerText();
+  const backedUp = setupLine.match(/(\d+) of (\d+) backed up|All (\d+) kinds? backed up/);
+  expect(backedUp).not.toBeNull();
+  const shot = process.env.KEEL_SHOT_DIR;
+  for (const [width, theme] of [[1440, "dark"], [390, "light"], [1440, "light"], [390, "dark"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/ask/coverage", theme);
+    const answer = page.locator(".ask-answer");
+    await expect(answer.locator(".pg-table")).not.toContainText("Not part of this backup");
+    const states = answer.locator('section[aria-label="Summary of every kind"]');
+    await expect(states).toContainText("By state");
+    const verdict = await page.locator('[data-layer="verdict"]').innerText();
+    if (backedUp?.[3]) expect(verdict).toContain(`${backedUp[3]} backed up`);
+    else expect(verdict).toContain(`${backedUp?.[1]} backed up`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    if (shot) await page.screenshot({ path: `${shot}/ask-coverage-${width}-${theme}.png`, fullPage: true });
+  }
+});
+
 // A month-long answer shaped like the live one (keelops K12): every changed row names
 // its settings in words, never Microsoft's field names, and none says "Not recorded".
 test("ask month answer names changed settings in words and lists no empty changed rows", async ({ page }) => {

@@ -6,7 +6,7 @@ import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { typeService, plainKind } from "@/lib/baselines-view";
-import { changesVerdict } from "@/lib/changes-view";
+import { changesScopeDetail, changesVerdict } from "@/lib/changes-view";
 import { loadServiceChanges, loadServiceReadTotals } from "@/lib/service-changes";
 import { serviceChangeFrom, serviceChangeName, serviceUndo, undoSource } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
@@ -290,6 +290,17 @@ test("the Changes verdict counts service setting changes apart from approved-set
       assert.ok(changesVerdict(items, baseline, NOW).text.split(/\s+/).length <= 25);
     }
   }
+});
+
+// A filter narrows the verdict like the tiles; the detail keeps every service's totals.
+test("a filtered Changes verdict names its filter and every service's totals", () => {
+  const services: DriftRecord[] = Array.from({ length: 112 }, (_, index) => serviceRow({ id: `id-${index}` }));
+  const setup = Array.from({ length: 1159 }, (_, index) => ({ ...serviceRow({ id: `setup-${index}` }), serviceRead: undefined, blastRadius: "access-affecting" })) as DriftRecord[];
+  assert.equal(changesScopeDetail(["In Entra ID"], [...setup, ...services]), "Counts follow your filter: In Entra ID. Across all services: 1,159 changes, and 112 service setting changes wait for review.");
+  assert.equal(changesScopeDetail(["In Teams", "Find: “x”"], services.slice(0, 1)), "Counts follow your filters: In Teams, Find: “x”. Across all services: 1 service setting change waits for review.");
+  assert.equal(changesScopeDetail(["In Teams"], []), "Counts follow your filter: In Teams. Across all services: nothing to review.");
+  // The Entra-only verdict says nothing of the service setting changes it does not count.
+  assert.equal(changesVerdict(setup, "2026-10-01T00:00:00.000Z", NOW).text, "1,159 changes since the approved setup of 14 days ago; 1,159 affect access.");
 });
 
 test("the read totals give each service its newest read's settings and every open change", async () => {

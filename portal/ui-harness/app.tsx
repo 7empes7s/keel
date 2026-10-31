@@ -45,7 +45,6 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
 import { lastRestoreTile } from "@/lib/restore-view";
-import { changesVerdict } from "@/lib/changes-view";
 import { JobPageBody } from "@/components/job-page-body";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentsPage } from "@/components/incidents/incidents-page";
@@ -2641,24 +2640,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;
     case "/drift/anonymous": {
       const items = DRIFT_DECIDED.map(hideActors);
-      const verdict = changesVerdict(items, BASELINES[0].setAt, now);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items))}
-        <Verdict text={verdict.text} tone={verdict.tone} />
-        <AnonymityNote setting={ANONYMITY_ON} />
-        <div data-layer="explanation">
-          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} />
-        </div></>;
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
     }
     case "/drift":
     case "/drift/services": {
       // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
       const items = path === "/drift/services" ? [...DRIFT_DECIDED, ...SERVICE_CHANGES] : DRIFT_DECIDED;
-      const verdict = changesVerdict(items, BASELINES[0].setAt, now);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
-        <Verdict text={verdict.text} tone={verdict.tone} />
-        <div data-layer="explanation">
-          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} />
-        </div></>;
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} /></>;
     }
     case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }

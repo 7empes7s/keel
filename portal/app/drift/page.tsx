@@ -79,29 +79,33 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
   // One list for every service: approved-setup changes and service setting changes.
   const items = [...displayItems(data.items), ...serviceChanges];
   const anonymity = await getAnonymitySetting();
+  // With a list, the list draws the verdict, so it counts the same filtered changes as the tiles.
+  const notice = <AnonymityNote setting={anonymity} />;
   const verdict = changesVerdict(items, data.baseline?.setAt ?? null, data.generatedAt);
   return (
     <>
       <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={data.baseline ? setupStatus(data.baseline, data.items) : undefined} title="Changes" />
       {access.scope.central ? <ChangesViews current="open" /> : null}
-      <Verdict
-        action={data.baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
-        text={verdict.text}
-        tone={verdict.tone}
-      />
-      <AnonymityNote setting={anonymity} />
       {data.baseline || serviceChanges.length ? (
-        <div data-layer="explanation">
-          <ChangeList
-            baseline={data.baseline}
-            capabilities={capabilities}
-            items={items}
-            now={data.generatedAt}
-            scopeNote={data.scope ? `You see changes to resources owned by ${data.scope.entities.join(" and ")} only. A central administrator reviews the rest of this tenant.` : null}
-            summary={data.summary}
+        <ChangeList
+          baseline={data.baseline}
+          capabilities={capabilities}
+          items={items}
+          notice={notice}
+          now={data.generatedAt}
+          scopeNote={data.scope ? `You see changes to resources owned by ${data.scope.entities.join(" and ")} only. A central administrator reviews the rest of this tenant.` : null}
+          summary={data.summary}
+        />
+      ) : (
+        <>
+          <Verdict
+            action={data.baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
+            text={verdict.text}
+            tone={verdict.tone}
           />
-        </div>
-      ) : null}
+          {notice}
+        </>
+      )}
     </>
   );
 }

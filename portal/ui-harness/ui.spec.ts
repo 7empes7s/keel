@@ -1925,6 +1925,28 @@ test("Changes · undo a service setting change through its restore", async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
+// The verdict counts the same changes as the tiles: under a service filter it counts only
+// that service, and its detail names the filter and every service's totals.
+test("Changes · the verdict follows the service filter like the tiles", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/drift/services?service=Entra");
+    const verdict = page.locator('[data-layer="verdict"]');
+    const tile = (name: string) => page.locator(".bl-tile", { hasText: name }).locator(".bl-tile-count");
+    await expect(tile("Service settings")).toHaveText("0");
+    await expect(verdict.locator(".verdict-sentence")).not.toContainText("service setting");
+    const all = await tile("All open changes").innerText();
+    await expect(verdict.locator(".verdict-sentence")).toContainText(new RegExp(`^${all} changes? since the approved setup`));
+    await expect(verdict.locator(".verdict-detail")).toHaveText(/^Counts follow your filter: In Entra ID\. Across all services: \d+ changes?, and 5 service setting changes wait for review\.$/);
+    await page.screenshot({ path: test.info().outputPath(`verdict-filtered-${width}.png`), fullPage: false });
+
+    await page.getByRole("button", { name: "Remove filter: In Entra ID" }).click();
+    await expect(tile("Service settings")).toHaveText("5");
+    await expect(verdict.locator(".verdict-sentence")).toContainText("5 service setting changes wait for review");
+    await expect(verdict.locator(".verdict-detail")).toHaveCount(0);
+  }
+});
+
 // Summary tiles add up (OR): Cosmetic and Service settings together show both sets.
 // Service, kind and find narrow them (AND). Each active filter is a chip that removes
 // it, the counts follow the view, the view lives in the address, and nothing matching

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
 import { ChangeFacts } from "@/components/baselines/change-facts";
@@ -18,13 +18,14 @@ import { type ListSort } from "@/components/list/list-paging";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { SemanticDiff } from "@/components/semantic-diff";
+import { Verdict } from "@/components/verdict";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   changedBy, decisionWords, impactTone, impactWords, itemKindName, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { alertCall, alertCallWords } from "@/lib/alert-calls";
-import { changeLabel, changeName, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
+import { changeLabel, changeName, changesScopeDetail, changesVerdict, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
 import { backupPointWords } from "@/lib/restore-workloads-view";
 import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
@@ -134,6 +135,7 @@ export function ChangeList({
   baseline,
   capabilities,
   items,
+  notice,
   now,
   scopeNote,
   summary,
@@ -142,6 +144,8 @@ export function ChangeList({
   baseline: BaselineRecord | null;
   capabilities: string[];
   items: DriftRecord[];
+  // Shown between the verdict and the list, such as the hidden-names note.
+  notice?: ReactNode;
   now: string;
   // For a reader scoped to some entities: whose changes they see.
   scopeNote?: string | null;
@@ -300,8 +304,21 @@ export function ChangeList({
     return entry.adds ? `+${entry.adds} if added` : "Adds none";
   };
   const serviceReads = [...new Set(open.flatMap((item) => (item.serviceRead ? [itemService(item).name] : [])))];
+  // The verdict counts what the service, kind and find filters leave, like the tiles do;
+  // its detail then names the filters and gives every service's totals.
+  const narrowed = useMemo(() => applyFilters(open, tiles, [], others), [open, tiles, others]);
+  const narrowing = activeFilters.filter((filter) => !filter.key.startsWith("tile:")).map((filter) => filter.label);
+  const verdict = changesVerdict(narrowed, baseline?.setAt ?? null, now);
   return (
-    <div className="bl-page">
+    <>
+    <Verdict
+      action={baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
+      detail={narrowing.length ? changesScopeDetail(narrowing, open) : undefined}
+      text={verdict.text}
+      tone={verdict.tone}
+    />
+    {notice}
+    <div className="bl-page" data-layer="explanation">
       <BaselinesStyles />
       <section aria-label="Open changes by risk" className="bl-tiles">
         {radii.map((radius) => {
@@ -318,7 +335,7 @@ export function ChangeList({
         })}
         <Link aria-current={!picked.length || undefined} className="bl-card bl-tile bl-link" {...tileLink(null)}>
           <span className="bl-tile-label"><Icon name="baselines" />All open changes</span>
-          <b className="bl-tile-count">{applyFilters(open, tiles, [], others).length}</b>
+          <b className="bl-tile-count">{narrowed.length}</b>
           <small>{baseline && !serviceReads.length ? "Everything that differs from the approved setup" : "Everything waiting for review"}</small>
         </Link>
         {serviceIds.size ? (
@@ -492,5 +509,6 @@ export function ChangeList({
         </DetailsSheet>
       ) : null}
     </div>
+    </>
   );
 }

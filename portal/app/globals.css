@@ -11966,3 +11966,41 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .ra-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .ra-row > .btn { grid-column: 2 / -1; justify-self: start; }
 }
+
+/* Confirm panels: what an action applies to (components/list/pick-summary.tsx). */
+.pick-summary { display: grid; gap: var(--space-sm); min-width: 0; }
+.pick-title { margin: 0; color: var(--text); font-size: 0.875rem; font-weight: 650; }
+.pick-one { display: grid; gap: var(--space-2xs); margin: 0; font-size: 0.875rem; }
+.pick-one .pick-title { color: var(--text-soft); font-weight: 600; font-size: 0.75rem; }
+.pick-one > b { overflow-wrap: anywhere; }
+.pick-facts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); color: var(--text-soft); font-size: 0.8125rem; }
+.pick-counts { display: grid; gap: var(--space-xs); margin: 0; padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); }
+.pick-counts > div { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: start; gap: var(--space-sm); }
+.pick-counts dt { padding-top: 0.2rem; color: var(--text-soft); font-size: 0.75rem; font-weight: 600; }
+.pick-counts dd { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-xs); margin: 0; }
+.pick-chip { display: inline-flex; min-height: 1.5rem; padding: 0 var(--space-xs); align-items: center; gap: 0.3rem; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.pick-chip b { font-variant-numeric: tabular-nums; }
+.pick-chip .icon, .pick-service .icon { width: 0.875rem; height: 0.875rem; flex: none; }
+.pick-more { align-self: center; color: var(--text-soft); font-size: 0.75rem; }
+.pick-details > summary { display: inline-flex; align-items: center; gap: var(--space-2xs); color: var(--text); font-size: 0.8125rem; font-weight: 600; cursor: pointer; list-style: none; }
+.pick-details > summary::-webkit-details-marker { display: none; }
+.pick-details > summary .icon { width: 1rem; height: 1rem; transform: rotate(-90deg); transition: transform 120ms ease; }
+.pick-details[open] > summary .icon { transform: none; }
+.pick-details[open] > summary { margin-bottom: var(--space-xs); }
+.pick-details > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-md); }
+.pick-table { display: grid; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.pick-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name risk" "facts risk"; align-items: center; gap: var(--space-2xs) var(--space-sm); padding: var(--space-xs) var(--space-sm); font-size: 0.8125rem; }
+.pick-row + .pick-row { border-top: 1px solid var(--line); }
+.pick-row .pick-name { grid-area: name; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.pick-row .pick-facts { grid-area: facts; }
+.pick-row > .bl-chip { grid-area: risk; justify-self: end; }
+.pick-kind, .pick-service { min-width: 0; overflow-wrap: anywhere; }
+.pick-facts .pick-kind + .pick-service::before { content: "·"; margin-right: var(--space-2xs); }
+.pick-service { display: inline-flex; align-items: center; gap: 0.3rem; }
+@media (max-width: 30rem) {
+  .pick-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "facts" "risk"; }
+  .pick-row > .bl-chip { justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pick-details > summary .icon { transition: none; }
+}

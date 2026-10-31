@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { PickSummary } from "@/components/list/pick-summary";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import type { ChoiceOption } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
 import { addDays, endOfDay, grantException } from "@/lib/compliance-change";
 import { EXCEPTION_EFFECT, controlName, formatDay, grantLabel, ownerName } from "@/lib/compliance-view";
+import { findingPick } from "@/lib/pick-items";
 import type { PrincipalView } from "@/lib/principals";
 import { toast } from "@/lib/toast";
 import type { ComplianceFinding } from "@/lib/types";
@@ -27,6 +29,7 @@ export function ExceptionSheet({ findings, today, onDone, onClose }: {
   onClose: () => void;
 }) {
   const first = findings[0];
+  const picks = useMemo(() => findings.map(findingPick), [findings]);
   const prior = findings.length === 1 ? first?.exception ?? null : null;
   const [people, setPeople] = useState<PrincipalView[] | null | "unavailable">(null);
   const [owner, setOwner] = useState<string | null>(null);
@@ -102,10 +105,12 @@ export function ExceptionSheet({ findings, today, onDone, onClose }: {
       title={title}
     >
       <form className="cp-form" id="cp-exception" onSubmit={submit}>
-        <p className="cp-muted">
-          {findings.length === 1 ? controlName(first) : findings.map(controlName).join("; ")}.
-          {prior && findings.length === 1 ? ` The last one was owned by ${ownerName(first)}.` : ""}
-        </p>
+        {findings.length === 1 ? (
+          <p className="cp-muted">
+            {controlName(first)}.
+            {prior ? ` The last one was owned by ${ownerName(first)}.` : ""}
+          </p>
+        ) : <PickSummary items={picks} kindWord="Standard" noun={{ one: "control", many: "controls" }} />}
         <fieldset disabled={busy}>
           <legend>Who owns it</legend>
           {prior && !prior.owner && prior.ownerRef?.pseudonym ? (

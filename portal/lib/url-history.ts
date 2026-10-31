@@ -9,3 +9,9 @@ export function replaceUrl(href: string): void {
 export function pushUrl(href: string): void {
   window.history.pushState(null, "", href);
 }
+
+/** The address as it is now, for code that runs after React's copy is out of date
+ * (an unmount). */
+export function currentUrl(): { pathname: string; search: string } {
+  return { pathname: window.location.pathname, search: window.location.search };
+}

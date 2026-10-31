@@ -1840,6 +1840,7 @@ const RESILIENCE: ResilienceData = {
   },
   incidents: [{ incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", status: "open", openedAt: "2026-10-01T08:10:00Z" }, recommended: { snapshotId: "5a2be911-0000-4000-8000-000000000002", collectedAt: "2026-09-30T05:55:00Z" }, pins: 1 }],
   storage: { configured: true, provider: "local-disk", region: "on-prem datacenter A", boundary: null, immutability: "unsupported", generatedAt: "2026-10-01T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
+  followUps: { steps: 0, restores: 0, href: "/restore#follow-up" },
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,

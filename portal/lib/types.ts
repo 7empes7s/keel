@@ -728,6 +728,18 @@ export interface RestoreFollowUp {
   jobId: string | null;
 }
 
+// Open follow-up work across every restore: the one count every page shows, and the
+// newest restores as cards. `cards` can hold fewer restores than `restores`.
+export interface OpenFollowUpTotals {
+  steps: number;
+  restores: number;
+  href: string;
+}
+
+export interface OpenFollowUpWork extends OpenFollowUpTotals {
+  cards: RestoreFollowUp[];
+}
+
 export interface DashboardWaiting {
   openAlerts: number;
   openIncidents: number;

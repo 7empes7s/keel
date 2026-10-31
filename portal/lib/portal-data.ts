@@ -16,7 +16,7 @@ import {
 import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
-import { countOpenCompletionSteps, listOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import { alertStateCounts } from "../../engine/notify/alerts.mjs";
 import {
   getActiveBaseline,
@@ -95,7 +95,8 @@ import type {
   ProtectionHeadline,
   QualificationDecision,
   Ref,
-  RestoreFollowUp,
+  OpenFollowUpTotals,
+  OpenFollowUpWork,
   RestoreScope,
   SemanticChange,
   SemanticSummary,
@@ -1504,10 +1505,11 @@ export async function notifyRoutesFor(client: KeelClient): Promise<NotifyRoutes>
   return { channels: Number(row?.channels ?? 0), routed: Number(row?.routed ?? 0) };
 }
 
-// Restores that still have follow-up steps open, with the job page each is finished on.
-export async function getRestoreFollowUps(): Promise<RestoreFollowUp[]> {
+// Open follow-up work: the shared totals (the same numbers Overview and the menu show)
+// plus the newest restores as cards, each with the job page its steps are closed on.
+export async function getRestoreFollowUps(): Promise<OpenFollowUpWork> {
   const ref = tenantRef();
-  return withClient(async (client) => (await listOpenCompletionWork(client, { tenantRef: ref })) as RestoreFollowUp[]);
+  return withClient(async (client) => (await readOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpWork);
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
@@ -1639,9 +1641,17 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
+    // The same follow-up totals as Overview and Restore, not a count of restore attempts.
+    // Secondary: if it cannot be read, the page still loads and leaves the alert out.
+    let followUps: OpenFollowUpTotals | null;
+    try {
+      followUps = (await countOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpTotals;
+    } catch {
+      followUps = null;
+    }
     // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
     const kinds = resilienceKinds((await coverageFor(client, ref)).types);
-    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage };
+    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage, followUps };
   });
 }
 

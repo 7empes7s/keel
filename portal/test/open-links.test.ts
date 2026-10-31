@@ -146,4 +146,5 @@ test("the alerts read sends a linked alert older than the newest 200, apart from
   assert.equal((await inbox(`?open=${listed}`)).linked, undefined, "an alert already listed is not sent twice");
   assert.equal((await inbox(`?open=${elsewhere}`)).linked, undefined, "another tenant's alert is never sent");
   assert.equal((await inbox("?open=not-an-id")).linked, undefined);
+  assert.equal((await inbox(`?open=${oldest.toUpperCase()}`)).linked?.id, oldest, "an upper-case id still finds it");
 });

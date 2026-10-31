@@ -120,7 +120,7 @@ export function AlertsPage({ alerts, linked, now, canRespond, canMute }: {
   const ordered = useMemo(() => inboxOrder(items), [items]);
   const shown = useMemo(() => applyFilters(ordered, stateTiles, filter), [ordered, stateTiles, filter]);
   const tileTotals = useMemo(() => new Map(tileCounts(ordered, stateTiles, filter).map((entry) => [entry.key, entry])), [ordered, stateTiles, filter]);
-  const opened = known.find((alert) => alert.id === openId) ?? null;
+  const opened = known.find((alert) => alert.id.toLowerCase() === openId.toLowerCase()) ?? null;
   const pickedAlerts = items.filter((alert) => picked.includes(alert.id));
   const overdueIds = items.filter((alert) => isOverdue(alert, now)).map((alert) => alert.id);
 

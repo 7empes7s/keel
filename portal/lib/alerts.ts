@@ -129,7 +129,7 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
     // A link to one alert (`?open=<id>`) opens it even when it is older than the newest
     // 200: that one alert is read on its own and sent apart from the list, so the
     // list and its counts stay the same.
-    const openId = new URL(request.url).searchParams.get("open");
+    const openId = new URL(request.url).searchParams.get("open")?.toLowerCase() ?? null;
     const extra = openId && UUID.test(openId) && !listed.some((row) => String(row.id) === openId)
       ? await listAlerts(client, { tenantRef, actor: principalId, ids: [openId], limit: 1 }) as Row[]
       : [];

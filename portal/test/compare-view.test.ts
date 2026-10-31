@@ -214,7 +214,7 @@ test("parts never read say Not compared, with one count everywhere", () => {
   assert.equal(kindCountsWords(withWorkloads.workloads!.groups.slice(1)), "no differences, 1 not compared");
 
   const data: CompareData = { generatedAt: at, tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: withWorkloads, problem: null };
-  assert.equal(compareVerdict(data).text, "Nothing differs in what both sides read; 4 kinds were not compared.");
+  assert.equal(compareVerdict(data).text, "Nothing differs in what both sides read; 4 kinds were not compared in full.");
   const html = renderToStaticMarkup(createElement(CompareView, { data }));
   // The summary tile carries the same count as the verdict, split by section.
   assert.match(html, /data-tile="not-compared"[^]*?<b class="bl-tile-count">4<\/b><small>kinds \(2 settings, 2 app settings\)<\/small>/);

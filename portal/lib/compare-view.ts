@@ -224,7 +224,7 @@ export function compareVerdict(data: CompareData): { text: string; tone: "good" 
   const gaps = notComparedCounts(data.result).total;
   const two = data.result.portable ? "the two tenants" : "the two backups";
   if (total === 0 && gaps === 0) return { text: `Nothing differs between ${two}.`, tone: "good" };
-  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(gaps, "kind")} ${gaps === 1 ? "was" : "were"} not compared.`, tone: "attention" };
+  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(gaps, "kind")} ${gaps === 1 ? "was" : "were"} not compared in full.`, tone: "attention" };
   return { text: `${plural(total, "difference")} between ${two}.`, tone: "attention" };
 }
 

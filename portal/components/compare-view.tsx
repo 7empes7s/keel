@@ -545,7 +545,7 @@ function shortSide(side: CompareResult["left"], tenants: CompareData["tenants"],
 function Summary({ data, result }: { data: CompareData; result: CompareResult }) {
   const totals = differenceTotals(result);
   const gaps = notComparedCounts(result);
-  const gapParts = [gaps.settings ? `${gaps.settings} settings` : "", gaps.workloads ? `${gaps.workloads} app settings` : ""].filter(Boolean).join(", ");
+  const gapParts = [gaps.settings ? `${gaps.settings} settings` : "", gaps.workloads ? `${gaps.workloads} ${gaps.workloads === 1 ? "app setting" : "app settings"}` : ""].filter(Boolean).join(", ");
   const tiles = [
     { key: "settings", label: "Settings", count: totals.settings, note: totals.settings === 1 ? "difference" : "differences", href: "#compare-settings-heading", shown: Boolean(result.settings) },
     { key: "workloads", label: "App settings", count: totals.workloads, note: totals.workloads === 1 ? "difference" : "differences", href: "#compare-workloads-heading", shown: Boolean(result.workloads) },

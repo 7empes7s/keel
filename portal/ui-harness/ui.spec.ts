@@ -4191,7 +4191,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     // adds up the two sections' lists.
     const skippedTile = page.locator('[data-tile="not-compared"]');
     await expect(skippedTile.locator(".bl-tile-count")).toHaveText("6");
-    await expect(skippedTile).toContainText("kinds (5 settings, 1 app settings)");
+    await expect(skippedTile).toContainText("kinds (5 settings, 1 app setting)");
     const apps = page.locator("section", { has: page.locator("#compare-workloads-heading") });
     await expect(apps.locator('[data-status="not-compared"]')).toContainText("Not compared");
     await expect(apps.locator(".compare-kind-heading", { hasText: "not compared" })).toHaveCount(1);

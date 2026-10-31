@@ -1,6 +1,7 @@
 import { ContentEffectApprovalError, approveContentEffects } from "../../../../../../engine/safety/contentEffects.mjs";
 
 import { guarded, readActionParams } from "@/lib/action";
+import { refuseWeakReason } from "@/lib/written-reason";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export const POST = guarded(
     }
     try {
       const approval = await approveContentEffects(client, {
-        tenantRef, artifactId, approverId: principalId, effectsDigest, justification,
+        tenantRef, artifactId, approverId: principalId, effectsDigest, justification: refuseWeakReason(justification, "justification"),
       });
       return Response.json({ approval: { id: approval.id, approvedBy: approval.approved_by, effectsDigest } }, { headers: NO_STORE });
     } catch (error) {

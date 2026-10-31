@@ -38,6 +38,7 @@ import { withSavedChangeNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
 import { isJsonContentType } from "@/lib/same-origin";
+import { requireOptionalReason, refuseWeakReason, WeakReasonError } from "@/lib/written-reason";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -414,8 +415,7 @@ export function guarded(
           action: spec.jobKind ?? spec.action,
           params,
           requestedBy: principalId,
-          justification:
-            typeof justification === "string" ? justification : null,
+          justification: requireOptionalReason(justification, "justification"),
           ttlMs: approvalTtlMs(),
           entityScope: await approvalScopeFor(client, resolveTenantRef(), params),
         })) as Record<string, unknown>;
@@ -442,6 +442,13 @@ export function guarded(
         request,
       });
     } catch (error) {
+      // UI audit C1: a placeholder reason ("x", "BECAUSE") is refused in plain words.
+      if (error instanceof WeakReasonError) {
+        return Response.json(
+          { error: "weak_reason", field: error.field, message: error.message },
+          { status: 400, headers: NO_STORE },
+        );
+      }
       if (error instanceof InvalidActionRequest) {
         return Response.json(
           { error: "invalid_request" },
@@ -594,6 +601,7 @@ export function guardedDispose(
         }
         if (action !== "accept") throw new InvalidActionRequest("a service setting change can only be accepted");
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
+        refuseWeakReason(reason);
         // Audit run 2, finding 3: an admin-access service change goes to a second person.
         if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
           // The service and setting go with the request, so the approver sees what it is.
@@ -635,6 +643,7 @@ export function guardedDispose(
       if (typeof reason !== "string" || reason.length === 0) {
         throw new InvalidActionRequest("reason is required");
       }
+      refuseWeakReason(reason);
 
       // Audit run 2, finding 3: an ignore always ends, within 90 days; said plainly.
       let until: Date | null = null;
@@ -871,7 +880,7 @@ export function guardedApprovalDecision(
           tenantRef: tenant,
           id,
           decidedBy: principalId,
-          reason: body.reason,
+          reason: refuseWeakReason(body.reason),
           enforceScope: true,
           approverScope: entityScopeFrom(request.headers, "approve"),
         })) as Record<string, unknown>;

@@ -9,6 +9,7 @@ import type { ObjectFacts } from "@/lib/object-label";
 import { savedNames } from "@/lib/saved-names";
 import { peopleNamer, principalPerson, type Namer } from "@/lib/people-names";
 import { personLabel } from "@/lib/sentences";
+import { requireOptionalReason, refuseWeakReason } from "@/lib/written-reason";
 
 // Roadmap task-83: what the alerts inbox reads and what an operator can do to an alert.
 // Viewing needs `read`; acknowledging and resolving need the drift response right
@@ -221,6 +222,7 @@ export function guardedAlertAction(deps: GuardDeps = {}) {
       if (typeof alertId !== "string" || !UUID.test(alertId)) throw new InvalidActionRequest("alertId is required");
       if (action !== "acknowledge" && action !== "resolve") throw new InvalidActionRequest("action must be acknowledge or resolve");
       if (note !== undefined && typeof note !== "string") throw new InvalidActionRequest("note must be text");
+      requireOptionalReason(note, "note");
       try {
         const alert = action === "acknowledge"
           ? await acknowledgeAlert(client, { tenantRef, alertId, actor: principalId, note: note ?? null } as unknown as Parameters<typeof acknowledgeAlert>[1])
@@ -249,6 +251,7 @@ export function guardedAlertMute(deps: GuardDeps = {}) {
       if (action !== "mute" && action !== "unmute") throw new InvalidActionRequest("action must be mute or unmute");
       if (note !== undefined && typeof note !== "string") throw new InvalidActionRequest("note must be text");
       if (action === "mute" && !note?.trim()) throw new InvalidActionRequest("a reason is required to mute an alert");
+      if (action === "mute") refuseWeakReason(note, "note");
       try {
         const alert = action === "mute"
           ? await suppressAlert(client, { tenantRef, alertId, actor: principalId, reason: note!.trim() })

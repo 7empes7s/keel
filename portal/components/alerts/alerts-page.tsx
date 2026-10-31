@@ -64,6 +64,8 @@ import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
 import { readList, useViewState } from "@/lib/use-view-state";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // Alerts (portal audit, one design): a status pill and a verdict whose one amber action
 // acknowledges the overdue alerts; four tiles that set `state=` in the address; the
@@ -306,7 +308,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute, header, notice }:
         <DetailsSheet
           footer={canRespond && isActive(opened) || canMute ? (
             <div className="al-sheet-actions">
-              {canRespond && isWaiting(opened) ? <button aria-busy={busy || undefined} className="btn btn-primary" disabled={busy} form="al-ack" type="submit">Acknowledge</button> : null}
+              {canRespond && isWaiting(opened) ? <button aria-busy={busy || undefined} className="btn btn-primary" disabled={busy || optionalReasonMessage(note) !== null} form="al-ack" type="submit">Acknowledge</button> : null}
               {canRespond && isActive(opened) ? <Link className="btn" href={openHref(opened.id, "resolve")} onClick={(event) => follow(event, openHref(opened.id, "resolve"))}>Resolve</Link> : null}
               {canMute && opened.state !== "suppressed" ? <Link className="btn" href={openHref(opened.id, "mute")} onClick={(event) => follow(event, openHref(opened.id, "mute"))}><Icon name="pause" />Mute</Link> : null}
               {canMute && opened.state === "suppressed" ? <button className="btn" disabled={busy} onClick={() => void run("unmute", [opened.id])} type="button"><Icon name="play" />Unmute</button> : null}
@@ -428,10 +430,11 @@ function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
       ) : null}
 
       {canRespond && isWaiting(alert) ? (
-        <form className="al-ack" id="al-ack" onSubmit={(event) => { event.preventDefault(); onAcknowledge(); }}>
+        <form className="al-ack" id="al-ack" onSubmit={(event) => { event.preventDefault(); if (!optionalReasonMessage(note)) onAcknowledge(); }}>
           <label className="filter-field">
             <span>Note (optional)</span>
             <textarea maxLength={1000} name="note" onChange={(event) => setNote(event.target.value)} placeholder="For example: looking into it with the network team" rows={2} value={note} />
+            <ReasonHint value={note} />
           </label>
         </form>
       ) : null}

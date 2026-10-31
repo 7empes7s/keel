@@ -154,11 +154,16 @@ export function firstCollection(snapshot) {
   const digest = snapshot.coverage_digest && typeof snapshot.coverage_digest === 'object' && !Array.isArray(snapshot.coverage_digest)
     ? snapshot.coverage_digest : {};
   const entries = Object.values(digest);
+  const failed = (entry) => ['partial', 'failed'].includes(readOutcome(entry))
+    || ['partial', 'failed'].includes(entry?.completeness);
+  const read = entries.filter((entry) => readCoverageOutcome(entry).covered).length;
+  const notRead = entries.filter((entry) => !readCoverageOutcome(entry).covered && failed(entry)).length;
   return {
     snapshotId: snapshot.id,
     completedAt: new Date(snapshot.completed_at).toISOString(),
-    read: entries.filter((entry) => readCoverageOutcome(entry).covered).length || (Number(snapshot.saved_types) || 0),
-    notRead: entries.filter((entry) => !readCoverageOutcome(entry).covered && ['partial', 'failed'].includes(readOutcome(entry))).length,
+    // The saved types stand in only when the digest says nothing either way.
+    read: read || notRead ? read : Number(snapshot.saved_types) || 0,
+    notRead,
   };
 }
 

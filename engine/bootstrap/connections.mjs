@@ -69,6 +69,7 @@ export function deriveConnection({ identity, appId, plan, servicePrincipals = []
     ? servicePrincipals.find((candidate) => candidate?.id === registration.servicePrincipalObjectId) ?? null
     : null;
 
+  const setupRunConfirms = roles.length > 0 && roles.every((step) => confirmedRoles.includes(step.name));
   const wanted = {
     permissions: sorted(consent?.requiredScopes ?? []),
     roles: sorted(roles.map((step) => step.name)),
@@ -87,8 +88,10 @@ export function deriveConnection({ identity, appId, plan, servicePrincipals = []
     // (Setup's step list says so too). Otherwise null: no role is called missing, and
     // none is called assigned either.
     missingRoles: rolesChecked ? sorted(roles.filter((step) => step.status !== 'satisfied').map((step) => step.name))
-      : previousMissingRoles ?? (roles.length > 0 && roles.every((step) => confirmedRoles.includes(step.name)) ? [] : null),
+      : previousMissingRoles ?? (setupRunConfirms ? [] : null),
     rolesChecked,
+    // The roles came from the setup run, not a read: never reused as the last read.
+    ...(!rolesChecked && previousMissingRoles === null && setupRunConfirms ? { rolesFromSetupRun: true } : {}),
   };
 
   let state;
@@ -111,7 +114,7 @@ const material = (row) => ({
   credentialRef: row.credential_ref ?? null,
   credentialExpiresAt: row.credential_expires_at ? new Date(row.credential_expires_at).toISOString() : null,
   wanted: row.wanted ?? null,
-  observed: row.observed ? canonical({ ...row.observed, at: undefined, rolesChecked: undefined }) : null,
+  observed: row.observed ? canonical({ ...row.observed, at: undefined, rolesChecked: undefined, rolesFromSetupRun: undefined }) : null,
 });
 // jsonb does not keep key order, so compare with sorted keys.
 const canonical = (value) => Array.isArray(value) ? value.map(canonical)
@@ -190,7 +193,9 @@ export async function syncConnections(client, { tenantRef, apps = {}, readers = 
       const derived = deriveConnection({
         identity: app.identity, appId: bound?.appId ?? null, ...observation,
         credentialExpiresAt: bound?.credentialExpiresAt ?? null, now,
-        previousMissingRoles: current?.object_ref === bound?.appId ? current?.observed?.missingRoles ?? null : null,
+        // Only a direct read carries over; the setup run's answer is taken fresh each time.
+        previousMissingRoles: current?.object_ref === bound?.appId && !current?.observed?.rolesFromSetupRun
+          ? current?.observed?.missingRoles ?? null : null,
         confirmedRoles: confirmedRoles[app.identity] ?? [],
       });
       const next = assertTokenFree({

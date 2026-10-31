@@ -213,6 +213,8 @@ test('first backup: older digest shapes count as read the way What\'s protected 
   } })), { read: 2, notRead: 2 });
   // No digest at all: the types it saved settings for.
   assert.deepEqual(pick(firstCollection({ ...base, coverage_digest: null, saved_types: 7 })), { read: 7, notRead: 0 });
+  // A digest that says every read failed is not overruled by the rows it saved.
+  assert.deepEqual(pick(firstCollection({ ...base, coverage_digest: { users: { outcome: 'partial', itemCount: 2 } }, saved_types: 1 })), { read: 0, notRead: 1 });
   assert.equal(firstCollection(null), null);
 });
 const pick = ({ read, notRead }) => ({ read, notRead });

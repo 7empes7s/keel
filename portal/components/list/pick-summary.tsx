@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { RiskChip } from "@/components/baselines/parts";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { PagedRows, type PagedRow } from "@/components/list/paged-rows";
 import { Icon } from "@/components/shell/icons";
+import { currentUrl, replaceUrl } from "@/lib/url-history";
 import { KIND_CHIPS, pickCounts, type PickItem } from "@/lib/pick-summary";
 
 
@@ -23,11 +24,23 @@ export function PickSummary({ items, noun, prefix = "pick-", kindWord = "Kind" }
     { key: "name", label: "Name" },
   ], [kindWord]);
   const counts = useMemo(() => pickCounts(items), [items]);
+  // Find, order and page belong to this panel: closing it takes them out of the address,
+  // so the next panel starts clean. It reads the address as it is then, never an older
+  // copy, so a change made while closing (such as dropping ?grant=) stays.
+  useEffect(() => () => {
+    const { pathname, search } = currentUrl();
+    const params = new URLSearchParams(search);
+    const stale = [...params.keys()].filter((key) => key.startsWith(prefix));
+    if (!stale.length) return;
+    for (const key of stale) params.delete(key);
+    const query = params.toString();
+    replaceUrl(query ? `${pathname}?${query}` : pathname);
+  }, [prefix]);
   const rows = useMemo<PagedRow[]>(() => items.map((item) => ({
     id: item.id,
     text: `${item.name} ${item.kind.label} ${item.service.label} ${item.risk?.label ?? ""}`,
     // A lower rank is more serious, so ascending puts the riskiest first.
-    values: { name: item.name, kind: item.kind.rank, service: item.service.rank, risk: item.risk?.rank ?? 99 },
+    values: { name: item.name, kind: `${String(item.kind.rank).padStart(12, "0")} ${item.kind.label}`, service: item.service.rank, risk: item.risk?.rank ?? 99 },
     node: (
       <li className="pick-row">
         <b className="pick-name">{item.name}</b>

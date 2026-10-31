@@ -7,3 +7,8 @@ export function replaceUrl(href: string): void {
 export function pushUrl(href: string): void {
   location.hash = href;
 }
+
+export function currentUrl(): { pathname: string; search: string } {
+  const [pathname, search = ""] = location.hash.slice(1).split("?");
+  return { pathname: pathname || "/", search: search ? `?${search}` : "" };
+}

@@ -1187,6 +1187,14 @@ test("changes · the accept panel counts the picks and folds them into a table",
   await expect(summary.locator(".pick-row .pick-name")).toHaveText("Finance");
   // No paragraph of names is left behind.
   await expect(sheet.locator(".bl-decision-scope")).toHaveCount(0);
+  // Find belongs to this panel: closing it clears it, so the next panel starts clean.
+  await expect(page).toHaveURL(/pick-q=finance/);
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(page).not.toHaveURL(/pick-q=/);
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 7 changes" }).click();
+  await sheet.locator(".pick-details summary").click();
+  await expect(sheet.getByPlaceholder("Find changes")).toHaveValue("");
+  await expect(sheet.locator(".pick-row")).toHaveCount(7);
 });
 
 test("compliance · an exception on several controls counts them and lists them in a table", async ({ page }) => {

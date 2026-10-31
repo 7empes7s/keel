@@ -26,7 +26,7 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { getRestoreChanges, type RestoreChangesData } from "@/lib/restore-changes";
 import { lastRestoreTile } from "@/lib/restore-view";
 import { getRestoreWorkloads, type RestoreWorkload } from "@/lib/restore-workloads";
-import type { RestoreFollowUp } from "@/lib/types";
+import type { OpenFollowUpWork } from "@/lib/types";
 
 const RESTORE_JOB_KINDS = ["restore"];
 const DESCRIPTION = "Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes.";
@@ -104,7 +104,7 @@ export default async function RestorePage({
   }
 
   // Secondary: if it cannot be read, the page still works and says so.
-  let followUps: RestoreFollowUp[] | null;
+  let followUps: OpenFollowUpWork | null;
   try {
     followUps = await getRestoreFollowUps();
   } catch {
@@ -174,7 +174,7 @@ export default async function RestorePage({
       <div data-layer="explanation">
         {followUps === null
           ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
-          : <RestoreFollowUps followUps={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
+          : <RestoreFollowUps work={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
         <JobTable
           headingId="restore-jobs-heading"
           jobs={jobs}

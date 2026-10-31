@@ -5059,6 +5059,9 @@ section.wizard-panel {
   font-weight: 600;
 }
 
+/* Follow-up after restores: the list shows the newest restores; the count above is every one. */
+.follow-up-shown { margin: 0 0 var(--space-xs); color: var(--text-soft); font-size: 0.875rem; }
+
 .completion-hint {
   grid-column: 1 / -1;
   color: var(--text-soft);

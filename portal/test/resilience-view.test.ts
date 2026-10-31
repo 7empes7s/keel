@@ -118,6 +118,7 @@ test("a service backup failure is reported once, by its service, never against E
     },
     incidents: [],
     storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    followUps: null,
   } as ResilienceData;
   const alerts = resilienceAlerts(data);
   assert.equal(alerts.some((alert) => alert.key === "never-backed-up"), false);
@@ -153,4 +154,31 @@ test("a type the tenant does not use is listed as not used, not as never backed 
   assert.equal(notUsedSentence(view), "1 type is not used in this tenant, which has no licence or feature for it, so it is not counted:");
   assert.equal(dependencyName(freshness.notUsed[0]), "Lifecycle workflow");
   assert.equal(notUsedSentence(metrics()), null);
+});
+
+// Audit 2026-10-31: Resilience said "25 restores need follow-up" while Overview said 273
+// steps. The alert now shows the shared follow-up totals, never a count of restore attempts.
+test("the follow-up alert shows the shared step and restore totals and links to the full list", () => {
+  const unverified = (id: string, finishedAt: string) => ({
+    job: { id, status: "succeeded", params: { artifactId: id, mode: "enforce" }, created_at: finishedAt, started_at: finishedAt, finished_at: finishedAt },
+    items: [{ restore_ref: id, state: "pending", closed_at: null }],
+  });
+  const base: ResilienceData = {
+    generatedAt: NOW,
+    // Two attempts still wait on checks, but the shared count says 3 restores with 7 steps.
+    metrics: metrics({ restores: [unverified("r1", "2026-10-02T09:00:00.000Z"), unverified("r2", "2026-10-02T10:00:00.000Z")] }),
+    incidents: [],
+    storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    followUps: { steps: 7, restores: 3, href: "/restore#follow-up" },
+  } as ResilienceData;
+  const open = resilienceAlerts(base).find((alert) => alert.key === "restore-checks-open");
+  assert.equal(open?.title, "3 restores have 7 follow-up steps open");
+  assert.deepEqual(open?.action, { label: "See follow-ups", href: "/restore#follow-up" });
+
+  const one = resilienceAlerts({ ...base, followUps: { steps: 1, restores: 1, href: "/restore#follow-up" } }).find((alert) => alert.key === "restore-checks-open");
+  assert.equal(one?.title, "A restore has 1 follow-up step open");
+
+  assert.equal(resilienceAlerts({ ...base, followUps: { steps: 0, restores: 0, href: "/restore#follow-up" } }).some((alert) => alert.key === "restore-checks-open"), false,
+    "nothing open, no alert, even while attempts still wait on replaced steps");
+  assert.equal(resilienceAlerts({ ...base, followUps: null }).some((alert) => alert.key === "restore-checks-open"), false, "unreadable is not invented");
 });

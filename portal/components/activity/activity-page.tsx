@@ -348,8 +348,8 @@ function Spark({ days }: { days: { day: string; jobs: number; failed: number; pa
       <line className="ac-spark-base" x1="0" x2={width} y1={height - 0.5} y2={height - 0.5} />
       {days.map((day, index) => {
         const h = day.jobs ? Math.max(2, (day.jobs / max) * (height - 4)) : 1;
-        const f = day.failed ? Math.max(2, (day.failed / max) * (height - 4)) : 0;
-        const p = day.partial ? Math.max(2, (day.partial / max) * (height - 4)) : 0;
+        const f = day.failed ? Math.min(h, Math.max(2, (day.failed / max) * (height - 4))) : 0;
+        const p = day.partial ? Math.min(h - f, Math.max(2, (day.partial / max) * (height - 4))) : 0;
         return (
           <g key={day.day}>
             <rect className="ac-spark-bar" data-empty={!day.jobs || undefined} height={h} rx="1" width={bar} x={index * (bar + gap)} y={height - 1 - h} />

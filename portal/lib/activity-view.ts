@@ -375,7 +375,7 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
   const active = counts.running + counts.waiting;
   if (counts.partialDay) {
     return {
-      text: `Keel ran ${plural(counts.jobsDay, "job")} in the last day; none failed, but ${counts.partialDay} ${counts.partialDay === 1 ? "was" : "were"} only partly done.`,
+      text: `Keel ran ${plural(counts.jobsDay, "job")} in the last day; none failed, but ${counts.partialDay} ${counts.partialDay === 1 ? "was" : "were"} only partly done${active ? `; ${plural(active, "is", "are")} still running or waiting` : ""}.`,
       detail: "Some types were not backed up. Open a partly done run to see which.",
       tone: "soon",
       retry: null,

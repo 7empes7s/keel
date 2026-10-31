@@ -162,9 +162,8 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
   const verdictAction = failedOne.length === 1
     ? { label: "Open the failed run", href: `/jobs/${encodeURIComponent(failedOne[0].last_job_id!)}` }
     : failedOne.length > 1 ? { label: "Show the failed ones", href: href({ status: "failed", load: null, closed: null }) }
-    : counts.failed ? null
-    : partialOne.length === 1 ? { label: "Open the partly done run", href: `/jobs/${encodeURIComponent(partialOne[0].last_job_id!)}` }
-    : partialOne.length > 1 ? { label: "Show the partly done ones", href: href({ status: "partial", load: null, closed: null }) }
+    : partialOne.length === 1 && !counts.failed ? { label: "Open the partly done run", href: `/jobs/${encodeURIComponent(partialOne[0].last_job_id!)}` }
+    : partialOne.length > 1 && !counts.failed ? { label: "Show the partly done ones", href: href({ status: "partial", load: null, closed: null }) }
     : warned && canEdit ? { label: "Review the load warning", href: openHref(warned.id) }
     : null;
 

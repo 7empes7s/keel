@@ -1266,6 +1266,11 @@ test("a kind's details panel states its standing and keeps the recovery decision
   await expect(page).not.toHaveURL(/open=/);
 });
 
+test("What's protected · one line counts every kind, and its parts add up", async ({ page }) => {
+  await open(page, "/protect");
+  await expect(page.locator(".pt-tiles-sum")).toHaveText("15 kinds: 8 backed up, 2 failed, 3 out of date or never, 1 not backed up by Keel yet and 1 not on this tenant.");
+});
+
 test("What's protected sorts failed and out-of-date kinds first, each with a run of its tier", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
@@ -1472,6 +1477,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(page.locator('.ui-tile[data-tile="services"] .ui-tile-value')).toHaveText("4 of 8");
   await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
+  // Entra ID and Intune count kinds as What's protected does (same fixture): 2 failed, 2 out of date or never.
+  await expect(page.locator('.rs-table tr[data-row="entra-intune"]')).toContainText("2 failed");
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("2 setting types failed their last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("2 setting types are out of date or never backed up");
   const groups = await page.locator(".rs-group").allTextContents();
   expect(groups).toEqual(["Entra ID and Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
   // The measurements stay, last.
@@ -1491,7 +1500,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
     await expect(page.locator(`.resilience-${card} .badge:not([data-layer="record"] .badge)`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
-  await expect(page.locator('.ui-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
+  // Counted with What's protected's buckets: one failed, one never read.
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("Group failed its last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("Conditional Access policy is out of date or never backed up");
+  await expect(page.locator(".rs-page")).not.toContainText(/\d+ (setting types )?never backed up/);
 });
 
 // Task-100 and the Value report redesign (pick A): the tiles and chart add up, each
@@ -3312,6 +3324,35 @@ test("Policies · a viewer sees the rules and no controls", async ({ page }) => 
   await expect(page.locator(".sel-row")).toHaveCount(5);
 });
 
+// The rule sheet looks the same from the list (New rule) and from a rule's page (Edit):
+// a styled panel beside the page on a desktop, full screen on a phone, and no choice
+// runs past its edge or clips its label.
+for (const width of [375, 390, 1278]) {
+  test(`Policies · ${width} · New rule and Edit open as a styled sheet with every choice inside it`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 600 ? 812 : 900 });
+    for (const [hash, opener, name] of [["/policies", "New rule", "New rule"], ["/policies/p1", "Edit", "Edit Undo low-risk changes"]] as const) {
+      await open(page, hash);
+      await page.getByRole(opener === "Edit" ? "button" : "link", { name: opener, exact: true }).click();
+      const sheet = page.getByRole("dialog", { name });
+      await expect(sheet).toBeVisible();
+      const box = await sheet.evaluate((panel) => {
+        const rect = panel.getBoundingClientRect();
+        const body = panel.querySelector(".bl-sheet-body")!.getBoundingClientRect();
+        const choices = [...panel.querySelectorAll<HTMLElement>(".segmented")].map((group) => group.getBoundingClientRect());
+        const clipped = [...panel.querySelectorAll<HTMLElement>(".segment")].filter((segment) => segment.scrollWidth > segment.clientWidth + 1).map((segment) => segment.textContent);
+        return { position: getComputedStyle(panel).position, left: rect.left, width: rect.width, bodyRight: body.right, widest: Math.max(...choices.map((group) => group.right)), clipped };
+      });
+      expect(box.position).toBe("absolute");
+      if (width >= 1000) { expect(box.width).toBeLessThanOrEqual(481); expect(box.left).toBeGreaterThan(width / 2); }
+      else expect(box.width).toBe(width);
+      expect(box.widest).toBeLessThanOrEqual(box.bodyRight);
+      expect(box.clipped).toEqual([]);
+      await sheet.getByRole("button", { name: "Cancel" }).click();
+      await expect(sheet).toBeHidden();
+    }
+  });
+}
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
     for (const hash of ["/policies", "/policies?group=state", "/policies/p1", "/policies/p2"]) {
@@ -4769,6 +4810,10 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   }
   await expect(page.locator('.ov-legend-link[href*="risk=tenant-lockout"]')).toContainText("2");
   await expect(page.locator('.ov-legend-link[href*="health=failed"]')).toContainText("4");
+  // Audit 31 Oct 2026: the ring's parts add up to every kind Keel knows.
+  const ringValues = await page.locator('#ov-coverage-heading').locator("xpath=ancestor::section[1]").locator(".ov-legend-link b").allTextContents();
+  expect(ringValues.reduce((sum, value) => sum + Number(value.replace(/,/g, "")), 0)).toBe(167);
+  await expect(page.locator(".ov-sub", { hasText: "kinds of settings Keel knows" })).toHaveText("167 kinds of settings Keel knows");
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
   // With no notification channel, alerts reach nobody: an Urgent row, first, opens Notifications.

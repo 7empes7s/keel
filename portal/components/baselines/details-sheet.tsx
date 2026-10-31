@@ -3,13 +3,15 @@
 import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
 import { stepWords, type SheetStep } from "@/lib/sheet-step";
 
 // The details panel (direction A): a panel from the right on a desktop and a full-screen
 // sheet on a phone, opening on a short spring (none under reduced motion). Esc, the
 // close button or the scrim closes it, and focus returns to what opened it. Tab stays
-// inside while it is open.
+// inside while it is open. It brings its own styles, so a page that opens it does not
+// have to (React hoists and de-duplicates the style tag).
 export function DetailsSheet(props: SheetProps) {
   // The panel goes into the page body, which only the browser has. A link that opens an
   // item (`?open=`) drew it on the server too, which failed there ("document is not
@@ -80,6 +82,7 @@ function SheetPanel({ title, kicker, onClose, children, footer, wide = false, st
 
   return createPortal(
     <div className="bl-sheet-root">
+      <BaselinesStyles />
       <div aria-hidden="true" className="bl-sheet-scrim" onClick={() => onClose()} />
       <div aria-labelledby={`${id}-title`} aria-modal="true" className="bl-sheet" data-wide={wide || undefined} ref={panelRef} role="dialog" tabIndex={-1}>
         <header className="bl-sheet-head">

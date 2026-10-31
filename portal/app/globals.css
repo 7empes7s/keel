@@ -9061,6 +9061,7 @@ section.wizard-panel {
 .pt-section-head .btn .icon { width: 1rem; height: 1rem; }
 
 .pt-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
+.pt-tiles-sum { margin: calc(var(--space-sm) * -0.5) 0 0; color: var(--text-soft); font-size: 0.875rem; }
 .pt-tile { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; text-decoration: none; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
 .pt-tile:hover { border-color: var(--line-strong); background: var(--surface-raised); }
 .pt-tile:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -9649,6 +9650,9 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .po-form .field-help { margin: 0; }
 .po-form .segmented { max-width: 100%; }
 .po-form .picker-button { max-width: 100%; }
+/* What to do: three long choices, one per row, so they never run past the sheet. */
+.po-does .segmented { display: grid; width: 100%; height: auto; }
+.po-does .segment { min-height: 2.25rem; justify-content: start; }
 .po-check { display: flex; align-items: start; gap: var(--space-xs); margin: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); font-size: 0.9375rem; line-height: 1.45; }
 .po-check .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; color: var(--fine); }
 .po-error { display: flex; align-items: start; gap: var(--space-xs); margin: 0; color: var(--urgent); font-size: 0.875rem; }
@@ -9666,7 +9670,8 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .po-action .po-row-mid, .po-action .po-row-acts { grid-column: 2; }
   .po-action .po-row-acts { justify-content: start; }
   .po-form .segmented { width: 100%; }
-  .po-form .segmented > * { flex: 1; justify-content: center; min-width: 0; }
+  .po-form .segmented > * { flex: 1 1 auto; justify-content: center; min-width: 0; padding: 0 var(--space-xs); }
+  .po-form .po-does .segment { justify-content: start; padding: 0 var(--space-sm); }
   .po-form .picker-button { width: 100%; min-width: 0; }
 }
 
@@ -11071,7 +11076,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .ov-swatch { width: 0.625rem; height: 0.625rem; flex: none; border-radius: 2px; background: var(--line-strong); }
 .ov-swatch[data-part="covered"] { background: var(--fine); }
 .ov-swatch[data-part="failed"], .ov-swatch[data-tone="urgent"] { background: var(--urgent); }
-.ov-swatch[data-tone="soon"] { background: var(--check-soon); }
+.ov-swatch[data-part="late"], .ov-swatch[data-tone="soon"] { background: var(--check-soon); }
 .ov-swatch[data-tone="low"] { background: var(--low-risk); }
 .ov-risk { display: grid; gap: var(--space-xs); min-width: 0; }
 .ov-risk-track { display: flex; height: 0.5rem; gap: 2px; overflow: hidden; border-radius: 999px; }
@@ -11088,6 +11093,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .ov-ring-segment { fill: none; stroke: var(--line-strong); }
 .ov-ring-segment[data-part="covered"] { stroke: var(--fine); }
 .ov-ring-segment[data-part="failed"] { stroke: var(--urgent); }
+.ov-ring-segment[data-part="late"] { stroke: var(--check-soon); }
 .ov-ring-center { position: absolute; display: grid; justify-items: center; line-height: 1.1; }
 .ov-ring-center b { font-size: 1.375rem; font-variant-numeric: tabular-nums; font-weight: 700; }
 .ov-ring[data-big] .ov-ring-center b { font-size: 2rem; }

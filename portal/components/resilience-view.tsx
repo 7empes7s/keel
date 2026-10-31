@@ -261,7 +261,7 @@ function Details({ data }: { data: ResilienceData }) {
 }
 
 export function ResilienceView({ data }: { data: ResilienceData }) {
-  const groups = serviceGroups(data.metrics, data.generatedAt);
+  const groups = serviceGroups(data.metrics, data.kinds, data.generatedAt);
   const alerts = resilienceAlerts(data);
   return (
     <div className="rs-page">
@@ -293,7 +293,7 @@ function FreshnessRecord({ data }: { data: ResilienceData }) {
         </RecordGroup>
       ) : null}
       {freshness.gaps.map((gap) => (
-        <RecordGroup key={`gap:${gap.key}`} note="never backed up" title={gap.key}>
+        <RecordGroup key={`gap:${gap.key}`} note="no good backup yet" title={gap.key}>
           <DependencyFields dependency={gap} />
           <RecordField copy={false} label="Last attempt" value={gap.lastAttempt?.at} />
           <RecordField copy={false} label="Last attempt outcome" value={gap.lastAttempt?.outcome} />

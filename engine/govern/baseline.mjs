@@ -155,6 +155,17 @@ export async function acceptDrift(client, { driftId, actor, reason }) {
     );
     const drift = driftRows[0];
     if (!drift) throw new Error(`drift not found: ${driftId}`);
+    // A change already accepted is not accepted again: a second click or a retried send
+    // writes no second accept row and no second evidence record. The row lock above
+    // makes two accepts sent at once wait for each other, so the later one sees this.
+    const { rows: accepted } = await client.query(
+      "SELECT 1 FROM disposition WHERE drift_id = $1 AND action = 'accept' LIMIT 1",
+      [driftId],
+    );
+    if (accepted.length) {
+      await client.query('ROLLBACK');
+      return { alreadyAccepted: true };
+    }
     // A row that records no change (only a stored fingerprint differed) is never
     // accepted: there is nothing to put into the approved setup.
     refuseSameContentDrift([drift]);

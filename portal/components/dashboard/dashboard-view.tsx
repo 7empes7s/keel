@@ -163,7 +163,8 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="Stale" value={data.coverage.stale} />
           <RecordField copy={false} label="Not covered" value={data.coverage.notCovered} />
           <RecordField copy={false} label="Never collected" value={data.coverage.neverCollected} />
-          <RecordField copy={false} label="Total types" value={data.coverage.total} />
+          <RecordField copy={false} label="Unavailable" value={data.coverage.unavailable} />
+          <RecordField copy={false} label="Total types" usage="sum of the six buckets above" value={data.coverage.total} />
         </RecordGroup>
         <RecordGroup title="Audit record">
           <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : "FAILED"} />

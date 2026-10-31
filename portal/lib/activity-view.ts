@@ -25,7 +25,7 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
   setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot"] },
   approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting"] },
-  policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
+  policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "policy-change", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
   other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action"] },
@@ -175,6 +175,7 @@ export function recordKindWords(kind: string): string {
     "approval.decided": "Approval decision",
     "action-attempt": "Action started or refused",
     "policy-evaluation": "Policy check",
+    "policy-change": "Automatic rule change",
     "automation-execution": "Automatic roll back",
     "content-effect-approval": "Content-effect approval",
     "restore-approval-setting": "Restore approval setting",
@@ -207,6 +208,9 @@ export function rowHref(row: ActivityRow): string | null {
   const subject = (row.entry?.subject ?? {}) as Record<string, unknown>;
   if (typeof subject.jobId === "string" && subject.jobId) return `/jobs/${encodeURIComponent(subject.jobId)}`;
   if (row.entry?.kind === "policy-evaluation" && typeof subject.naturalKey === "string") return `/drift?q=${encodeURIComponent(subject.naturalKey.replace(/^[^:]+:/, ""))}`;
+  if (row.entry?.kind === "policy-change") {
+    return subject.change !== "deleted" && typeof subject.policyId === "string" && subject.policyId ? `/policies/${encodeURIComponent(subject.policyId)}` : "/policies";
+  }
   if (row.entry?.kind === "approval-request" || row.entry?.kind === "approval-decision" || row.entry?.kind === "approval-signoff") return "/approvals?show=decided";
   if (row.entry?.kind === "recovery-drill" || row.entry?.kind === "fidelity-drill") return "/resilience";
   if (row.entry?.kind === "offsite-copy") return "/integrations";
@@ -225,6 +229,8 @@ export function rowHrefLabel(row: ActivityRow): string {
   if (href.startsWith("/resilience")) return "Show recovery readiness";
   if (href.startsWith("/integrations")) return "Show off-site copy settings";
   if (href.startsWith("/alerts")) return "Open the alert";
+  if (href === "/policies") return "Show the automatic rules";
+  if (href.startsWith("/policies/")) return "Open the rule";
   return "Show the control checks";
 }
 

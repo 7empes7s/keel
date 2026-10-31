@@ -12,7 +12,26 @@ function evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor })
 }
 
 /** Spec M2.6.4. Append-only, tamper-evident: each record embeds the previous record's hash. */
-export async function appendEvidence(client, {
+export async function appendEvidence(client, { eventSink = createEventSink(), ...entry }) {
+  let written;
+  await client.query('BEGIN');
+  try {
+    written = await appendEvidenceInTransaction(client, { ...entry, eventSink });
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+  written.emit();
+  return written.record;
+}
+
+/**
+ * The same record, written inside a transaction the caller has open, so the record and
+ * the change it describes commit or roll back together. The caller calls `emit()` after
+ * its COMMIT (never after a ROLLBACK) to project the record as an event.
+ */
+export async function appendEvidenceInTransaction(client, {
   tenantRef, kind, subject, actor,
   correlationId = process.env.KEEL_EVENT_CORRELATION_ID,
   eventSink = createEventSink(),
@@ -22,49 +41,41 @@ export async function appendEvidence(client, {
   if (correlationId) {
     subject = { ...subject, _event: { version: 1, correlationId } };
   }
-  let record;
-  await client.query('BEGIN');
-  try {
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantRef]);
-    const { rows: headRows } = await client.query(
-      `SELECT head_hash, record_count
-       FROM evidence_head
-       WHERE tenant_ref = $1
-       FOR UPDATE`,
-      [tenantRef],
-    );
-    const prevHash = headRows[0]?.head_hash ?? null;
-    const occurredAt = new Date();
-    const recordHash = evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor });
-    const { rows } = await client.query(
-      `INSERT INTO evidence
-         (tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING seq`,
-      [tenantRef, occurredAt, kind, subject, actor, prevHash, recordHash],
-    );
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantRef]);
+  const { rows: headRows } = await client.query(
+    `SELECT head_hash, record_count
+     FROM evidence_head
+     WHERE tenant_ref = $1
+     FOR UPDATE`,
+    [tenantRef],
+  );
+  const prevHash = headRows[0]?.head_hash ?? null;
+  const occurredAt = new Date();
+  const recordHash = evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor });
+  const { rows } = await client.query(
+    `INSERT INTO evidence
+       (tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     RETURNING seq`,
+    [tenantRef, occurredAt, kind, subject, actor, prevHash, recordHash],
+  );
 
-    await client.query(
-      `INSERT INTO evidence_head (tenant_ref, head_seq, head_hash, record_count)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (tenant_ref) DO UPDATE
-       SET head_seq = EXCLUDED.head_seq,
-           head_hash = EXCLUDED.head_hash,
-           record_count = EXCLUDED.record_count,
-           updated_at = now()`,
-      [tenantRef, rows[0].seq, recordHash, BigInt(headRows[0]?.record_count ?? 0) + 1n],
-    );
+  await client.query(
+    `INSERT INTO evidence_head (tenant_ref, head_seq, head_hash, record_count)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (tenant_ref) DO UPDATE
+     SET head_seq = EXCLUDED.head_seq,
+         head_hash = EXCLUDED.head_hash,
+         record_count = EXCLUDED.record_count,
+         updated_at = now()`,
+    [tenantRef, rows[0].seq, recordHash, BigInt(headRows[0]?.record_count ?? 0) + 1n],
+  );
 
-    record = { seq: rows[0].seq, tenant_ref: tenantRef, occurred_at: occurredAt,
-      kind, subject, actor, prev_hash: prevHash, record_hash: recordHash };
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  }
+  const record = { seq: rows[0].seq, tenant_ref: tenantRef, occurred_at: occurredAt,
+    kind, subject, actor, prev_hash: prevHash, record_hash: recordHash };
   // A logging failure must never roll back or misreport committed audit evidence.
-  try { eventSink(envelopeForEvidence(record)); } catch { /* best-effort projection */ }
-  return record;
+  const emit = () => { try { eventSink(envelopeForEvidence(record)); } catch { /* best-effort projection */ } };
+  return { record, emit };
 }
 
 // Walks the chain from `start` (a prefix verified earlier: { seq, hash, count }) or from

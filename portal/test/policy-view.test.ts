@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { createRule, changeRule } from "@/lib/policy-change";
 import {
   actionKindLine, actionLine, actionName, actionOutcome, ceilingWords, changeRefusal, failureWords, filterWords, kindWords, lastActionWords, matchWords, namePattern,
-  parseFilters, rateWords, ruleCounts, ruleKind, ruleMatches, ruleSentence, ruleState, rulesStatus, rulesVerdict, runAsRef, turnOffDetail, watchChips,
+  parseFilters, rateWords, ruleChangeFields, ruleCounts, ruleKind, ruleMatches, ruleSentence, ruleState, rulesStatus, rulesVerdict, runAsRef, turnOffDetail, watchChips,
 } from "@/lib/policy-view";
 import type { Policy, PolicyAction } from "@/lib/policies";
 import { renderPoliciesAt, renderPolicy } from "./render-policies";
@@ -176,4 +176,21 @@ test("the list and the rule page keep ids, emails and codes inside the record", 
   // A viewer sees no controls.
   const viewer = await renderPolicy({ canEdit: false, policy: approval, actions: [], halted: false, now: NOW });
   assert.doesNotMatch(viewer, />Resume<|>Turn off<|>Turn on</);
+});
+
+test("a rule change's recorded settings read in the rule sheet's words and order", () => {
+  assert.deepEqual(ruleChangeFields("edited", [
+    { field: "windowSeconds", before: 3600, after: 86400 }, { field: "maxActionsPerWindow", before: 50, after: 5 },
+    { field: "blastRadius", before: null, after: "tenant-lockout" }, { field: "enabled", before: true, after: false },
+    { field: "nonsense", before: 1, after: 2 }, "not a field",
+  ]), [
+    { path: "On or off", before: "On", after: "Off" },
+    { path: "Risk", before: "Any risk", after: "Could lock out admins" },
+    { path: "Limit", before: "50 an hour", after: "5 a day" },
+  ]);
+  assert.deepEqual(ruleChangeFields("deleted", [{ field: "action", before: "require_approval", after: null }, { field: "maxActionsPerWindow", before: null, after: null }, { field: "windowSeconds", before: null, after: null }]), [
+    { path: "What it does", before: "Ask for approval", after: null },
+    { path: "Limit", before: "No limit", after: null },
+  ]);
+  assert.deepEqual(ruleChangeFields("edited", null), []);
 });

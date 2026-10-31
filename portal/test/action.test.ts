@@ -758,12 +758,26 @@ test("Automatic rules: edit saves the whole rule, delete hides it and keeps its 
   assert.equal(after.max_blast_radius, "access-affecting");
   assert.equal(after.max_actions_per_window, 20);
   assert.equal(after.action, "alert");
+  // The edit leaves one record naming who changed which settings, old and new; the
+  // refused edits above leave none.
+  const records = async () => (await client.query(
+    "SELECT actor, subject FROM evidence WHERE kind = 'policy-change' AND subject->>'policyId' = $1 ORDER BY seq", [policy.id],
+  )).rows as { actor: string; subject: { change: string; fields: { field: string; before: unknown; after: unknown }[] } }[];
+  const [editRecord, ...extra] = await records();
+  assert.equal(extra.length, 0, "refused edits leave no record");
+  assert.equal(editRecord.actor, "admin");
+  assert.equal(editRecord.subject.change, "edited");
+  assert.deepEqual(editRecord.subject.fields.find((entry) => entry.field === "name"), { field: "name", before: "Edit me", after: "Edited" });
+  assert.deepEqual(editRecord.subject.fields.find((entry) => entry.field === "maxActionsPerWindow"), { field: "maxActionsPerWindow", before: 50, after: 20 });
   const missing = await editPolicyRoute(postAction(`/api/policies/${randomUUID()}/edit`, { ...options, body: { name: "x", maxBlastRadius: "cosmetic" } }));
   assert.equal(missing.status, 404);
 
   const removed = await deletePolicyRoute(postAction(`/api/policies/${policy.id}/delete`, options));
   assert.equal(removed.status, 200);
   assert.deepEqual(await removed.json(), { deleted: { id: policy.id, name: "Edited" } });
+  const deleteRecord = (await records()).at(-1);
+  assert.equal(deleteRecord?.subject.change, "deleted");
+  assert.equal(deleteRecord?.actor, "admin");
   assert.equal((await showPolicyRoute(getJobs(`/api/policies/${policy.id}`, options))).status, 404);
   const listed = await (await listPoliciesRoute(getJobs("/api/policies", options))).json();
   assert.ok(!listed.policies.some((p: { id: string }) => p.id === policy.id));

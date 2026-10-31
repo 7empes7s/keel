@@ -7,6 +7,7 @@
 // - A restore: the restored settings as the last backup before the restore had them,
 //   and as the restored backup has them.
 // - A found change (an audit entry about one): the approved setup and what was found.
+// - A rule edit or delete (its audit entry): each rule setting before and after.
 import { CompareError, compareSnapshots, presenceFields, typeOutcome } from "../../engine/govern/compare.mjs";
 import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
 import { payloadName } from "@/lib/changes-view";
@@ -18,6 +19,7 @@ import type { CompareResult } from "@/lib/compare-view";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { savedNames } from "@/lib/saved-names";
 import { idNames } from "@/lib/value-names";
+import { ruleChangeFields } from "@/lib/policy-view";
 
 interface Client {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -28,13 +30,15 @@ export const MAX_CHANGED_OBJECTS = 50;
 const MAX_FIELDS = 20;
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type ChangesRequest = { job: string } | { drift: string };
+export type ChangesRequest = { job: string } | { drift: string } | { record: string };
 
 export function changesRequestFrom(params: URLSearchParams): ChangesRequest | null {
   const job = params.get("job");
   const drift = params.get("drift");
+  const record = params.get("record");
   if (job && ID.test(job)) return { job };
   if (drift && ID.test(drift)) return { drift };
+  if (record && /^\d{1,18}$/.test(record)) return { record };
   return null;
 }
 
@@ -237,11 +241,37 @@ async function forRestore(client: Client, ref: string, job: Record<string, unkno
   }, drafts, drafts.length, [source, prior ? String(prior.id) : null]);
 }
 
+// A rule edit or delete reads from its own audit record, which names each setting
+// with its old and new value; nothing else is read.
+export async function forRuleRecord(client: Client, ref: string, seq: string): Promise<ActivityChanges | null> {
+  const { rows: [entry] } = await client.query(
+    `SELECT subject FROM evidence WHERE tenant_ref = $1 AND seq = $2::bigint AND kind = 'policy-change'`,
+    [ref, seq],
+  );
+  if (!entry) return null;
+  const subject = (entry.subject ?? {}) as Record<string, unknown>;
+  const deleted = subject.change === "deleted";
+  const fields = ruleChangeFields(deleted ? "deleted" : "edited", subject.fields);
+  const name = typeof subject.name === "string" && subject.name.trim() ? subject.name.trim() : "An automatic rule";
+  return {
+    basis: "rule",
+    sides: { before: deleted ? "When deleted" : "Before", after: "After" },
+    about: deleted
+      ? "The rule's settings when it was deleted. Keel keeps the deleted rule as history; it no longer runs."
+      : "Each rule setting that changed, as it was before the edit and as the edit saved it.",
+    compare: null,
+    total: 1,
+    names: {},
+    changes: [{ name, resourceType: "automaticRule", change: deleted ? "removed" : "changed", fields, fieldsTotal: fields.length }],
+  };
+}
+
 export async function getActivityChanges(request: ChangesRequest): Promise<ActivityChanges | null> {
   const ref = tenantRef();
   const client = (await connect(databaseUrl())) as Client;
   try {
     if ("drift" in request) return await forDrift(client, ref, request.drift);
+    if ("record" in request) return await forRuleRecord(client, ref, request.record);
     const { rows: [job] } = await client.query(
       `SELECT kind, status, params, created_at::text AS created_at, started_at::text AS started_at, finished_at::text AS finished_at FROM job WHERE id = $1::uuid`,
       [request.job],

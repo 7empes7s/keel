@@ -7,6 +7,8 @@ import { after, before, test } from "node:test";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
+import { createPolicy, deletePolicy, updatePolicy } from "../../engine/policy/evaluate.mjs";
+
 import { changesRequestFrom, getActivityChanges } from "@/lib/activity-changes";
 import { tenantRef } from "@/lib/runtime-config";
 
@@ -152,7 +154,56 @@ test("a restore compares the restored backup with the last backup before it", as
   ]);
 });
 
-test("only a job id or a change id is accepted", () => {
+test("a rule edit shows each rule setting before and after; a delete shows the rule as it was", async () => {
+  const ref = tenantRef();
+  const rule = await createPolicy(client, {
+    tenantRef: ref, name: "KEEL-RT Alert on groups", resourceType: "group", blastRadius: null, naturalKeyGlob: null, changeType: null, action: "alert", maxBlastRadius: "cosmetic", runAsPrincipalId: null,
+    maxActionsPerWindow: 50, windowSeconds: 3600, createdBy: "admin",
+  }) as { id: string };
+  await updatePolicy(client, {
+    tenantRef: ref, policyId: rule.id, name: "KEEL-RT Alert on FIN users", resourceType: "user", naturalKeyGlob: "user:FIN-*",
+    changeType: "modified", blastRadius: null, maxBlastRadius: "access-affecting", maxActionsPerWindow: null, windowSeconds: null, actor: "admin",
+  });
+  await deletePolicy(client, { tenantRef: ref, policyId: rule.id, deletedBy: "admin" });
+  const { rows } = await client.query("SELECT seq::text AS seq FROM evidence WHERE tenant_ref = $1 AND kind = 'policy-change' ORDER BY seq", [ref]);
+  const [editSeq, deleteSeq] = rows.map((row) => String(row.seq));
+
+  const edited = await getActivityChanges({ record: editSeq });
+  assert.equal(edited?.basis, "rule");
+  assert.deepEqual(edited?.sides, { before: "Before", after: "After" });
+  assert.equal(edited?.changes.length, 1);
+  assert.equal(edited?.changes[0].name, "KEEL-RT Alert on FIN users");
+  assert.equal(edited?.changes[0].change, "changed");
+  assert.deepEqual(edited?.changes[0].fields, [
+    { path: "Name", before: "KEEL-RT Alert on groups", after: "KEEL-RT Alert on FIN users" },
+    { path: "Kind of thing", before: "Group", after: "User" },
+    { path: "Name like", before: "Any name", after: "FIN-*" },
+    { path: "Change", before: "Any change", after: "Changed" },
+    { path: "Most risky it may touch", before: "Low risk", after: "Affects access" },
+    { path: "Limit", before: "50 an hour", after: "No limit" },
+  ]);
+
+  const deleted = await getActivityChanges({ record: deleteSeq });
+  assert.equal(deleted?.changes[0].change, "removed");
+  assert.equal(deleted?.sides.before, "When deleted");
+  const fields = deleted?.changes[0].fields ?? [];
+  assert.deepEqual(fields.slice(0, 3), [
+    { path: "What it does", before: "Alert only", after: null },
+    { path: "On or off", before: "On", after: null },
+    { path: "Name", before: "KEEL-RT Alert on FIN users", after: null },
+  ]);
+  assert.ok(fields.every((field) => field.after === null), "a delete has no after side");
+
+  // Only a rule change's own record, on this tenant, is read.
+  const { rows: [other] } = await client.query("SELECT seq::text AS seq FROM evidence WHERE tenant_ref = $1 AND kind <> 'policy-change' ORDER BY seq LIMIT 1", [ref]);
+  if (other) assert.equal(await getActivityChanges({ record: String(other.seq) }), null);
+  assert.equal(await getActivityChanges({ record: "999999" }), null);
+});
+
+test("only a job id, a change id or an audit entry number is accepted", () => {
+  assert.deepEqual(changesRequestFrom(new URLSearchParams("record=12")), { record: "12" });
+  assert.equal(changesRequestFrom(new URLSearchParams("record=1e3")), null);
+  assert.equal(changesRequestFrom(new URLSearchParams("record=-1")), null);
   assert.equal(changesRequestFrom(new URLSearchParams("job=nope")), null);
   assert.deepEqual(changesRequestFrom(new URLSearchParams(`drift=${GROUP_ID}`)), { drift: GROUP_ID });
 });

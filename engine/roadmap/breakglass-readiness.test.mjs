@@ -41,6 +41,8 @@ const HOUR = 3600000;
 const NOW = Date.now();
 const at = (offsetMs) => new Date(NOW + offsetMs);
 const iso = (offsetMs) => at(offsetMs).toISOString();
+// The day-to-day use check needs the whole 30-day lookback of the sign-in log read.
+const MONTH = { from: iso(-30 * DAY), until: iso(0) };
 
 const ID = {
   bg1: 'b9000000-0000-4000-8000-000000000001',
@@ -177,7 +179,7 @@ test('a Conditional Access exclusion alone never makes an emergency account read
   for (const name of ['bg1', 'bg2']) await ctx.lifecycle(A, name, 'methods-attested', { methods: ['fido2', 'password'] });
   report = await ctx.readiness();
   assert.deepEqual([report.accounts[0].dimensions.dedicatedAccount.reason, report.overall], ['sign-in-log-not-read', 'unknown']);
-  await ctx.ingest(A, 'sign-in', []);
+  await ctx.ingest(A, 'sign-in', [], MONTH);
   report = await ctx.readiness();
   assert.equal(report.accounts[0].dimensions.dedicatedAccount.reason, 'emergency-only');
   assert.deepEqual(report.accounts.map((account) => account.overall), ['ready', 'ready']);
@@ -390,7 +392,7 @@ test('a stale validation becomes due and raises a reminder that a new test clear
 test('unsupported and unread policy surfaces stay visible next to the verdict', async (t) => {
   const ctx = await readyTenant(t);
   for (const name of ['bg1', 'bg2']) await ctx.lifecycle(A, name, 'methods-attested', { methods: ['windowsHelloForBusiness'] });
-  await ctx.ingest(A, 'sign-in', []);
+  await ctx.ingest(A, 'sign-in', [], MONTH);
   let report = await ctx.readiness();
   assert.equal(report.overall, 'ready');
   const byId = Object.fromEntries(report.surfaces.map((surface) => [surface.surface, surface]));
@@ -441,7 +443,7 @@ test('the keel-breakglass command registers, records and reports through the sam
   assert.equal(await run(['canary']), 0);
   assert.equal(JSON.parse(output.at(-1)).status, 'audit-not-configured');
   // With the sign-in log read, the accounts are shown to be kept for emergencies only.
-  await ctx.ingest(A, 'sign-in', []);
+  await ctx.ingest(A, 'sign-in', [], MONTH);
   assert.equal(await run(['report']), 0);
   const report = JSON.parse(output.at(-1));
   assert.equal(report.overall, 'ready');
@@ -504,7 +506,7 @@ test('a custom domain or a day-to-day account never passes as an emergency accou
     { id: 'si-bg2-d1', occurredAt: iso(-3 * DAY), actor: { kind: 'user', id: ID.bg2 } },
     { id: 'si-bg2-d2', occurredAt: iso(-2 * DAY), actor: { kind: 'user', id: ID.bg2 } },
     { id: 'si-bg1-test', occurredAt: iso(-10 * DAY + 30 * 60 * 1000), actor: { kind: 'user', id: ID.bg1 } },
-  ]);
+  ], MONTH);
   let report = await ctx.readiness();
   assert.equal(report.overall, 'ready');
   let bg2 = report.accounts.find((account) => account.accountId === ID.bg2);
@@ -521,6 +523,12 @@ test('a custom domain or a day-to-day account never passes as an emergency accou
   assert.deepEqual([bg1.dimensions.cloudOnlyIdentity.status, bg1.dimensions.cloudOnlyIdentity.reason, bg1.overall], ['fail', 'custom-domain', 'not-ready']);
   assert.equal(bg1.dimensions.cloudOnlyIdentity.evidence.domain, 'contoso.net');
   assert.equal(report.overall, 'not-ready');
+  // The domain name alone settles it, even when its sign-in type was not collected.
+  const noType = evaluateAccountReadiness({ account: bg1, inventory: Object.fromEntries(ALL_TYPES.map((type) => [type, {
+    status: 'covered', observedAt: iso(-HOUR), resources: [...withCustom, domain('contoso.net', undefined)].filter((r) => r.type === type),
+  }])), now: at(0) });
+  assert.equal(noType.dimensions.cloudOnlyIdentity.reason, 'custom-domain');
+  assert.equal('usage' in bg1, false, 'the raw usage read is not sent to the page');
   // It still signs in, so the lockout gate does not count the domain as a lockout.
   const lockout = evaluateAccountReadiness({ account: bg1, inventory: Object.fromEntries(ALL_TYPES.map((type) => [type, {
     status: 'covered', observedAt: iso(-HOUR), resources: [...withCustom, domain('contoso.net', 'Managed')].filter((r) => r.type === type),
@@ -546,4 +554,11 @@ test('a custom domain or a day-to-day account never passes as an emergency accou
   await ctx.client.query("INSERT INTO principal(email, display_name) VALUES ($1, 'Ada Admin')", [EMAILS.bg1.toUpperCase()]);
   bg1 = (await ctx.readiness()).accounts.find((account) => account.accountId === ID.bg1);
   assert.deepEqual([bg1.dimensions.dedicatedAccount.reason, bg1.dimensions.dedicatedAccount.evidence.keelPerson], ['keel-person-signs-in-with-it', { displayName: 'Ada Admin' }]);
+
+  // A log read for the last ten days is watched, but ten days are not thirty: not known.
+  await ctx.collect(B, healthyInventory());
+  await ctx.register(B, 'bg2');
+  await ctx.ingest(B, 'sign-in', []);
+  const short = await ctx.readiness(B);
+  assert.deepEqual([short.canary.status, short.accounts[0].dimensions.dedicatedAccount.reason], ['watching', 'sign-in-log-not-read']);
 });

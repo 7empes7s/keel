@@ -313,13 +313,13 @@ function evaluateIdentity(account, inventory, { lockout = false } = {}) {
   if (String(domain.payload?.authenticationType ?? '').toLowerCase() === 'federated') {
     return dimension('fail', 'federated-domain', { ...evidence, domain: domainName });
   }
-  if (String(domain.payload?.authenticationType ?? '').toLowerCase() !== 'managed') {
-    return dimension('unknown', 'domain-authentication-not-collected', { ...evidence, domain: domainName });
-  }
   // Microsoft advises emergency accounts on the onmicrosoft.com domain: a custom domain
   // can later be federated, removed or misconfigured. It still signs in today, so the
   // lockout gate does not treat it as a lockout.
   if (!lockout && !MICROSOFT_DOMAIN.test(domainName)) return dimension('fail', 'custom-domain', { ...evidence, domain: domainName });
+  if (String(domain.payload?.authenticationType ?? '').toLowerCase() !== 'managed') {
+    return dimension('unknown', 'domain-authentication-not-collected', { ...evidence, domain: domainName });
+  }
   return dimension('pass', 'cloud-only-member-account', { ...evidence, domain: domainName });
 }
 
@@ -632,7 +632,13 @@ async function signInCoverage(client, tenantRef, now) {
     const until = Math.min(lastUntil, ms(now));
     const coverage = coverageFromRuns({ runs, state: state ?? null }, { from: new Date(until - CANARY_WATCH_MS), until: new Date(until) });
     const behind = ms(now) - lastUntil > CANARY_WATCH_MS;
-    sources[source] = { status: coverage.status === 'covered' && behind ? 'behind' : coverage.status, readUntil: new Date(lastUntil).toISOString() };
+    // The day-to-day use check looks back CANARY_LOOKBACK_DAYS: it needs that whole
+    // stretch read, not just the last day.
+    const lookback = coverageFromRuns({ runs, state: state ?? null }, { from: new Date(ms(now) - CANARY_LOOKBACK_DAYS * DAY), until: new Date(until) });
+    sources[source] = {
+      status: coverage.status === 'covered' && behind ? 'behind' : coverage.status, readUntil: new Date(lastUntil).toISOString(),
+      lookbackCovered: coverage.status === 'covered' && !behind && lookback.status === 'covered',
+    };
   }
   const signIn = sources['sign-in'];
   const status = signIn.status === 'covered' ? 'watching' : signIn.status === 'not-configured' ? 'not-configured' : 'not-watching';
@@ -754,10 +760,10 @@ export async function loadBreakGlassReadiness(client, { tenantRef, now = new Dat
   const inventory = await loadInventory(client, tenantRef);
   const groupMembers = await loadGroupMembership(client, tenantRef, inventory);
   const canary = await signInCoverage(client, tenantRef, now);
-  const usage = await loadAccountUsage(client, { tenantRef, accounts: accountsLoaded, inventory, now, signInLogRead: canary.status === 'watching' });
+  const usage = await loadAccountUsage(client, { tenantRef, accounts: accountsLoaded, inventory, now, signInLogRead: canary.sources?.['sign-in']?.lookbackCovered === true });
   const accountsRaw = accountsLoaded.map((account) => ({ ...account, usage: usage.get(account.accountId) }));
-  const accounts = accountsRaw.map((account) => ({
-    ...account, ...accountNames(account.accountId, inventory), ...evaluateAccountReadiness({ account, inventory, groupMembers, now }),
+  const accounts = accountsRaw.map(({ usage: _usage, ...account }) => ({
+    ...account, ...accountNames(account.accountId, inventory), ...evaluateAccountReadiness({ account: { ...account, usage: _usage }, inventory, groupMembers, now }),
   }));
   const surfaces = evaluateSurfaces(inventory);
   const verdict = accountsRaw.length ? tenantReadiness(accounts) : { overall: 'not-configured', reason: 'no-accounts-registered' };

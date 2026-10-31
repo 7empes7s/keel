@@ -387,7 +387,7 @@ export function alertAccountName(alert: ReadinessAlert, accounts: ReadinessAccou
 
 const STATUS_RANK: Record<DimensionStatus, number> = { fail: 0, due: 1, unknown: 2, pass: 3 };
 
-/** The five checks, problems first; ties keep the usual order. */
+/** The checks, problems first; ties keep the usual order. */
 export function orderedChecks(account: ReadinessAccount): DimensionName[] {
   return [...DIMENSION_ORDER].sort((a, b) => STATUS_RANK[account.dimensions[a].status] - STATUS_RANK[account.dimensions[b].status]
     || DIMENSION_ORDER.indexOf(a) - DIMENSION_ORDER.indexOf(b));

@@ -121,7 +121,7 @@ test("the bell opens approvals and alerts with their counts", async ({ page }) =
   await expect(panel.getByRole("link", { name: /Approvals/ })).toHaveAttribute("href", "#/approvals");
   await panel.getByRole("link", { name: /Alerts/ }).click();
   await expect(page.locator("main h1")).toHaveText("Alerts");
-  // The inbox keeps its two pages as tabs, since the menu does not list them.
+  // The inbox keeps its two pages as tabs too, so the bell lands one click from the other.
   await expect(page.locator(".section-tabs a[aria-current='page']")).toHaveText("Alerts");
 });
 

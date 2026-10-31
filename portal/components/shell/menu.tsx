@@ -203,6 +203,43 @@ function PersonalList({ group, current, onNavigate }: { group: PersonalGroup; cu
   );
 }
 
+/** The top of the menu: what waits on this person, with counts. Approvals counts only
+ * the requests they can decide; Alerts the ones nobody has acknowledged. */
+function InboxGroup({ capabilities, approvals, alerts, pathname, onNavigate }: { capabilities: NavCapabilities; approvals: number | null; alerts: number | null; pathname: string; onNavigate?: () => void }) {
+  const { prefs } = useShellState();
+  const links = sectionLinks("Inbox", capabilities);
+  if (!links.length) return null;
+  const closed = prefs.closed.includes("inbox");
+  const counts: Record<string, number | null> = { "/approvals": approvals, "/alerts": alerts };
+  const notes: Record<string, (count: number) => string> = {
+    "/approvals": (count) => `${count} ${count === 1 ? "request waits" : "requests wait"} for your decision`,
+    "/alerts": (count) => `${count} ${count === 1 ? "alert is" : "alerts are"} not acknowledged yet`,
+  };
+  const total = links.reduce((sum, link) => sum + (counts[link.href] ?? 0), 0);
+  const summary: SectionStatus | undefined = total ? { tone: "soon", count: total, note: inboxNote(counts["/approvals"] ?? 0, counts["/alerts"] ?? 0) } : undefined;
+  return (
+    <section aria-label="Inbox" className="menu-group" data-group="inbox">
+      <GroupHeader extra={closed ? <StatusBadge status={summary} /> : undefined} group="inbox" title="Inbox" />
+      {closed ? null : (
+        <ul className="menu-list">
+          {links.map((link) => {
+            const count = counts[link.href];
+            return (
+              <li className="menu-row" key={link.href}>
+                <Link aria-current={isCurrentPath(pathname, link.href) ? "page" : undefined} className="menu-link" href={link.href} onClick={onNavigate} prefetch={false} title={SECTION_PURPOSE.Inbox}>
+                  <Icon name={link.href === "/approvals" ? "inbox" : "bell"} />
+                  <span className="menu-label">{link.label}</span>
+                  {count ? <StatusBadge status={{ tone: "soon", count, note: notes[link.href](count) }} /> : null}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function Everything({ capabilities, statuses, pathname, onNavigate }: { capabilities: NavCapabilities; statuses: MenuStatuses; pathname: string; onNavigate?: () => void }) {
   const { prefs } = useShellState();
   const entries = visibleNavEntries(capabilities);
@@ -362,6 +399,7 @@ export function Menu({
       <CloudSwitcher />
       {variant === "rail" ? <SearchTrigger /> : null}
       <nav aria-label="Menu" className="menu-nav" ref={navRef}>
+        <InboxGroup alerts={alerts} approvals={approvals} capabilities={capabilities} onNavigate={onNavigate} pathname={pathname} />
         <PersonalList current={current} group="pinned" onNavigate={onNavigate} />
         <PersonalList current={current} group="favourites" onNavigate={onNavigate} />
         <Everything capabilities={capabilities} onNavigate={onNavigate} pathname={pathname} statuses={statuses} />

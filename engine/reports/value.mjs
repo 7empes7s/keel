@@ -50,6 +50,7 @@ import { OWN_PREFIX, controlFromRow, ownCheckRows } from '../benchmarks/ownCheck
 import { controlFor } from '../benchmarks/registry.mjs';
 import { csvCell, csvLine } from './csv.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
+import { NOT_A_GAP } from '../collect/incomplete.mjs';
 import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
 import { loadRecoveryMetrics } from '../coverage/recoveryMetrics.mjs';
@@ -701,10 +702,18 @@ async function visibleOutcomes(client, { tenantRef, scope, restore, change, at }
  * any content run exists all of them are expected, not only those that recorded a run.
  */
 export async function loadBackupSection(client, { tenantRef, from, to }) {
+  // A settings backup that could not read some types in full (#447: the job ends
+  // "Partly done") is counted apart, never as a complete backup.
   const { rows: [settings] } = await client.query(
-    `SELECT count(*)::int AS backups, max(completed_at) AS last_at FROM snapshot
-      WHERE tenant_ref = $1 AND status = 'complete' AND completed_at >= $2 AND completed_at < $3`,
-    [tenantRef, from, to],
+    `WITH done AS (
+       SELECT completed_at,
+              EXISTS (SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN coverage_digest ELSE '{}'::jsonb END) e
+                       WHERE COALESCE(e.value->>'outcome', 'unknown') <> ALL ($4::text[])) AS gap
+         FROM snapshot
+        WHERE tenant_ref = $1 AND status = 'complete' AND completed_at >= $2 AND completed_at < $3)
+     SELECT count(*) FILTER (WHERE NOT gap)::int AS backups, count(*) FILTER (WHERE gap)::int AS partial,
+            max(completed_at) FILTER (WHERE NOT gap) AS last_at FROM done`,
+    [tenantRef, from, to, [...NOT_A_GAP]],
   );
   const { rows: [tables] } = await client.query(
     `SELECT to_regclass('workload_collection') IS NOT NULL AS workload, to_regclass('content_run') IS NOT NULL AS content_run,
@@ -758,7 +767,7 @@ export async function loadBackupSection(client, { tenantRef, from, to }) {
   }
   return {
     withheld: false,
-    settings: { backups: settings.backups, lastAt: iso(settings.last_at) },
+    settings: { backups: settings.backups, partial: settings.partial, lastAt: iso(settings.last_at) },
     serviceSettings: service,
     content,
   };
@@ -967,6 +976,7 @@ export function valueReportCsv(report) {
   }
   if (report.backups && !report.backups.withheld) {
     meta.push(['settings_backups', report.backups.settings.backups]);
+    meta.push(['settings_partial', report.backups.settings.partial ?? 0]);
     meta.push(['service_settings_runs', report.backups.serviceSettings.runs]);
     meta.push(['service_settings_workloads', `${report.backups.serviceSettings.workloads} of ${report.backups.serviceSettings.expected}`]);
     meta.push(['service_settings_partial', report.backups.serviceSettings.partial ?? 0]);

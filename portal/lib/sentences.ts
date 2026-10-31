@@ -168,7 +168,11 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const named = known.find((change) => change.readable && change.name && !holdsObjectId(change.name));
   if (named?.name) return `${count}, including ${named.name}`;
   const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
-  return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
+  if (first?.naturalKey) return `${count}, including ${resourceLabel(first.naturalKey)}`;
+  // No name and no readable key: say what kind of setting it is, so two such requests
+  // do not read the same.
+  const typed = known.find((change) => change.resourceType && !holdsObjectId(change.resourceType));
+  return typed?.resourceType ? `${count}, including an unnamed ${resourceTypeLabel(typed.resourceType)}` : count;
 }
 
 // A service setting change by its setting's name and service, never by an id.
@@ -376,6 +380,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       const count = typeof subject.count === "number" ? subject.count : null;
       if (count === 0) return `${actorName} cleared the ScubaGear list of ${list}`;
       return `${actorName} set the ScubaGear list of ${list}${count === null ? "" : ` to ${count} ${count === 1 ? "entry" : "entries"}`}`;
+    }
+    case "alert-action": {
+      const verb = { acknowledged: "acknowledged", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(subject.action)] ?? "changed";
+      const about = typeof subject.naturalKey === "string" && subject.naturalKey ? ` about ${namedResource(subject.naturalKey, names)}` : "";
+      const note = typeof subject.note === "string" && subject.note.trim() ? subject.note.trim() : null;
+      return `${actorName} ${verb} an alert${about}${note ? `: “${note.length > 140 ? `${note.slice(0, 139)}…` : note}”` : ""}`;
     }
     case "people-anonymity": return subject.enabled === true
       ? `${actorName} turned on "Hide people's names"`

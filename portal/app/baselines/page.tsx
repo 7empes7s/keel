@@ -17,7 +17,8 @@ import {
   type SnapshotOption,
 } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import { getServiceChanges, getServiceReadTotals, type ServiceReadTotals } from "@/lib/service-changes";
+import { openChangeCount, OPEN_CHANGES_HREF } from "@/lib/changes-view";
+import { getServiceChanges, getServiceReadTotals, NO_SERVICE_CHANGES, type ServiceReadTotals } from "@/lib/service-changes";
 import type { BaselinesData, DriftRecord } from "@/lib/types";
 
 const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
@@ -59,7 +60,7 @@ export default async function BaselinesPage() {
   const [items, coverage, serviceChanges, held, readTotals] = await Promise.all([
     getDriftData(access.scope).then((drift) => drift.items as DriftRecord[], () => null),
     getCoverageData().catch(() => null),
-    access.scope.central ? getServiceChanges().catch(() => [] as DriftRecord[]) : Promise.resolve([] as DriftRecord[]),
+    access.scope.central ? getServiceChanges().catch(() => NO_SERVICE_CHANGES) : Promise.resolve(NO_SERVICE_CHANGES),
     active ? getBaselineTypeCounts(active.id, access.scope).catch(() => null) : Promise.resolve(null),
     // The base of each service read's match percentage; null leaves those services unscored.
     access.scope.central ? getServiceReadTotals().catch(() => null) : Promise.resolve(null as ServiceReadTotals | null),
@@ -82,7 +83,10 @@ export default async function BaselinesPage() {
       })),
     };
   }
-  const verdict = setupVerdict(active, items, data.generatedAt);
+  // Open changes: the same count as the Overview, the menu and the Changes page.
+  const openItems = items === null ? null : [...items, ...serviceChanges.items];
+  const total = items === null ? null : openChangeCount(items.length, serviceChanges.total);
+  const verdict = setupVerdict(active, openItems, data.generatedAt, total ?? undefined);
   const jobsActive = jobs.some((job) => job.status === "queued" || job.status === "running");
 
   return (
@@ -91,16 +95,16 @@ export default async function BaselinesPage() {
         description={DESCRIPTION}
         generatedAt={data.generatedAt}
         section="Baselines"
-        status={setupStatus(active, items ?? [])}
+        status={setupStatus(active, openItems ?? [], total ?? 0)}
         title="Approved setup"
       />
       <Verdict
-        action={active ? (items?.length ? { label: "Review changes", href: "/drift" } : null) : { label: "Create an approved setup", href: "/baselines/new" }}
+        action={active ? (total ? { label: "Review changes", href: OPEN_CHANGES_HREF } : null) : { label: "Create an approved setup", href: "/baselines/new" }}
         text={verdict.text}
         tone={verdict.tone}
       />
       <div data-layer="explanation">
-        <ApprovedSetup backedUp={backedUp} baselines={data.baselines} canBaseline={canBaseline} held={held} items={items} now={data.generatedAt} serviceChanges={serviceChanges} serviceReads={serviceReads} sources={snapshots} />
+        <ApprovedSetup backedUp={backedUp} baselines={data.baselines} canBaseline={canBaseline} held={held} items={items} now={data.generatedAt} serviceChanges={serviceChanges.items} serviceReads={serviceReads} sources={snapshots} />
         <RecentWork jobs={jobs} now={data.generatedAt} />
         <JobRefresher active={jobsActive} />
       </div>

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { FindInput } from "@/components/list/find-input";
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented } from "@/components/pickers/segmented";
@@ -232,7 +233,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
           <span className="picker-label">Find</span>
           <span className="sel-find-box">
             <Icon name="search" />
-            <input className="bare-input" onChange={(event) => view.set({ [`${PREFIX}q`]: event.target.value, ...paging.resetPage })} placeholder="Find permissions" type="search" value={query} />
+            <FindInput onChange={(text) => view.set({ [`${PREFIX}q`]: text, ...paging.resetPage })} placeholder="Find permissions" value={query} />
           </span>
         </label>
         <SortControl paging={paging} sorts={sorts} />

@@ -27,7 +27,7 @@ function catalogKind(type: string): CoverageType {
 function coverage(workloads: unknown): CoverageData {
   return {
     generatedAt: NOW, snapshot: null,
-    summary: { covered: 0, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, total: CATALOG.length },
+    summary: { covered: 0, failed: 0, notCovered: CATALOG.length, neverCollected: 0, stale: 0, unavailable: 0, total: CATALOG.length },
     types: CATALOG.map((entry: { type: string }) => catalogKind(entry.type)),
     workloads: workloadKinds(workloads, new Set(["exchange-mail-flow"])),
   };

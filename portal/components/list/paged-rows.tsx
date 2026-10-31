@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, type ReactNode } from "react";
 
+import { FindInput } from "@/components/list/find-input";
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { Icon } from "@/components/shell/icons";
 import { byText, pageWindow, sortRows, type SortChoice } from "@/lib/paging";
@@ -47,7 +48,7 @@ export function PagedRows({ rows, label, noun, prefix, sorts = [], listClassName
             <span className="picker-label">Find</span>
             <span className="sel-find-box">
               <Icon name="search" />
-              <input className="bare-input" onChange={(event) => view.set({ [`${prefix}q`]: event.target.value, ...paging.resetPage })} placeholder={`Find ${noun.many}`} type="search" value={query} />
+              <FindInput onChange={(text) => view.set({ [`${prefix}q`]: text, ...paging.resetPage })} placeholder={`Find ${noun.many}`} value={query} />
             </span>
           </label>
           <SortControl paging={paging} sorts={listSorts} />

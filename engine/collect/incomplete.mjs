@@ -8,7 +8,7 @@ export const INCOMPLETE_TYPES_PREFIX = 'incomplete types: ';
 export const FULL_READ_OUTCOMES = Object.freeze(['complete', 'complete-empty']);
 // Not requested (out of tier) and unavailable (no licence or feature, #309) are
 // not gaps in a backup.
-const NOT_A_GAP = Object.freeze([...FULL_READ_OUTCOMES, 'not-requested', 'unavailable']);
+export const NOT_A_GAP = Object.freeze([...FULL_READ_OUTCOMES, 'not-requested', 'unavailable']);
 
 /** Types a collect did not read in full, with outcome and HTTP status, sorted by type. */
 export function incompleteTypesOf(coverageDigest) {

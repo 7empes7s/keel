@@ -13,7 +13,9 @@ import {
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition, dispositionNeedsReview } from "../../engine/govern/disposition.mjs";
-import { DISPOSE_APPROVAL_ACTION, IgnoreExpiryError, ignoreExpiry } from "../../engine/govern/dispositionReview.mjs";
+import {
+  DISPOSE_APPROVAL_ACTION, IgnoreExpiryError, driftAlreadyAccepted, ignoreExpiry, pendingDisposeRequest,
+} from "../../engine/govern/dispositionReview.mjs";
 import { SameContentDriftError, refuseSameContentDriftIds } from "../../engine/store/openDrift.mjs";
 import { RestoreSettingsPathError } from "../../engine/restore/credentialPaths.mjs";
 import { acceptServiceChange, serviceChangeAcceptNeedsReview } from "../../engine/govern/workloadApproved.mjs";
@@ -26,7 +28,7 @@ import { planBootstrap } from "../../engine/bootstrap/plan.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
 import { enqueue, listJobs, PORTAL_QUEUED_JOBS_PER_PRINCIPAL, QueueFullError, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { denialThrottle as sharedDenialThrottle, type DenialThrottle } from "@/lib/denial-throttle";
-import { connect } from "@/lib/db";
+import { BUSY_MESSAGE, BUSY_RETRY_SECONDS, connect, isDatabaseBusy } from "@/lib/db";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 import { acknowledgeForecastWarning } from "../../engine/schedules/forecast.mjs";
 
@@ -363,7 +365,19 @@ export function guarded(
       .filter((capability) => capability.length > 0);
     const actor = principalId ?? email ?? "unauthenticated";
 
-    const client = (await connectDb(resolveDatabaseUrl())) as KeelClient;
+    // A full pool is a busy answer (503 "busy"), never an uncaught 500: the bulk accept
+    // tries a busy answer again, a few at a time (lib/send-each.ts).
+    let client: KeelClient;
+    try {
+      client = (await connectDb(resolveDatabaseUrl())) as KeelClient;
+    } catch (error) {
+      if (!isDatabaseBusy(error)) throw error;
+      console.error(`[keel-portal] 503 busy: guarded action ${spec.action} could not get a database connection`);
+      return Response.json(
+        { error: "busy", message: BUSY_MESSAGE },
+        { status: 503, headers: { ...NO_STORE, "retry-after": String(BUSY_RETRY_SECONDS) } },
+      );
+    }
     try {
       const deny = async (reason: string): Promise<Response> => {
         let admitted: { key: string; repeats: number } | null = null;
@@ -464,6 +478,7 @@ export function guarded(
       // The server's restore settings path is one the worker would refuse: nothing is
       // queued, and the operator is told in plain words which setting to fix.
       if (error instanceof RestoreSettingsPathError) {
+        console.error(`[keel-portal] 503 guarded action ${spec.action}: ${error.message}`);
         return Response.json(
           { error: "restore_settings_path", message: error.message },
           { status: 503, headers: NO_STORE },
@@ -589,6 +604,14 @@ async function sendDecisionForApproval(client: KeelClient, { tenantRef: tenant, 
   );
 }
 
+// The request already waiting for this decision, answered as if it were just made.
+function waitingApproval(approvalRequest: Record<string, unknown>): Response {
+  return Response.json(
+    { approvalRequest: normalizeApprovalRequest(approvalRequest) },
+    { status: 202, headers: NO_STORE },
+  );
+}
+
 // Drift dispositions (accept/ignore) are synchronous single-row governance writes, not
 // jobs — the job-kind list is deliberately closed and has no dispose kind. The wrapper
 // still owns the database handle and the capability check.
@@ -611,6 +634,8 @@ export function guardedDispose(
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
         // Audit run 2, finding 3: an admin-access service change goes to a second person.
         if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
+          const waiting = await pendingDisposeRequest(client, { serviceChangeId, action: "accept", requestedBy: principalId });
+          if (waiting) return waitingApproval(waiting);
           // The service and setting go with the request, so the approver sees what it is.
           const { rows: [change] } = await client.query(
             "SELECT workload, resource_key, change_type FROM workload_drift WHERE id::text = $1 AND tenant_ref = $2",
@@ -665,8 +690,17 @@ export function guardedDispose(
       }
       // A sign-in or admin-access change is decided by two people: this request waits
       // for a different approver, and the worker applies it once approved.
+      // A change already accepted, or already waiting for a second person to accept it,
+      // is not sent again: a second click or a retried send adds no second row.
+      if (action === "accept" && await driftAlreadyAccepted(client, { driftId })) {
+        return Response.json({ disposition: { alreadyAccepted: true } }, { headers: NO_STORE });
+      }
       if (await dispositionNeedsReview(client, { driftId })) {
         await refuseSameContentDriftIds(client, [driftId]);
+        if (action === "accept") {
+          const waiting = await pendingDisposeRequest(client, { driftId, action, requestedBy: principalId });
+          if (waiting) return waitingApproval(waiting);
+        }
         const params = { driftIds: [driftId], action, reason, ...(until ? { expiresAt: until.toISOString() } : {}) };
         return await sendDecisionForApproval(client, {
           tenantRef: tenant, principalId, reason, params,

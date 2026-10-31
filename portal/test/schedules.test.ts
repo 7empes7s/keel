@@ -11,7 +11,8 @@ import { GET, POST } from "@/app/api/schedules/route";
 import SchedulesPage from "@/app/schedules/page";
 import { SchedulesPage as SchedulesBody } from "@/components/schedules/schedules-page";
 import { forecastSentence, warningSentence } from "@/lib/schedule-forecast-view";
-import { schedulesVerdict } from "@/lib/schedules-view";
+import { lastResult, schedulesVerdict } from "@/lib/schedules-view";
+import { tierSummaries } from "@/lib/protect-view";
 import { renderSchedulesAt } from "./render-schedules";
 import { visibleNavLinks } from "@/components/nav-links";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -125,6 +126,45 @@ test("read-only GET exposes exactly five local schedules, verbatim failures and 
   assert.ok(html.includes("Every day at 05:00 UTC"));
   assert.ok(!html.includes("sel-check"), "viewers get no selection");
   assert.ok(!html.includes("foreign secret"));
+});
+
+test("a tier's last run counts runs started by hand, and a partly done one is a warning", async () => {
+  // Re-test 2026-10-31: the Tier 3 card said "Finished 5 days ago" while two later manual
+  // Tier 3 backups had ended partly done.
+  const day = 86_400_000;
+  const at = (daysAgo: number) => new Date(Math.floor((Date.now() - daysAgo * day) / 1000) * 1000);
+  const scheduled = String((await client.query(
+    `INSERT INTO job (kind, status, params, requested_by, started_at, finished_at, result)
+     VALUES ('collect', 'succeeded', $1, 'scheduler', $2, $2, '{}') RETURNING id`, [{ tenantRef: tenant, tier: "tier3" }, at(5)],
+  )).rows[0].id);
+  await client.query("UPDATE schedule SET last_job_id = $2 WHERE id = $1", [ids[2], scheduled]);
+  const partial = { partial: true, incompleteTypes: ["KEEL-RT-type"] };
+  const manual = String((await client.query(
+    `INSERT INTO job (kind, status, params, requested_by, started_at, finished_at, result)
+     VALUES ('backup', 'succeeded', $1, $2, $3, $3, $4) RETURNING id`, [{ tenantRef: tenant, tier: "tier3" }, admin, at(1), partial],
+  )).rows[0].id);
+  // Another tenant's and another tier's newer runs are not this schedule's.
+  await client.query(
+    `INSERT INTO job (kind, status, params, requested_by, started_at) VALUES ('collect', 'failed', $1, $3, $4), ('collect', 'failed', $2, $3, $4)`,
+    [{ tenantRef: "foreign", tier: "tier3" }, { tenantRef: tenant, tier: "tier2" }, admin, at(0.5)],
+  );
+  try {
+    const data = await (await GET(request())).json() as SchedulesData;
+    const tier3 = data.schedules.find((s) => s.id === ids[2])!;
+    assert.equal(tier3.last_status, "partial");
+    assert.equal(tier3.last_run_at, at(1).toISOString());
+    assert.equal(tier3.last_job_id, manual, "the run link opens the run the status describes");
+    assert.ok(!("last_run_job_id" in tier3));
+    const card = tierSummaries(data.schedules, data.generatedAt).find((tier) => tier.id === "tier3")!;
+    assert.equal(card.partial, true);
+    assert.match(card.last, /^Last run partly done (24 hours|1 day) ago/);
+    assert.equal(lastResult(tier3, data.generatedAt).tone, "soon");
+    // The schedule with no tier still reads only its own last run.
+    assert.equal(data.schedules.find((s) => s.id === ids[3])!.last_status, null);
+  } finally {
+    await client.query("UPDATE schedule SET last_job_id = NULL WHERE id = $1", [ids[2]]);
+    await client.query("DELETE FROM job WHERE params->>'tier' IN ('tier2', 'tier3')");
+  }
 });
 
 test("read-only edits are denied before schedule lookup and are recorded as denied attempts", async () => {

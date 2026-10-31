@@ -165,7 +165,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false, now, acti
   active?: ActiveTierRuns;
 }) {
   const { backUp, busy, feedback, runOf } = useBackup(active, now);
-  const cells = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false }));
+  const cells = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false, partial: false }));
   return (
     <section aria-labelledby="backup-now-heading" className="pt-section">
       <h2 className="visually-hidden" id="backup-now-heading">When each tier is backed up</h2>
@@ -175,7 +175,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false, now, acti
           const badge = tierBadge(tier, run);
           const jobId = tier.schedule?.last_job_id;
           return (
-            <div className={`pt-tier ${tier.id}-card`} data-run={run?.status} data-tone={tier.failed && !run ? "urgent" : undefined} key={tier.id}>
+            <div className={`pt-tier ${tier.id}-card`} data-run={run?.status} data-tone={run ? undefined : tier.failed ? "urgent" : tier.partial ? "soon" : undefined} key={tier.id}>
               <span className="pt-tier-head">
                 <b>{tier.label}</b>
                 <Badge tone={badge.tone}>{badge.label}</Badge>
@@ -189,7 +189,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false, now, acti
               ) : null}
               {tier.next ? <span className="tier-next">{tier.next}</span> : null}
               {tier.last ? (
-                <span className={tier.failed ? "tier-last tier-last-failed" : "tier-last"}>
+                <span className={tier.failed ? "tier-last tier-last-failed" : tier.partial ? "tier-last tier-last-partial" : "tier-last"}>
                   {jobId ? <Link href={`/jobs/${encodeURIComponent(jobId)}`}>{tier.last}</Link> : tier.last}
                 </span>
               ) : null}

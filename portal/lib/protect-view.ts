@@ -3,7 +3,20 @@
 // a schedule the same way. Codes stay in the record layer (components/coverage-report).
 import { ago, displayEnum, formatTimestamp, fromNow, resourceTypeLabel } from "@/lib/presentation";
 import type { Schedule } from "@/lib/schedules";
-import type { CoverageData, CoverageType, WriteOperationCapability } from "@/lib/types";
+import type { CoverageData, CoverageSummary, CoverageType, RestoreProofSummary, WriteOperationCapability } from "@/lib/types";
+import {
+  hasRestoreWriter as engineHasRestoreWriter,
+  provenAt as engineProvenAt,
+  restoreProof as engineRestoreProof,
+  restoreProofSummary,
+} from "../../engine/coverage/restoreProof.mjs";
+
+export type RestoreProof = "proven" | "tested" | "untested" | "none";
+
+/** When a live test restore last proved the kind; null when it is not proven. */
+export function provenAt(item: CoverageType): string | null {
+  return engineProvenAt(item);
+}
 
 export const TIERS = [
   { id: "tier1", label: "Tier 1", description: "the critical settings, backed up most often" },
@@ -21,8 +34,9 @@ export function typeName(type: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-// The four answers the contract allows for "can Keel put this type back?".
-export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unproven";
+// The answers the contract allows for "can Keel put this type back?". "proven" is a
+// write that ran live on this tenant before any drill measured what comes back.
+export type RestoreStanding = "protected" | "partial" | "proven" | "cannot-restore" | "unproven";
 
 /**
  * Whether Keel has a tested writer for the type: an automated recovery decision and at
@@ -31,31 +45,30 @@ export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unpr
  * that declaration, is what says Keel can put the type back.
  */
 export function hasRestoreWriter(item: CoverageType): boolean {
-  if (item.qualification?.decision !== "automated" || !item.writeCapability) return false;
-  return Object.values(item.writeCapability.operations)
-    .some((capability) => capability.claim === "fixture-tested" || capability.claim === "live-qualified");
+  return engineHasRestoreWriter(item);
 }
 
-function provenLive(item: CoverageType): boolean {
-  return Object.values(item.writeCapability?.operations ?? {})
-    .some((capability) => capability.claim === "live-qualified" && capability.liveRecord?.live !== false);
+/** Proven, tested on fixtures, untested or none: the one rule every "Restore proven" number counts. */
+export function restoreProof(item: CoverageType): RestoreProof {
+  return engineRestoreProof(item) as RestoreProof;
+}
+
+/** The "Restore proven" count for a set of kinds; the Overview reads the same function. */
+export function restoreProofCounts(types: readonly CoverageType[]): RestoreProofSummary {
+  return restoreProofSummary(types) as RestoreProofSummary;
 }
 
 export function restoreStanding(item: CoverageType): RestoreStanding {
-  const declared = item.fidelity.declared;
-  if (item.protectionState === "not-covered" || item.protectionState === "unprotectable"
-    || declared === "unprotectable" || !item.adapter || item.outcome === "unavailable") {
-    return "cannot-restore";
-  }
-  const readOnly = item.protectionState === "read-only" || declared === "read-only" || !declared;
-  if (readOnly && !hasRestoreWriter(item)) return "cannot-restore";
-  if (!item.fidelity.measured) return "unproven";
-  return item.fidelity.measured === "full" && declared === "full" ? "protected" : "partial";
+  const proof = restoreProof(item);
+  if (proof === "none") return "cannot-restore";
+  if (item.fidelity.measured) return item.fidelity.measured === "full" && item.fidelity.declared === "full" ? "protected" : "partial";
+  return proof === "proven" ? "proven" : "unproven";
 }
 
 export const STANDING_LABEL: Record<RestoreStanding, string> = {
   protected: "Protected",
   partial: "Partially protected",
+  proven: "Restore proven",
   "cannot-restore": "Cannot be restored",
   unproven: "Restore not yet proven",
 };
@@ -68,8 +81,16 @@ export function standingSentence(item: CoverageType): string {
       return `Protected: restore proven on this tenant on ${proven ?? "a recorded date"}.`;
     case "partial":
       return `Partially protected: some fields Microsoft sets itself and Keel cannot restore${proven ? `; restore proven on ${proven}` : ""}.`;
+    case "proven": {
+      const at = provenAt(item);
+      return `Restore proven on this tenant by a live run${at ? ` on ${liveDate(at)}` : ""}. No restore drill has yet measured every field that comes back.`;
+    }
     case "unproven":
-      if (provenLive(item)) return "Backed up. Keel's writes for this type are proven on this tenant, but no restore drill has yet measured what comes back.";
+      if (restoreProof(item) === "tested") {
+        return item.fidelity.declared === "partial"
+          ? "Backed up, but some fields cannot be restored. Keel's restore passes its tests but has not yet been proven on this tenant."
+          : "Backed up. Keel's restore passes its tests but has not yet been proven on this tenant.";
+      }
       return item.fidelity.declared === "partial"
         ? "Backed up, but some fields cannot be restored, and no restore has been proven on this tenant yet."
         : "Backed up, but no restore has been proven on this tenant yet.";
@@ -297,6 +318,8 @@ export interface TierSummary {
   next: string;
   last: string;
   failed: boolean;
+  // The last run finished but some types were not read in full: a warning, not fine.
+  partial: boolean;
   // A backup of this tier that is queued or running right now.
   active?: ActiveTierRun | null;
 }
@@ -313,6 +336,7 @@ export function tierSummaries(schedules: Schedule[], now: string, active: Active
       next: schedule ? nextRunSentence(schedule, now) : "No schedule; back it up on demand.",
       last: schedule && !(run && scheduleRunning) ? lastRunSentence(schedule, now) : "",
       failed: schedule?.last_status === "failed",
+      partial: schedule?.last_status === "partial",
       active: run,
     };
   });
@@ -334,7 +358,7 @@ export function matchesHealth(item: CoverageType, filter: HealthFilter): boolean
     case "backed-up": return health === "ok" || health === "empty";
     case "failed": return health === "failed";
     case "out-of-date": return health === "stale" || health === "never";
-    case "proven": return restoreStanding(item) === "protected" || restoreStanding(item) === "partial";
+    case "proven": return restoreProof(item) === "proven";
   }
 }
 
@@ -356,27 +380,80 @@ export function healthRisk(item: CoverageType): "urgent" | "soon" | undefined {
   return tone === "urgent" || tone === "soon" ? tone : undefined;
 }
 
-export interface ProtectCounts {
+/**
+ * The one coverage count (audit 31 Oct 2026, metrics 3 and 4). Every kind lands in exactly
+ * one bucket by its backupHealth, so the buckets add up to the total. A kind whose last
+ * read was only partly done counts as failed. Overview, the menu badge, What's protected
+ * and Setup all count with this, from the same kinds (withWorkloadKinds).
+ */
+export interface CoverageBuckets {
   total: number;
   backedUp: number;
   failed: number;
   stale: number;
   never: number;
+  // No collector yet, or a workload not switched on for this tenant.
+  notCollected: number;
+  // Microsoft refused the read for a missing licence or tenant feature.
+  unavailable: number;
+}
+
+export function coverageBuckets(types: readonly CoverageType[]): CoverageBuckets {
+  const buckets: CoverageBuckets = { total: types.length, backedUp: 0, failed: 0, stale: 0, never: 0, notCollected: 0, unavailable: 0 };
+  for (const item of types) {
+    switch (backupHealth(item)) {
+      case "ok": case "empty": buckets.backedUp += 1; break;
+      case "failed": buckets.failed += 1; break;
+      case "stale": buckets.stale += 1; break;
+      case "never": buckets.never += 1; break;
+      case "not-collected": buckets.notCollected += 1; break;
+      case "unavailable": buckets.unavailable += 1; break;
+    }
+  }
+  return buckets;
+}
+
+/** The buckets in the Overview's summary shape (lib/types.ts CoverageSummary). */
+export function coverageSummary(types: readonly CoverageType[]): CoverageSummary {
+  const buckets = coverageBuckets(types);
+  return {
+    covered: buckets.backedUp,
+    failed: buckets.failed,
+    stale: buckets.stale,
+    neverCollected: buckets.never,
+    notCovered: buckets.notCollected,
+    unavailable: buckets.unavailable,
+    total: buckets.total,
+  };
+}
+
+/** "203 kinds: 190 backed up, 4 failed, 3 out of date or never, 5 not backed up by Keel yet, 1 not on this tenant." */
+export function coverageSentence(summary: CoverageSummary): string {
+  const late = summary.stale + summary.neverCollected;
+  const parts = [
+    `${summary.covered.toLocaleString("en-GB")} backed up`,
+    ...(summary.failed ? [`${summary.failed.toLocaleString("en-GB")} failed`] : []),
+    ...(late ? [`${late.toLocaleString("en-GB")} out of date or never`] : []),
+    ...(summary.notCovered ? [`${summary.notCovered.toLocaleString("en-GB")} not backed up by Keel yet`] : []),
+    ...(summary.unavailable ? [`${summary.unavailable.toLocaleString("en-GB")} not on this tenant`] : []),
+  ];
+  return `${plural(summary.total, "kind", "kinds")}: ${listWords(parts)}.`;
+}
+
+export interface ProtectCounts extends CoverageBuckets {
+  // From restoreProofCounts, so What's protected, Setup and the Overview agree.
   proven: number;
+  tested: number;
   restorable: number;
 }
 
 export function protectCounts(types: CoverageType[]): ProtectCounts {
-  const health = types.map(backupHealth);
-  const standing = types.map(restoreStanding);
+  const proof = restoreProofCounts(types);
   return {
-    total: types.length,
-    backedUp: health.filter((value) => value === "ok" || value === "empty").length,
-    failed: health.filter((value) => value === "failed").length,
-    stale: health.filter((value) => value === "stale").length,
-    never: health.filter((value) => value === "never").length,
-    proven: standing.filter((value) => value === "protected" || value === "partial").length,
-    restorable: standing.filter((value) => value !== "cannot-restore").length,
+    ...coverageBuckets(types),
+    proven: proof.proven,
+    tested: proof.tested,
+    restorable: proof.restorable,
   };
 }
 

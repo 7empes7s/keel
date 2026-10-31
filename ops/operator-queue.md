@@ -13818,7 +13818,23 @@ item that needs it stays untouched.
   the database and journal for that burst. **Read-only: no tenant calls, no database writes, no restarts, no config changes.**
   Never print the database URL, a password, a token, a tenant id or a person's address (say "the operator" or "user A").
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
+- Status: done
+- Result: done, confirmed: the storm was one person's bulk accept, sent more than once (2026-10-31 19:45 UTC, keel-operator). Build 9c6f4b6c. Read-only: DB selects, journal, deployed source and source maps. No tenant, no writes, no restarts.
+  - **Step 1, `disposition` (13:50–14:20):** 14:06 accept **196**, 14:07 accept **684**; nothing else in the window. Distinct actors: **1** per minute (the operator). All 880 rows fall in **14:06:48–14:07:30** (42 s). They cover **571 distinct changes** (some changes accepted twice), all with `plan_id` null.
+  - **Step 2, `approval_request`:** 14:06 dispose **65**, 14:07 dispose **50**; all 115 still `pending`.
+  - **Step 3, journal 14:00–14:10, per minute:** `database pool full` 14:06 **125**, 14:07 **428**; `DatabaseBusyError` 14:06 **118**, 14:07 **377**; other `Error` lines are only the `[cause]: Error: timeout exceeded when trying to connect` line of each busy error (236 / 754 matches in total). No `guarded action … failed`, no `data request failed`. First stack, verbatim (Next prints `⨯`, so the error was not caught):
+    ```
+    ⨯ Error [DatabaseBusyError]: Keel's database had no free connection within 5 seconds
+        at i (.next/server/chunks/portal_lib_1bkwgow826k57._.js:1:1116)
+        at async (.next/server/chunks/_1sywcuze76ttp._.js:45:1440)
+        at async z (.next/server/chunks/portal_0ertcu_6nim9z._.js:1:3078)
+        at async X (.next/server/chunks/portal_0ertcu_6nim9z._.js:1:4072)
+        at async Module.C [as handler] (.next/server/chunks/portal_0ertcu_6nim9z._.js:1:6179) {
+      [cause]: Error: timeout exceeded when trying to connect
+    ```
+    `_1sywcuze76ttp._.js:45:1440` is `portal/lib/action.ts` (from its source map): the `guardedRoute` handler's `await connectDb(...)` runs **before** its `try`. So the busy error skips the action's own catch and Next answers with an unhandled error, not the planned "busy" 503. **For the thread:** move the connect inside the `try`, or map `DatabaseBusyError` to a 503 there.
+  - **Step 4, other jobs 14:04–14:09:** only the usual timers: `keel-status-generate` (every minute or so, ok), `keel-scheduler` at 14:05:01 ("0 scheduled job(s)"), and one `keel-worker` job at 14:05:09 (succeeded, 6.6 s), all before the burst. Nothing else ran.
+  - **Fit:** yes. One actor, 42 s, 880 accepts on 571 changes plus 115 dispose approvals, and 495 refused for a busy database: about 1,490 dispose attempts, roughly twice 775. That fits the 775-change accept being sent all at once and then retried (or clicked again), not some other job.
 - Do, on Mulinux:
   1. `SELECT date_trunc('minute', decided_at) AS m, action, count(*) FROM disposition WHERE decided_at >= '2026-10-31 13:50Z' AND decided_at < '2026-10-31 14:20Z' GROUP BY 1,2 ORDER BY 1,2;`
      and the same with `count(DISTINCT actor)` per minute (counts only, no actor names).
@@ -13836,7 +13852,28 @@ item that needs it stays untouched.
   this item adds the Caddy side, so a 503 that never reaches the portal shows up too. **No tenant calls, no database writes.**
   Caddy is reloaded (not restarted). Never print a token, a cookie, a person's address or a tenant id.
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
+- Status: done
+- Result: done, access log on (2026-10-31 19:40 UTC, keel-operator). Caddy config only; no tenant, no DB. Reloaded, not restarted.
+  - **Caddy 2.6.2** (older than 2.8, so the `wrap json` + `fields` form was used). Backup: `/etc/caddy/Caddyfile.bak-q299`. `/var/log/caddy` already existed (caddy:caddy 750).
+  - **One change from the item, to make it fit:** Keel has no site block of its own. It is a `handle @keel` inside the shared `:80` block (with relay, cracia and archipelago), and Caddy 2.6 refuses `log` inside `handle`. So the `log` sits at `:80` level, with `skip_log` for every host except Keel. Only Keel lines are written (checked: archipelago answers 200 and is not logged). Added just above `@keel host …`:
+    ```
+    @not_keel not host keel.techinsiderbytes.com
+    skip_log @not_keel
+    log {
+      output file /var/log/caddy/keel-access.log { roll_size 20MiB  roll_keep 10  roll_keep_for 720h }
+      format filter { wrap json  fields {
+        request>headers>Cf-Access-Jwt-Assertion delete
+        request>headers>Cf-Access-Authenticated-User-Email delete
+        request>headers>Cookie delete
+        request>headers>Authorization delete
+        request>uri regexp \?.*$ ""
+        resp_headers>Set-Cookie delete
+      } }
+    }
+    ```
+  - **Validate:** `Valid configuration` (on a copy first, then on the installed file). **Reload:** exit 0, caddy active.
+  - **Check:** `/api/health` → **200**, `/status/` → 200. Sample lines: `{"status":200,"uri":"/status/","ray":null}` (local curl, no Cloudflare) and `{"status":200,"uri":"/api/approvals","ray":["a5351f3fd95a98c0-LUX"]}` (a live portal request). `grep -c -i 'cf-access-jwt-assertion\|cookie'` = **0**. Query string dropped: `/api/health?probe=q299` is logged as `/api/health`, and `probe=q299` appears 0 times.
+  - **Note:** lines still carry `Cf-Connecting-Ip` and `X-Forwarded-For` (the visitor's IP). The item did not ask to drop them; add two `delete` lines if they should go. Left on. To find 503s: `jq -c 'select(.status==503) | {ts, uri: .request.uri, ray: .request.headers["Cf-Ray"]}' /var/log/caddy/keel-access.log`.
 - Do, on Mulinux:
   1. `caddy version`, and back up the Caddyfile: `cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-q299`.
   2. `install -d -o caddy -g caddy -m 750 /var/log/caddy`.

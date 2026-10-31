@@ -36,7 +36,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/restoreApprovalSettings.mjs';
-import { selfApprovalAllowed } from '../govern/approvalMode.mjs';
+import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
@@ -783,6 +783,10 @@ export async function approveContentEffects(client, { tenantRef, artifactId, app
   const selfApproved = String(artifact.requested_by) === String(approverId);
   if (selfApproved && !(await selfApprovalAllowed(client, { tenantRef }))) {
     throw new ContentEffectApprovalError('content effects must be approved by someone other than the requester while approvals need two people');
+  }
+  if (selfApproved) {
+    const problem = selfApprovalReasonProblem(justification);
+    if (problem) throw new ContentEffectApprovalError(problem);
   }
   const { rows } = await client.query(
     `INSERT INTO content_effect_approval (tenant_ref, artifact_id, effects_digest, approved_by, justification, approved_at, self_approved)

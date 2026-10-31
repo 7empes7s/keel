@@ -94,7 +94,7 @@ test("the review names people, refuses the requester and binds to the engine's d
   assert.match(contentEffectVerdict(asRequester), /someone else must approve/);
 
   const approved = contentEffectReviewView({ ...engine, approvals: [{ approvedBy: APPROVER, approvedAt: new Date("2026-10-13T09:00:00Z") }] }, names, APPROVER);
-  assert.deepEqual(approved.approvals, [{ approvedBy: "Ada Approver", approvedAt: "2026-10-13T09:00:00.000Z" }]);
+  assert.deepEqual(approved.approvals, [{ approvedBy: "Ada Approver", approvedAt: "2026-10-13T09:00:00.000Z", selfApproved: false }]);
   assert.doesNotMatch(JSON.stringify(approved.approvals), new RegExp(APPROVER), "approvers are named, never shown by id");
   assert.match(contentEffectVerdict(approved), /are approved/);
 });

@@ -40,6 +40,7 @@ const PAGES = [
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
   { name: "approvals-settings", hash: "/approvals/settings" },
+  { name: "approvals-solo", hash: "/approvals/solo" },
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
   { name: "benchmarks", hash: "/benchmarks" },
@@ -164,6 +165,50 @@ test("reject shows the spinner on Reject only", async ({ page }) => {
   await expect(card.getByRole("button", { name: "Reject the request" })).toHaveAttribute("aria-busy", "true");
   await expect(card.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-busy", "true");
   await expect(page.locator(".toast").first()).toContainText("Request rejected");
+});
+
+// Approval mode: two people by default; switching to Solo needs the risk ticked, and in
+// Solo the viewer approves their own request, which is then marked "Self-approved".
+test("Approvals · approval mode switches to Solo only with the risk confirmed, and Solo lets you approve your own", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === "/api/approval-mode").map((call) => JSON.parse(call.body ?? "{}"));
+  await open(page, "/approvals/settings", "light");
+  const card = page.locator(".am-card");
+  await expect(card.locator("#approval-mode-heading")).toContainText("Two people");
+  await card.getByRole("button", { name: "Switch to Solo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Switch to Solo approval?" });
+  await expect(dialog).toContainText("A mistake or a stolen account is not caught by a second person.");
+  const confirm = dialog.getByRole("button", { name: "Switch to Solo" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /one person can now approve their own changes/ }).check();
+  await confirm.click();
+  await expect(page.locator(".toast").first()).toContainText("Approval mode is now Solo");
+  expect(await posts()).toEqual([{ mode: "solo", riskAcknowledged: true }]);
+
+  await open(page, "/approvals/solo", "light");
+  await expect(page.locator("#approval-mode-heading")).toContainText("Solo: you can approve your own");
+  await expect(page.locator(".verdict").first()).toContainText("Approval mode is Solo, so you can approve your own requests");
+  await page.locator(".ap-row-link").first().click();
+  const request = page.locator("article.ap-card");
+  await expect(request.locator(".ap-help")).toContainText("Approval mode is Solo, so you can approve it yourself: say why");
+  await expect(request.getByText("You can self-approve")).toBeVisible();
+  // A self-approval needs a reason that says why: the button waits for one.
+  const approveMyself = request.getByRole("button", { name: "Approve myself" });
+  const why = request.getByLabel("Why are you approving this yourself?");
+  await expect(why).toHaveValue("Nobody meant to add the contractors to Finance.");
+  await why.fill("");
+  await expect(approveMyself).toBeDisabled();
+  await why.fill("Restore the policy deleted by mistake");
+  await expect(approveMyself).toBeEnabled();
+  await approveMyself.click();
+  const decisions = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url.endsWith("/approve"));
+  expect(decisions.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ reason: "Restore the policy deleted by mistake" }]);
+  await page.getByRole("radio", { name: /Decided/ }).click();
+  await expect(page.locator(".ap-history-row").first().getByText("Self-approved")).toBeVisible();
+  await page.locator(".am-card").getByRole("button", { name: "Switch to two people" }).click();
+  expect((await posts()).at(-1)).toEqual({ mode: "two-person" });
 });
 
 // Restore approvals stay the customer's choice, but a high-risk kind is flagged: a red
@@ -4264,7 +4309,7 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   await submit.click();
   const toast = page.locator(".toast").first();
   await expect(toast).toContainText("Not approved");
-  await expect(toast).toContainText("The person who made the change cannot approve it.");
+  await expect(toast).toContainText("The person who made the change cannot approve it while approvals need two people.");
 
   await active.getByLabel(/Why revoke the approval/).fill("Partner app fixed");
   await active.getByRole("button", { name: "Revoke" }).click();

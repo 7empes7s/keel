@@ -24,7 +24,7 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check"] },
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
   setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot"] },
-  approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting"] },
+  approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting", "approval-mode"] },
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
@@ -99,6 +99,13 @@ export function recordOutcome(entry: Pick<EvidenceEntry, "kind" | "subject">): O
   if (entry.kind === "automation-execution" && subject.outcome !== "executed") return "failed";
   if (entry.kind === "incident-recovery-check" && subject.outcome === "unsafe") return "failed";
   return "recorded";
+}
+
+/** The person who asked approved it themselves, under solo approval mode. */
+export function isSelfApproved(entry: Pick<EvidenceEntry, "kind" | "subject"> | null | undefined): boolean {
+  if (!entry) return false;
+  return ["approval-decision", "content-effect-approval", "change-intent"].includes(entry.kind)
+    && ((entry.subject ?? {}) as Record<string, unknown>).selfApproved === true;
 }
 
 export type RowTone = RiskTone | null;
@@ -178,6 +185,7 @@ export function recordKindWords(kind: string): string {
     "automation-execution": "Automatic roll back",
     "content-effect-approval": "Content-effect approval",
     "restore-approval-setting": "Restore approval setting",
+    "approval-mode": "Approval mode change",
     "scuba-config-list": "ScubaGear list",
     "recovery-completion": "Restore follow-up",
     "incident-recovery": "Incident recovery",

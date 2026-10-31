@@ -160,7 +160,7 @@ export function sortWaiting<T extends Pick<ApprovalRequestRecord, "expiresAt" | 
 }
 
 /** The verdict, in at most 25 words. */
-export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
+export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string, approvalMode: "two-person" | "solo" = "two-person"): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
   if (counts.waiting === 0) return { text: "Nothing is waiting for your decision.", tone: "fine", detail: "Restores, undo changes and approved-setup switches will appear here when someone asks for one." };
   const count = counts.waiting === 1 ? "1 request is" : `${counts.waiting} requests are`;
   const left = oldest ? hoursLeft(oldest, now) : null;
@@ -169,7 +169,9 @@ export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequest
   return {
     text: `${count} waiting for you.${soon}`,
     tone: counts.expiringSoon ? "urgent" : "soon",
-    detail: "Nothing changes until someone other than the person who asked approves.",
+    detail: approvalMode === "solo"
+      ? "Nothing changes until it is approved. Approval mode is Solo, so you can approve your own requests; each is marked self-approved."
+      : "Nothing changes until someone other than the person who asked approves.",
   };
 }
 
@@ -180,10 +182,11 @@ export function approvalsStatus(counts: ApprovalCounts): { tone: RiskTone; label
 
 /** Why a decision was refused, in words next to the button. */
 export function decisionError(status: number, payload: { error?: string; handoff?: string } | null): string {
-  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it.";
+  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it: approvals need two people.";
   if (status === 409 && payload?.error === "no_change") return "Nothing to roll back: the setting already holds the same values as the approved setup. Reject this request.";
   if (status === 409) return "Someone else decided it first, or it expired. The list will refresh.";
   if (status === 404) return "This request no longer exists. The list will refresh.";
+  if (status === 400 && payload?.error === "reason_required") return "Approving your own request needs a reason that says why, in a few words.";
   if (status === 400) return "Write a reason to reject.";
   return "Keel could not record the decision. Try again in a moment.";
 }

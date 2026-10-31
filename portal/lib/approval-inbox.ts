@@ -5,6 +5,7 @@ import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/go
 import { resolvePrincipals } from "../../engine/govern/references.mjs";
 import { getDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
+import { getApprovalMode } from "../../engine/govern/approvalMode.mjs";
 import { connect } from "@/lib/db";
 
 import { itemKindName, itemService } from "@/lib/baselines-view";
@@ -46,6 +47,8 @@ export interface ApprovalRequestRecord {
   status: string;
   decidedBy: string | null;
   decidedAt: string | null;
+  // The requester approved it themselves, under solo approval mode.
+  selfApproved?: boolean;
   reason: string | null;
   createdAt: string | null;
   expiresAt: string | null;
@@ -87,6 +90,9 @@ export interface ApprovalInboxData {
   // for a decision too, so they are listed and counted with `pending`, not in history.
   awaitingContentEffects: ApprovalRequestRecord[];
   history: ApprovalRequestRecord[];
+  // Who may approve: "two-person" (never the one who asked) or "solo" (they may approve
+  // their own request; it is recorded as self-approved). Absent reads as two-person.
+  approvalMode?: "two-person" | "solo";
 }
 
 /** Everything waiting for an approver: requests and content effects alike. */
@@ -156,6 +162,7 @@ export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRec
     status: String(row.effective_status ?? row.status),
     decidedBy: (row.decided_by as string | null) ?? null,
     decidedAt: iso(row.decided_at),
+    selfApproved: row.self_approved === true,
     reason: (row.reason as string | null) ?? null,
     createdAt: iso(row.created_at),
     expiresAt: iso(row.expires_at),
@@ -338,8 +345,10 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
     const waiting: ApprovalRequestRecord[] = [];
     // Sequential: one client runs one query at a time.
     for (const request of [...signed.slice(0, pending.length), ...awaitingRequests]) waiting.push({ ...request, preview: await approvalPreview(client, request) });
+    const { mode } = (await getApprovalMode(client, { tenantRef: tenantRef() })) as { mode: "two-person" | "solo" };
     return {
       generatedAt: new Date().toISOString(),
+      approvalMode: mode,
       pending: waiting.slice(0, pending.length),
       awaitingContentEffects: waiting.slice(pending.length),
       history: decided.filter((request) => !awaiting.has(request.id)),

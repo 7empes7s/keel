@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto';
-import { canonicalize } from '../cir/canonicalHash.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { isServerError } from '../../tools/tenant-probe/graph.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
-import { appendEvidence } from './evidence.mjs';
+import { appendEvidence, appendEvidenceInTransaction } from './evidence.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { refuseSameContentDrift } from '../store/openDrift.mjs';
 import {
@@ -92,54 +90,25 @@ export async function listEligibleBaselineSnapshots(client, { tenantRef, limit =
     .slice(0, limit);
 }
 
-function evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor }) {
-  return createHash('sha256')
-    .update(
-      `${prevHash ?? ''}${tenantRef}${occurredAt.toISOString()}${kind}`
-      + `${JSON.stringify(canonicalize(subject, 'group'))}${actor}`,
-    )
-    .digest('hex');
-}
-
+// The accept's record is written in the accept's own transaction, through the shared
+// writer, so it chains onto the stored head and moves it like every other record.
 async function appendAcceptanceEvidence(client, {
   tenantRef, drift, resourceVersionId, actor,
 }) {
-  const { rows: headRows } = await client.query(
-    `SELECT record_hash
-     FROM evidence
-     WHERE tenant_ref = $1
-     ORDER BY seq DESC
-     LIMIT 1
-     FOR UPDATE`,
-    [tenantRef],
-  );
-  const prevHash = headRows[0]?.record_hash ?? null;
-  const occurredAt = new Date();
-  const kind = 'disposition';
-  const subject = {
-    driftId: drift.id,
-    naturalKey: drift.natural_key,
-    resourceType: drift.resource_type,
-    changeType: drift.change_type,
-    beforeHash: drift.before_hash,
-    afterHash: drift.after_hash,
-    resourceVersionId,
-  };
-
-  await client.query(
-    `INSERT INTO evidence
-       (tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [
-      tenantRef,
-      occurredAt,
-      kind,
-      subject,
-      actor,
-      prevHash,
-      evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor }),
-    ],
-  );
+  await appendEvidenceInTransaction(client, {
+    tenantRef,
+    kind: 'disposition',
+    subject: {
+      driftId: drift.id,
+      naturalKey: drift.natural_key,
+      resourceType: drift.resource_type,
+      changeType: drift.change_type,
+      beforeHash: drift.before_hash,
+      afterHash: drift.after_hash,
+      resourceVersionId,
+    },
+    actor,
+  });
 }
 
 /** Spec M2.6.1. Accept repoints exactly ONE baseline_resource row — never the whole baseline. */

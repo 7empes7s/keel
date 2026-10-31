@@ -28,6 +28,13 @@ test("each tier's queued or running backup is picked from the jobs, running firs
   assert.deepEqual(runs.tier1, { jobId: "r1", status: "running", since: minutesAgo(8) });
 });
 
+test("a running job whose worker stopped checking in does not hold its tier", () => {
+  const live = { ...job("live", "backup", "running", "tier1", 5, 5), heartbeatAt: minutesAgo(0.5) };
+  const dead = { ...job("dead", "backup", "running", "tier3", 300, 300), heartbeatAt: minutesAgo(299) };
+  const runs = activeTierRuns([live, dead], NOW);
+  assert.deepEqual(Object.keys(runs), ["tier1"]);
+});
+
 test("the run's line says queued or running, and never 'in the future'", () => {
   assert.equal(activeRunSentence({ jobId: "a", status: "queued", since: minutesAgo(3) }, NOW), "Queued 3 minutes ago; it starts when a worker is free.");
   assert.equal(activeRunSentence({ jobId: "a", status: "running", since: minutesAgo(1) }, NOW), "Running now, started 1 minute ago.");

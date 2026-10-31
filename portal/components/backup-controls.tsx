@@ -34,7 +34,9 @@ function subscribeLocalRuns(listener: () => void) {
 }
 const NO_RUNS: ActiveTierRuns = {};
 
-export function useBackup(active: ActiveTierRuns = NO_RUNS) {
+// `stamp` is the server render time: every fresh server answer forgets local runs, even
+// when its list of runs looks the same (a run that ended before the refresh came back).
+export function useBackup(active: ActiveTierRuns = NO_RUNS, stamp?: string) {
   const router = useRouter();
   // One key per tier, renewed once that tier's request is accepted, so a double click
   // or a replayed request returns the job already queued.
@@ -42,7 +44,7 @@ export function useBackup(active: ActiveTierRuns = NO_RUNS) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queued = useSyncExternalStore(subscribeLocalRuns, () => localRuns, () => NO_RUNS);
-  const activeKey = JSON.stringify(active);
+  const activeKey = `${stamp ?? ""}|${JSON.stringify(active)}`;
   const seenKey = useRef(activeKey);
   useEffect(() => {
     if (seenKey.current === activeKey) return;
@@ -99,8 +101,8 @@ export function runWord(run: ActiveTierRun): string {
 
 /** The header's one "Back up now" menu: every tier, or one. Amber only when something
  *  failed or is out of date, so the page has one amber action at most. */
-export function BackUpNow({ disabled, urgent, active = NO_RUNS }: { disabled: boolean; urgent: boolean; active?: ActiveTierRuns }) {
-  const { backUp, busy, feedback, runOf } = useBackup(active);
+export function BackUpNow({ disabled, urgent, active = NO_RUNS, now }: { disabled: boolean; urgent: boolean; active?: ActiveTierRuns; now?: string }) {
+  const { backUp, busy, feedback, runOf } = useBackup(active, now);
   // "All tiers" asks only for the tiers not already queued or running.
   const all = TIERS.map((tier) => tier.id).filter((tier) => !runOf(tier));
   return (
@@ -162,7 +164,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false, now, acti
   now?: string;
   active?: ActiveTierRuns;
 }) {
-  const { backUp, busy, feedback, runOf } = useBackup(active);
+  const { backUp, busy, feedback, runOf } = useBackup(active, now);
   const cells = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false }));
   return (
     <section aria-labelledby="backup-now-heading" className="pt-section">

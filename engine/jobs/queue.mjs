@@ -67,9 +67,12 @@ export async function enqueue(client, {
         [JSON.stringify([[...reuseActive.kinds].sort(), reuseActive.params])]);
       const { rows: active } = await client.query(
         `SELECT *, started_at::text AS event_started_at FROM job
-          WHERE kind = ANY($1::text[]) AND status IN ('queued', 'running') AND params @> $2::jsonb
+          WHERE kind = ANY($1::text[]) AND params @> $2::jsonb
+            -- A run whose worker died (stale heartbeat) does not block a new one.
+            AND (status = 'queued'
+              OR (status = 'running' AND heartbeat_at > now() - ($3 * interval '1 millisecond')))
           ORDER BY created_at LIMIT 1`,
-        [reuseActive.kinds, reuseActive.params],
+        [reuseActive.kinds, reuseActive.params, ORPHANED_HEARTBEAT_STALE_MS],
       );
       // A replay of the request that queued it is not a second press.
       if (active[0]) return active[0].idempotency_key === idempotencyKey ? active[0] : { ...active[0], reused: true };

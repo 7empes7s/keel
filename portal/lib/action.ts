@@ -550,12 +550,13 @@ export function guardedAction(
         notBefore: undefined,
         maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
         reuseActive: reuse
-          ? { kinds: [...reuse.kinds], params: Object.fromEntries(reuse.params.map((key) => [key, params[key] ?? null])) }
+          ? { kinds: [...reuse.kinds], params: Object.fromEntries(reuse.params.filter((key) => params[key] !== undefined).map((key) => [key, params[key]])) }
           : null,
       })) as Record<string, unknown>;
       if (job.reused === true) {
         return Response.json(
-          { job: normalizeJob(job), alreadyActive: true },
+          // The run may be someone else's: their request key is not theirs to see.
+          { job: { ...normalizeJob(job), idempotencyKey: null }, alreadyActive: true },
           { status: 200, headers: NO_STORE },
         );
       }

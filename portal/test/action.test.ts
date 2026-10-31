@@ -615,7 +615,7 @@ test("a tier's backup pressed again while it is queued or running returns that j
   assert.equal(secondBody.job.id, firstBody.job.id);
 
   // Running still counts; another tier is its own job.
-  await client.query(`UPDATE job SET status = 'running', started_at = now() WHERE id = $1`, [firstBody.job.id]);
+  await client.query(`UPDATE job SET status = 'running', started_at = now(), heartbeat_at = now() WHERE id = $1`, [firstBody.job.id]);
   assert.equal((await (await press("tier3-again")).json()).job.id, firstBody.job.id);
   const other = await press("tier1-now", { tier: "tier1" });
   assert.equal(other.status, 202);

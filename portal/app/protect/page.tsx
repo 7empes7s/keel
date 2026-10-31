@@ -65,14 +65,14 @@ export default async function ProtectPage() {
   const verdict = protectVerdict(data, now);
   // UI audit B1: each tier's queued or running backup, so its cards and buttons say
   // "Queued" / "Running" and a second press cannot start it again.
-  const active = activeTierRuns(activeResult.status === "fulfilled" ? activeResult.value : jobs);
+  const active = activeTierRuns(activeResult.status === "fulfilled" ? activeResult.value : jobs, new Date().toISOString());
   const jobsActive = Object.keys(active).length > 0 || jobs.some((job) => job.status === "queued" || job.status === "running");
 
   const status = protectStatus(data);
   return (
     <>
       <PageHeader
-        actions={<BackUpNow active={active} disabled={!canBackup} urgent={verdict.tone !== "good"} />}
+        actions={<BackUpNow active={active} disabled={!canBackup} now={now} urgent={verdict.tone !== "good"} />}
         description={DESCRIPTION}
         generatedAt={now}
         section="Backup"

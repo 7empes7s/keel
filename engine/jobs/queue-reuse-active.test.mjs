@@ -53,6 +53,12 @@ try {
   }
   assert.equal(claimed.id, first.id);
   assert.equal((await backUp(client, 'tier3', 'k5')).id, first.id);
+  // A running job whose worker died (stale heartbeat) does not block a new run.
+  await client.query(`UPDATE job SET heartbeat_at = now() - interval '1 hour' WHERE id = $1`, [first.id]);
+  const afterCrash = await backUp(client, 'tier3', 'k5b');
+  assert.notEqual(afterCrash.id, first.id);
+  assert.equal(afterCrash.reused, undefined);
+  await client.query(`UPDATE job SET status = 'succeeded' WHERE id = $1`, [afterCrash.id]);
   await complete(client, { id: first.id, result: {} });
   const after = await backUp(client, 'tier3', 'k6');
   assert.notEqual(after.id, first.id);

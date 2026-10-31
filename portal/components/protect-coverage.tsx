@@ -234,7 +234,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children, act
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
   const params = useSearchParams();
-  const { backUp, busy, feedback, runOf } = useBackup(active);
+  const { backUp, busy, feedback, runOf } = useBackup(active, now);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
   // The health tiles add up: `health=failed,out-of-date` shows kinds in either. Service narrows.

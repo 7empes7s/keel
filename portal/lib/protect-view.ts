@@ -259,12 +259,17 @@ export type ActiveTierRuns = Record<string, ActiveTierRun>;
 /** Each tier's queued or running backup, from recent jobs. A running job wins over a
  *  queued one; otherwise the oldest, which is the one the server hands back to a second
  *  press. */
-export function activeTierRuns(jobs: { id: string; kind: string; status: string; params: unknown; createdAt: string | null; startedAt: string | null }[]): ActiveTierRuns {
+// Matches engine/jobs/queue.mjs ORPHANED_HEARTBEAT_STALE_MS: a running job whose worker
+// has not checked in for this long died, and does not hold its tier's buttons off.
+const STALE_HEARTBEAT_MS = 120_000;
+
+export function activeTierRuns(jobs: { id: string; kind: string; status: string; params: unknown; createdAt: string | null; startedAt: string | null; heartbeatAt?: string | null }[], now?: string): ActiveTierRuns {
   const runs: ActiveTierRuns = {};
   const ordered = [...jobs].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
   for (const job of ordered) {
     if (job.kind !== "backup" && job.kind !== "collect") continue;
     if (job.status !== "queued" && job.status !== "running") continue;
+    if (job.status === "running" && now && (!job.heartbeatAt || new Date(now).valueOf() - new Date(job.heartbeatAt).valueOf() > STALE_HEARTBEAT_MS)) continue;
     const tier = (job.params as { tier?: unknown } | null)?.tier;
     if (typeof tier !== "string") continue;
     const current = runs[tier];

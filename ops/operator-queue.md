@@ -14238,3 +14238,16 @@ item that needs it stays untouched.
      "Showing the newest 50 of M restores"; on `/resilience` the alert "M restores have N follow-up steps open".
 - **Expected:** steps N and restores M from step 2 appear unchanged on all three pages in step 3.
 - **Report:** steps 1–3 with the numbers. Nothing to fix on the server; any mismatch goes back to the thread as a code bug.
+
+### Q304: After PR #885 deploys, time the slow pages' reads again (read-only, no tenant), about 15 minutes
+- Drafted by the "Speed up slow portal pages" thread (2026-10-31). PR #885 (merged as of master ab328ffa) adds indexes for name lookups
+  (schema fragment 91), turns JIT off on portal connections, trims the compliance read, and logs portal statements of 1 s or more.
+  This item gets the after-numbers for Q303. **Same read-only rules as Q303.**
+- Needs: the deployed build at or after PR #885's merge, and its schema applied (`SELECT indexname FROM pg_indexes WHERE indexname = 'resource_version_object_id_idx'` returns a row; if not, report `blocked`).
+- Status: todo
+- Result:
+- Do, on Mulinux:
+  1. Same as Q303 steps 1–4 at the deployed commit, with the script from Q303, but `timeout 900`. Run it twice: first with
+     `ONLY='changes|baselines getDriftData|compliance getComplianceData'`, then with `ONLY='resilience|protect|activity|alerts'`.
+  2. `journalctl -u keel-portal --since "<deploy time>" --no-pager | grep "slow query" | sed 's/^.*slow query/slow query/' | sort | uniq -c | sort -rn | head -20`.
+- **Report:** the commit, both outputs verbatim, and the slow-query lines.

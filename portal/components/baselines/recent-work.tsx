@@ -5,12 +5,14 @@ import { JobRecordFields } from "@/components/job-table";
 import { PagedRows } from "@/components/list/paged-rows";
 import { Icon } from "@/components/shell/icons";
 import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { jobDisplayStatus } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { formatTimestamp } from "@/lib/presentation";
 import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 function statusChip(status: string): { tone: RiskTone | null; label: string } {
+  if (status === "partial") return { tone: "soon", label: "Partly done" };
   if (status === "succeeded" || status === "finished" || status === "completed") return { tone: "fine", label: "Finished" };
   if (status === "failed") return { tone: "urgent", label: "Failed" };
   if (status === "running") return { tone: "low", label: "Running" };
@@ -30,7 +32,7 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
           noun={{ one: "job", many: "jobs" }}
           prefix="work-"
           rows={jobs.map((job) => {
-            const chip = statusChip(job.status);
+            const chip = statusChip(jobDisplayStatus(job));
             const at = job.finishedAt ?? job.startedAt ?? job.createdAt;
             return { id: job.id, text: `${jobName(job)} ${chip.label}`, values: { when: at ?? "", name: jobName(job), status: chip.label }, node: (
               <li className="bl-card bl-job">

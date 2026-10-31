@@ -4,7 +4,7 @@ import type { StatTile } from "@/components/ui/stat-tiles";
 import { typeService } from "@/lib/baselines-view";
 import { workloadLabel } from "@/lib/compare-view";
 import { settingsFileWords } from "@/lib/error-words";
-import { CONTENT_WORKLOADS, holdsObjectId, incompleteTypeLabel, jobIncompleteTypes } from "@/lib/job-names";
+import { CONTENT_WORKLOADS, holdsObjectId, incompleteTypeLabel, jobDisplayStatus, jobIncompleteTypes } from "@/lib/job-names";
 import { typeName } from "@/lib/protect-view";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts, type KindPart } from "@/lib/type-groups";
@@ -117,7 +117,8 @@ export function jobResultTiles(job: Pick<JobRecord, "kind" | "result" | "status"
 export function jobTiles(job: JobRecord, now: string): StatTile[] {
   const waited = jobGap(job.createdAt, job.startedAt);
   const ran = jobGap(job.startedAt, job.finishedAt ?? (job.status === "running" ? now : null));
-  const status = job.status === "failed" ? "urgent" : job.status === "succeeded" ? "fine" : job.status === "running" ? "soon" : "neutral";
+  const shown = jobDisplayStatus(job);
+  const status = shown === "failed" ? "urgent" : shown === "partial" ? "soon" : shown === "succeeded" ? "fine" : shown === "running" ? "soon" : "neutral";
   return [
     { key: "asked", label: "Asked for", icon: "calendar", value: ago(job.createdAt ?? null, now), about: "when it was queued", tone: "neutral" },
     { key: "waited", label: "Waited", icon: "clock", value: job.startedAt ? (waited ?? "Unknown") : "Not started", about: job.startedAt ? "before it started" : "still in the queue", tone: job.startedAt ? "neutral" : "low" },

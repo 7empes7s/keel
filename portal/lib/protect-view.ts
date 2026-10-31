@@ -255,6 +255,8 @@ export interface TierSummary {
   next: string;
   last: string;
   failed: boolean;
+  // The last run finished but some types were not read in full: a warning, not fine.
+  partial: boolean;
 }
 
 /** One card per tier: when it runs next and how its last run ended. */
@@ -266,6 +268,7 @@ export function tierSummaries(schedules: Schedule[], now: string): TierSummary[]
       next: schedule ? nextRunSentence(schedule, now) : "No schedule; back it up on demand.",
       last: schedule ? lastRunSentence(schedule, now) : "",
       failed: schedule?.last_status === "failed",
+      partial: schedule?.last_status === "partial",
     };
   });
 }

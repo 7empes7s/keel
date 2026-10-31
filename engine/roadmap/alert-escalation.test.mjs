@@ -296,14 +296,14 @@ test('a read-only principal cannot acknowledge or resolve, in the engine or the 
         assert.equal(data.alerts[0].owner.name, 'Dana On-call');
         assert.ok(data.alerts[0].ackDeadlineAt);
         assert.equal(data.alerts[0].history[0].reason, 'condition-firing');
-        const readOnly = await renderAlertsAt('', { alerts: data.alerts, now: data.generatedAt, canRespond: false, canMute: false });
+        const readOnly = await renderAlertsAt('', { alerts: data.alerts, counts: data.counts, now: data.generatedAt, canRespond: false, canMute: false });
         assert.match(readOnly, /Finance \(group\)/);
         assert.match(readOnly, /Dana On-call/);
         assert.doesNotMatch(readOnly, />Acknowledge the overdue/);
         assert.doesNotMatch(readOnly, />Resolve</);
         // The deadline is a minute away: the row counts it down.
         assert.match(readOnly, /Due in 1 min/);
-        assert.match(alertsVerdict(data.alerts, data.generatedAt).text, /1 alert needs someone/);
+        assert.match(alertsVerdict(data.counts).text, /1 alert needs someone/);
 
         // The read-only principal is refused before the alert is touched, even with a forged body.
         for (const action of ['resolve', 'acknowledge']) {

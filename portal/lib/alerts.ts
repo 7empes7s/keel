@@ -1,10 +1,14 @@
 import {
-  ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitionsFor,
+  ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, alertStateCounts, listAlerts, listAlertTransitionsFor,
   resolveAlert, suppressAlert, unsuppressAlert,
 } from "../../engine/notify/alerts.mjs";
 import { lookupNames } from "../../engine/insights/names.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
-import { alertWorkload, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+import { alertWorkload, type AlertCounts, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+
+// How many alerts the page lists: every open one up to ACTIVE_LIMIT, and the latest closed ones.
+export const ACTIVE_LIMIT = 1000;
+export const CLOSED_LIMIT = 200;
 import type { ObjectFacts } from "@/lib/object-label";
 import { savedNames } from "@/lib/saved-names";
 import { peopleNamer, principalPerson, type Namer } from "@/lib/people-names";
@@ -125,7 +129,13 @@ export async function alertObjects(client: QueryClient, tenantRef: string, keys:
 
 export function guardedAlertInbox(deps: GuardDeps = {}) {
   return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
-    const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
+    // Every alert someone still has to act on, then the most recent closed ones. The
+    // tiles take their numbers from alertStateCounts, never from this list.
+    const now = new Date();
+    const active = await listAlerts(client, { tenantRef, actor: principalId, states: ["open", "reopened", "acknowledged"], limit: ACTIVE_LIMIT, at: now }) as Row[];
+    const closed = await listAlerts(client, { tenantRef, actor: principalId, states: ["resolved", "suppressed"], limit: CLOSED_LIMIT, at: now }) as Row[];
+    const counts = await alertStateCounts(client, { tenantRef, now }) as AlertCounts;
+    const rows = [...active, ...closed];
     // Every alert's history in one read, not one per alert: the page polls.
     const histories = new Map<string, Row[]>();
     const transitions = await listAlertTransitionsFor(client, { tenantRef, actor: principalId, alertIds: rows.map((row) => String(row.id)) }) as Row[];
@@ -192,7 +202,7 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
         })),
       };
     });
-    const body: AlertInboxData = { generatedAt: new Date().toISOString(), alerts };
+    const body: AlertInboxData = { generatedAt: now.toISOString(), alerts, counts };
     return Response.json(body, { headers: NO_STORE });
   }, deps);
 }

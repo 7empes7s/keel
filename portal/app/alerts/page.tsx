@@ -6,7 +6,7 @@ import { AlertsPage as AlertsBody } from "@/components/alerts/alerts-page";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { ALERT_MUTE_CAPABILITY, ALERT_RESPOND_CAPABILITY } from "@/lib/alerts";
-import { alertCounts, alertsStatus, type AlertInboxData } from "@/lib/alerts-view";
+import { alertsStatus, type AlertInboxData } from "@/lib/alerts-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { AnonymityNote } from "@/components/anonymity-note";
 import { getAnonymitySetting } from "@/lib/anonymity";
@@ -28,10 +28,11 @@ export default async function AlertsPage() {
     return <><PageHeader section="Inbox" title="Alerts" description={DESCRIPTION} /><DataUnavailable surface="Alerts" /></>;
   }
   return <>
-    <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Inbox" status={alertsStatus(alertCounts(data.alerts, data.generatedAt))} title="Alerts" />
+    <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Inbox" status={alertsStatus(data.counts)} title="Alerts" />
     <AnonymityNote setting={await getAnonymitySetting()} />
     <AlertsBody
       alerts={data.alerts}
+      counts={data.counts}
       canMute={access.capabilities.includes(ALERT_MUTE_CAPABILITY)}
       canRespond={access.capabilities.includes(ALERT_RESPOND_CAPABILITY)}
       now={data.generatedAt}

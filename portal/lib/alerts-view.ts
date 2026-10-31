@@ -61,7 +61,11 @@ export interface AlertItem {
 
 export interface AlertInboxData {
   generatedAt: string;
+  // Every open alert, then the most recent closed ones: a list, never the count.
   alerts: AlertItem[];
+  // The tenant's whole count by state (alertStateCounts): the same numbers as the bell
+  // and the Overview, however many alerts the list holds.
+  counts: AlertCounts;
 }
 
 export const ACTIVE_STATES: AlertState[] = ["open", "reopened", "acknowledged"];
@@ -196,19 +200,17 @@ export function inboxOrder(alerts: AlertItem[]): AlertItem[] {
   return [...alerts].sort((a, b) => rank(a) - rank(b) || deadline(a) - deadline(b) || b.lastFiringAt.localeCompare(a.lastFiringAt));
 }
 
-export function alertsVerdict(alerts: AlertItem[], now: string): { text: string; tone: "good" | "attention" | "critical" } {
-  const waiting = alerts.filter((alert) => alert.state === "open" || alert.state === "reopened");
-  const overdue = waiting.filter((alert) => isOverdue(alert, now)).length;
-  const acknowledged = alerts.filter((alert) => alert.state === "acknowledged").length;
-  if (waiting.length === 0 && acknowledged === 0) {
+export function alertsVerdict(counts: Pick<AlertCounts, "waiting" | "overdue" | "acknowledged">): { text: string; tone: "good" | "attention" | "critical" } {
+  const { waiting, overdue, acknowledged } = counts;
+  if (waiting === 0 && acknowledged === 0) {
     return { text: "No open alerts. KEEL resolves an alert itself when the change it reported goes away.", tone: "good" };
   }
-  if (waiting.length === 0) {
-    return { text: `${acknowledged} ${acknowledged === 1 ? "alert is" : "alerts are"} acknowledged and still open; nothing is waiting for someone.`, tone: "attention" };
+  if (waiting === 0) {
+    return { text: `${acknowledged.toLocaleString("en-GB")} ${acknowledged === 1 ? "alert is" : "alerts are"} acknowledged and still open; nothing is waiting for someone.`, tone: "attention" };
   }
-  const head = `${waiting.length} ${waiting.length === 1 ? "alert needs" : "alerts need"} someone to acknowledge ${waiting.length === 1 ? "it" : "them"}`;
+  const head = `${waiting.toLocaleString("en-GB")} ${waiting === 1 ? "alert needs" : "alerts need"} someone to acknowledge ${waiting === 1 ? "it" : "them"}`;
   return overdue
-    ? { text: `${head}; ${overdue} ${overdue === 1 ? "is" : "are"} past the deadline.`, tone: "critical" }
+    ? { text: `${head}; ${overdue.toLocaleString("en-GB")} ${overdue === 1 ? "is" : "are"} past the deadline.`, tone: "critical" }
     : { text: `${head}.`, tone: "attention" };
 }
 
@@ -269,20 +271,46 @@ export function resolvedAt(alert: Pick<AlertItem, "history">): string | null {
   return null;
 }
 
-export interface AlertCounts { waiting: number; overdue: number; acknowledged: number; resolvedWeek: number; muted: number; total: number }
+export interface AlertCounts { waiting: number; overdue: number; acknowledged: number; resolved: number; resolvedWeek: number; muted: number; total: number }
 
 export function alertCounts(alerts: AlertItem[], now: string): AlertCounts {
-  const counts: AlertCounts = { waiting: 0, overdue: 0, acknowledged: 0, resolvedWeek: 0, muted: 0, total: alerts.length };
+  const counts: AlertCounts = { waiting: 0, overdue: 0, acknowledged: 0, resolved: 0, resolvedWeek: 0, muted: 0, total: alerts.length };
   const since = new Date(now).valueOf() - WEEK_MS;
   for (const alert of alerts) {
     if (isWaiting(alert)) counts.waiting += 1;
     if (isOverdue(alert, now)) counts.overdue += 1;
     if (alert.state === "acknowledged") counts.acknowledged += 1;
     if (alert.state === "suppressed") counts.muted += 1;
+    if (alert.state === "resolved") counts.resolved += 1;
     const resolved = alert.state === "resolved" ? resolvedAt(alert) : null;
     if (resolved && new Date(resolved).valueOf() >= since) counts.resolvedWeek += 1;
   }
   return counts;
+}
+
+const COUNT_KEYS = ["waiting", "overdue", "acknowledged", "resolved", "resolvedWeek", "muted", "total"] as const;
+
+/**
+ * The tenant's counts with what this page has just changed applied: the server's whole
+ * count, plus the difference between the list as changed here and as it was read.
+ */
+export function liveCounts(server: AlertCounts, read: AlertItem[], changed: AlertItem[], now: string): AlertCounts {
+  const before = alertCounts(read, now);
+  const after = alertCounts(changed, now);
+  const live = { ...server };
+  for (const key of COUNT_KEYS) live[key] = Math.max(0, server[key] + after[key] - before[key]);
+  return live;
+}
+
+/**
+ * When the list holds fewer alerts than the tiles count (it lists every open alert up to
+ * a limit, and only the most recent closed ones), one plain sentence that says so.
+ */
+export function listedNote(counts: AlertCounts, listed: AlertCounts, filter: string[]): string | null {
+  const picked = filter.filter((key): key is AlertFilter => ALERT_FILTERS.includes(key as AlertFilter));
+  const keys = (picked.length ? picked : ALERT_FILTERS).map((key) => FILTER_COUNT[key]);
+  if (keys.every((key) => listed[key] >= counts[key])) return null;
+  return `This list shows ${listed.total.toLocaleString("en-GB")} of ${counts.total.toLocaleString("en-GB")} alerts: every open one, and the most recently closed. The numbers above count all of them.`;
 }
 
 /** The header pill: urgent when one is past its deadline, soon while one waits. */
@@ -295,6 +323,9 @@ export function alertsStatus(counts: AlertCounts): { tone: RiskTone; label: stri
 
 export type AlertFilter = "waiting" | "overdue" | "acknowledged" | "resolved" | "muted";
 export const ALERT_FILTERS: AlertFilter[] = ["waiting", "overdue", "acknowledged", "resolved", "muted"];
+
+// Which count each filter tile lists.
+const FILTER_COUNT: Record<AlertFilter, keyof AlertCounts> = { waiting: "waiting", overdue: "overdue", acknowledged: "acknowledged", resolved: "resolved", muted: "muted" };
 
 export function parseAlertFilter(value: string | null | undefined): AlertFilter | null {
   return ALERT_FILTERS.includes(value as AlertFilter) ? (value as AlertFilter) : null;

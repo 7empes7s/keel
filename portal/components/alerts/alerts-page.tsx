@@ -45,7 +45,10 @@ import {
   isActive,
   isOverdue,
   isWaiting,
+  listedNote,
+  liveCounts,
   stateGroup,
+  type AlertCounts,
   type AlertFilter,
   type AlertItem,
   type AlertState,
@@ -79,8 +82,10 @@ const ALERT_SORTS: ListSort<AlertItem>[] = [
 ];
 const plural = (count: number) => `${count} ${count === 1 ? "alert" : "alerts"}`;
 
-export function AlertsPage({ alerts, now, canRespond, canMute }: {
+export function AlertsPage({ alerts, counts: serverCounts, now, canRespond, canMute }: {
   alerts: AlertItem[];
+  // The tenant's whole count (alertStateCounts). Without it, the list is the whole story.
+  counts?: AlertCounts;
   now: string;
   canRespond: boolean;
   canMute: boolean;
@@ -110,8 +115,12 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
     return { ...alert, state, acknowledgedAt: state === "acknowledged" ? alert.acknowledgedAt ?? now : alert.acknowledgedAt, acknowledgedByName: state === "acknowledged" ? alert.acknowledgedByName ?? "you" : alert.acknowledgedByName };
   }), [alerts, changed, now]);
 
-  const counts = useMemo(() => alertCounts(items, now), [items, now]);
-  const verdict = useMemo(() => alertsVerdict(items, now), [items, now]);
+  // The tiles and the verdict count every alert, as the bell and the Overview do; the
+  // list may hold fewer (see listedNote).
+  const listedCounts = useMemo(() => alertCounts(items, now), [items, now]);
+  const counts = useMemo(() => (serverCounts ? liveCounts(serverCounts, alerts, items, now) : listedCounts), [serverCounts, alerts, items, now, listedCounts]);
+  const verdict = useMemo(() => alertsVerdict(counts), [counts]);
+  const listed = listedNote(counts, listedCounts, filter);
   const ordered = useMemo(() => inboxOrder(items), [items]);
   const shown = useMemo(() => applyFilters(ordered, stateTiles, filter), [ordered, stateTiles, filter]);
   const tileTotals = useMemo(() => new Map(tileCounts(ordered, stateTiles, filter).map((entry) => [entry.key, entry])), [ordered, stateTiles, filter]);
@@ -176,11 +185,11 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
     ? { label: overdueIds.length === 1 ? "Acknowledge the overdue one" : "Acknowledge the overdue ones", onClick: () => void run("acknowledge", overdueIds), busy }
     : null;
 
-  const tiles: { key: AlertFilter; label: string; icon: IconName; value: number; small: string; tone?: "urgent" | "soon" }[] = [
-    { key: "waiting", label: "Needs someone", icon: "bell", value: counts.waiting, small: counts.waiting ? "Nobody has acknowledged them" : "Nothing is waiting", tone: counts.waiting ? "soon" : undefined },
-    { key: "overdue", label: "Past deadline", icon: "clock", value: counts.overdue, small: counts.overdue ? "Missed the time to acknowledge" : "Every deadline is met", tone: counts.overdue ? "urgent" : undefined },
-    { key: "acknowledged", label: "Acknowledged", icon: "check", value: counts.acknowledged, small: counts.acknowledged ? "Someone is on it" : "None in hand right now" },
-    { key: "resolved", label: "Resolved this week", icon: "check-circle", value: counts.resolvedWeek, small: "Closed in the last 7 days" },
+  const tiles: { key: AlertFilter; label: string; icon: IconName; value: string; small: string; tone?: "urgent" | "soon" }[] = [
+    { key: "waiting", label: "Needs someone", icon: "bell", value: counts.waiting.toLocaleString("en-GB"), small: counts.waiting ? "Nobody has acknowledged them" : "Nothing is waiting", tone: counts.waiting ? "soon" : undefined },
+    { key: "overdue", label: "Past deadline", icon: "clock", value: counts.overdue.toLocaleString("en-GB"), small: counts.overdue ? "Missed the time to acknowledge" : "Every deadline is met", tone: counts.overdue ? "urgent" : undefined },
+    { key: "acknowledged", label: "Acknowledged", icon: "check", value: counts.acknowledged.toLocaleString("en-GB"), small: counts.acknowledged ? "Someone is on it" : "None in hand right now" },
+    { key: "resolved", label: "Resolved this week", icon: "check-circle", value: counts.resolvedWeek.toLocaleString("en-GB"), small: "Closed in the last 7 days" },
   ];
 
   const tileLabel = (key: string) => tiles.find((tile) => tile.key === key)?.label ?? STATE_GROUPS[key as StateGroup]?.label ?? key;
@@ -243,6 +252,8 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
             );
           })}
         </section>
+
+        {listed ? <p className="al-listed">{listed}</p> : null}
 
         <ActiveFilters extra={{ closed: null, open: null }} filters={activeFilters} noun={{ one: "alert", many: "alerts" }} shown={shown.length} total={items.length} />
 

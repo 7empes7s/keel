@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
-import { useBackup } from "@/components/backup-controls";
+import { runWord, useBackup } from "@/components/backup-controls";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { coverageWindows, TypeDetails, TypeRecordFields } from "@/components/coverage-report";
@@ -38,6 +38,8 @@ import {
   tierLabel,
   typeName,
   workloadLiveLines,
+  activeRunSentence,
+  type ActiveTierRuns,
   type BackupHealth,
   type HealthFilter,
   type RestoreStanding,
@@ -219,18 +221,20 @@ const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
 ];
 const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
 
-export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
+export function ProtectCoverage({ data, now, canBackup, tierStrip, children, active }: {
   data: CoverageData;
   now: string;
   canBackup: boolean;
   tierStrip?: ReactNode;
+  // Each tier's backup that is queued or running, so its buttons say so and stay off.
+  active?: ActiveTierRuns;
   // The rest of the page's explanation layer (content backups, recent jobs), after the list.
   children?: ReactNode;
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
   const params = useSearchParams();
-  const { backUp, busy, feedback } = useBackup();
+  const { backUp, busy, feedback, runOf } = useBackup(active, now);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
   // The health tiles add up: `health=failed,out-of-date` shows kinds in either. Service narrows.
@@ -443,18 +447,21 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
                   <span className="pt-row-line">{backupSentence(item, now)}</span>
                 </span>
                 <span className="pt-row-acts">
-                  {tier && PROBLEM.includes(state) ? (
-                    <button
-                      aria-busy={busy === item.type || undefined}
-                      className="btn btn-sm"
-                      disabled={!canBackup || busy !== null}
-                      onClick={() => void backUp([tier], item.type)}
-                      title={`Runs every ${tierLabel(tier)} kind`}
-                      type="button"
-                    >
-                      Back up {tierLabel(tier)} again
-                    </button>
-                  ) : null}
+                  {tier && PROBLEM.includes(state) ? (() => {
+                    const run = runOf(tier);
+                    return (
+                      <button
+                        aria-busy={busy === item.type || undefined}
+                        className="btn btn-sm"
+                        disabled={!canBackup || busy !== null || run !== null}
+                        onClick={() => void backUp([tier], item.type)}
+                        title={run ? activeRunSentence(run, now) : `Runs every ${tierLabel(tier)} kind`}
+                        type="button"
+                      >
+                        {run ? `${tierLabel(tier)} ${runWord(run).toLowerCase()}` : `Back up ${tierLabel(tier)} again`}
+                      </button>
+                    );
+                  })() : null}
                 </span>
               </div>
             );
@@ -478,20 +485,28 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
       {opened ? <BaselinesStyles /> : null}
       {opened ? (
         <DetailsSheet
-          footer={opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (
-            <>
-              <button
-                aria-busy={busy === "sheet" || undefined}
-                className="btn btn-primary"
-                disabled={busy !== null}
-                onClick={() => void backUp([opened.criticality!], "sheet")}
-                type="button"
-              >
-                <Icon name="play" />Back up {tierLabel(opened.criticality)}
-              </button>
-              <p className="bl-help">Runs every {tierLabel(opened.criticality)} kind. It only reads your tenant.</p>
-            </>
-          ) : undefined}
+          footer={opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (() => {
+            const tier = opened.criticality!;
+            const run = runOf(tier);
+            return (
+              <>
+                <button
+                  aria-busy={busy === "sheet" || undefined}
+                  className="btn btn-primary"
+                  disabled={busy !== null || run !== null}
+                  onClick={() => void backUp([tier], "sheet")}
+                  type="button"
+                >
+                  <Icon name={run ? "refresh" : "play"} />{run ? `${tierLabel(tier)} ${runWord(run).toLowerCase()}` : `Back up ${tierLabel(tier)}`}
+                </button>
+                {run ? (
+                  <p className="bl-help" role="status">{activeRunSentence(run, now)} <Link href={`/jobs/${encodeURIComponent(run.jobId)}`}>View job</Link></p>
+                ) : (
+                  <p className="bl-help">Runs every {tierLabel(tier)} kind. It only reads your tenant.</p>
+                )}
+              </>
+            );
+          })() : undefined}
           kicker={<><Badge tone={HEALTH_BADGE[backupHealth(opened)].tone}>{HEALTH_BADGE[backupHealth(opened)].label}</Badge><span>{typeService(opened.type).name}</span></>}
           onClose={() => view.set({ open: null })}
           title={kindName(opened)}

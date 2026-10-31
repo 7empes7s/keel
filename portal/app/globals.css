@@ -4601,7 +4601,9 @@ section.wizard-panel {
 
 .toaster {
   position: fixed;
-  z-index: 70;
+  /* Above the details panel (70) and its popovers (80), so a toast fired from an open
+     panel is seen (UI audit B1: "Back up Tier 3" in the panel looked silent). */
+  z-index: 90;
   top: calc(var(--space-md) + env(safe-area-inset-top, 0px));
   right: var(--space-md);
   width: min(24rem, calc(100vw - 2rem));
@@ -4774,6 +4776,11 @@ section.wizard-panel {
     bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
     left: var(--space-md);
     width: auto;
+  }
+  /* An open panel keeps its buttons at the bottom; the toast goes to the top instead. */
+  body[data-sheet-open] .toaster {
+    top: calc(var(--space-md) + env(safe-area-inset-top, 0px));
+    bottom: auto;
   }
 }
 
@@ -9081,6 +9088,11 @@ section.wizard-panel {
 .pt-tier-about, .pt-tier .tier-next, .pt-tier .tier-last { color: var(--text-soft); }
 .pt-tier .tier-last a { color: inherit; text-underline-offset: 0.2em; }
 .pt-tier .tier-last-failed, .pt-tier .tier-last-failed a { color: var(--urgent); }
+.pt-tier .tier-run { display: flex; align-items: center; gap: var(--space-2xs); color: var(--low-risk); font-weight: 600; }
+.pt-tier .tier-run a { color: inherit; text-underline-offset: 0.2em; }
+.pt-tier .tier-run .icon { width: 0.875rem; height: 0.875rem; flex: none; }
+.pt-tier[data-run="running"] .tier-run .icon { animation: spin 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .pt-tier[data-run="running"] .tier-run .icon { animation: none; } }
 .pt-tier-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-2xs); }
 .pt-tier-actions .icon { width: 0.875rem; height: 0.875rem; }
 

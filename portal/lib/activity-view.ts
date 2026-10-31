@@ -61,9 +61,9 @@ export type Outcome = "failed" | "partial" | "refused" | "running" | "waiting" |
 export const OUTCOMES: Record<Outcome, { label: string; plural: string; tone: BadgeTone; icon: IconName; jobStatuses: string[] }> = {
   failed: { label: "Failed", plural: "Failed", tone: "urgent", icon: "x-circle", jobStatuses: ["failed"] },
   // A finished backup that could not read some types in full: a warning, never "Finished".
-  // The engine stores it as succeeded, so the server reads succeeded jobs and the row's
-  // own outcome tells the two apart.
-  partial: { label: "Partly done", plural: "Partly done", tone: "soon", icon: "alert", jobStatuses: ["succeeded"] },
+  // The engine stores it as succeeded; the job list filters on the status a person reads,
+  // so "partial" finds every partly done run and "succeeded" only the gap-free ones.
+  partial: { label: "Partly done", plural: "Partly done", tone: "soon", icon: "alert", jobStatuses: ["partial"] },
   refused: { label: "Refused", plural: "Refused", tone: "soon", icon: "alert", jobStatuses: [] },
   running: { label: "Running", plural: "Running", tone: "low", icon: "play", jobStatuses: ["running"] },
   waiting: { label: "Waiting", plural: "Waiting to start", tone: "low", icon: "clock", jobStatuses: ["queued"] },
@@ -86,7 +86,7 @@ export function outcomesOf(value: string | null | undefined): Outcome[] {
 /** A job's outcome from the status a person reads (`jobDisplayStatus`): "partial" is its own. */
 export function jobOutcome(status: string): Outcome {
   if (status === "partial") return "partial";
-  return OUTCOME_ORDER.find((key) => key !== "partial" && OUTCOMES[key].jobStatuses.includes(status)) ?? "recorded";
+  return OUTCOME_ORDER.find((key) => OUTCOMES[key].jobStatuses.includes(status)) ?? "recorded";
 }
 
 /** An audit-record entry's outcome: a refusal, a failed check or drill, else "recorded". */

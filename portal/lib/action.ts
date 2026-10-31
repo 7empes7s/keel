@@ -682,7 +682,8 @@ export function guardedDispose(
   );
 }
 
-export const JOB_STATUSES = ["queued", "running", "succeeded", "failed", "cancelled"] as const;
+// The statuses a person reads (`jobDisplayStatus`): "partial" is a succeeded backup with gaps.
+export const JOB_STATUSES = ["queued", "running", "succeeded", "partial", "failed", "cancelled"] as const;
 
 export function guardedJobList(
   deps: GuardDeps = {},

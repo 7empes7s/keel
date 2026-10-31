@@ -168,7 +168,11 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const named = known.find((change) => change.readable && change.name && !holdsObjectId(change.name));
   if (named?.name) return `${count}, including ${named.name}`;
   const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
-  return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
+  if (first?.naturalKey) return `${count}, including ${resourceLabel(first.naturalKey)}`;
+  // No name and no readable key: say what kind of setting it is, so two such requests
+  // do not read the same.
+  const typed = known.find((change) => change.resourceType && !holdsObjectId(change.resourceType));
+  return typed?.resourceType ? `${count}, including an unnamed ${resourceTypeLabel(typed.resourceType)}` : count;
 }
 
 // A service setting change by its setting's name and service, never by an id.

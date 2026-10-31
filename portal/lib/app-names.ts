@@ -67,6 +67,24 @@ const EDGE_TYPES: Record<string, string> = {
 const UNKNOWN_APP = "an app Keel does not back up";
 const UNKNOWN_ROLE = "an admin role Keel has no name for";
 
+// Entitlement management's built-in roles. Microsoft fixes their ids and Graph lists
+// them under roleManagement/entitlementManagement/roleDefinitions, which Keel does not
+// back up, so an assignment of one is named from this table.
+// https://learn.microsoft.com/entra/id-governance/entitlement-management-delegate
+const BUILT_IN_ROLES: Record<string, string> = {
+  "ba92d953-d8e0-4e39-a797-0cbedb0a89e8": "Catalog creator",
+  "ae79f266-94d4-4dab-b730-feca7e132178": "Catalog owner",
+  "44272f93-9762-48e8-af59-1b5351b1d6b3": "Catalog reader",
+  "7f480852-ebdc-47d4-87de-0d8498384a83": "Access package manager",
+  "e2182095-804a-4656-ae11-64734e9b7ae5": "Access package assignment manager",
+};
+
+/** An admin role's name: from the backup, else a built-in role Microsoft fixes the id of. */
+function roleDefinitionName(value: unknown, names: IdNames): string | null {
+  const ref = parseRef(value);
+  return refName(value, names) ?? (ref?.id ? BUILT_IN_ROLES[ref.id] ?? null : null);
+}
+
 // The kinds shaped like a Graph role assignment: a role, who holds it, and where.
 const ROLE_ASSIGNMENT_TYPES = new Set([
   "roleAssignment", "roleAssignmentSchedule", "roleEligibilitySchedule", "exchangeRoleAssignment",
@@ -212,7 +230,7 @@ export function referencedIds(resourceType: string | null | undefined, naturalKe
 
 // "Global Administrator → Ada Lovelace (scope: Paris office)".
 function roleAssignmentName(type: string, record: Record<string, unknown>, names: IdNames): string | null {
-  const role = refName(record.roleDefinitionId, names);
+  const role = roleDefinitionName(record.roleDefinitionId, names);
   const principals = principalsOf(type, record).flatMap((value) => {
     const ref = parseRef(value);
     if (!ref) return [];
@@ -291,7 +309,7 @@ export function derivedName(resourceType: string | null | undefined, naturalKey:
   } else if (ROLE_ASSIGNMENT_TYPES.has(type)) {
     name = roleAssignmentName(type, record, names);
   } else if (type === "unifiedRoleManagementPolicyAssignment") {
-    const role = refName(record.roleDefinitionId, names);
+    const role = roleDefinitionName(record.roleDefinitionId, names);
     if (role) name = `Activation settings for ${role}`;
   } else if (type === "accessPackageAssignment") {
     const target = recordOf(record.target);
@@ -344,4 +362,53 @@ export function derivedName(resourceType: string | null | undefined, naturalKey:
     name = field && field !== "id" ? value : text ? text.replace(/^./, (letter) => letter.toUpperCase()) : null;
   }
   return name && !holdsObjectId(name) ? name : null;
+}
+
+/** An id Keel could not name, with a Microsoft Graph read that shows what it is. */
+export interface UnnamedReference {
+  id: string;
+  what: string;
+  lookup: string;
+}
+
+const ROLE_PROVIDERS: Record<string, string> = {
+  exchangeRoleAssignment: "exchange",
+  defenderRoleAssignment: "defender",
+  entitlementManagementRoleAssignment: "entitlementManagement",
+};
+
+/** A Graph Explorer link that reads one object (signed in as an admin of the tenant). */
+export function graphLookupUrl(path: string): string {
+  return `https://developer.microsoft.com/en-us/graph/graph-explorer?request=${encodeURIComponent(path)}&method=GET&version=v1.0&GraphUrl=https://graph.microsoft.com`;
+}
+
+/**
+ * What a setting points to that no backup names, so the page can list each one under
+ * Technical details with a link that looks it up, instead of only "someone Keel has no
+ * name for". `known` holds the ids the page did name (lower-case). Pure.
+ */
+export function unnamedReferences(resourceType: string | null | undefined, naturalKey: string, payload: unknown, known: ReadonlySet<string>): UnnamedReference[] {
+  const type = edgeKeyType(naturalKey) ?? resourceType ?? "";
+  const record = recordOf(payload);
+  const out = new Map<string, UnnamedReference>();
+  const add = (value: unknown, what: string, path: (id: string) => string) => {
+    const ref = parseRef(value);
+    if (!ref?.id || known.has(ref.id) || out.has(ref.id)) return;
+    out.set(ref.id, { id: ref.id, what, lookup: graphLookupUrl(path(ref.id)) });
+  };
+  const object = (id: string) => `directoryObjects/${id}`;
+  if (ROLE_ASSIGNMENT_TYPES.has(type) || type === "unifiedRoleManagementPolicyAssignment") {
+    const provider = ROLE_PROVIDERS[type] ?? "directory";
+    const role = parseRef(record.roleDefinitionId);
+    if (!(role?.id && BUILT_IN_ROLES[role.id])) add(record.roleDefinitionId, "Admin role", (id) => `roleManagement/${provider}/roleDefinitions/${id}`);
+    for (const principal of type === "unifiedRoleManagementPolicyAssignment" ? [] : principalsOf(type, record)) add(principal, "Who holds the role", object);
+    for (const scope of scopesOf(type, record)) add(scope, "Where the role applies", object);
+  } else if (type === "accessPackageAssignment") {
+    add(record.targetId ?? recordOf(record.target).objectId, "Who has the access package", object);
+    add(record.accessPackageId, "Access package", (id) => `identityGovernance/entitlementManagement/accessPackages/${id}`);
+  } else if (type === "applicationOwnership" || type === "servicePrincipalOwnership") {
+    const [, , , target] = naturalKey.split(":");
+    add(target, "Owner", object);
+  }
+  return [...out.values()];
 }

@@ -5,11 +5,12 @@ import { after, before, test } from "node:test";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
-import { derivedName, referencedIds } from "@/lib/app-names";
+import { derivedName, referencedIds, unnamedReferences } from "@/lib/app-names";
 import { changeLabel } from "@/lib/changes-view";
 import { holdsObjectId, namedSubject } from "@/lib/job-names";
 import { resourceLabel } from "@/lib/presentation";
 import { idNames, savedNames } from "@/lib/saved-names";
+import { idNames as valueIdNames } from "@/lib/value-names";
 
 // App registrations, enterprise apps, app consent, app permissions, owners and
 // provisioning jobs read by name on every page, never by an id. Fixtures use the id
@@ -154,4 +155,77 @@ test("another tenant's backup names nothing", async () => {
   const names = await savedNames(client, "another-tenant", [GRANT_ID, ROLE_GRANT_KEY]);
   assert.equal(namedSubject(GRANT_ID, names, "oauth2PermissionGrant"), "Unnamed app consent");
   assert.equal(namedSubject(ROLE_GRANT_KEY, names), "Unnamed app permission");
+});
+
+// Backups run by tier: people, Exchange roles and access packages are Tier 2, enterprise
+// apps and role assignments Tier 1. A newer Tier 1 backup must not hide the names its
+// role assignments point to (portal audit 2026-10-31: "someone Keel has no name for").
+const TIERED = "tiered-names-test";
+const GA_TEMPLATE = "62e90394-69f5-4237-9190-012177145e10";
+const EXO_ROLE_ID = "6a0b0000-0000-4000-8000-0000000000d1";
+const GRACE_ID = "6a0b0000-0000-4000-8000-0000000000c2";
+const GHOST_ID = "6a0b0000-0000-4000-8000-0000000000c9";
+
+async function backup(tenant: string, at: string, rows: { key: string; type: string; payload: Record<string, unknown> }[]) {
+  const { rows: made } = await client.query(
+    "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', $2, $2) RETURNING id",
+    [tenant, at],
+  );
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+       VALUES ($1, $2, $3, $4, $5, 'tier1', 'access-affecting', 'full', '{}')`,
+      [made[0].id, row.key, row.type, JSON.stringify(row.payload), JSON.stringify(row.payload)],
+    );
+  }
+  return String(made[0].id);
+}
+
+test("names come from the newest backup of each type, not only the newest Tier 1 backup", async () => {
+  // Tier 2 first: people and Exchange role definitions.
+  await backup(TIERED, "2026-10-01T06:00:00Z", [
+    { key: "grace@contoso.example", type: "user", payload: { id: GRACE_ID, displayName: "Grace Hopper" } },
+    { key: EXO_ROLE_ID, type: "exchangeRoleDefinition", payload: { id: EXO_ROLE_ID, displayName: "Mail Recipients" } },
+  ]);
+  // Tier 1 later: enterprise apps and directory roles, no people.
+  await backup(TIERED, "2026-10-02T06:00:00Z", [
+    { key: HR_APP_ID, type: "servicePrincipal", payload: { id: HR_SP_ID, appId: HR_APP_ID, displayName: "Contoso HR" } },
+    { key: "role:ga", type: "roleDefinition", payload: { id: GA_TEMPLATE, templateId: GA_TEMPLATE, displayName: "Global Administrator" } },
+  ]);
+  const lookup = await idNames(client, TIERED, [GA_TEMPLATE, GRACE_ID, EXO_ROLE_ID, HR_SP_ID]);
+  assert.equal(lookup.ids[GRACE_ID], "Grace Hopper");
+  assert.equal(lookup.ids[EXO_ROLE_ID], "Mail Recipients");
+  assert.equal(derivedName("roleAssignment", "ra-1", { roleDefinitionId: GA_TEMPLATE, principalId: GRACE_ID, directoryScopeId: "/" }, lookup), "Global Administrator → Grace Hopper");
+  assert.equal(derivedName("exchangeRoleAssignment", "ra-2", { roleDefinitionId: EXO_ROLE_ID, principalId: `/Users/${GRACE_ID}` }, lookup), "Mail Recipients → Grace Hopper");
+});
+
+test("entitlement management's built-in roles are named though Keel does not back them up", () => {
+  const record = { roleDefinitionId: "ae79f266-94d4-4dab-b730-feca7e132178", principalId: USER_ID };
+  const lookup = { ids: { [USER_ID]: "Ada Lovelace" }, roles: {} };
+  assert.equal(derivedName("entitlementManagementRoleAssignment", "ra-3", record, lookup), "Catalog owner → Ada Lovelace");
+  assert.deepEqual(unnamedReferences("entitlementManagementRoleAssignment", "ra-3", record, new Set([USER_ID])), []);
+});
+
+test("what no backup names is listed with a Graph lookup link, never left as words only", () => {
+  const record = { roleDefinitionId: GA_TEMPLATE, principalId: GHOST_ID, directoryScopeId: "/" };
+  const refs = unnamedReferences("roleAssignment", "ra-4", record, new Set([GA_TEMPLATE]));
+  assert.deepEqual(refs.map((ref) => [ref.what, ref.id]), [["Who holds the role", GHOST_ID]]);
+  assert.match(refs[0].lookup, /^https:\/\/developer\.microsoft\.com\/en-us\/graph\/graph-explorer\?request=directoryObjects%2F6a0b0000/);
+  const role = unnamedReferences("exchangeRoleAssignment", "ra-5", { roleDefinitionId: EXO_ROLE_ID, principalId: `/Users/${GRACE_ID}` }, new Set([GRACE_ID]));
+  assert.deepEqual(role.map((ref) => ref.what), ["Admin role"]);
+  assert.match(role[0].lookup, /roleManagement%2Fexchange%2FroleDefinitions%2F/);
+});
+
+test("an id inside a changed value is named from the backup that holds its type", async () => {
+  const policyBackup = await backup("value-names-test", "2026-10-03T06:00:00Z", [
+    { key: "ca:block", type: "conditionalAccessPolicy", payload: { id: "ca-1", displayName: "Block legacy", conditions: { users: { excludeUsers: [GRACE_ID] } } } },
+  ]);
+  await backup("value-names-test", "2026-10-02T06:00:00Z", [
+    { key: "grace@contoso.example", type: "user", payload: { id: GRACE_ID, displayName: "Grace Hopper" } },
+  ]);
+  const names = await valueIdNames(client, [policyBackup], [[GRACE_ID]]);
+  assert.equal(names[GRACE_ID], "Grace Hopper");
+  // Another tenant's people never name it.
+  const other = await backup("value-names-other", "2026-10-03T06:00:00Z", [{ key: "ca:x", type: "conditionalAccessPolicy", payload: { id: "ca-2" } }]);
+  assert.deepEqual(await valueIdNames(client, [other], [[GRACE_ID]]), {});
 });

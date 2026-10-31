@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ApprovalRequestRecord, withChangeNames } from "@/lib/approval-inbox";
 import { EMPTY_REFERENCES, approvalSentence, personLabel } from "@/lib/sentences";
+import { approvalTitle, distinctTitles } from "@/lib/approval-view";
 
 import { renderApprovalInboxAt } from "./render-approval-inbox";
 
@@ -33,16 +34,17 @@ function rollback(overrides: Partial<ApprovalRequestRecord> = {}): ApprovalReque
 }
 
 test("an undo is titled by the saved name of what it changes, never its id", () => {
-  assert.equal(approvalSentence(rollback()), "Undo 2 changes");
+  // No name yet: the kind of setting, so two such requests do not read the same.
+  assert.equal(approvalSentence(rollback()), "Undo 2 changes, including an unnamed group");
   const named = withChangeNames(rollback(), {
     [GROUP]: { name: "Finance", resourceType: "group" },
     [USER]: { name: "Ada Lovelace", resourceType: "user" },
   });
   assert.equal(approvalSentence(named), "Undo 2 changes, including Finance (group)");
   assert.equal(named.references?.changes[1]?.name, "Ada Lovelace (user) as member of Finance (group)");
-  // No saved name: the count only, never the id.
+  // No saved name: the count and the kind, never the id.
   const unnamed = withChangeNames(rollback(), {});
-  assert.equal(approvalSentence(unnamed), "Undo 2 changes");
+  assert.equal(approvalSentence(unnamed), "Undo 2 changes, including an unnamed group");
 });
 
 test("people are named, never by email, account id or system code", () => {
@@ -80,4 +82,17 @@ test("the inbox shows no id, email or system code outside Technical details", as
   assert.match(visible, /by Keel&#x27;s scheduler/);
   assert.match(visible, /asked by an account that no longer exists/);
   for (const raw of [GROUP, USER, REQUESTER, DRIFT, "@contoso", "by scheduler"]) assert.ok(!visible.includes(raw), `shows ${raw}`);
+});
+
+test("requests that would read the same get the moment they were asked, then a number", () => {
+  const a = rollback({ id: "a", createdAt: "2026-10-30T17:41:00Z" });
+  const b = rollback({ id: "b", createdAt: "2026-10-31T09:05:00Z" });
+  const c = rollback({ id: "c", createdAt: "2026-10-31T09:05:00Z" });
+  const other = rollback({ id: "d", createdAt: "2026-10-31T09:05:00Z", action: "baseline-activate" });
+  const titles = distinctTitles([a, b, c, other]);
+  assert.equal(titles.get("a"), "Undo 2 changes, including an unnamed group · asked 30 Oct 2026, 17:41");
+  assert.equal(titles.get("b"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 (1)");
+  assert.equal(titles.get("c"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 (2)");
+  assert.equal(titles.get("d"), approvalTitle(other));
+  assert.equal(new Set(titles.values()).size, 4);
 });

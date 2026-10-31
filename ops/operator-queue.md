@@ -2078,8 +2078,37 @@ being triggered by queue updates.
   database. **Read-only: SELECTs only, in a `BEGIN READ ONLY` session. No tenant calls, no writes, no status changes, no restarts.
   Never modify or delete an audit row.** Never print the database URL, a password, a token or a tenant id (say "tenant A").
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done, the code finding matches (2026-10-31 22:45 UTC, keel-operator). Build **9014a2cf** (#875). SELECTs only, in `BEGIN READ ONLY`. No tenant, no writes; no audit row touched. One tenant (tenant A).
+  - **Step 1:** head_seq **431669**, record_count **430788**, updated_at 2026-10-31 22:05:06; max_seq **431669**, rows **431669**. So head_seq = max_seq (the head has moved on since), but record_count is **881 short**, exactly the number of drift-accept records.
+  - **Step 2:** **903 breaks**, seq 425262 to 428902. First 20 rows:
+    ```
+    425262 action-attempt / prior disposition  14:06:48.813
+    425264 action-attempt / prior disposition  14:06:48.898
+    425266 action-attempt / prior disposition  14:06:49.065
+    425268 action-attempt / prior disposition  14:06:49.135
+    425270 action-attempt / prior disposition  14:06:49.156
+    425272 action-attempt / prior disposition  14:06:49.174
+    425275 disposition    / prior action-attempt 14:06:49.203
+    425276 action-attempt / prior disposition  14:06:49.207
+    425278 action-attempt / prior disposition  14:06:49.313
+    425280 action-attempt / prior disposition  14:06:49.325
+    425282 action-attempt / prior disposition  14:06:49.49
+    425284 action-attempt / prior disposition  14:06:49.521
+    425286 action-attempt / prior disposition  14:06:49.564
+    425287 disposition    / prior action-attempt 14:06:49.565
+    425288 action-attempt / prior disposition  14:06:49.57
+    425290 action-attempt / prior disposition  14:06:49.62
+    425292 action-attempt / prior disposition  14:06:49.634
+    425295 action-attempt / prior disposition  14:06:49.874
+    425304 action-attempt / prior disposition  14:06:50.267
+    425305 disposition    / prior action-attempt 14:06:50.269
+    ```
+    All breaks by kind pair: action-attempt after disposition **810**; disposition after action-attempt **92**; benchmark-evaluation after disposition **1**. Every break sits next to a disposition record.
+  - **Step 3:** all disposition records **888**, drift accepts **881**, seq 200418 to 428901, occurred 2026-10-22 16:43 to 2026-10-31 17:45; in the 14:06–14:08 burst: **880**.
+  - **Step 4:** first drift accept is seq **425261**; the record after it is **425262 `action-attempt`** (14:06:48.813), which is the first break. The last drift accept (428901, 17:45:07) is followed by the last break (428902, `action-attempt`). No break before the first drift accept.
+  - **Step 5:** build 9014a2cf.
+  - **Verdict:** as expected. The head count is short by exactly the 881 accepts; the chain first breaks on the record written right after the first accept, and only around accepts. The 92 "disposition after action-attempt" breaks are accepts written while other records were also being written (no tenant lock). The 7 older disposition records (from before drift accepts were added, from 22 Oct) cause no break. Nothing was repaired.
 - Do, on Mulinux, against the live database:
   1. Stored head against the table, per tenant:
      ```sql
@@ -14035,8 +14064,59 @@ item that needs it stays untouched.
   calls, no restarts, no config changes, nothing installed.** Never print the database URL, a password, a token, a tenant id or a
   person's address. The output holds only SQL text (first 110 characters, no parameter values), counts and times.
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
-- Result:
+- Status: partial
+- Result: partial, stopped at the 10-minute limit while on the Changes feed (2026-10-31 22:55 UTC, keel-operator). Build **9014a2cf** (#875). Ran from my worktree at that commit (`portal/node_modules` symlinked to the live one, tsx present, nothing installed). Every connection had `default_transaction_read_only=on`. No tenant, no writes, no restarts.
+  - **Step 4:** `timeout 600` hit (**exit 124**). 7 of 17 loaders finished; **`changes getChangeFeed30` ran from about minute 1 until the kill (more than 8 minutes, one call) and never printed**. Not reached: resilience, protect ×3, activity ×3, alerts. `read-only transaction` lines: **0**. Output verbatim (no ids or values in it):
+    ```
+    (node:3193885) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+    (Use `node --trace-deprecation ...` to show where the warning was created)
+    ## compliance getComplianceData: 964 / 674 / 690 ms (last run: 18 queries, 1941 ms in SQL)
+      615 ms  x1  19322 rows  SELECT br.baseline_id, rv.id, rv.natural_key, rv.resource_type, rv.payload_hash, rv.hash_version, rv.blast_rad
+      333 ms  x1  430 rows  SELECT id, workload, observed_from, observed_to FROM workload_collection WHERE tenant_ref = $1 AND workload = 
+      332 ms  x1  0 rows  SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at FROM 
+      331 ms  x1  5078 rows  WITH latest AS ( SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift WHERE tenant_ref = $1 ORDER BY ba
+      126 ms  x1  623 rows  SELECT id, tenant_ref, started_at, completed_at, coverage_digest FROM snapshot WHERE tenant_ref = $1 AND compl
+      73 ms  x3  150 rows  SELECT id, outcome, observed_from, observed_to, digest FROM workload_collection WHERE tenant_ref = $1 AND work
+    ## compliance getOwnCheckChoices: 79 / 69 / 69 ms (last run: 33 queries, 43 ms in SQL)
+      42 ms  x31  1256 rows  SELECT payload FROM resource_version WHERE snapshot_id = $1 AND resource_type = $2 ORDER BY natural_key LIMIT 
+      1 ms  x1  31 rows  SELECT resource_type, count(*)::int AS count FROM resource_version WHERE snapshot_id = $1 GROUP BY resource_ty
+      0 ms  x1  1 rows  SELECT id FROM snapshot WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL ORDER BY co
+    ## compliance getScubaListsView: 3 / 1 / 1 ms (last run: 4 queries, 1 ms in SQL)
+      0 ms  x2  2 rows  SELECT to_regclass($1) AS name
+      0 ms  x1  0 rows  SELECT list, entries, updated_by, updated_at FROM scuba_config_list WHERE tenant_ref = $1
+      0 ms  x1  2 rows  SELECT account_id, label FROM breakglass_account WHERE tenant_ref = $1 AND retired_at IS NULL ORDER BY label, 
+    ## baselines getBaselinesData: 133 / 135 / 138 ms (last run: 7 queries, 117 ms in SQL)
+      83 ms  x1  19322 rows  SELECT br.baseline_id, rv.id, rv.natural_key, rv.resource_type, rv.payload_hash, rv.hash_version, rv.blast_rad
+      16 ms  x1  50 rows  SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest FROM snapshot WHERE tenant_ref = $1 A
+      9 ms  x1  11 rows  SELECT b.*, count(br.natural_key)::int AS resource_count FROM baseline b LEFT JOIN baseline_resource br ON br.
+      5 ms  x1  11 rows  SELECT b.id, b.label, b.description, b.set_at, b.set_by, b.active, b.source_snapshot_id, b.captured_at, b.obse
+      3 ms  x1  2 rows  SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])
+      0 ms  x1  0 rows  SELECT baseline_id, workload, count(*)::int AS settings FROM baseline_workload WHERE baseline_id = ANY($1::uui
+    ## baselines getDriftData: 7566 / 6609 / 6753 ms (last run: 1850 queries, 6950 ms in SQL)
+      3336 ms  x1  3080 rows  WITH seen AS ( SELECT DISTINCT d.observed_snapshot AS id FROM drift d WHERE d.tenant_ref = $1 AND d.id = ANY($
+      956 ms  x3  277 rows  WITH covered AS ( SELECT tcl.resource_type AS type, tcl.snapshot_id AS id FROM type_coverage_latest tcl JOIN s
+      388 ms  x1  8108 rows  SELECT k.id, c.completed_at, c.payload_hash, c.payload FROM unnest($2::uuid[], $3::text[], $4::text[], $5::tim
+      350 ms  x1  430 rows  SELECT id, workload, observed_from, observed_to FROM workload_collection WHERE tenant_ref = $1 AND workload = 
+      349 ms  x1  0 rows  SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at FROM 
+      348 ms  x1  5078 rows  WITH latest AS ( SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift WHERE tenant_ref = $1 ORDER BY ba
+    ## baselines getCoverageData: 1317 / 396 / 430 ms (last run: 11 queries, 380 ms in SQL)
+      286 ms  x1  2310 rows  WITH RECURSIVE parents AS ( (SELECT parent_type, parent_source_id, family FROM relationship_edge_set WHERE ten
+      51 ms  x1  0 rows  SELECT DISTINCT ON (subject->>'resourceType') kind, occurred_at, subject FROM evidence WHERE tenant_ref = $1 A
+      34 ms  x1  180 rows  WITH completed_snapshots AS ( SELECT id, status, started_at, completed_at, coverage_digest FROM snapshot WHERE
+      4 ms  x3  120 rows  SELECT payload FROM resource_version WHERE snapshot_id = $1 AND resource_type = $2
+      2 ms  x1  23 rows  SELECT DISTINCT ON (workload) workload, outcome, observed_from, observed_to, digest FROM workload_collection W
+      2 ms  x1  478 rows  SELECT * FROM workload_ledger_evidence WHERE tenant_ref = $1 ORDER BY captured_at DESC NULLS LAST, operation_i
+    ## baselines getServiceChanges: 119 / 76 / 79 ms (last run: 18 queries, 30 ms in SQL)
+      15 ms  x1  112 rows  SELECT * FROM ( SELECT DISTINCT ON (d.workload, d.resource_key) d.id, d.workload, d.resource_key, d.change_typ
+      9 ms  x8  330 rows  SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1 ORDER BY resour
+      4 ms  x8  8 rows  SELECT * FROM workload_collection WHERE id::text = $1 AND tenant_ref = $2 AND workload = $3
+      2 ms  x1  2 rows  SELECT blast_radius, count(*)::int AS count FROM ( SELECT DISTINCT ON (d.workload, d.resource_key) d.blast_rad
+    ## baselines getServiceReadTotals: 13 / 5 / 5 ms (last run: 2 queries, 4 ms in SQL)
+      2 ms  x1  23 rows  WITH latest AS ( SELECT DISTINCT ON (workload) id, workload FROM workload_collection WHERE tenant_ref = $1 ORD
+    ```
+  - **After the kill:** the feed's SQL kept running on the server with no client: `WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.nat…`, active for 9 min 52 s. I checked it was this run's own connection (backend started 22:38:19 when the run began, and its host socket had no owning process; the live portal held no other connection), then ran `pg_cancel_backend` on that one read. It is gone. No other query was touched.
+  - **Step 5:** snapshot **623** (623 completed); coverage_digest total **2948 kB**; benchmark_evaluation **5872** rows / **119** controls; baseline **11**; baseline_resource **19322**; workload_collection **952**; workload_observation **21137**; drift **109266**; workload_drift **126**.
+  - **For the thread:** the Changes feed (30 days) is the outlier: more than 8 minutes in one call, and its `wanted/hits` query over `resource_version` runs for more than 9 minutes on its own. Next is `getDriftData` at ~6.8 s, with **1850 queries** per call; the top one (`WITH seen AS …`) takes 3.3 s, and the `type_coverage_latest` query runs ×3 at ~320 ms each. Compliance's 24 s browser wait is not explained by `getComplianceData` (~0.7 s). It probably includes `getDriftData` or the evidence verify (not reached). To time the rest, rerun with `ONLY='resilience|protect|activity|alerts'`.
 - Do, on Mulinux:
   1. `git -C /opt/keel-live log --oneline -1`. In your own checkout or worktree at that commit (never `/opt/keel`), make sure
      `portal/node_modules` exists (if not, symlink it to `/opt/keel-live/portal/node_modules`) and that

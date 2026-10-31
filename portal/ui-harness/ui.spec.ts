@@ -1583,14 +1583,15 @@ test("the value report fits 390 and 1440 in both themes, and every tile, chart a
   expect(await page.locator(".vr-tile").first().evaluate((item) => getComputedStyle(item).boxShadow)).not.toBe("none");
 });
 
-// Task-94: each emergency account shows its five checks separately; "Not known" is its
+// Task-94: each emergency account shows its six checks separately; "Not known" is its
 // own state, checks KEEL cannot make stay listed, and a use leads the verdict.
 test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
   await open(page, "/readiness");
   await expect(page.locator(".page-header .status-pill")).toHaveText("Account used");
   await expect(page.locator(".verdict-sentence")).toHaveText("An emergency account was used: check that the use was planned, then acknowledge the alert.");
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "Review the sign-in" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-000000000094/);
-  await expect(page.locator("#ea-account-0 .ea-check")).toHaveCount(5);
+  await expect(page.locator("#ea-account-0 .ea-check")).toHaveCount(6);
+  await expect(page.locator("#ea-account-0 .ea-check", { hasText: "Kept for emergencies only" })).toHaveAttribute("data-status", "pass");
   const second = page.locator("#ea-account-1");
   await expect(second.locator("h3")).toHaveText("Emergency admin 2");
   await expect(second.locator(".ea-who small")).toHaveText("bg2@contoso.onmicrosoft.com");
@@ -1598,7 +1599,9 @@ test("emergency access shows each check, keeps unknown and unchecked visible, an
   // Problems first: the rule that reaches it, then the overdue test, then what is not known.
   await expect(second.locator(".ea-check").first()).toHaveAttribute("data-status", "fail");
   await expect(second.locator('.ea-check[data-status="unknown"]')).toContainText("Not known");
-  await expect(second.locator('.ea-check[data-status="fail"]')).toContainText("Block legacy auth");
+  await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Block legacy auth" })).toHaveCount(1);
+  // A day-to-day account is not kept for emergencies.
+  await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Kept for emergencies only" })).toContainText("signed in on 12 separate days");
   await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /drift\?q=Block%20legacy%20auth/);
   await expect(second.locator('.ea-check[data-status="due"]')).toContainText("a new test has been due since");
   await expect(page.locator(".ea-alerts")).toContainText("Emergency admin 2 was used 1 hour ago, and made 2 changes after it.");

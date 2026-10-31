@@ -46,6 +46,7 @@ function account(id: string, label: string, methods: string[] | null): Readiness
     accountId: id, label, resourceKey: `user:${label}`, validationIntervalDays: 90, rotationIntervalDays: null,
     registeredAt: "2026-06-01T00:00:00.000Z", lastValidatedAt: "2026-09-20T00:00:00.000Z", lastRotatedAt: null,
     methodEvidence: methods ? { basis: "attested" as const, occurredAt: "2026-09-01T00:00:00.000Z", methods } : null,
+    usage: { signInLogRead: true, signInDays: 0, lastSignInAt: null, keelPerson: null },
   };
   const inv = inventory();
   return { ...base, ...evaluateAccountReadiness({ account: base, inventory: inv, now: new Date(NOW) }) } as unknown as ReadinessAccount;

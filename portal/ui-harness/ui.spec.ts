@@ -1456,8 +1456,8 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
   // Entra ID and Intune count kinds as What's protected does (same fixture): 2 failed, 2 out of date or never.
   await expect(page.locator('.rs-table tr[data-row="entra-intune"]')).toContainText("2 failed");
-  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("2 Entra ID and Intune kinds failed their last backup");
-  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("2 Entra ID and Intune kinds are out of date or never backed up");
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("2 setting types failed their last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("2 setting types are out of date or never backed up");
   const groups = await page.locator(".rs-group").allTextContents();
   expect(groups).toEqual(["Entra ID and Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
   // The measurements stay, last.

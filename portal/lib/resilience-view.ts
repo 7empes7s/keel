@@ -565,7 +565,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
   if (summary.failed) {
     alerts.push({
       key: "kinds-failed", tone: "urgent", icon: "x-circle",
-      title: summary.failed === 1 ? `${failed[0] ?? "1 kind of setting"} failed its last backup` : `${summary.failed} Entra ID and Intune kinds failed their last backup`,
+      title: summary.failed === 1 ? `${failed[0] ?? "1 kind of setting"} failed its last backup` : `${summary.failed} setting types failed their last backup`,
       todo: "Run the backup again. Older copies are kept where there is one.",
       more: failed,
       action: { label: "See failures", href: "/protect?health=failed" },
@@ -575,7 +575,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
   if (lateCount) {
     alerts.push({
       key: "kinds-late", tone: "soon", icon: "clock",
-      title: lateCount === 1 ? `${late[0] ?? "1 kind of setting"} is out of date or never backed up` : `${lateCount} Entra ID and Intune kinds are out of date or never backed up`,
+      title: lateCount === 1 ? `${late[0] ?? "1 kind of setting"} is out of date or never backed up` : `${lateCount} setting types are out of date or never backed up`,
       todo: "Run a backup. KEEL has no copy recent enough for how critical they are.",
       more: late,
       action: { label: "See them", href: "/protect?health=out-of-date" },

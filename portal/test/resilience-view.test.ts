@@ -194,11 +194,11 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
 
   const alerts = resilienceAlerts(data);
   const failed = alerts.find((alert) => alert.key === "kinds-failed");
-  assert.equal(failed?.title, `${counts.failed} Entra ID and Intune kinds failed their last backup`);
+  assert.equal(failed?.title, `${counts.failed} setting types failed their last backup`);
   assert.deepEqual(failed?.more, ["Authentication methods policy", "Group"]);
   assert.equal(failed?.action?.href, "/protect?health=failed");
   const late = alerts.find((alert) => alert.key === "kinds-late");
-  assert.equal(late?.title, `${counts.stale + counts.never} Entra ID and Intune kinds are out of date or never backed up`);
+  assert.equal(late?.title, `${counts.stale + counts.never} setting types are out of date or never backed up`);
   assert.equal(late?.action?.href, "/protect?health=out-of-date");
   // No Resilience line says "never backed up" with a count that differs from the buckets.
   for (const alert of alerts) assert.doesNotMatch(alert.title, new RegExp(`^${base.freshness.gaps.length} .*never backed up`));
@@ -209,4 +209,9 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
   assert.deepEqual([row.rows[0].status, row.rows[0].tone], ["2 out of date or never", "soon"]);
   // All backed up.
   assert.deepEqual(serviceGroups(base, resilienceKinds([kind("user")]), NOW)[0].rows[0].status, "Backed up");
+  // One failed kind is named; nothing backed up by Keel yet reads as not run.
+  const one = resilienceAlerts({ ...data, kinds: resilienceKinds([kind("user"), kind("group", { outcome: "partial" })]) });
+  assert.equal(one.find((alert) => alert.key === "kinds-failed")?.title, "Group failed its last backup");
+  const none = resilienceKinds([kind("managedDevice", { protectionState: "not-covered", adapter: null, lastCollectedAt: null })]);
+  assert.deepEqual(serviceGroups(base, none, NOW)[0].rows[0].status, "Not run yet");
 });

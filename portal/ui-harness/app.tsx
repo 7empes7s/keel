@@ -1834,6 +1834,7 @@ const BG1_ACCOUNT: ReadinessAccount = {
   overall: "ready",
   dimensions: {
     cloudOnlyIdentity: pass("cloud-only-member-account", { naturalKey: "user:bg1@contoso.onmicrosoft.com", domain: "contoso.onmicrosoft.com" }),
+    dedicatedAccount: pass("emergency-only", { keelPerson: null, profileFields: [], signInDays: 0, lastSignInAt: null, lookbackDays: 30 }),
     phishingResistantCredential: pass("phishing-resistant-method", { basis: "observed", recordedAt: "2026-10-01T09:00:00Z", methods: ["fido2", "password"] }),
     policyExclusions: pass("excluded-from-every-enforced-policy", { policies: bgPolicies(false) }),
     privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG1}@/` }),
@@ -1849,6 +1850,7 @@ const BG2_ACCOUNT: ReadinessAccount = {
   rotationIntervalDays: null, lastValidatedAt: "2026-06-20T10:00:00Z", lastRotatedAt: null, methodEvidence: null, overall: "not-ready",
   dimensions: {
     ...BG1_ACCOUNT.dimensions,
+    dedicatedAccount: { status: "fail", reason: "signs-in-day-to-day", evidence: { keelPerson: null, profileFields: [], signInDays: 12, lastSignInAt: "2026-10-02T07:40:00Z", lookbackDays: 30 } },
     phishingResistantCredential: { status: "unknown", reason: "no-method-evidence", evidence: {} },
     policyExclusions: { status: "fail", reason: "enforced-policy-applies", evidence: { policies: bgPolicies(true) } },
     privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG2}@/` }),

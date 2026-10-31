@@ -41,6 +41,8 @@ const HOUR = 3600000;
 const NOW = Date.now();
 const at = (offsetMs) => new Date(NOW + offsetMs);
 const iso = (offsetMs) => at(offsetMs).toISOString();
+// The day-to-day use check needs the whole 30-day lookback of the sign-in log read.
+const MONTH = { from: iso(-30 * DAY), until: iso(0) };
 
 const ID = {
   bg1: 'b9000000-0000-4000-8000-000000000001',
@@ -172,9 +174,14 @@ test('a Conditional Access exclusion alone never makes an emergency account read
   assert.deepEqual([report.accounts[0].dimensions.phishingResistantCredential.status, report.accounts[0].overall], ['fail', 'not-ready']);
   assert.equal(report.overall, 'not-ready');
 
-  // Every dimension passing is what makes the account ready.
+  // Every dimension passing is what makes the account ready. Until the sign-in log is
+  // read, KEEL cannot say the account is kept for emergencies only.
   for (const name of ['bg1', 'bg2']) await ctx.lifecycle(A, name, 'methods-attested', { methods: ['fido2', 'password'] });
   report = await ctx.readiness();
+  assert.deepEqual([report.accounts[0].dimensions.dedicatedAccount.reason, report.overall], ['sign-in-log-not-read', 'unknown']);
+  await ctx.ingest(A, 'sign-in', [], MONTH);
+  report = await ctx.readiness();
+  assert.equal(report.accounts[0].dimensions.dedicatedAccount.reason, 'emergency-only');
   assert.deepEqual(report.accounts.map((account) => account.overall), ['ready', 'ready']);
   assert.equal(report.accounts[0].dimensions.phishingResistantCredential.evidence.basis, 'attested');
   assert.equal(report.overall, 'ready');
@@ -385,6 +392,7 @@ test('a stale validation becomes due and raises a reminder that a new test clear
 test('unsupported and unread policy surfaces stay visible next to the verdict', async (t) => {
   const ctx = await readyTenant(t);
   for (const name of ['bg1', 'bg2']) await ctx.lifecycle(A, name, 'methods-attested', { methods: ['windowsHelloForBusiness'] });
+  await ctx.ingest(A, 'sign-in', [], MONTH);
   let report = await ctx.readiness();
   assert.equal(report.overall, 'ready');
   const byId = Object.fromEntries(report.surfaces.map((surface) => [surface.surface, surface]));
@@ -432,14 +440,16 @@ test('the keel-breakglass command registers, records and reports through the sam
   for (const name of ['bg1', 'bg2']) {
     assert.equal(await run(['record', '--actor', ctx.p.admin.id, '--account-id', ID[name], '--kind', 'methods-attested', '--methods', 'fido2, password']), 0);
   }
+  assert.equal(await run(['canary']), 0);
+  assert.equal(JSON.parse(output.at(-1)).status, 'audit-not-configured');
+  // With the sign-in log read, the accounts are shown to be kept for emergencies only.
+  await ctx.ingest(A, 'sign-in', [], MONTH);
   assert.equal(await run(['report']), 0);
   const report = JSON.parse(output.at(-1));
   assert.equal(report.overall, 'ready');
   assert.ok(report.surfaces.some((surface) => surface.status === 'unsupported'));
   // A viewer cannot register through the command either.
   await assert.rejects(run(['register', '--actor', ctx.p.viewer.id, '--account-id', ID.bg1, '--label', 'x']), BreakGlassAuthorizationError);
-  assert.equal(await run(['canary']), 0);
-  assert.equal(JSON.parse(output.at(-1)).status, 'audit-not-configured');
 });
 
 test('lifecycle writes need a configuration grant; a legacy install reads as not configured', async (t) => {
@@ -486,4 +496,69 @@ test('the report names each account from the user backup, and a sign-in name fin
   const [bg1, bg2] = (await ctx.readiness()).accounts;
   assert.deepEqual([bg1.displayName, bg1.signInName], ['Emergency admin 1', EMAILS.bg1]);
   assert.deepEqual([bg2.displayName, bg2.signInName], [null, EMAILS.bg2]);
+});
+
+test('a custom domain or a day-to-day account never passes as an emergency account', async (t) => {
+  const ctx = await readyTenant(t);
+  for (const name of ['bg1', 'bg2']) await ctx.lifecycle(A, name, 'methods-attested', { methods: ['fido2'] });
+  // Two days of sign-ins by bg2, and one by bg1 next to its recorded test.
+  await ctx.ingest(A, 'sign-in', [
+    { id: 'si-bg2-d1', occurredAt: iso(-3 * DAY), actor: { kind: 'user', id: ID.bg2 } },
+    { id: 'si-bg2-d2', occurredAt: iso(-2 * DAY), actor: { kind: 'user', id: ID.bg2 } },
+    { id: 'si-bg1-test', occurredAt: iso(-10 * DAY + 30 * 60 * 1000), actor: { kind: 'user', id: ID.bg1 } },
+  ], MONTH);
+  let report = await ctx.readiness();
+  assert.equal(report.overall, 'ready');
+  let bg2 = report.accounts.find((account) => account.accountId === ID.bg2);
+  assert.deepEqual([bg2.dimensions.dedicatedAccount.status, bg2.dimensions.dedicatedAccount.evidence.signInDays], ['pass', 2]);
+  // The sign-in next to bg1's recorded test is not counted.
+  assert.equal(report.accounts.find((account) => account.accountId === ID.bg1).dimensions.dedicatedAccount.evidence.signInDays, 0);
+
+  // A managed custom domain is not Microsoft's onmicrosoft.com domain.
+  const custom = 'bg1@contoso.net';
+  const withCustom = healthyInventory().map((r) => (r.payload.id === ID.bg1 ? user(ID.bg1, custom) : r));
+  await ctx.collect(A, [...withCustom, domain('contoso.net', 'Managed')], { completedAt: at(-30 * 60 * 1000) });
+  report = await ctx.readiness();
+  let bg1 = report.accounts.find((account) => account.accountId === ID.bg1);
+  assert.deepEqual([bg1.dimensions.cloudOnlyIdentity.status, bg1.dimensions.cloudOnlyIdentity.reason, bg1.overall], ['fail', 'custom-domain', 'not-ready']);
+  assert.equal(bg1.dimensions.cloudOnlyIdentity.evidence.domain, 'contoso.net');
+  assert.equal(report.overall, 'not-ready');
+  // The domain name alone settles it, even when its sign-in type was not collected.
+  const noType = evaluateAccountReadiness({ account: bg1, inventory: Object.fromEntries(ALL_TYPES.map((type) => [type, {
+    status: 'covered', observedAt: iso(-HOUR), resources: [...withCustom, domain('contoso.net', undefined)].filter((r) => r.type === type),
+  }])), now: at(0) });
+  assert.equal(noType.dimensions.cloudOnlyIdentity.reason, 'custom-domain');
+  assert.equal('usage' in bg1, false, 'the raw usage read is not sent to the page');
+  // It still signs in, so the lockout gate does not count the domain as a lockout.
+  const lockout = evaluateAccountReadiness({ account: bg1, inventory: Object.fromEntries(ALL_TYPES.map((type) => [type, {
+    status: 'covered', observedAt: iso(-HOUR), resources: [...withCustom, domain('contoso.net', 'Managed')].filter((r) => r.type === type),
+  }])), now: at(0), lockout: true });
+  assert.deepEqual([lockout.dimensions.cloudOnlyIdentity.status, lockout.overall, 'dedicatedAccount' in lockout.dimensions], ['pass', 'ready', false]);
+
+  // Back on onmicrosoft.com, a profile that names a person's job is not an emergency account.
+  await ctx.collect(A, healthyInventory().map((r) => (r.payload.id === ID.bg1 ? user(ID.bg1, EMAILS.bg1, { jobTitle: 'CEO', department: '' }) : r)), { completedAt: at(-20 * 60 * 1000) });
+  bg1 = (await ctx.readiness()).accounts.find((account) => account.accountId === ID.bg1);
+  assert.deepEqual([bg1.dimensions.cloudOnlyIdentity.status, bg1.dimensions.dedicatedAccount.reason, bg1.overall], ['pass', 'personal-profile', 'not-ready']);
+  assert.deepEqual(bg1.dimensions.dedicatedAccount.evidence.profileFields, ['jobTitle']);
+
+  await ctx.collect(A, healthyInventory(), { completedAt: at(-10 * 60 * 1000) });
+  // A third day of sign-ins, none of them a recorded test, is day-to-day use.
+  await ctx.client.query(
+    "INSERT INTO audit_sign_in_fact (tenant_ref, source_event_id, occurred_at, actor_kind, actor_id) VALUES ($1, 'si-bg2-d3', $2, 'user', $3)",
+    [A, at(-DAY), ID.bg2],
+  );
+  bg2 = (await ctx.readiness()).accounts.find((account) => account.accountId === ID.bg2);
+  assert.deepEqual([bg2.dimensions.dedicatedAccount.reason, bg2.dimensions.dedicatedAccount.evidence.signInDays, bg2.overall], ['signs-in-day-to-day', 3, 'not-ready']);
+
+  // A Keel person who signs in to Keel with the account's sign-in name uses it day to day.
+  await ctx.client.query("INSERT INTO principal(email, display_name) VALUES ($1, 'Ada Admin')", [EMAILS.bg1.toUpperCase()]);
+  bg1 = (await ctx.readiness()).accounts.find((account) => account.accountId === ID.bg1);
+  assert.deepEqual([bg1.dimensions.dedicatedAccount.reason, bg1.dimensions.dedicatedAccount.evidence.keelPerson], ['keel-person-signs-in-with-it', { displayName: 'Ada Admin' }]);
+
+  // A log read for the last ten days is watched, but ten days are not thirty: not known.
+  await ctx.collect(B, healthyInventory());
+  await ctx.register(B, 'bg2');
+  await ctx.ingest(B, 'sign-in', []);
+  const short = await ctx.readiness(B);
+  assert.deepEqual([short.canary.status, short.accounts[0].dimensions.dedicatedAccount.reason], ['watching', 'sign-in-log-not-read']);
 });

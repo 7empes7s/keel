@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
@@ -50,7 +50,7 @@ import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts } from "@/lib/type-groups";
 import type { CoverageData, CoverageType } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // What's protected (portal audit: one grouped list on a desktop, pick A; service cards
@@ -232,7 +232,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const { backUp, busy, feedback } = useBackup();
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 

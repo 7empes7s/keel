@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -12,7 +12,7 @@ import { Sparkline } from "@/components/dashboard/sparkline";
 import { Icon } from "@/components/shell/icons";
 import { coverageSegments, trendDay, trendSummary } from "@/lib/overview-view";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import type { DashboardData } from "@/lib/types";
 
 type ChartKey = "changes" | "coverage";
@@ -24,7 +24,7 @@ type ChartKey = "changes" | "coverage";
 export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend" | "openDriftTotal" | "openDriftByBlastRadius" | "coverage"> }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const open = view.get("chart");
   const chart: ChartKey | null = open === "changes" || open === "coverage" ? open : null;
   const href = (key: ChartKey) => {

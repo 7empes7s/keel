@@ -28,6 +28,7 @@ import { ownershipOfResources } from '../authz/entityScope.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { complianceFindings } from './baselineCompliance.mjs';
 import { withoutScriptBodies } from '../safety/scriptBodies.mjs';
+import { isEmptyValue, maskCredentials, sameForDiff } from '../safety/diffHygiene.mjs';
 
 /** At most this many settings per change are serialized; the rest are counted. */
 export const MAX_SEMANTIC_FIELDS = 50;
@@ -107,7 +108,9 @@ function impactOf(classOf, path) {
  * - projected: both payloads without those fields, for display.
  * This is for display: an Intune script's text never appears in it, only its
  * size and fingerprint (engine/safety/scriptBodies.mjs), which still differ when
- * the text does.
+ * the text does. Credential values (password hints and the like) read as hidden,
+ * and a difference that is only empty against missing, or only the order of a
+ * list, is not listed: it is counted in `ignored` (engine/safety/diffHygiene.mjs).
  */
 export function semanticChange({ resourceType, changeType, before: storedBefore, after: storedAfter, limit = MAX_SEMANTIC_FIELDS }) {
   const before = withoutScriptBodies(resourceType, storedBefore);
@@ -115,12 +118,18 @@ export function semanticChange({ resourceType, changeType, before: storedBefore,
   const { rules, classOf, project } = classifier(resourceType);
   const hasBefore = before !== null && before !== undefined;
   const hasAfter = after !== null && after !== undefined;
-  const projected = { before: hasBefore ? project(before) : null, after: hasAfter ? project(after) : null };
+  const projected = { before: hasBefore ? maskCredentials(project(before)) : null, after: hasAfter ? maskCredentials(project(after)) : null };
   const fields = [];
   let cosmetic = 0;
+  let ignored = 0;
   let state = 'compared';
 
-  const push = (entry) => { fields.push(entry); };
+  const push = (entry) => {
+    const masked = { ...entry };
+    if ('before' in masked) masked.before = maskCredentials(masked.before, entry.path);
+    if ('after' in masked) masked.after = maskCredentials(masked.after, entry.path);
+    fields.push(masked);
+  };
 
   if (changeType === 'added') state = 'added';
   else if (changeType === 'removed') state = 'removed';
@@ -130,7 +139,10 @@ export function semanticChange({ resourceType, changeType, before: storedBefore,
     state = 'unknown-before';
     const current = projected.after;
     if (isPlainObject(current)) {
-      for (const key of Object.keys(current).sort()) push({ path: key, kind: 'unknown-before', after: current[key], impact: 'unknown-before' });
+      for (const key of Object.keys(current).sort()) {
+        if (isEmptyValue(current[key])) continue;
+        push({ path: key, kind: 'unknown-before', after: current[key], impact: 'unknown-before' });
+      }
     } else {
       push({ path: '(value)', kind: 'unknown-before', after: current, impact: 'unknown-before' });
     }
@@ -148,6 +160,9 @@ export function semanticChange({ resourceType, changeType, before: storedBefore,
             if (!(inA && inB && same(a[key], b[key]))) cosmetic += 1;
             continue;
           }
+          // Missing on one side and empty on the other is no change.
+          if (!inB && isEmptyValue(project(a[key], child))) { ignored += 1; continue; }
+          if (!inA && isEmptyValue(project(b[key], child))) { ignored += 1; continue; }
           if (!inB) push({ path: child, kind: 'removed', before: project(a[key], child), impact: impactOf(classOf, child) });
           else if (!inA) push({ path: child, kind: 'added', after: project(b[key], child), impact: impactOf(classOf, child) });
           else walk(a[key], b[key], child);
@@ -155,10 +170,12 @@ export function semanticChange({ resourceType, changeType, before: storedBefore,
         return;
       }
       // Arrays and scalars compare as whole values after projection: a reordered or
-      // re-annotated list that is otherwise equal is not a change.
+      // re-annotated list that is otherwise equal is not a change, nor is null
+      // against "" or an empty list.
       const pa = project(a, path);
       const pb = project(b, path);
-      if (!same(pa, pb)) push({ path: path || '(value)', kind: 'changed', before: pa, after: pb, impact: impactOf(classOf, path || '(value)') });
+      if (!sameForDiff(pa, pb)) push({ path: path || '(value)', kind: 'changed', before: pa, after: pb, impact: impactOf(classOf, path || '(value)') });
+      else if (!same(pa, pb)) ignored += 1;
       else if (!same(a, b)) cosmetic += 1;
     };
     walk(before, after, '');
@@ -177,6 +194,7 @@ export function semanticChange({ resourceType, changeType, before: storedBefore,
     total: fields.length,
     shown: shown.length,
     cosmetic,
+    ignored,
     groups,
     projected,
   };

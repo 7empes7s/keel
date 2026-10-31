@@ -11,7 +11,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { StatTiles } from "@/components/ui/stat-tiles";
 import { valueText } from "@/lib/changed-values";
 import { fieldWords } from "@/lib/changes-view";
-import { WINDOW_HOURS, intentAlerts, intentBadge, intentEnd, intentResource, intentTiles, settledBadge, type ChangeIntent, type ChangeIntentsData, type IntentCandidate, type IntentPerson, type IntentTransition } from "@/lib/change-intents-view";
+import { WINDOW_HOURS, intentAlerts, intentBadge, intentEnd, intentResource, intentTiles, settledBadge, shownTransitions, type ChangeIntent, type ChangeIntentsData, type IntentCandidate, type IntentPerson, type IntentTransition } from "@/lib/change-intents-view";
 import { ago, formatTimestamp, fromNow, resourceTypeLabel, words } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -22,8 +22,8 @@ import { toast } from "@/lib/toast";
 // again and acts on what it finds, never by undoing the approval blindly.
 
 function fieldList(transitions: IntentTransition[]): string {
-  const names = transitions.map((transition) => words(transition.field).toLowerCase());
-  if (names.length <= 1) return names[0] ?? "no field";
+  const names = shownTransitions(transitions).map((transition) => words(transition.field).toLowerCase());
+  if (names.length <= 1) return names[0] ?? "approved";
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
@@ -50,9 +50,11 @@ export function intentStateSentence(intent: ChangeIntent, now: string): string {
 
 /** One approved setting, as the baseline has it and as the approval allows it. */
 function TransitionRows({ transitions }: { transitions: IntentTransition[] }) {
+  const shown = shownTransitions(transitions);
+  if (!shown.length) return <p className="pg-muted"><Icon name="info" />{NO_CHANGE_WORDS}</p>;
   return (
     <ul aria-label="Approved settings" className="cv-list">
-      {transitions.map((transition) => (
+      {shown.map((transition) => (
         <SidesRow
           after={transition.after.present ? <Value value={transition.after.value} /> : null}
           before={transition.before.present ? <Value value={transition.before.value} /> : null}
@@ -66,6 +68,7 @@ function TransitionRows({ transitions }: { transitions: IntentTransition[] }) {
 }
 
 const SIDES = { before: "Baseline", after: "Approved" };
+const NO_CHANGE_WORDS = "Only empty values or the order of a list differ. Nothing that changes behaviour.";
 
 function IntentRecord({ intent }: { intent: ChangeIntent }) {
   return (
@@ -73,7 +76,7 @@ function IntentRecord({ intent }: { intent: ChangeIntent }) {
       <RecordField label="Emergency change ID" usage={<>use with <code>POST /api/change-intents/&lt;id&gt;/revoke</code></>} value={intent.id} />
       <RecordField label="Decision digest" usage="carried by a mirrored change record" value={intent.decisionDigest} />
       <RecordField copy={false} label="Resource" value={`${intent.naturalKey} · ${intent.resourceType}`} />
-      <RecordField copy={false} label="Approved transitions" value={intent.transitions.map((transition) => `${transition.field}: ${sideText(transition.before)} -> ${sideText(transition.after)}`).join("\n")} />
+      <RecordField copy={false} label="Approved transitions" value={shownTransitions(intent.transitions).map((transition) => `${transition.field}: ${sideText(transition.before)} -> ${sideText(transition.after)}`).join("\n")} />
       <RecordField copy={false} label="Window" value={`${intent.windowStart} to ${intent.windowEnd} (end excluded)`} />
       <RecordField label="Owner principal ID" value={intent.owner.id} />
       <RecordField label="Approver principal ID" value={intent.approver.id} />
@@ -170,7 +173,7 @@ export function EndedIntents({ intents, now }: { intents: ChangeIntent[]; now: s
               <tr className={`change-intent is-${intent.state}`} data-tone={settled?.tone ?? "neutral"} id={`intent-${intent.id}`} key={intent.id}>
                 <th scope="row">
                   <span className="pg-row-name">{intentResource(intent)}</span>
-                  <small>{intent.transitions.map((transition) => fieldWords(transition.field)).join(", ")}</small>
+                  <small>{shownTransitions(intent.transitions).map((transition) => fieldWords(transition.field)).join(", ") || NO_CHANGE_WORDS}</small>
                 </th>
                 <td data-label="How it ended">
                   <Badge tone={badge.tone}>{badge.label}</Badge>
@@ -204,13 +207,19 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
 
   if (changes.length === 0) return <p className="pg-empty"><Icon name="info" />No open change to approve. One shows here once KEEL detects it.</p>;
 
+  // Settings where only an empty value or list order differs are not offered, but are
+  // approved with the rest so KEEL does not roll back a change nobody can see.
+  const picks = change ? shownTransitions(change.transitions) : [];
+  const silent = change ? change.transitions.filter((transition) => transition.noChange).map((transition) => transition.field) : [];
+  const ready = fields.length > 0 || (picks.length === 0 && silent.length > 0);
+
   async function submit() {
     setBusy(true);
     try {
       const response = await fetch("/api/change-intents", {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({ driftId, fields, ownerPrincipalId: owner, windowHours: hours, externalChangeId: ticket.trim() || null, reason }),
+        body: JSON.stringify({ driftId, fields: [...fields, ...silent], ownerPrincipalId: owner, windowHours: hours, externalChangeId: ticket.trim() || null, reason }),
       });
       if (!response.ok) {
         const { error } = (await response.json().catch(() => ({}))) as { error?: string };
@@ -237,7 +246,8 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       </label>
       <fieldset className="pg-wide pg-picks">
         <legend>Settings to approve</legend>
-        {change?.transitions.map((transition) => (
+        {picks.length === 0 && silent.length ? <p className="pg-muted"><Icon name="info" />{NO_CHANGE_WORDS}</p> : null}
+        {picks.map((transition) => (
           <label className="pg-pick" data-checked={fields.includes(transition.field) || undefined} key={transition.field}>
             <input checked={fields.includes(transition.field)} onChange={(event) => setFields(event.target.checked ? [...fields, transition.field] : fields.filter((field) => field !== transition.field))} type="checkbox" />
             <span className="pg-pick-name">{words(transition.field)}</span>
@@ -271,10 +281,10 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
         <input onChange={(event) => setReason(event.target.value)} placeholder="Why is this change needed now?" required value={reason} />
       </label>
       <div className="pg-wide pg-form-foot">
-        <p className="pg-summary" aria-live="polite">{fields.length
-          ? <><Icon name="pause" />KEEL will not roll back {fields.length === 1 ? "1 setting" : `${fields.length} settings`} on {change ? intentResource(change) : "this change"} until {until}.</>
+        <p className="pg-summary" aria-live="polite">{ready
+          ? <><Icon name="pause" />KEEL will not roll back {fields.length === 0 ? "this change" : fields.length === 1 ? "1 setting" : `${fields.length} settings`} on {change ? intentResource(change) : "this change"} until {until}.</>
           : <><Icon name="info" />Choose the settings to approve.</>}</p>
-        <button aria-busy={busy} className="btn btn-secondary" disabled={busy || fields.length === 0 || !owner || reason.trim().length === 0} type="submit">Approve emergency change</button>
+        <button aria-busy={busy} className="btn btn-secondary" disabled={busy || !ready || !owner || reason.trim().length === 0} type="submit">Approve emergency change</button>
       </div>
     </form>
   );

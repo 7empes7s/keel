@@ -546,6 +546,8 @@ export interface SemanticChange {
   total: number;
   shown: number;
   cosmetic: number;
+  // Differences that are only empty against missing or the order of a list; never listed.
+  ignored?: number;
   groups: { behaviour: number; fixed: number; "unknown-before": number };
 }
 

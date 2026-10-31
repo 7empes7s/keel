@@ -30,6 +30,7 @@ import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../e
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
+import { maskCredentials } from "../../engine/safety/diffHygiene.mjs";
 import { changeBlastRadius, itemBlastRadius } from "../../engine/safety/blastRadius.mjs";
 import { comparedSettings, driftEvidence, MAX_EVIDENCE_CHANGES, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
@@ -906,12 +907,13 @@ async function withDecisionEvidence(client: KeelClient, ref: string, items: Drif
 
 /**
  * What the Changes page hands its client table: each payload without the fields
- * Microsoft sets itself, so neither the page nor its props carry them.
+ * Microsoft sets itself, so neither the page nor its props carry them, and with
+ * credential values (password hints and the like) hidden.
  */
 export function displayItems(items: DriftRecord[]): DriftRecord[] {
   return items.map((item) => item.semantic
-    ? { ...item, before: comparedSettings(item.resourceType, item.before), after: comparedSettings(item.resourceType, item.after) }
-    : item);
+    ? { ...item, before: maskCredentials(comparedSettings(item.resourceType, item.before)), after: maskCredentials(comparedSettings(item.resourceType, item.after)) }
+    : { ...item, before: maskCredentials(item.before), after: maskCredentials(item.after) });
 }
 
 // At most this many ids are named per page load; the rest read "no name" (bounded).

@@ -5,6 +5,7 @@
 // lost its access" reads as that, not as two blobs.
 import { entryWords, fieldWords, valueWords } from "@/lib/changes-view";
 import { readableValue } from "@/lib/changed-values";
+import { isEmptyValue, maskCredentials, sameForDiff } from "../../engine/safety/diffHygiene.mjs";
 
 export type Diff = "changed" | "added" | "removed" | "same" | "unknown";
 
@@ -42,7 +43,8 @@ export const DIFF_WORDS: Record<Diff, string> = { changed: "Changed", added: "Ad
 
 const NOISE = /^(@|id$)|^(created|lastModified|modified|deleted|renewed)DateTime$/;
 const isPlain = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+// Empty against missing and list order are not differences (engine/safety/diffHygiene.mjs).
+const same = (a: unknown, b: unknown) => sameForDiff(a, b);
 
 /** Every setting in a copy by path. Objects are walked; lists and plain values are
  *  settings in their own right. Ids and the times Microsoft stamps are left out. */
@@ -109,9 +111,11 @@ export function compareSettings(before: unknown, after: unknown, names: Readonly
   const hasBefore = before !== null && before !== undefined;
   const hasAfter = after !== null && after !== undefined;
   if (!hasBefore && !hasAfter) return { rows: [], counts, differing: 0 };
-  const was = hasBefore ? settings(before) : new Map<string, unknown>();
-  const now = hasAfter ? settings(after) : new Map<string, unknown>();
-  const paths = [...new Set([...was.keys(), ...now.keys()])];
+  // Credential values (password hints and the like) are never shown.
+  const was = hasBefore ? settings(maskCredentials(before)) : new Map<string, unknown>();
+  const now = hasAfter ? settings(maskCredentials(after)) : new Map<string, unknown>();
+  // A setting that is empty on its only side is no setting: "Not set -> not set" never shows.
+  const paths = [...new Set([...was.keys(), ...now.keys()])].filter((path) => (was.has(path) && now.has(path)) || !isEmptyValue(was.has(path) ? was.get(path) : now.get(path)));
   const rows: SettingRow[] = paths.map((path) => {
     const inWas = was.has(path);
     const inNow = now.has(path);

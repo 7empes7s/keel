@@ -13912,8 +13912,14 @@ item that needs it stays untouched.
   to know how many ask for the same decision twice. **Read-only: SELECTs only. No tenant calls, no database writes, no status changes,
   no restarts.** Never print the database URL, a password, a token, a tenant id or a person's address (say "the operator" or "user A").
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-31 20:40 UTC, keel-operator). Build b92bfa09. SELECTs only, in a `BEGIN READ ONLY` session. No tenant, no writes, no status changes.
+  - **Step 1:** requests **115**, distinct decisions **65**, duplicates **50**; drift requests 115, service requests 0. All 115 ask for `accept`; none has a null change id.
+  - **Step 2:** group size 1: **15** groups; size 2: **50** groups. No group bigger than 2.
+  - **Step 3:** **0** of the 115 point at a change that already has an accept row, so none would be refused as "already decided".
+  - **Step 4 (880 accepts, 14:06–14:08):** accepted once: **262** changes; accepted twice: **309** changes (262 + 2×309 = 880 rows on 571 changes).
+  - **Step 5:** expiry from **2026-11-01 14:06:48 UTC** to **2026-11-01 14:07:12 UTC** (24 h after creation).
+  - So the approver has 65 distinct decisions and 50 exact repeats. Every pair is the same change and the same `accept`, sent twice. All 115 expire tomorrow around 14:07 UTC. Nothing was changed or rejected.
 - Do, on Mulinux, against the live database:
   1. Groups of pending dispose requests from the burst that ask for the same thing:
      ```sql

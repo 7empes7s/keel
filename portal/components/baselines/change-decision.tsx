@@ -8,6 +8,7 @@ import { decisionWords, type Decision } from "@/lib/baselines-view";
 import { changeLabel, changeName, plannedActionWords, refusalSentence } from "@/lib/changes-view";
 import { addDays, type Day, type DayRange } from "@/lib/date-range";
 import { remediationParams } from "@/lib/drift-actions";
+import { BusyError, sendEach } from "@/lib/send-each";
 import type { DriftRecord } from "@/lib/types";
 
 interface UndoPreview {
@@ -24,7 +25,12 @@ interface UndoPreview {
 class NoChangeError extends Error {}
 
 async function post(path: string, body: Record<string, unknown>): Promise<unknown> {
-  const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  let response: Response;
+  try {
+    response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    throw new BusyError("Keel could not be reached");
+  }
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
     if (response.status === 409 && payload?.error === "no_change") {
@@ -32,9 +38,29 @@ async function post(path: string, body: Record<string, unknown>): Promise<unknow
     }
     // A refused ignore end date says why (for example, more than 90 days away).
     if (response.status === 400 && payload?.message) throw new NoChangeError(`${payload.message[0].toUpperCase()}${payload.message.slice(1)}.`);
+    // 503: Keel was busy (for example every database connection in use). Worth a retry.
+    if (response.status === 503) throw new BusyError("Keel was busy");
     throw new Error(`Action request failed (${response.status})`);
   }
   return response.json();
+}
+
+/** Why one change could not be saved, in a few words. */
+export function whyNotSaved(error: unknown): string {
+  if (error instanceof NoChangeError) return error.message.replace(/\.$/, "");
+  if (error instanceof BusyError) return "Keel was busy";
+  return "Keel refused it";
+}
+
+/** "Saved 760 of 775 changes. 15 could not be saved and are still chosen: A, B and 13 more. Try again to save them." */
+export function notSavedMessage(total: number, failedNames: string[]): string {
+  const failed = failedNames.length;
+  const saved = total - failed;
+  const shown = failedNames.slice(0, 3);
+  const names = failed > shown.length ? `${shown.join(", ")} and ${failed - shown.length} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown[0];
+  const lead = saved ? `Saved ${saved} of ${total} changes. ` : "";
+  const what = failed === 1 ? "1 change could not be saved and is still chosen" : `${failed} changes could not be saved and are still chosen`;
+  return `${lead}${what}: ${names}. Try again to save ${failed === 1 ? "it" : "them"}.`;
 }
 
 const failure = (error: unknown, fallback: string) => (error instanceof NoChangeError ? error.message : fallback);
@@ -69,14 +95,18 @@ export function ChangeDecision({
   items: DriftRecord[];
   today: Day;
   // Called with the changes that are settled (accepted or ignored), or none for an undo
-  // sent for approval, and the sentence to show.
-  onDone: (settled: string[], message: string) => void;
+  // sent for approval, and the sentence to show. `kept` are the changes that could not
+  // be saved: the panel stays open on just those, with the reason shown.
+  onDone: (settled: string[], message: string, kept?: string[]) => void;
   onCancel: () => void;
 }) {
   const [reason, setReason] = useState("");
   const [until, setUntil] = useState<DayRange | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Changes that could not be saved last time, and why.
+  const [notSaved, setNotSaved] = useState<{ name: string; why: string }[]>([]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
 
   const ids = items.map((item) => item.id);
@@ -123,21 +153,33 @@ export function ChangeDecision({
     }
     setSubmitting(true);
     setError(null);
-    try {
-      // A service setting change is accepted into its service's approved setup. A change
-      // to sign-in or admin access goes to a second person instead (202 with a request).
-      const results = await Promise.all(items.map(async (item) => {
-        const result = await post("/api/actions/dispose", item.serviceRead
-          ? { serviceChangeId: item.id, action, reason: justification }
-          : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) }) as { approvalRequest?: unknown } | null;
-        return { id: item.id, sent: Boolean(result?.approvalRequest) };
-      }));
-      onDone(results.filter((result) => !result.sent).map((result) => result.id), decisionMessage(action, results));
-    } catch (error) {
-      setError(failure(error, "Keel could not save the decision. No further changes were sent."));
-    } finally {
-      setSubmitting(false);
+    setNotSaved([]);
+    setProgress({ done: 0, total: items.length });
+    // A service setting change is accepted into its service's approved setup. A change
+    // to sign-in or admin access goes to a second person instead (202 with a request).
+    // A few at a time: one failure never stops the rest, and is named afterwards.
+    const results = await sendEach(items, async (item) => {
+      const result = await post("/api/actions/dispose", item.serviceRead
+        ? { serviceChangeId: item.id, action, reason: justification }
+        : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) }) as { approvalRequest?: unknown } | null;
+      return { id: item.id, sent: Boolean(result?.approvalRequest) };
+    }, { onProgress: (done, total) => setProgress({ done, total }) });
+    setSubmitting(false);
+    setProgress(null);
+    const saved = results.flatMap((result) => (result.ok ? [result.value] : []));
+    const failed = results.flatMap((result) => (result.ok ? [] : [{ item: result.item, error: result.error }]));
+    const settled = saved.filter((result) => !result.sent).map((result) => result.id);
+    if (!failed.length) {
+      onDone(settled, decisionMessage(action, saved));
+      return;
     }
+    if (failed.length === 1 && items.length === 1) {
+      setError(failure(failed[0].error, "Keel could not save the decision. Nothing was changed."));
+      return;
+    }
+    setNotSaved(failed.map(({ item, error }) => ({ name: changeLabel(item), why: whyNotSaved(error) })));
+    setError(notSavedMessage(items.length, failed.map(({ item }) => changeLabel(item))));
+    if (saved.length) onDone(settled, decisionMessage(action, saved), failed.map(({ item }) => item.id));
   }
 
   async function previewUndo() {
@@ -226,6 +268,12 @@ export function ChangeDecision({
       ) : null}
 
       {error ? <p className="action-error" role="alert">{error}</p> : null}
+      {notSaved.length ? (
+        <details className="bl-not-saved">
+          <summary>Why each one was not saved</summary>
+          <ul>{notSaved.map((entry, index) => <li key={index}><b>{entry.name}</b>: {entry.why}</li>)}</ul>
+        </details>
+      ) : null}
 
       <div className="bl-decision-actions">
         {decision === "undo" ? (
@@ -235,7 +283,7 @@ export function ChangeDecision({
             <button aria-busy={submitting || undefined} className="btn btn-primary" disabled={submitting} onClick={() => void previewUndo()} type="button">Check what undoing would do</button>
           )
         ) : (
-          <button aria-busy={submitting || undefined} className="btn btn-primary" disabled={submitting} onClick={() => void dispose(decision)} type="button">{words.confirm}</button>
+          <button aria-busy={submitting || undefined} className="btn btn-primary" disabled={submitting} onClick={() => void dispose(decision)} type="button">{progress && progress.total > 1 ? `Saving ${progress.done} of ${progress.total}…` : words.confirm}</button>
         )}
         <button className="btn" disabled={submitting} onClick={onCancel} type="button">Cancel</button>
       </div>

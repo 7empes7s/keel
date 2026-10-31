@@ -481,9 +481,10 @@ export function ChangeList({
             decision={deciding.decision}
             items={deciding_items}
             onCancel={() => setDeciding(null)}
-            onDone={(done, message) => {
+            onDone={(done, message, kept = []) => {
               setSettled((current) => [...new Set([...current, ...done])]);
-              setDeciding(null);
+              // Changes that could not be saved stay chosen, with the panel open on them.
+              setDeciding(kept.length ? { decision: deciding.decision, ids: kept } : null);
               if (done.length) view.set({ open: null });
               toast(done.length ? { title: message } : { tone: "info", title: "Sent to approvers", detail: "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
             }}

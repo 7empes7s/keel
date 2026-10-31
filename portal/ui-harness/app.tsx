@@ -322,7 +322,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       guardRefusals: picked.filter((item) => item.naturalKey === "group:Finance").map((item) => ({ naturalKey: item.naturalKey, reason: "onPremisesSyncEnabled=true — source of authority is on-premises Active Directory, cloud-side restore is refused" })) });
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
-  if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
+  if (url.endsWith("/api/actions/dispose")) {
+    // A test makes one change fail: Keel stays busy for the Windows baseline.
+    const body = JSON.parse(String(init?.body ?? "{}")) as { driftId?: string; reason?: string };
+    if (body.reason === "Busy for Windows" && body.driftId === "dr5") return json({ error: "unavailable" }, 503);
+    return json({ disposition: { id: "d" } });
+  }
   // Alerts: the action answers the state it asked for, so a test sees rows change.
   if (url.endsWith("/api/actions/alerts") || url.endsWith("/api/actions/alerts/mute")) {
     const body = JSON.parse(String(init?.body ?? "{}")) as { alertId?: string; action?: string };

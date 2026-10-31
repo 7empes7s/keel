@@ -286,9 +286,6 @@ function plainOf(shown: ShownValue): string | null {
   return shown.kind === "text" || shown.kind === "missing" ? shown.text : null;
 }
 
-/** Two sides of one setting (the approved or recommended value and the value now),
- *  with the settings that differ marked. Objects compare setting by setting; the
- *  settings that match are counted, not listed. */
 /** What a setting points to that no backup names: each ID with a Microsoft Graph lookup link. */
 export function UnnamedRefFields({ refs }: { refs: readonly UnnamedReference[] | null | undefined }) {
   return (
@@ -300,6 +297,9 @@ export function UnnamedRefFields({ refs }: { refs: readonly UnnamedReference[] |
   );
 }
 
+/** Two sides of one setting (the approved or recommended value and the value now),
+ *  with the settings that differ marked. Objects compare setting by setting; the
+ *  settings that match are counted, not listed. */
 export function RecordCompare({ label, before, after, sides = { before: "Approved setup", after: "Now" } }: {
   label: string;
   before: unknown;

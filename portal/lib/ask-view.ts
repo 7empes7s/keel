@@ -212,7 +212,7 @@ export function askVerdict(answer: GroundedAnswer | null): { text: string; tone:
       : { text: "KEEL cannot answer this question. It answers questions about changes, coverage and failed jobs.", tone: "attention" };
   }
   if (answer.intent === "coverage" && answer.coverage) {
-    const late = answer.coverage.failed + answer.coverage.stale + answer.coverage.neverCollected;
+    const late = answer.coverage.failed + (answer.coverage.partial ?? 0) + answer.coverage.stale + answer.coverage.neverCollected;
     return { text: coverageSentence(answer.coverage), tone: late ? "attention" : "good" };
   }
   const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of backup" : "matching change";
@@ -561,6 +561,7 @@ export function answerSummary(answer: GroundedAnswer): { services: SummaryRow[];
 
 const STATE_ROWS: { key: string; label: string; tone: AskTone; count: (summary: CoverageSummary) => number }[] = [
   { key: "failed", label: "Failed", tone: "urgent", count: (summary) => summary.failed },
+  { key: "partial", label: "Partly done", tone: "soon", count: (summary) => summary.partial ?? 0 },
   { key: "late", label: "Out of date or never", tone: "soon", count: (summary) => summary.stale + summary.neverCollected },
   { key: "backed-up", label: "Backed up", tone: "fine", count: (summary) => summary.covered },
   { key: "not-collected", label: "Not backed up by Keel yet", tone: "neutral", count: (summary) => summary.notCovered },

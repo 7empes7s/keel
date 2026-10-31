@@ -117,17 +117,18 @@ export interface IncidentPointSummary {
 /**
  * The Entra ID and Intune kinds in the shared coverage buckets (lib/protect-view.ts
  * coverageBuckets), so the row and its alerts count what What's protected and the
- * Overview count. `failed` and `late` name the kinds behind those counts.
+ * Overview count. `failed`, `partial` and `late` name the kinds behind those counts.
  */
 export interface ResilienceKinds {
   summary: CoverageSummary;
   failed: string[];
+  partial: string[];
   late: string[];
 }
 
 export function resilienceKinds(types: readonly CoverageType[]): ResilienceKinds {
   const named = (health: BackupHealth[]) => types.filter((item) => health.includes(backupHealth(item))).map((item) => typeName(item.type)).sort();
-  return { summary: coverageSummary(types), failed: named(["failed"]), late: named(["stale", "never"]) };
+  return { summary: coverageSummary(types), failed: named(["failed"]), partial: named(["partial"]), late: named(["stale", "never"]) };
 }
 
 export interface ResilienceData {
@@ -464,7 +465,7 @@ export function serviceState(entry: ServiceBackup, now: string): { tone: Resilie
   if (!entry.switchedOn || entry.latest?.outcome === "disabled") return { tone: "neutral", status: "Switched off" };
   if (!entry.lastGood) return entry.latest ? { tone: "urgent", status: "Never worked" } : { tone: "soon", status: "Not run yet" };
   if (entry.latest && entry.latest.id !== entry.lastGood.id) {
-    return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try incomplete" : "Last try failed" };
+    return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try partly done" : "Last try failed" };
   }
   if (age(entry.lastGood.at, now) > STALE_MS) return { tone: "soon", status: "Out of date" };
   return { tone: "fine", status: "Backed up" };
@@ -493,6 +494,7 @@ function entraRow(metrics: RecoveryMetrics, kinds: ResilienceKinds, now: string)
   const { summary } = kinds;
   const late = summary.stale + summary.neverCollected;
   if (summary.failed) return { ...base, tone: "urgent", status: `${summary.failed} failed`, last };
+  if (summary.partial) return { ...base, tone: "soon", status: `${summary.partial} partly done`, last };
   if (late) return { ...base, tone: "soon", status: `${late} out of date or never`, last };
   if (summary.covered) return { ...base, tone: "fine", status: "Backed up", last };
   return { ...base, tone: "soon", status: "Not run yet", last };
@@ -567,7 +569,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
 
   // Entra ID and Intune kinds, counted with the same buckets as What's protected and the
   // Overview. Service settings and content get their alerts from `services` below.
-  const { summary, failed, late } = data.kinds;
+  const { summary, failed, partial, late } = data.kinds;
   if (summary.failed) {
     alerts.push({
       key: "kinds-failed", tone: "urgent", icon: "x-circle",
@@ -575,6 +577,16 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       todo: "Run the backup again. Older copies are kept where there is one.",
       more: failed,
       action: { label: "See failures", href: "/protect?health=failed" },
+    });
+  }
+  // Partly done is its own amber alert, never inside "failed" (decision 31 Oct 2026).
+  if (summary.partial) {
+    alerts.push({
+      key: "kinds-partial", tone: "soon", icon: "alert",
+      title: summary.partial === 1 ? `${partial[0] ?? "1 kind of setting"} was only partly backed up` : `${summary.partial} setting types were only partly backed up`,
+      todo: "Open each one to see what was missed, then run the backup again.",
+      more: partial,
+      action: { label: "See them", href: "/protect?health=partial" },
     });
   }
   const lateCount = summary.stale + summary.neverCollected;
@@ -601,14 +613,24 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
     });
   }
-  const failedLast = pick(["Last try failed", "Last try incomplete"]);
+  const failedLast = pick(["Last try failed"]);
   if (failedLast.length) {
     alerts.push({
       key: "service-failed-last", tone: "soon", icon: "alert",
       title: failedLast.length === 1 ? `${failedLast[0].name}: last backup failed` : `${failedLast.length} service backups failed last time`,
       todo: "Older copies are kept. Tonight's run tries again.",
-      more: failedLast.map((entry) => `${entry.name}: ${entry.latest?.outcome === "partial" ? "stopped part way" : "failed"} ${ago(entry.latest?.at ?? null, now)}`),
+      more: failedLast.map((entry) => `${entry.name}: failed ${ago(entry.latest?.at ?? null, now)}`),
       action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
+    });
+  }
+  const partialLast = pick(["Last try partly done"]);
+  if (partialLast.length) {
+    alerts.push({
+      key: "service-partial-last", tone: "soon", icon: "alert",
+      title: partialLast.length === 1 ? `${partialLast[0].name}: last backup only partly done` : `${partialLast.length} service backups were only partly done last time`,
+      todo: "Older complete copies are kept. Tonight's run tries again.",
+      more: partialLast.map((entry) => `${entry.name}: partly done ${ago(entry.latest?.at ?? null, now)}`),
+      action: { label: "See them", href: "/activity?what=backup&outcome=partial" },
     });
   }
   const stale = pick(["Out of date"]);

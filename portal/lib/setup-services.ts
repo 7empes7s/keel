@@ -39,7 +39,7 @@ const kindName = (item: CoverageType) => {
   return item.type.includes("-") && info.known ? info.name : plainKind(item.type);
 };
 
-const PROBLEM: BackupHealth[] = ["failed", "stale", "never"];
+const PROBLEM: BackupHealth[] = ["failed", "partial", "stale", "never"];
 const READ: BackupHealth[] = ["ok", "empty", "stale"];
 // Problems first, then working services, then the ones with nothing to show yet.
 const TONE_RANK: Record<ServiceTone, number> = { urgent: 0, soon: 1, low: 2, fine: 3, neutral: 4 };
@@ -52,6 +52,7 @@ function kinds(count: number): string {
 function blockerFor(item: CoverageType, code: string, now: string): { text: string; fix: ServiceFix | null } {
   const name = kindName(item);
   const failed: ServiceFix = { label: "See what failed", href: `/protect?service=${encodeURIComponent(code)}&health=failed` };
+  const partial: ServiceFix = { label: "See what was partly done", href: `/protect?service=${encodeURIComponent(code)}&health=partial` };
   const late: ServiceFix = { label: "See what is out of date", href: `/protect?service=${encodeURIComponent(code)}&health=out-of-date` };
   // A refused read names the permission or role it needs and opens it on Setup.
   const reason = backupHealth(item) === "failed" ? failureReason(item) : null;
@@ -73,14 +74,16 @@ function blockerFor(item: CoverageType, code: string, now: string): { text: stri
     case "disabled-plan":
       return {
         text: `${name}: this tenant does not have the licence Microsoft needs for it.`,
-        fix: backupHealth(item) === "failed" ? { label: "See what failed", href: `/protect?service=${encodeURIComponent(code)}&health=failed` } : null,
+        fix: backupHealth(item) === "failed" ? failed : backupHealth(item) === "partial" ? partial : null,
       };
     default:
       break;
   }
   switch (backupHealth(item)) {
     case "failed":
-      return { text: `${name}: the last backup ${item.outcome === "partial" ? "read only part of it" : "failed"}.`, fix: failed };
+      return { text: `${name}: the last backup failed.`, fix: failed };
+    case "partial":
+      return { text: `${name}: the last backup read only part of it.`, fix: partial };
     case "stale":
       return { text: `${name}: last backed up ${ago(item.lastCollectedAt, now)}, longer ago than its tier allows.`, fix: late };
     default:
@@ -109,7 +112,9 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
   const outOfDate = counts.stale + counts.never;
   const backup: ServiceStatus["backup"] = counts.failed
     ? { tone: "urgent", text: `${kinds(counts.failed)} failed, ${counts.backedUp} of ${counted.length} backed up` }
-    : outOfDate
+    : counts.partial
+      ? { tone: "soon", text: `${kinds(counts.partial)} partly done${outOfDate ? `, ${outOfDate} out of date` : ""}, ${counts.backedUp} of ${counted.length} backed up` }
+      : outOfDate
       ? { tone: "soon", text: `${kinds(outOfDate)} out of date, ${counts.backedUp} of ${counted.length} backed up` }
       : { tone: "fine", text: `All ${kinds(counted.length)} backed up` };
   const restore: ServiceStatus["restore"] = counts.restorable === 0
@@ -127,7 +132,7 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
   return {
     ...base,
     tone: backup.tone,
-    label: counts.failed ? "Failing" : outOfDate ? "Out of date" : "Working",
+    label: counts.failed ? "Failing" : counts.partial ? "Partly done" : outOfDate ? "Out of date" : "Working",
     backup,
     restore,
     lastGoodRead: reads.at(-1) ?? null,

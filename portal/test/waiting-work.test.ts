@@ -53,7 +53,7 @@ const DASHBOARD: DashboardData = {
   openDriftByBlastRadius: [],
   openDriftTotal: 0,
   driftTrend: [],
-  coverage: { covered: 0, failed: 0, stale: 0, notCovered: 0, neverCollected: 0, total: 0 } as DashboardData["coverage"],
+  coverage: { covered: 0, failed: 0, partial: 0, stale: 0, notCovered: 0, neverCollected: 0, total: 0 } as DashboardData["coverage"],
   evidence: { ok: true, chainLength: 0 },
   alerts: [],
   headline: {

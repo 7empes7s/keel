@@ -222,7 +222,8 @@ test("the follow-up alert shows the shared step and restore totals and links to 
 
 // Audit 31 Oct 2026: Resilience said "N never backed up" from recovery freshness (no good
 // copy ever) while What's protected and the Overview count kinds by backupHealth. A kind whose
-// only read stopped part way is "failed" there, so Resilience must say failed too.
+// only read stopped part way is "Partly done" there (its own amber count, decision 31 Oct
+// 2026), so Resilience must say partly done too, never failed.
 test("the Entra ID and Intune row and alerts count kinds with What's protected's buckets", () => {
   const types = [
     kind("user"),
@@ -233,14 +234,14 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
     kind("managedDevice", { protectionState: "not-covered", reportStatus: "not-covered", adapter: null, outcome: null, lastCollectedAt: null }),
   ];
   const counts = protectCounts(types);
-  assert.deepEqual([counts.failed, counts.stale, counts.never], [2, 1, 1]);
+  assert.deepEqual([counts.failed, counts.partial, counts.stale, counts.never], [1, 1, 1, 1]);
   // Freshness sees three items with no good copy; that is not the count the reader is shown.
   const base = metrics({ observations: [success("user", "2026-10-03T11:00:00.000Z")] });
   const data = { generatedAt: NOW, metrics: base, failedRestores: NO_FAILED_RESTORES, kinds: resilienceKinds(types), incidents: [], storage: { configured: false } } as unknown as ResilienceData;
   const { summary } = data.kinds;
-  assert.deepEqual([summary.failed, summary.stale, summary.neverCollected, summary.covered, summary.total], [counts.failed, counts.stale, counts.never, counts.backedUp, counts.total]);
+  assert.deepEqual([summary.failed, summary.partial, summary.stale, summary.neverCollected, summary.covered, summary.total], [counts.failed, counts.partial, counts.stale, counts.never, counts.backedUp, counts.total]);
   const buckets = coverageBuckets(types);
-  assert.equal(buckets.backedUp + buckets.failed + buckets.stale + buckets.never + buckets.notCollected + buckets.unavailable, buckets.total);
+  assert.equal(buckets.backedUp + buckets.failed + buckets.partial + buckets.stale + buckets.never + buckets.notCollected + buckets.unavailable, buckets.total);
 
   const [entra] = serviceGroups(data.metrics, data.kinds, NOW);
   assert.equal(entra.rows[0].status, `${counts.failed} failed`);
@@ -248,9 +249,14 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
 
   const alerts = resilienceAlerts(data);
   const failed = alerts.find((alert) => alert.key === "kinds-failed");
-  assert.equal(failed?.title, `${counts.failed} setting types failed their last backup`);
-  assert.deepEqual(failed?.more, ["Authentication methods policy", "Group"]);
+  assert.equal(failed?.title, "Authentication methods policy failed its last backup");
+  assert.deepEqual(failed?.more, ["Authentication methods policy"]);
   assert.equal(failed?.action?.href, "/protect?health=failed");
+  const partial = alerts.find((alert) => alert.key === "kinds-partial");
+  assert.equal(partial?.title, "Group was only partly backed up");
+  assert.equal(partial?.tone, "soon");
+  assert.deepEqual(partial?.more, ["Group"]);
+  assert.equal(partial?.action?.href, "/protect?health=partial");
   const late = alerts.find((alert) => alert.key === "kinds-late");
   assert.equal(late?.title, `${counts.stale + counts.never} setting types are out of date or never backed up`);
   assert.equal(late?.action?.href, "/protect?health=out-of-date");
@@ -263,9 +269,12 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
   assert.deepEqual([row.rows[0].status, row.rows[0].tone], ["2 out of date or never", "soon"]);
   // All backed up.
   assert.deepEqual(serviceGroups(base, resilienceKinds([kind("user")]), NOW)[0].rows[0].status, "Backed up");
-  // One failed kind is named; nothing backed up by Keel yet reads as not run.
-  const one = resilienceAlerts({ ...data, kinds: resilienceKinds([kind("user"), kind("group", { outcome: "partial" })]) });
-  assert.equal(one.find((alert) => alert.key === "kinds-failed")?.title, "Group failed its last backup");
+  // Only partly done: an amber row and alert, no failure; nothing backed up by Keel yet reads as not run.
+  const partlyKinds = resilienceKinds([kind("user"), kind("group", { outcome: "partial" })]);
+  assert.deepEqual([serviceGroups(base, partlyKinds, NOW)[0].rows[0].status, serviceGroups(base, partlyKinds, NOW)[0].rows[0].tone], ["1 partly done", "soon"]);
+  const one = resilienceAlerts({ ...data, kinds: partlyKinds });
+  assert.equal(one.find((alert) => alert.key === "kinds-failed"), undefined);
+  assert.equal(one.find((alert) => alert.key === "kinds-partial")?.title, "Group was only partly backed up");
   const none = resilienceKinds([kind("managedDevice", { protectionState: "not-covered", adapter: null, lastCollectedAt: null })]);
   assert.deepEqual(serviceGroups(base, none, NOW)[0].rows[0].status, "Not run yet");
 });

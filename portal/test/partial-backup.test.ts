@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { JobDetail } from "@/components/job-detail";
-import { JobRow } from "@/components/job-table";
+import { JobRecordFields, JobRow } from "@/components/job-table";
 import { incompleteTypesLine, jobDisplayStatus, jobIncompleteTypes } from "@/lib/job-names";
 import { normalizeJob } from "@/lib/action";
 import { jobStatusSentence } from "@/lib/sentences";
@@ -54,4 +54,14 @@ test("the backups list and the job page say Partly done and name the type", () =
   const plain = renderToStaticMarkup(createElement(JobRow, { job: finished, now }));
   assert.match(plain, />Finished</);
   assert.doesNotMatch(plain, /Not backed up/);
+});
+
+test("a partly done backup's record says Partly done, never succeeded", () => {
+  const record = renderToStaticMarkup(createElement(JobRecordFields, { job: partial }));
+  assert.match(record, /data-field="Status"[\s\S]*?Partly done/);
+  assert.doesNotMatch(record.slice(0, record.indexOf("Stored status")), /succeeded/i, "the status a person reads is never succeeded");
+  assert.match(record, /data-field="Stored status \(API\)"[\s\S]*?succeeded/, "the API code stays, labelled as the stored status");
+  const done = renderToStaticMarkup(createElement(JobRecordFields, { job: finished }));
+  assert.match(done, /data-field="Status"[\s\S]*?Finished/);
+  assert.doesNotMatch(done, /Stored status/, "a job that ended as stored needs no second status");
 });

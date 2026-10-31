@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type MouseEvent } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -48,7 +48,7 @@ import type { PrincipalView } from "@/lib/principals";
 import { addsWords, tileCounts } from "@/lib/filter-set";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // People (portal audit, one design): who can use Keel as one grouped list. Four count
 // tiles (Can use Keel, Admins, Can approve, Disabled) are links that set a filter in
@@ -72,7 +72,7 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/principals";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const [added, setAdded] = useState<PrincipalView[]>([]);

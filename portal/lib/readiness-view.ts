@@ -225,6 +225,7 @@ export function dimensionSentence(name: DimensionName, dimension: Dimension, now
       return `Its profile has ${list(fields.length ? fields : ["work details"])}, so it looks like a person's own account. Use a separate account kept only for emergencies.`;
     }
     case "sign-in-log-not-read": return "KEEL is not reading the sign-in log, so it cannot tell whether this account is used day to day.";
+    case "sign-in-log-partly-read": return `KEEL reads the sign-in log but has not yet read all of the last ${evidence.lookbackDays ?? 30} days, so it cannot yet tell whether this account is used day to day. Sign-ins it has read are counted under Unplanned uses.`;
     case "emergency-only": return "No sign of day-to-day use: no KEEL user signs in with it, its profile names no job, and the sign-in log shows no regular sign-ins.";
     case "account-not-in-inventory": return "The latest backup of accounts has no account with this identity.";
     case "synchronized-from-on-premises": return "It is synchronized from on-premises Active Directory, so an outage there can block it.";

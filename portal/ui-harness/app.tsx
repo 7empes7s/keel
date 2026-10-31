@@ -20,7 +20,7 @@ import { ContentBackupsView } from "@/components/content-backups";
 import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
-import { protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
+import { coverageSummary, protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
@@ -82,12 +82,13 @@ import { type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
-import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
+import { pageVerdict, resilienceAlerts, resilienceKinds, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
+import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
@@ -1188,7 +1189,7 @@ const COVERAGE_TYPES: CoverageType[] = [
   ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, outcome: null, detail: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null, declaredEndpoint: null, writeCapability: null, observation: null }),
 ];
 const COVERAGE: CoverageData = { generatedAt: now, snapshot: { id: "5a2be911-0000-4000-8000-000000000002", status: "complete", startedAt: now, completedAt: now },
-  summary: { covered: 6, failed: 2, notCovered: 1, neverCollected: 1, stale: 1, total: COVERAGE_TYPES.length }, types: COVERAGE_TYPES };
+  summary: coverageSummary(COVERAGE_TYPES), types: COVERAGE_TYPES };
 const schedule = (id: string, job_kind: string, tier: string | null, cadence: Schedule["cadence"], extra: Partial<Schedule> = {}): Schedule => ({
   id, job_kind, tier, cadence, cron_override: null, enabled: true, next_due_at: "2026-10-02T10:00:00Z", last_job_id: null, last_run_at: null, last_status: null, last_error: null, ...extra,
 });
@@ -1391,8 +1392,8 @@ const header = (section: NavSection, title: string, description: string, marker?
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
-const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "3 kinds of settings are out of date", detail: "They were backed up, but not recently enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "21 kinds of settings are not backed up", detail: "Keel knows these kinds of settings but has no backup of them.", href: "/protect" };
+const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 kinds of settings are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect" };
 const ALERTS: DashboardData["alerts"][] = [
   [
     { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
@@ -1422,7 +1423,8 @@ function dashboard(posture: number): DashboardData {
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 3 }, { blastRadius: "cosmetic", count: 2 }],
     openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
-    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, notCovered: 17, neverCollected: 4, stale: 3, total: 167 },
+    // The buckets add up to the total, as coverageSummary makes them.
+    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
     headline: HEADLINES[posture],
@@ -1768,8 +1770,11 @@ const INBOX_ALERTS: AlertItem[] = [
 // good group backup, so the older copy still sets the point; a failed restore is
 // listed but is not a recovery time sample. RESILIENCE_EMPTY is a tenant with nothing
 // measured yet.
+// The Entra ID and Intune kinds are What's protected's own fixture (workloads have a "-").
+const ENTRA_INTUNE_TYPES = COVERAGE_TYPES.filter((item) => !item.type.includes("-"));
 const RESILIENCE: ResilienceData = {
   generatedAt: now,
+  kinds: resilienceKinds(ENTRA_INTUNE_TYPES),
   metrics: {
     version: 1, tenantRef: "sha256:5e7a0b0b0b0b0b0b", generatedAt: now,
     freshness: {
@@ -1829,6 +1834,11 @@ const RESILIENCE: ResilienceData = {
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,
+  // Conditional Access never read; Group's only read failed.
+  kinds: resilienceKinds([
+    ct("conditionalAccessPolicy", "protected", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null, detail: null, observation: null }),
+    ct("group", "failed", { outcome: "failed", itemCount: 0 }),
+  ]),
   metrics: {
     ...RESILIENCE.metrics,
     freshness: { state: "unmeasured", achievedRpoMs: null, required: 2, oldestDependency: null, latestFailures: [], gaps: [
@@ -2153,6 +2163,21 @@ const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], s
   ],
   records: ASK_MONTH_RECORDS,
 } };
+
+// Backlog G2: "Is Intune backed up?" after a run of one tier. The engine read only the newest
+// snapshot (most kinds "Not part of this backup"); the page counts the same kinds as Setup.
+const ASK_COVERAGE_KINDS = COVERAGE_TYPES.filter((item) => typeService(item.type).code === "Intune").map((item) => item.type).sort();
+const ASK_COVERAGE: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: withSharedCoverage({
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "answered", intent: "coverage", question: "Is Intune backed up?", window: null, gaps: [],
+  known: { from: now, to: now },
+  plan: { intent: "coverage", params: { entity: null, from: null, to: null, resourceType: null, resourceTypes: ASK_COVERAGE_KINDS, name: null, changeType: null, limit: 100 } },
+  total: ASK_COVERAGE_KINDS.length, shown: ASK_COVERAGE_KINDS.length, sentence: "",
+  records: ASK_COVERAGE_KINDS.map((type, index) => ({
+    kind: "coverage" as const, backup: "settings" as const, id: `5a2be911/${type}`, resourceType: type, name: null, service: "Intune",
+    outcome: index === 0 ? "complete" : "not-requested", count: index === 0 ? 4 : null, window: { from: now, to: now },
+    source: { kind: "collection" as const, id: "5a2be911-0000-4000-8000-000000000002", href: "/protect" },
+  })),
+}, COVERAGE, now) };
 
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
@@ -2661,6 +2686,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
     case "/ask/month": return askPage(ASK_MONTH);
+    case "/ask/coverage": return askPage(ASK_COVERAGE);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);

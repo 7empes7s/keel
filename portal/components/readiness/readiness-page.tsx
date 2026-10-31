@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -51,7 +51,7 @@ import {
 } from "@/lib/readiness-view";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Emergency access (portal audit, one design): a verdict whose one amber action is the
 // next thing to do (review a use, record a due test, or add an account); four tiles;
@@ -76,7 +76,7 @@ export function ReadinessPage({ data, canConfigure, canRespond }: {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/readiness";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const now = data.generatedAt;
   const step = STEPS.find((value) => value === view.get("do")) ?? null;
   const accountId = view.get("account");

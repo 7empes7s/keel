@@ -9,7 +9,7 @@ import {
   verifyAccessAssertion,
   type AccessVerificationConfig,
 } from "@/lib/cloudflare-access";
-import { DatabaseBusyError } from "@/lib/db";
+import { BUSY_MESSAGE, BUSY_RETRY_SECONDS, isDatabaseBusy } from "@/lib/db";
 import {
   CAPABILITIES_HEADER,
   ENTITY_CAPABILITIES_HEADER,
@@ -47,8 +47,7 @@ function crossSiteRefused(): NextResponse {
   );
 }
 
-export const BUSY_MESSAGE = "Keel is busy, try again in a moment.";
-const BUSY_RETRY_SECONDS = 5;
+export { BUSY_MESSAGE };
 
 // A plain page for a browser: the sign-in check could not reach the database in time.
 // Self-contained (no app styles load here) with Keel's navy and amber, light and dark.
@@ -102,10 +101,6 @@ function busy(request: NextRequest): NextResponse {
     status: 503,
     headers: { ...headers, "content-type": "text/html; charset=utf-8" },
   });
-}
-
-function isDatabaseBusy(error: unknown): boolean {
-  return error instanceof DatabaseBusyError || (error as Error | null)?.name === "DatabaseBusyError";
 }
 
 function isUnauthenticatedHealthCheck(request: NextRequest): boolean {

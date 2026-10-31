@@ -10,13 +10,11 @@ import { JobRefresher } from "@/components/job-refresher";
 import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { ProtectCoverage } from "@/components/protect-coverage";
-import { Verdict } from "@/components/verdict";
 import { getContentBackups } from "@/lib/content-backups";
 import { getDiscoveryInventory } from "@/lib/discovery";
 import { getCoverageData } from "@/lib/portal-data";
 import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
-import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries, withWorkloadKinds } from "@/lib/protect-view";
-import { typeService } from "@/lib/baselines-view";
+import { protectStatus, protectVerdict, tierSummaries, withWorkloadKinds } from "@/lib/protect-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { Schedule } from "@/lib/schedules";
 import type { CoverageData } from "@/lib/types";
@@ -77,17 +75,16 @@ export default async function ProtectPage() {
         status={status}
         title={TITLE}
       />
-      <Verdict detail={protectVerdictDetail(data.types, (type) => typeService(type).name, now)} text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation">
-        <ProtectCoverage
-          canBackup={canBackup}
-          data={data}
-          now={now}
-          tierStrip={<>
-            <TierStrip canEditSchedules={canEditSchedules} disabled={!canBackup} tiers={tierSummaries(schedules ?? [], now)} />
-            {schedules === null ? <p className="action-error">Keel could not read the schedules, so next run times are missing. Reload in a minute.</p> : null}
-          </>}
-        />
+      {/* The coverage list draws the verdict, so it follows the service filter like the tiles. */}
+      <ProtectCoverage
+        canBackup={canBackup}
+        data={data}
+        now={now}
+        tierStrip={<>
+          <TierStrip canEditSchedules={canEditSchedules} disabled={!canBackup} tiers={tierSummaries(schedules ?? [], now)} />
+          {schedules === null ? <p className="action-error">Keel could not read the schedules, so next run times are missing. Reload in a minute.</p> : null}
+        </>}
+      >
         <ContentBackups data={contentResult.status === "fulfilled" ? contentResult.value : undefined} now={now} />
         <div className="pt-recent">
           {jobsResult.status === "fulfilled" ? (
@@ -96,7 +93,7 @@ export default async function ProtectPage() {
           <DiscoveryInventory data={discoveryResult.status === "fulfilled" ? discoveryResult.value : undefined} now={now} />
         </div>
         <JobRefresher active={jobsActive} />
-      </div>
+      </ProtectCoverage>
     </>
   );
 }

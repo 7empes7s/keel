@@ -10,6 +10,7 @@ import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICE
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { readNamer } from '../insights/anonymity.mjs';
 import { displayPerson } from '../insights/people.mjs';
+import { readCoverageOutcome, readOutcome } from '../coverage/snapshots.mjs';
 
 // Two separate setups, one per credential. Read-only setup never asks for a
 // write grant, so a pending restore prerequisite cannot hold up collection.
@@ -115,9 +116,11 @@ async function latestCompletedSnapshot(client, tenantRef) {
 // The tenant's first finished backup: the Setup "First backup" tile says when it ran,
 // so it must not move each time a newer backup finishes.
 async function firstCompletedSnapshot(client, tenantRef) {
-  const { rows: [row] } = await client.query(`SELECT id, completed_at, coverage_digest FROM snapshot
-    WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
-    ORDER BY completed_at ASC, started_at ASC, id ASC LIMIT 1`, [tenantRef]);
+  const { rows: [row] } = await client.query(`SELECT s.id, s.completed_at, s.coverage_digest,
+      (SELECT count(DISTINCT rv.resource_type) FROM resource_version rv WHERE rv.snapshot_id = s.id)::int AS saved_types
+    FROM snapshot s
+    WHERE s.tenant_ref = $1 AND s.status = 'complete' AND s.completed_at IS NOT NULL
+    ORDER BY s.completed_at ASC, s.started_at ASC, s.id ASC LIMIT 1`, [tenantRef]);
   return row ?? null;
 }
 
@@ -141,14 +144,26 @@ export async function firstCollectReadiness(client, { tenantRef }) {
   return { allowed: false, basis: 'read-access-unconfirmed', missing };
 }
 
-function firstCollection(snapshot) {
+// How many types the first backup read. Older backups recorded a bare item count or an
+// observation-contract entry instead of an outcome, so a read is judged the way What's
+// protected judges it (readCoverageOutcome); only an explicit partial or failed read
+// counts as not read. A backup whose digest proves no read at all falls back to the
+// types it saved settings for (`saved_types`).
+export function firstCollection(snapshot) {
   if (!snapshot) return null;
-  const outcomes = Object.values(snapshot.coverage_digest ?? {}).map((entry) => entry?.outcome);
+  const digest = snapshot.coverage_digest && typeof snapshot.coverage_digest === 'object' && !Array.isArray(snapshot.coverage_digest)
+    ? snapshot.coverage_digest : {};
+  const entries = Object.values(digest);
+  const failed = (entry) => ['partial', 'failed'].includes(readOutcome(entry))
+    || ['partial', 'failed'].includes(entry?.completeness);
+  const read = entries.filter((entry) => readCoverageOutcome(entry).covered).length;
+  const notRead = entries.filter((entry) => !readCoverageOutcome(entry).covered && failed(entry)).length;
   return {
     snapshotId: snapshot.id,
     completedAt: new Date(snapshot.completed_at).toISOString(),
-    read: outcomes.filter((o) => o === 'complete' || o === 'complete-empty').length,
-    notRead: outcomes.filter((o) => o && !['complete', 'complete-empty', 'not-requested'].includes(o)).length,
+    // The saved types stand in only when the digest says nothing either way.
+    read: read || notRead ? read : Number(snapshot.saved_types) || 0,
+    notRead,
   };
 }
 

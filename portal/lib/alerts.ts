@@ -151,7 +151,10 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
     const objects = await alertObjects(client as QueryClient, tenantRef, keys);
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
-      const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : null;
+      // Alerts acknowledged before the acknowledger became the owner (2026-10-31) have no
+      // owner stored: the person who acknowledged the current occurrence owns it.
+      const ackOwner = row.state === "acknowledged" && typeof row.acknowledged_by === "string" && UUID.test(row.acknowledged_by) ? row.acknowledged_by : null;
+      const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : ackOwner;
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),
@@ -198,6 +201,21 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
   }, deps);
 }
 
+// The alert's owner as the inbox shows one, or null. A failed name read gives no name
+// rather than failing an acknowledge that is already recorded.
+async function ownerOf(client: QueryClient, id: unknown): Promise<AlertItem["owner"]> {
+  if (typeof id !== "string" || !UUID.test(id)) return null;
+  try {
+    const { rows: [row] } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = $1", [id]);
+    if (!row) return { id, name: "someone no longer listed" };
+    const namer = await peopleNamer(client);
+    return { id, name: personName(row, namer) ?? "someone no longer listed", ...(principalPerson(row, namer).pseudonym ? { pseudonym: true } : {}) };
+  } catch (error) {
+    console.error("[keel-portal] alert owner name unavailable", error);
+    return null;
+  }
+}
+
 export function guardedAlertAction(deps: GuardDeps = {}) {
   return guarded(
     { action: "alert-respond", capability: ALERT_RESPOND_CAPABILITY, recordAttempt: true },
@@ -212,7 +230,9 @@ export function guardedAlertAction(deps: GuardDeps = {}) {
         const alert = action === "acknowledge"
           ? await acknowledgeAlert(client, { tenantRef, alertId, actor: principalId, note: note ?? null } as unknown as Parameters<typeof acknowledgeAlert>[1])
           : await resolveAlert(client, { tenantRef, alertId, actor: principalId, reason: note?.trim() || "Resolved by hand from the alerts inbox" });
-        return Response.json({ alert: { id: String((alert as Row).id), state: (alert as Row).state } }, { headers: NO_STORE });
+        // The acknowledger owns it now: the page shows them as owner before its next read.
+        const owner = action === "acknowledge" ? await ownerOf(client as QueryClient, (alert as Row).owner_principal_id) : undefined;
+        return Response.json({ alert: { id: String((alert as Row).id), state: (alert as Row).state, ...(owner !== undefined ? { owner } : {}) } }, { headers: NO_STORE });
       } catch (error) {
         if (error instanceof AlertAuthorizationError) return Response.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
         if (error instanceof AlertStateError) return Response.json({ error: "conflict" }, { status: 409, headers: NO_STORE });

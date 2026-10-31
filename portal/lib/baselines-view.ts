@@ -254,22 +254,26 @@ export function serviceSummaries(
 }
 
 /** The status pill: what the approved setup needs right now. */
-export function setupStatus(active: BaselineRecord | null, items: Pick<DriftRecord, "blastRadius">[]): { tone: RiskTone; label: string } {
+/** The page header badge. `total` is the open-changes count (changes-view openChangeCount)
+ * when the page lists fewer changes than are open; the tone comes from those listed. */
+export function setupStatus(active: BaselineRecord | null, items: Pick<DriftRecord, "blastRadius">[], total = items.length): { tone: RiskTone; label: string } {
   if (!active) return { tone: "urgent", label: "None approved" };
-  if (!items.length) return { tone: "fine", label: "In line" };
+  const count = Math.max(total, items.length);
+  if (!count) return { tone: "fine", label: "In line" };
   const tone = worstTone(items.map((item) => impactTone(item.blastRadius))) ?? "low";
-  return { tone, label: `${plural(items.length, "change")} to review` };
+  return { tone, label: `${plural(count, "change")} to review` };
 }
 
 /** The page verdict, one sentence: how the tenant stands against the approved setup. */
-export function setupVerdict(active: BaselineRecord | null, items: Pick<DriftRecord, "blastRadius">[] | null, now: string): { text: string; tone: "good" | "attention" | "critical" } {
+export function setupVerdict(active: BaselineRecord | null, items: Pick<DriftRecord, "blastRadius">[] | null, now: string, total = items?.length ?? 0): { text: string; tone: "good" | "attention" | "critical" } {
   if (!active) return { text: "No setup is approved yet, so Keel cannot tell what changed. Create one from a backup.", tone: "critical" };
   const name = `“${setupName(active)}”`;
   const when = active.capture?.capturedAt ? `, captured ${ago(active.capture.capturedAt, now)}` : "";
   if (items === null) return { text: `The tenant is measured against ${name}${when}.`, tone: "good" };
-  if (!items.length) return { text: `The tenant matches ${name}${when}.`, tone: "good" };
+  const count = Math.max(total, items.length);
+  if (!count) return { text: `The tenant matches ${name}${when}.`, tone: "good" };
   const lockout = items.filter((item) => item.blastRadius === "tenant-lockout").length;
-  const head = `${plural(items.length, "change")} since ${name}${when}`;
+  const head = `${plural(count, "change")} since ${name}${when}`;
   if (lockout) return { text: `${head}; ${lockout} could lock out admins.`, tone: "critical" };
   return { text: `${head}; none could lock anyone out.`, tone: "attention" };
 }

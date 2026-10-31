@@ -10,7 +10,9 @@ import { after, before, test } from "node:test";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { GET as listRoute, POST as createRoute } from "@/app/api/change-intents/route";
 import { POST as revokeRoute } from "@/app/api/change-intents/[id]/revoke/route";
-import { intentStateSentence } from "@/components/change-intent";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EmergencyChangesView, intentStateSentence } from "@/components/change-intent";
 import { changeIntentsVerdict, type ChangeIntent } from "@/lib/change-intents-view";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
@@ -115,8 +117,12 @@ test("an approver approves a change field by field, sees it in force, and revoke
   assert.deepEqual(data.people.map((person) => person.name), ["Amara Okafor", "On-call engineer"]);
   const verdict = changeIntentsVerdict(data.intents, data.generatedAt);
   assert.equal(verdict.tone, "attention");
-  assert.equal(verdict.text, "One emergency change is approved right now; KEEL will not roll it back. The next approval ends in 4 hours.");
-  assert.match(intentStateSentence(data.intents[0], data.generatedAt), /^KEEL will not roll back the visibility change until .+ \(in 4 hours\)\.$/);
+  assert.equal(verdict.text, "One emergency change is approved right now; automatic rules will not undo it. The next approval ends in 4 hours.");
+  assert.match(intentStateSentence(data.intents[0], data.generatedAt), /^Automatic rules will not undo the visibility change until .+ \(in 4 hours\)\.$/);
+  // Keel never puts an approved setting back by itself, so the page never promises a roll back.
+  const page = renderToStaticMarkup(createElement(EmergencyChangesView, { data: data as never }));
+  assert.doesNotMatch(page, /roll(s|ed)?[ -]?back|rolling back/i);
+  assert.match(page, /does not put the setting back by itself/);
 
   assert.equal((await revokeRoute(request(`/api/change-intents/${intent.id}/revoke`, "POST", APPROVER, ["approve"], {}))).status, 400, "a reason is required");
   const revoked = await revokeRoute(request(`/api/change-intents/${intent.id}/revoke`, "POST", APPROVER, ["approve"], { reason: "emergency over" }));
@@ -128,7 +134,7 @@ test("an approver approves a change field by field, sees it in force, and revoke
   assert.equal((await revokeRoute(request(`/api/change-intents/${randomUUID()}/revoke`, "POST", APPROVER, ["approve"], { reason: "Emergency is over now" }))).status, 404);
   const after = await (await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]))).json() as { intents: ChangeIntent[]; generatedAt: string };
   assert.equal(after.intents[0].state, "revoked");
-  assert.equal(changeIntentsVerdict(after.intents, after.generatedAt).text, "No emergency change is approved right now. KEEL rolls changes back as its policies say.");
+  assert.equal(changeIntentsVerdict(after.intents, after.generatedAt).text, "No emergency change is approved right now. Changes follow your automatic rules as usual.");
   assert.match(intentStateSentence(after.intents[0], after.generatedAt), /^Revoked just now by Amara Okafor: emergency over\.$/);
 });
 

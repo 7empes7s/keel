@@ -5,6 +5,7 @@ import {
   ChangeIntentError, createChangeIntent, driftTransitions, listChangeIntents, revokeChangeIntent,
 } from "../../engine/policy/changeIntent.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
+import { maskCredentials, sameForDiff } from "../../engine/safety/diffHygiene.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import { payloadName } from "@/lib/changes-view";
 import { peopleNamer, principalPerson, shownPerson } from "@/lib/people-names";
@@ -32,18 +33,34 @@ function iso(value: unknown): string | null {
   return value == null ? null : new Date(String(value instanceof Date ? value.toISOString() : value)).toISOString();
 }
 
+/**
+ * Transitions as the page carries them: credential values (password hints and the
+ * like) hidden, and each flagged when only an empty value or list order differs, so
+ * the page can leave it out. The stored approval is unchanged.
+ */
+export function readableTransitions(transitions: IntentTransition[]): IntentTransition[] {
+  const side = (value: IntentTransition["before"], field: string) => ({ present: value.present, value: value.present ? maskCredentials(value.value, field) : value.value });
+  return transitions.map((transition) => ({
+    ...transition,
+    before: side(transition.before, transition.field),
+    after: side(transition.after, transition.field),
+    noChange: sameForDiff(transition.before.present ? transition.before.value : null, transition.after.present ? transition.after.value : null),
+  }));
+}
+
 type Client = { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 
 // "Hide people's names" on what approving or revoking answers with, as on the list.
-async function shownIntent(client: Client, intent: ChangeIntent): Promise<ChangeIntent> {
+async function shownIntent(client: Client, stored: ChangeIntent): Promise<ChangeIntent> {
   const namer = await peopleNamer(client);
+  const intent = { ...stored, transitions: readableTransitions(stored.transitions) };
   return namer ? { ...intent, owner: shownPerson(intent.owner, namer), approver: shownPerson(intent.approver, namer), revokedBy: intent.revokedBy ? shownPerson(intent.revokedBy, namer) : null } : intent;
 }
 
 export async function loadChangeIntents(client: Client, tenantRef: string, now = new Date()): Promise<ChangeIntentsData> {
   // "Hide people's names": owners, approvers and who withdrew an approval by code name.
   const namer = await peopleNamer(client);
-  const intents = ((await listChangeIntents(client, { tenantRef, now })) as ChangeIntent[]).map((intent) => (namer ? {
+  const intents = ((await listChangeIntents(client, { tenantRef, now })) as ChangeIntent[]).map((listed) => ({ ...listed, transitions: readableTransitions(listed.transitions) })).map((intent) => (namer ? {
     ...intent,
     owner: shownPerson(intent.owner, namer),
     approver: shownPerson(intent.approver, namer),
@@ -82,7 +99,7 @@ export async function loadChangeIntents(client: Client, tenantRef: string, now =
     changes: drifts.map((drift) => ({
       driftId: String(drift.id), naturalKey: String(drift.natural_key), resourceType: String(drift.resource_type),
       name: payloadName(drift.after_payload, String(drift.resource_type)) ?? payloadName(drift.before_payload, String(drift.resource_type)) ?? saved[String(drift.natural_key)]?.name ?? null,
-      detectedAt: iso(drift.detected_at), transitions: (driftTransitions(drift) ?? []) as IntentTransition[],
+      detectedAt: iso(drift.detected_at), transitions: readableTransitions((driftTransitions(drift) ?? []) as IntentTransition[]),
     })).filter((change) => change.transitions.length > 0),
     // The people an approver chooses from: by code name too while names are hidden, in
     // that order, so the list matches what Activity and this page call them.

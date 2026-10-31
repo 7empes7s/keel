@@ -4,6 +4,8 @@ import { GET as listPoliciesRoute, POST as createPolicyRoute } from "@/app/api/p
 import { GET as showPolicyRoute } from "@/app/api/policies/[id]/route";
 import { POST as enablePolicyRoute } from "@/app/api/policies/[id]/enabled/route";
 import { POST as clearPauseRoute } from "@/app/api/policies/[id]/clear-pause/route";
+import { POST as editPolicyRoute } from "@/app/api/policies/[id]/edit/route";
+import { POST as deletePolicyRoute } from "@/app/api/policies/[id]/delete/route";
 import { POST as activationPreviewRoute } from "@/app/api/policies/[id]/activation-preview/route";
 import { POST as activatePolicyRoute } from "@/app/api/policies/[id]/activate/route";
 import { listPolicies } from "../../engine/policy/evaluate.mjs";
@@ -722,6 +724,8 @@ test("Task 36: non-admin roles cannot see or change policies, including read-onl
       [createPolicyRoute, "/api/policies", "POST"],
       [enablePolicyRoute, `/api/policies/${randomUUID()}/enabled`, "POST"],
       [clearPauseRoute, `/api/policies/${randomUUID()}/clear-pause`, "POST"],
+      [editPolicyRoute, `/api/policies/${randomUUID()}/edit`, "POST"],
+      [deletePolicyRoute, `/api/policies/${randomUUID()}/delete`, "POST"],
       [activationPreviewRoute, `/api/policies/${randomUUID()}/activation-preview`, "POST"],
       [activatePolicyRoute, `/api/policies/${randomUUID()}/activate`, "POST"],
     ] as const) {
@@ -730,6 +734,44 @@ test("Task 36: non-admin roles cannot see or change policies, including read-onl
       assert.deepEqual(await response.json(), { error: "forbidden" });
     }
   }
+});
+
+test("Automatic rules: edit saves the whole rule, delete hides it and keeps its row", async () => {
+  const options = { principalId: "admin", capabilities: ["policies"] };
+  const created = await createPolicyRoute(postAction("/api/policies", { ...options, body: {
+    name: "Edit me", action: "alert", maxBlastRadius: "cosmetic", resourceType: "group", maxActionsPerWindow: 50, windowSeconds: 3600,
+  } }));
+  assert.equal(created.status, 201);
+  const { policy } = await created.json();
+  assert.equal(policy.max_actions_per_window, 50, "the 50 the form shows is the limit saved");
+  const edit = (body: Record<string, unknown>) => editPolicyRoute(postAction(`/api/policies/${policy.id}/edit`, { ...options, body }));
+  assert.equal((await edit({ name: "", maxBlastRadius: "cosmetic" })).status, 400);
+  assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic", maxActionsPerWindow: 5 })).status, 400, "a limit needs its window");
+  assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic", changeType: "renamed" })).status, 400);
+  assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic", maxActionsPerWindow: 2 ** 40, windowSeconds: 3600 })).status, 400, "a database refusal is not reported as a deleted rule");
+  const saved = await edit({ name: "Edited", maxBlastRadius: "access-affecting", resourceType: "user", changeType: "removed", maxActionsPerWindow: 20, windowSeconds: 3600 });
+  assert.equal(saved.status, 200);
+  const after = (await saved.json()).policy;
+  assert.equal(after.name, "Edited");
+  assert.equal(after.resource_type, "user");
+  assert.equal(after.change_type, "removed");
+  assert.equal(after.max_blast_radius, "access-affecting");
+  assert.equal(after.max_actions_per_window, 20);
+  assert.equal(after.action, "alert");
+  const missing = await editPolicyRoute(postAction(`/api/policies/${randomUUID()}/edit`, { ...options, body: { name: "x", maxBlastRadius: "cosmetic" } }));
+  assert.equal(missing.status, 404);
+
+  const removed = await deletePolicyRoute(postAction(`/api/policies/${policy.id}/delete`, options));
+  assert.equal(removed.status, 200);
+  assert.deepEqual(await removed.json(), { deleted: { id: policy.id, name: "Edited" } });
+  assert.equal((await showPolicyRoute(getJobs(`/api/policies/${policy.id}`, options))).status, 404);
+  const listed = await (await listPoliciesRoute(getJobs("/api/policies", options))).json();
+  assert.ok(!listed.policies.some((p: { id: string }) => p.id === policy.id));
+  assert.equal((await deletePolicyRoute(postAction(`/api/policies/${policy.id}/delete`, options))).status, 404);
+  assert.equal((await edit({ name: "x", maxBlastRadius: "cosmetic" })).status, 404, "a deleted rule cannot be edited");
+  assert.equal((await enablePolicyRoute(postAction(`/api/policies/${policy.id}/enabled`, { ...options, body: { enabled: true } }))).status, 404);
+  const { rows } = await client.query("SELECT enabled, deleted_by FROM policy WHERE id = $1", [policy.id]);
+  assert.deepEqual(rows[0], { enabled: false, deleted_by: "admin" });
 });
 
 test("Task 36: actual policy routes reject revoked run-as on enable and clear, and retain live state", async () => {

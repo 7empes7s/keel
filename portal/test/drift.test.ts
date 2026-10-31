@@ -11,7 +11,10 @@ import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
+import { setupStatus } from "@/lib/baselines-view";
+import { openChangeCount } from "@/lib/changes-view";
 import { getDashboardData, getDriftData } from "@/lib/portal-data";
+import { getServiceChanges } from "@/lib/service-changes";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
@@ -220,6 +223,19 @@ test("an operator can accept a selected deviation", async () => {
     actor: "principal-operator",
     reason: "Reviewed against the approved change record",
   }]);
+
+  // Sent again (a second click, or a retry after a busy answer): saved once, said plainly.
+  const again = await disposeRoute(
+    post("/api/actions/dispose", {
+      principalId: "principal-operator",
+      capabilities: ["dispose-accept"],
+      body: { driftId: drift.id, action: "accept", reason: "sent twice" },
+    }),
+  );
+  assert.equal(again.status, 200);
+  assert.deepEqual(await again.json(), { disposition: { alreadyAccepted: true } });
+  const { rows: after } = await client.query(`SELECT reason FROM disposition WHERE drift_id = $1`, [drift.id]);
+  assert.deepEqual(after, [{ reason: "Reviewed against the approved change record" }]);
 });
 
 // Security audit run 2, finding 3: a change to sign-in (here a Conditional Access policy)
@@ -262,6 +278,18 @@ test("accepting or ignoring a sign-in change goes to a second person", async () 
   const decided = async () => (await client.query(`SELECT count(*)::int AS count FROM disposition WHERE drift_id = $1`, [drift.id])).rows[0].count;
   assert.equal(await decided(), 0, "nothing is decided before a second person approves");
   assert.equal(await jobCount(), jobsBefore);
+
+  // The same accept sent again gets the request already waiting, not a second one.
+  const again = await disposeRoute(post("/api/actions/dispose", {
+    ...operator, body: { driftId: drift.id, action: "accept", reason: "sent twice" },
+  }));
+  assert.equal(again.status, 202);
+  assert.equal((await again.json()).approvalRequest.id, approvalRequest.id);
+  const { rows: [{ count: waiting }] } = await client.query(
+    `SELECT count(*)::int AS count FROM approval_request WHERE action = 'dispose' AND params->'driftIds' = jsonb_build_array($1::text)`,
+    [drift.id],
+  );
+  assert.equal(waiting, 1);
 
   const self = await approveRoute(post(`/api/approvals/${approvalRequest.id}/approve`, {
     principalId: RESTORER, capabilities: ["approve", "dispose-accept"], body: {},
@@ -389,6 +417,10 @@ test("the Overview counts open service setting changes beside the approved-setup
 
   const after = await getDashboardData();
   assert.equal(after.openDriftTotal, before.openDriftTotal + 1, "the mail flow rule change counts");
+  // The same number the Changes and Approved setup pages show (openChangeCount).
+  const [drift, service] = await Promise.all([getDriftData(), getServiceChanges()]);
+  assert.equal(after.openDriftTotal, openChangeCount(drift.items.length, service.total));
+  assert.equal(setupStatus(drift.baseline, [...drift.items, ...service.items], after.openDriftTotal).label, `${after.openDriftTotal} ${after.openDriftTotal === 1 ? "change" : "changes"} to review`);
   const accessAffecting = (data: typeof after) => data.openDriftByBlastRadius.find((item) => item.blastRadius === "access-affecting")?.count ?? 0;
   assert.equal(accessAffecting(after), accessAffecting(before) + 1);
 });

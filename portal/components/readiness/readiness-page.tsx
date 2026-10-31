@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -51,13 +51,13 @@ import {
 } from "@/lib/readiness-view";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { ReasonHint } from "@/components/reason-hint";
 import { optionalReasonMessage } from "@/lib/written-reason";
 
 // Emergency access (portal audit, one design): a verdict whose one amber action is the
 // next thing to do (review a use, record a due test, or add an account); four tiles;
-// one card per emergency account with its five checks as rows, problems first; the
+// one card per emergency account with its checks as rows, problems first; the
 // emergency sign-ins with Acknowledge and Resolve in place; and what can block a sign-in,
 // grouped. Each change opens a sheet from the address (`account=<id>&do=<step>`, or
 // `do=add`, or `alert=<id>&do=resolve`), so Back closes it. KEEL only records what a
@@ -78,7 +78,7 @@ export function ReadinessPage({ data, canConfigure, canRespond }: {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/readiness";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const now = data.generatedAt;
   const step = STEPS.find((value) => value === view.get("do")) ?? null;
   const accountId = view.get("account");

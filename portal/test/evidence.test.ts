@@ -115,7 +115,7 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
 
 test("chain indicator distinguishes verified, failed, and unavailable states", () => {
   assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: { ok: true, status: "verified", anchoredThroughSeq: "5", unanchoredRecords: 0 } })), /evidence-intact/);
-  assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: { ok: false, status: "unanchored" } })), /Evidence chain unanchored/);
+  assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: { ok: false, status: "unanchored" } })), /evidence-unchecked[\s\S]*Not checked: no off-site copy/);
   const unavailable = renderToStaticMarkup(createElement(ChainIndicator, { integrity: null }));
   assert.match(unavailable, /Chain integrity unavailable/);
   assert.doesNotMatch(unavailable, /evidence-intact|evidence-broken/);

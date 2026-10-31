@@ -5,7 +5,12 @@
  * one boolean:
  *
  *   cloudOnlyIdentity            the account is a cloud-only, enabled member account
- *                                on a managed domain (collected user and domain inventory)
+ *                                on the tenant's Microsoft-managed onmicrosoft.com domain
+ *                                (collected user and domain inventory); a custom domain,
+ *                                even a managed one, fails
+ *   dedicatedAccount             the account is kept for emergencies only: no Keel person
+ *                                signs in with it, its profile does not name a person's
+ *                                job, and the sign-in log shows no day-to-day use
  *   phishingResistantCredential  a phishing-resistant method is registered (observed by
  *                                a read-only reader, or attested by a person) and the
  *                                tenant's method policy does not switch it off
@@ -46,8 +51,19 @@ export const USAGE_CONDITION = 'emergency-account-used';
 export const VALIDATION_DUE_CONDITION = 'validation-due';
 export const ROTATION_DUE_CONDITION = 'rotation-due';
 export const DIMENSIONS = Object.freeze([
-  'cloudOnlyIdentity', 'phishingResistantCredential', 'policyExclusions', 'privilegedAccessPath', 'lastValidation',
+  'cloudOnlyIdentity', 'dedicatedAccount', 'phishingResistantCredential', 'policyExclusions', 'privilegedAccessPath', 'lastValidation',
 ]);
+// What the lockout gate checks: whether an account can still get in after a change.
+// Whether it is dedicated to emergencies, and which domain it uses, is advice for the
+// readiness page; it does not decide whether a policy write locks people out.
+export const LOCKOUT_DIMENSIONS = Object.freeze(DIMENSIONS.filter((name) => name !== 'dedicatedAccount'));
+// Sign-ins on this many separate days in the lookback, none of them a recorded test,
+// read as day-to-day use.
+export const DAILY_USE_DAYS = 3;
+// Profile fields that describe a person's job rather than an emergency account.
+const PERSONAL_PROFILE_FIELDS = Object.freeze(['jobTitle', 'department', 'officeLocation', 'mobilePhone', 'employeeId']);
+// Microsoft's own initial domains: they do not depend on a custom domain's set-up.
+const MICROSOFT_DOMAIN = /\.(onmicrosoft\.com|onmicrosoft\.us|partner\.onmschina\.cn|onmicrosoft\.de)$/;
 export const LIFECYCLE_KINDS = Object.freeze(['validated', 'credential-rotated', 'methods-attested', 'methods-observed']);
 export const GLOBAL_ADMINISTRATOR = '62e90394-69f5-4237-9190-012177145e10';
 export const MINIMUM_ACCOUNTS = 2;
@@ -274,7 +290,7 @@ export function createFixtureMethodReader({ tenantRef, methods }) {
 
 const dimension = (status, reason, evidence = {}) => ({ status, reason, evidence });
 
-function evaluateIdentity(account, inventory) {
+function evaluateIdentity(account, inventory, { lockout = false } = {}) {
   const users = inventory.user;
   if (!users || users.status !== 'covered') return dimension('unknown', 'user-inventory-unavailable');
   const user = users.resources.find((resource) => String(resource.payload?.id ?? '').toLowerCase() === account.accountId);
@@ -297,10 +313,43 @@ function evaluateIdentity(account, inventory) {
   if (String(domain.payload?.authenticationType ?? '').toLowerCase() === 'federated') {
     return dimension('fail', 'federated-domain', { ...evidence, domain: domainName });
   }
+  // Microsoft advises emergency accounts on the onmicrosoft.com domain: a custom domain
+  // can later be federated, removed or misconfigured. It still signs in today, so the
+  // lockout gate does not treat it as a lockout.
+  if (!lockout && !MICROSOFT_DOMAIN.test(domainName)) return dimension('fail', 'custom-domain', { ...evidence, domain: domainName });
   if (String(domain.payload?.authenticationType ?? '').toLowerCase() !== 'managed') {
     return dimension('unknown', 'domain-authentication-not-collected', { ...evidence, domain: domainName });
   }
   return dimension('pass', 'cloud-only-member-account', { ...evidence, domain: domainName });
+}
+
+const personalProfile = (payload) => PERSONAL_PROFILE_FIELDS
+  .filter((field) => typeof payload?.[field] === 'string' && payload[field].trim());
+
+/**
+ * Is the account kept for emergencies only? `account.usage` is filled by
+ * loadBreakGlassReadiness: { signInLogRead, signInLogPartlyRead, signInDays, lastSignInAt,
+ * keelPerson }. Any sign of day-to-day use fails; with none, a sign-in log not read for
+ * the whole lookback is unknown. When some of it was read (the usage canary may already
+ * show sign-ins from it), the reason says so instead of calling the log unread.
+ */
+function evaluateDedicated(account, inventory) {
+  const usage = account.usage ?? null;
+  const user = (inventory.user?.resources ?? []).find((resource) => String(resource.payload?.id ?? '').toLowerCase() === account.accountId);
+  const profile = personalProfile(user?.payload);
+  const evidence = {
+    keelPerson: usage?.keelPerson ?? null,
+    profileFields: profile,
+    signInDays: usage?.signInDays ?? null,
+    lastSignInAt: usage?.lastSignInAt ?? null,
+    lookbackDays: CANARY_LOOKBACK_DAYS,
+  };
+  if (usage?.keelPerson) return dimension('fail', 'keel-person-signs-in-with-it', evidence);
+  if ((usage?.signInDays ?? 0) >= DAILY_USE_DAYS) return dimension('fail', 'signs-in-day-to-day', evidence);
+  if (profile.length) return dimension('fail', 'personal-profile', evidence);
+  if (!usage?.signInLogRead) return dimension('unknown', usage?.signInLogPartlyRead ? 'sign-in-log-partly-read' : 'sign-in-log-not-read', evidence);
+  if (!user) return dimension('unknown', 'account-not-in-inventory', evidence);
+  return dimension('pass', 'emergency-only', evidence);
 }
 
 function evaluateCredential(account, inventory) {
@@ -403,17 +452,23 @@ function reminderFor(kind, last, intervalDays, registeredAt, now) {
   };
 }
 
-/** Pure: one account's five dimensions, its overall verdict and its reminders. */
-export function evaluateAccountReadiness({ account, inventory, groupMembers = () => null, now = new Date() }) {
+/**
+ * Pure: one account's dimensions, its overall verdict and its reminders. `lockout`
+ * evaluates only what the lockout gate needs (LOCKOUT_DIMENSIONS): whether the account
+ * can still sign in and act.
+ */
+export function evaluateAccountReadiness({ account, inventory, groupMembers = () => null, now = new Date(), lockout = false }) {
+  const names = lockout ? LOCKOUT_DIMENSIONS : DIMENSIONS;
   const dimensions = {
-    cloudOnlyIdentity: evaluateIdentity(account, inventory),
+    cloudOnlyIdentity: evaluateIdentity(account, inventory, { lockout }),
+    ...(lockout ? {} : { dedicatedAccount: evaluateDedicated(account, inventory) }),
     phishingResistantCredential: evaluateCredential(account, inventory),
     policyExclusions: evaluateExclusions(account, inventory, groupMembers),
     privilegedAccessPath: evaluatePrivilegedPath(account, inventory),
     lastValidation: evaluateValidation(account, now),
   };
-  const statuses = DIMENSIONS.map((name) => dimensions[name].status);
-  // Every dimension counts. The policy exclusion is one of five, never the verdict.
+  const statuses = names.map((name) => dimensions[name].status);
+  // Every dimension counts. The policy exclusion is one of several, never the verdict.
   const overall = statuses.some((status) => status === 'fail' || status === 'due')
     ? 'not-ready'
     : statuses.some((status) => status === 'unknown') ? 'unknown' : 'ready';
@@ -579,7 +634,13 @@ async function signInCoverage(client, tenantRef, now) {
     const until = Math.min(lastUntil, ms(now));
     const coverage = coverageFromRuns({ runs, state: state ?? null }, { from: new Date(until - CANARY_WATCH_MS), until: new Date(until) });
     const behind = ms(now) - lastUntil > CANARY_WATCH_MS;
-    sources[source] = { status: coverage.status === 'covered' && behind ? 'behind' : coverage.status, readUntil: new Date(lastUntil).toISOString() };
+    // The day-to-day use check looks back CANARY_LOOKBACK_DAYS: it needs that whole
+    // stretch read, not just the last day.
+    const lookback = coverageFromRuns({ runs, state: state ?? null }, { from: new Date(ms(now) - CANARY_LOOKBACK_DAYS * DAY), until: new Date(until) });
+    sources[source] = {
+      status: coverage.status === 'covered' && behind ? 'behind' : coverage.status, readUntil: new Date(lastUntil).toISOString(),
+      lookbackCovered: coverage.status === 'covered' && !behind && lookback.status === 'covered',
+    };
   }
   const signIn = sources['sign-in'];
   const status = signIn.status === 'covered' ? 'watching' : signIn.status === 'not-configured' ? 'not-configured' : 'not-watching';
@@ -621,6 +682,51 @@ export async function loadLockoutGateInputs(client, { tenantRef, now = new Date(
   return { configured: accounts.length > 0, accounts, inventory, groupMembers, now };
 }
 
+/**
+ * Signs that an account is used day to day, per account id: whether a Keel person signs
+ * in to Keel with the same sign-in name, and on how many separate days the sign-in log
+ * shows it signing in, leaving out sign-ins near a recorded emergency test. Read-only.
+ */
+async function loadAccountUsage(client, { tenantRef, accounts, inventory, now, signInLogRead, signInLogPartlyRead = false }) {
+  const usage = new Map(accounts.map((account) => [account.accountId, { signInLogRead, signInLogPartlyRead, signInDays: 0, lastSignInAt: null, keelPerson: null }]));
+  if (!accounts.length) return usage;
+  const ids = accounts.map((account) => account.accountId);
+  const signInNames = new Map();
+  for (const account of accounts) {
+    const { signInName } = accountNames(account.accountId, inventory);
+    if (signInName) signInNames.set(signInName.trim().toLowerCase(), account.accountId);
+  }
+  if (signInNames.size && await tableExists(client, 'principal')) {
+    const { rows } = await client.query(
+      `SELECT lower(email) AS email, display_name FROM principal
+        WHERE lower(email) = ANY($1) AND disabled_at IS NULL AND system_kind IS NULL`,
+      [[...signInNames.keys()]],
+    );
+    for (const row of rows) {
+      const entry = usage.get(signInNames.get(row.email));
+      if (entry) entry.keelPerson = { displayName: typeof row.display_name === 'string' && row.display_name.trim() ? row.display_name.trim() : null };
+    }
+  }
+  if (await tableExists(client, 'audit_sign_in_fact')) {
+    const since = new Date(ms(now) - CANARY_LOOKBACK_DAYS * DAY);
+    const { rows } = await client.query(
+      `SELECT f.actor_id, count(DISTINCT date_trunc('day', f.occurred_at AT TIME ZONE 'UTC'))::int AS days, max(f.occurred_at) AS last_at
+         FROM audit_sign_in_fact f
+        WHERE f.tenant_ref = $1 AND f.actor_kind = 'user' AND f.actor_id = ANY($2) AND f.occurred_at > $3 AND f.occurred_at <= $4
+          AND NOT EXISTS (SELECT 1 FROM breakglass_lifecycle_event e
+                           WHERE e.tenant_ref = f.tenant_ref AND e.account_id = f.actor_id AND e.kind = 'validated'
+                             AND abs(extract(epoch FROM e.occurred_at - f.occurred_at)) * 1000 <= $5)
+        GROUP BY f.actor_id`,
+      [tenantRef, ids, since, new Date(now), EXPECTED_TEST_WINDOW_MS],
+    );
+    for (const row of rows) {
+      const entry = usage.get(row.actor_id);
+      if (entry) Object.assign(entry, { signInDays: row.days, lastSignInAt: iso(row.last_at) });
+    }
+  }
+  return usage;
+}
+
 // The person-facing names of an account from the newest user backup: its display name
 // and sign-in name. Null when the backup does not have it.
 function accountNames(accountId, inventory) {
@@ -652,11 +758,19 @@ export async function loadBreakGlassReadiness(client, { tenantRef, now = new Dat
   if (!await tableExists(client, 'breakglass_account')) {
     return { generatedAt, configured: false, overall: 'not-configured', reason: 'not-migrated', accounts: [], surfaces: [], canary: { status: 'not-configured', reason: 'not-migrated' }, alerts: [] };
   }
-  const accountsRaw = await loadAccounts(client, tenantRef);
+  const accountsLoaded = await loadAccounts(client, tenantRef);
   const inventory = await loadInventory(client, tenantRef);
   const groupMembers = await loadGroupMembership(client, tenantRef, inventory);
-  const accounts = accountsRaw.map((account) => ({
-    ...account, ...accountNames(account.accountId, inventory), ...evaluateAccountReadiness({ account, inventory, groupMembers, now }),
+  const canary = await signInCoverage(client, tenantRef, now);
+  const signInSource = canary.sources?.['sign-in'];
+  const signInLogRead = signInSource?.lookbackCovered === true;
+  const usage = await loadAccountUsage(client, {
+    tenantRef, accounts: accountsLoaded, inventory, now, signInLogRead,
+    signInLogPartlyRead: !signInLogRead && typeof signInSource?.readUntil === 'string',
+  });
+  const accountsRaw = accountsLoaded.map((account) => ({ ...account, usage: usage.get(account.accountId) }));
+  const accounts = accountsRaw.map(({ usage: _usage, ...account }) => ({
+    ...account, ...accountNames(account.accountId, inventory), ...evaluateAccountReadiness({ account: { ...account, usage: _usage }, inventory, groupMembers, now }),
   }));
   const surfaces = evaluateSurfaces(inventory);
   const verdict = accountsRaw.length ? tenantReadiness(accounts) : { overall: 'not-configured', reason: 'no-accounts-registered' };
@@ -668,7 +782,7 @@ export async function loadBreakGlassReadiness(client, { tenantRef, now = new Dat
     accounts,
     surfaces,
     inventory: Object.fromEntries(INVENTORY_TYPES.map((type) => [type, { status: inventory[type].status, observedAt: inventory[type].observedAt }])),
-    canary: await signInCoverage(client, tenantRef, now),
+    canary,
     alerts: await activeBreakGlassAlerts(client, tenantRef),
   };
 }

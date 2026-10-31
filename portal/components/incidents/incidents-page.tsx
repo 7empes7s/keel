@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, type MouseEvent, type ReactNode } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -32,7 +32,7 @@ import { personLabel } from "@/lib/sentences";
 import { serviceFor } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Incidents (portal audit, pick B: incident picker at the top). During a breach the
 // newest backup is the one most likely to hold the attacker's changes, so the page
@@ -66,7 +66,7 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/incidents";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const verdict = incidentVerdict({ incidents, selected, now });
   const counts = incidentCounts(incidents, selected);
   const showParam = view.get("show");

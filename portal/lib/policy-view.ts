@@ -71,8 +71,10 @@ export function kindWords(policy: Pick<Policy, "resource_type" | "natural_key_gl
 export function watchedType(policy: Pick<Policy, "resource_type" | "natural_key_glob">): string | null {
   if (policy.resource_type) return policy.resource_type;
   const glob = policy.natural_key_glob;
-  if (glob && glob.includes(":")) return glob.split(":")[0];
-  return null;
+  if (!glob || !glob.includes(":")) return null;
+  // "*:Admin*" watches every kind, so it has no single type.
+  const type = glob.split(":")[0];
+  return type && !/[*?]/.test(type) ? type : null;
 }
 
 /** The name pattern a rule watches, without its type: "Admin*"; null for every name. */

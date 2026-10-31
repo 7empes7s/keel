@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type MouseEvent } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -60,7 +60,7 @@ import { serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import type { ComplianceData, ComplianceFinding, OwnCheckChoices, ScubaListsView } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Compliance (portal audit, pick A on a desktop, B on a phone): which security controls
 // pass, and why. Four count tiles (Failing, With exception, Could not check, Passing)
@@ -96,7 +96,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const check = useCheckNow(() => router.refresh());
   const view = useViewState();
   const pathname = usePathname() ?? "/benchmarks";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const [granted, setGranted] = useState<Record<string, Granted>>({});
 
   // An exception just saved shows at once, before the page's next read brings it back.
@@ -207,7 +207,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
       <div data-layer="explanation">
         <p className="cp-context">
           <span>
-            {baseline ? <>Measured against <Link className="cp-inline-link" href="/baselines">{baseline.label ?? "the approved setup"}</Link>{baseline.capture?.capturedAt ? `, captured ${ago(baseline.capture.capturedAt, now)}` : ""}.</> : <>No approved setup is active. <Link className="cp-inline-link" href="/baselines">Approved setups</Link></>}
+            {baseline ? <>Measured against <Link className="cp-inline-link" href="/baselines">{baseline.label ?? "the approved setup"}</Link>{baseline.capture?.capturedAt ? `, settings from ${ago(baseline.capture.capturedAt, now)}` : ""}.</> : <>No approved setup is active. <Link className="cp-inline-link" href="/baselines">Approved setups</Link></>}
           </span>
           <span>{NOT_RUN_YET}{checkedWhen ? ` ${checkedWhen}` : ""}</span>
           {canCheck && findings.length ? <CheckNowButton check={check} /> : null}

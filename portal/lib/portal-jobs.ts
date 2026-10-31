@@ -1,10 +1,11 @@
 import { listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
-import { listEligibleBaselineSnapshots } from "../../engine/govern/baseline.mjs";
+import { listEligibleBaselineSnapshots, newestBackupGap } from "../../engine/govern/baseline.mjs";
 import { connect } from "@/lib/db";
 
 import { normalizeJob } from "@/lib/action";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { withSavedChangeNames } from "@/lib/saved-names";
+import type { BackupGap } from "@/lib/types";
 
 // Plan task 16: the server-side data layer for the baselines and backups action
 // surfaces. Lives apart from portal-data.ts (which serves the read-only report pages)
@@ -104,6 +105,13 @@ export async function getSnapshotOptions(limit = 50): Promise<SnapshotOption[]> 
       resourceCount: Number(row.resource_count ?? 0),
     }));
   });
+}
+
+/** The newest finished backup when it cannot be the source of a new approved setup
+ * version, and why; null when it can, or when no backup has finished. */
+export async function getNewestBackupGap(): Promise<BackupGap | null> {
+  const ref = tenantRef();
+  return withClient(async (client) => (await newestBackupGap(client, { tenantRef: ref })) as BackupGap | null);
 }
 
 export async function hasCompletedSnapshots(): Promise<boolean> {

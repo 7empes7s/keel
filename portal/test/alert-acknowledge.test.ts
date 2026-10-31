@@ -32,7 +32,7 @@ test("an acknowledge made on the page moves the pill, the banner and the tiles t
   const after = withLocalChanges(ALERTS, { [ALERTS[0].id]: { state: "acknowledged", acknowledged: true, owner: ME, note: "  KEEL-RT- on it ", at: NOW, by: "you" } });
   const counts = alertCounts(after, NOW);
   assert.equal(alertsStatus(counts).label, "2 waiting");
-  assert.match(alertsVerdict(after, NOW).text, /^2 alerts need someone/);
+  assert.match(alertsVerdict(alertCounts(after, NOW)).text, /^2 alerts need someone/);
   assert.equal(counts.acknowledged, 1);
   // The acknowledger owns it, and the note is on it.
   assert.deepEqual(after[0].owner, ME);

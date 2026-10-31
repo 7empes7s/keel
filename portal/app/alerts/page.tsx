@@ -30,6 +30,7 @@ export default async function AlertsPage() {
   // The body draws the header, so its status pill and the banner count one list.
   return <AlertsBody
     alerts={data.alerts}
+    counts={data.counts}
     canMute={access.capabilities.includes(ALERT_MUTE_CAPABILITY)}
     canRespond={access.capabilities.includes(ALERT_RESPOND_CAPABILITY)}
     header={{ description: DESCRIPTION, generatedAt: data.generatedAt }}

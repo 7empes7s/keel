@@ -3,6 +3,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { reasonMessage } from "@/lib/written-reason";
 
 // One sheet for every step that asks first: keep a backup, let clean-up remove it,
 // allow a restore anyway, withdraw that permission, close an incident. It says what
@@ -28,6 +29,8 @@ export function ConfirmSheet({ title, kicker, effect, reasonLabel, placeholder, 
     event.preventDefault();
     setError(null);
     if (reasonLabel && !reason.trim()) { setError("Write why. It is kept with the record."); return; }
+    const weak = reasonLabel ? reasonMessage(reason) : null;
+    if (weak) { setError(weak); return; }
     setBusy(true);
     try {
       const failed = await onConfirm(reason.trim());

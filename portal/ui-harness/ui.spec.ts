@@ -40,8 +40,10 @@ const PAGES = [
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
   { name: "approvals-settings", hash: "/approvals/settings" },
+  { name: "approvals-solo", hash: "/approvals/solo" },
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
+  { name: "baselines-put-back", hash: "/baselines/put-back" },
   { name: "benchmarks", hash: "/benchmarks" },
   { name: "benchmarks-scuba-lists", hash: "/benchmarks/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/benchmarks/scuba?lists=edit" },
@@ -164,6 +166,50 @@ test("reject shows the spinner on Reject only", async ({ page }) => {
   await expect(card.getByRole("button", { name: "Reject the request" })).toHaveAttribute("aria-busy", "true");
   await expect(card.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-busy", "true");
   await expect(page.locator(".toast").first()).toContainText("Request rejected");
+});
+
+// Approval mode: two people by default; switching to Solo needs the risk ticked, and in
+// Solo the viewer approves their own request, which is then marked "Self-approved".
+test("Approvals · approval mode switches to Solo only with the risk confirmed, and Solo lets you approve your own", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === "/api/approval-mode").map((call) => JSON.parse(call.body ?? "{}"));
+  await open(page, "/approvals/settings", "light");
+  const card = page.locator(".am-card");
+  await expect(card.locator("#approval-mode-heading")).toContainText("Two people");
+  await card.getByRole("button", { name: "Switch to Solo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Switch to Solo approval?" });
+  await expect(dialog).toContainText("A mistake or a stolen account is not caught by a second person.");
+  const confirm = dialog.getByRole("button", { name: "Switch to Solo" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /one person can now approve their own changes/ }).check();
+  await confirm.click();
+  await expect(page.locator(".toast").first()).toContainText("Approval mode is now Solo");
+  expect(await posts()).toEqual([{ mode: "solo", riskAcknowledged: true }]);
+
+  await open(page, "/approvals/solo", "light");
+  await expect(page.locator("#approval-mode-heading")).toContainText("Solo: you can approve your own");
+  await expect(page.locator(".verdict").first()).toContainText("Approval mode is Solo, so you can approve your own requests");
+  await page.locator(".ap-row-link").first().click();
+  const request = page.locator("article.ap-card");
+  await expect(request.locator(".ap-help")).toContainText("Approval mode is Solo, so you can approve it yourself: say why");
+  await expect(request.getByText("You can self-approve")).toBeVisible();
+  // A self-approval needs a reason that says why: the button waits for one.
+  const approveMyself = request.getByRole("button", { name: "Approve myself" });
+  const why = request.getByLabel("Why are you approving this yourself?");
+  await expect(why).toHaveValue("Nobody meant to add the contractors to Finance.");
+  await why.fill("");
+  await expect(approveMyself).toBeDisabled();
+  await why.fill("Restore the policy deleted by mistake");
+  await expect(approveMyself).toBeEnabled();
+  await approveMyself.click();
+  const decisions = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url.endsWith("/approve"));
+  expect(decisions.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ reason: "Restore the policy deleted by mistake" }]);
+  await page.getByRole("radio", { name: /Decided/ }).click();
+  await expect(page.locator(".ap-history-row").first().getByText("Self-approved")).toBeVisible();
+  await page.locator(".am-card").getByRole("button", { name: "Switch to two people" }).click();
+  expect((await posts()).at(-1)).toEqual({ mode: "two-person" });
 });
 
 // Restore approvals stay the customer's choice, but a high-risk kind is flagged: a red
@@ -409,6 +455,27 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   expect(await posts()).toContain("/api/escalation-rules/e5c10000-0000-4000-8000-0000000000e1/disable");
   // (7) Still one amber action at most on the page itself.
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+});
+
+// Five tiles on a tablet wrap 4 + 1 (about 46 to 52rem): a tile left alone on a row
+// takes the full width, never one narrow column, on Activity and Schedules alike.
+test("Activity and Schedules · a wrapped lone tile spans the row at tablet widths", async ({ page }) => {
+  for (const [hash, tile] of [["/activity", ".ac-tile"], ["/schedules", ".sc-tile"]] as const) {
+    for (const width of [700, 760, 800, 840, 900, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, hash);
+      const boxes = await page.locator(tile).evaluateAll((items) => {
+        const parent = items[0].parentElement!.getBoundingClientRect();
+        return { parent: parent.width, tiles: items.map((item) => { const box = item.getBoundingClientRect(); return { top: Math.round(box.top), width: box.width }; }) };
+      });
+      expect(boxes.tiles).toHaveLength(5);
+      const rows = new Map<number, number[]>();
+      for (const box of boxes.tiles) rows.set(box.top, [...(rows.get(box.top) ?? []), box.width]);
+      for (const widths of rows.values()) {
+        if (widths.length === 1) expect(widths[0], `${hash} at ${width}px`).toBeGreaterThan(boxes.parent - 2);
+      }
+    }
+  }
 });
 
 // The page's done-test (portal audit, Activity, pick A: a timeline by day): the status
@@ -682,7 +749,7 @@ for (const theme of ["dark", "light"] as const) {
           await rows.nth(3).click({ modifiers: ["Shift"] });
           await expect(page.locator(".sel-bar-count")).toContainText("4 entries");
           await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 4 entries");
-          await page.getByRole("button", { name: /Select all 20 entries/ }).click();
+          await page.getByRole("button", { name: /Select all 20 loaded entries/ }).click();
           await expect(page.locator(".sel-bar-count")).toContainText("20 entries");
         }
       });
@@ -1303,7 +1370,12 @@ test("a kind's details panel states its standing and keeps the recovery decision
   await expect(page).not.toHaveURL(/open=/);
 });
 
-test("What's protected sorts failed and out-of-date kinds first, each with a run of its tier", async ({ page }) => {
+test("What's protected · one line counts every kind, and its parts add up", async ({ page }) => {
+  await open(page, "/protect");
+  await expect(page.locator(".pt-tiles-sum")).toHaveText("15 kinds: 8 backed up, 2 failed, 3 out of date or never, 1 not backed up by Keel yet and 1 not on this tenant.");
+});
+
+test("What's protected sorts failed and out-of-date kinds first; each failed kind says why and can be retried", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("2 types failed their last backup.");
@@ -1313,8 +1385,24 @@ test("What's protected sorts failed and out-of-date kinds first, each with a run
   await expect(signIn.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
   const failed = signIn.locator(".sel-row").first();
   await expect(failed.locator(".badge")).toHaveText("Failed");
-  await failed.getByRole("button", { name: "Back up Tier 1 again" }).click();
+  // The reason names the missing permission and links to its row on Setup (audit issue 10).
+  await expect(failed.locator(".pt-row-why")).toContainText("Policy.Read.All");
+  await expect(failed.locator(".bf-need")).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
+  await failed.getByRole("button", { name: "Retry Authentication methods policy" }).click();
   await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+  // A failure that is not a permission says what happened, and is retried the same way.
+  const labels = page.locator(".sel-row", { hasText: "Retention label" }).first();
+  await expect(labels.locator(".pt-row-why")).toContainText("did not answer in time");
+  await expect(labels.locator(".bf-need")).toHaveCount(0);
+  await expect(labels.getByRole("button", { name: /^Retry / })).toBeVisible();
+  // Every failed kind has a retry button.
+  await expect(page.locator(".pt-row.health-failed")).toHaveCount(await page.locator(".pt-row.health-failed").getByRole("button", { name: /^Retry / }).count());
+  // The details panel puts the reason first, with the permission's link and a Retry.
+  await signIn.locator(".pt-row-link").first().click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator(".pt-details-why")).toContainText("Why the last backup failed");
+  await expect(sheet.locator(".pt-details-why .bf-need")).toHaveText("Policy.Read.All");
+  await expect(sheet.getByRole("button", { name: "Retry Authentication methods policy" })).toBeVisible();
 });
 
 // The page's done-test (portal audit, What's protected): tiles filter the list in the
@@ -1509,6 +1597,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(page.locator('.ui-tile[data-tile="services"] .ui-tile-value')).toHaveText("4 of 8");
   await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
+  // Entra ID and Intune count kinds as What's protected does (same fixture): 2 failed, 2 out of date or never.
+  await expect(page.locator('.rs-table tr[data-row="entra-intune"]')).toContainText("2 failed");
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("2 setting types failed their last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("2 setting types are out of date or never backed up");
   const groups = await page.locator(".rs-group").allTextContents();
   expect(groups).toEqual(["Entra ID and Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
   // The measurements stay, last.
@@ -1528,7 +1620,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
     await expect(page.locator(`.resilience-${card} .badge:not([data-layer="record"] .badge)`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
-  await expect(page.locator('.ui-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
+  // Counted with What's protected's buckets: one failed, one never read.
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("Group failed its last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("Conditional Access policy is out of date or never backed up");
+  await expect(page.locator(".rs-page")).not.toContainText(/\d+ (setting types )?never backed up/);
 });
 
 // Task-100 and the Value report redesign (pick A): the tiles and chart add up, each
@@ -1614,6 +1709,25 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   // No ids outside Technical details.
   await open(page, "/reports");
   expect(await textOutside(page, "main#main-content", '[data-layer="record"]')).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|restore-plan:|finding:|sha256:/i);
+});
+
+// Audit 31 Oct 2026: the report listed 50 of 98 requests, its pager could not reach the
+// rest, and Select all said 50. Every request is listed and paged; a capped list says so.
+test("the value report pages through every request, and Select all states the true count", async ({ page }) => {
+  await open(page, "/reports/many");
+  const pager = page.getByRole("navigation", { name: "Pages of Requests" });
+  await expect(pager.locator(".list-pager-range")).toHaveText("Showing 1–25 of 98 requests");
+  await expect(page.getByRole("button", { name: "Select all 98 requests" })).toBeVisible();
+  await expect(page.locator(".sel-partial")).toHaveCount(0);
+  await pager.getByRole("button", { name: "Last page" }).click();
+  await expect(pager.locator(".list-pager-range")).toHaveText("Showing 76–98 of 98 requests");
+  await expect(page.locator(".vr-row-link")).toHaveCount(23);
+  await page.getByRole("button", { name: "Select all 98 requests" }).click();
+  await expect(page.locator(".sel-bar-count")).toContainText("98 requests");
+
+  await open(page, "/reports/capped");
+  await expect(page.getByRole("button", { name: "Select all 50 loaded requests" })).toBeVisible();
+  await expect(page.locator(".sel-partial")).toHaveText("Only the first 50 of 98 requests are listed. The tiles count every request.");
 });
 
 test("the value report fits 390 and 1440 in both themes, and every tile, chart and row is a working control", async ({ page }) => {
@@ -2229,6 +2343,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
+  "baselines-put-back": ["b1190000-0000-4000-8000-000000000119", "b1160000-0000-4000-8000-000000000116"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
   incidents: ["1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "7e000000-0000-4000-8000-000000000071", "9b000000-0000-4000-8000-000000000071", "3f9c2b1e-0000-4000-8000-0000000000aa"],
   "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
@@ -2999,8 +3114,9 @@ test("Setup · one status tile per service, worst first, and a warning before a 
   const entra = tiles.filter({ hasText: "Entra ID" });
   await expect(entra).toHaveAttribute("data-tone", "urgent");
   await expect(entra.locator(".badge")).toHaveText("Failing");
-  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app is missing a permission Microsoft asks for.");
-  await expect(entra.getByRole("link", { name: "Check read access" })).toHaveAttribute("href", "#setup-read");
+  // The failed kind names the permission it needs and opens its row in the permission list.
+  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app does not hold the permission Policy.Read.All.");
+  await expect(entra.getByRole("link", { name: "Check Policy.Read.All" })).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
   const teams = tiles.filter({ hasText: "Teams" });
   await expect(teams.locator(".badge")).toHaveText("Out of date");
   await expect(teams.getByRole("link", { name: "See what is out of date" })).toHaveAttribute("href", /\/protect\?service=Teams&health=out-of-date$/);
@@ -3090,6 +3206,33 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     // A replaced setup offers no actions.
     await expect(page.locator(".bl-version", { hasText: "Replaced by a newer version" }).getByRole("button")).toHaveCount(0);
     await expect(page.locator(".bl-version", { hasText: "Before migration (v2)" }).getByRole("button", { name: "Use this one" })).toBeVisible();
+  });
+}
+
+// Backlog B12 and D16: a version put back from an older one says so, with both dates,
+// and a disabled "Capture new version" says what the newest backup missed. Every page
+// that lists versions orders them by when they were approved and shows both dates.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`a put-back approved setup explains its dates and why capture is off at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/baselines/put-back", viewport.width < 600 ? "dark" : "light");
+    const current = page.locator(".bl-current");
+    await expect(current.locator(".bl-fact", { hasText: "Approved by" })).toContainText("4 hours ago, on");
+    await expect(current.locator(".bl-fact", { hasText: "Settings from" })).toContainText("43 days ago");
+    await expect(current.locator("[data-part='put-back']")).toHaveText(
+      "Put back This version is a copy of version 1, put back 4 hours ago. It holds the settings version 1 held, as they were 43 days ago: 2 kinds of setting. Version 2, which it replaced, held 6 kinds, so 4 kinds are not checked until you capture a new version.");
+    const reason = current.locator("[data-part='capture-reason']");
+    await expect(reason).toContainText("Not available yet");
+    await expect(reason).toContainText("Capture new version needs a newer complete backup: one that read every kind of setting in full. The newest backup, finished 2 hours ago, was not complete: Microsoft To Do setting could not be read and Group was read only in part.");
+    await expect(reason.getByRole("link", { name: "What's protected" })).toHaveAttribute("href", /\/protect$/);
+    await expect(current.getByRole("button", { name: /Capture new version/ })).toBeDisabled();
+    // Older versions: newest approved first, both dates, and the reason said once above.
+    const versions = page.locator(".bl-version");
+    await expect(versions.locator(".bl-version-name small")).toHaveText([/^Version 2 ·/, /^Version 1 ·/]);
+    await expect(versions.first().locator(".bl-version-when")).toContainText(/^Approved 31 days ago\s*Settings from 31 days ago · Not compared yet$/);
+    await expect(page.locator("#bl-versions-heading").locator("xpath=..")).toContainText("until a backup reads every kind in full, they show Not compared yet");
+    await expect(page.getByText("No complete backup to compare with yet")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 }
 
@@ -3348,6 +3491,35 @@ test("Policies · a viewer sees the rules and no controls", async ({ page }) => 
   await expect(page.getByRole("link", { name: "New rule" })).toHaveCount(0);
   await expect(page.locator(".sel-row")).toHaveCount(5);
 });
+
+// The rule sheet looks the same from the list (New rule) and from a rule's page (Edit):
+// a styled panel beside the page on a desktop, full screen on a phone, and no choice
+// runs past its edge or clips its label.
+for (const width of [375, 390, 1278]) {
+  test(`Policies · ${width} · New rule and Edit open as a styled sheet with every choice inside it`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 600 ? 812 : 900 });
+    for (const [hash, opener, name] of [["/policies", "New rule", "New rule"], ["/policies/p1", "Edit", "Edit Undo low-risk changes"]] as const) {
+      await open(page, hash);
+      await page.getByRole(opener === "Edit" ? "button" : "link", { name: opener, exact: true }).click();
+      const sheet = page.getByRole("dialog", { name });
+      await expect(sheet).toBeVisible();
+      const box = await sheet.evaluate((panel) => {
+        const rect = panel.getBoundingClientRect();
+        const body = panel.querySelector(".bl-sheet-body")!.getBoundingClientRect();
+        const choices = [...panel.querySelectorAll<HTMLElement>(".segmented")].map((group) => group.getBoundingClientRect());
+        const clipped = [...panel.querySelectorAll<HTMLElement>(".segment")].filter((segment) => segment.scrollWidth > segment.clientWidth + 1).map((segment) => segment.textContent);
+        return { position: getComputedStyle(panel).position, left: rect.left, width: rect.width, bodyRight: body.right, widest: Math.max(...choices.map((group) => group.right)), clipped };
+      });
+      expect(box.position).toBe("absolute");
+      if (width >= 1000) { expect(box.width).toBeLessThanOrEqual(481); expect(box.left).toBeGreaterThan(width / 2); }
+      else expect(box.width).toBe(width);
+      expect(box.widest).toBeLessThanOrEqual(box.bodyRight);
+      expect(box.clipped).toEqual([]);
+      await sheet.getByRole("button", { name: "Cancel" }).click();
+      await expect(sheet).toBeHidden();
+    }
+  });
+}
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
@@ -4034,6 +4206,29 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
 
+// Backlog G2: "Is Intune backed up?" counts the kinds Setup counts, with the shared buckets,
+// not the newest run's "Not part of this backup".
+test("ask coverage counts Intune kinds as Setup does", async ({ page }) => {
+  await open(page, "/setup/checked", "dark");
+  const setupLine = await page.locator(".su-svc-tile", { hasText: "Intune" }).first().innerText();
+  const backedUp = setupLine.match(/(\d+) of (\d+) backed up|All (\d+) kinds? backed up/);
+  expect(backedUp).not.toBeNull();
+  const shot = process.env.KEEL_SHOT_DIR;
+  for (const [width, theme] of [[1440, "dark"], [390, "light"], [1440, "light"], [390, "dark"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/ask/coverage", theme);
+    const answer = page.locator(".ask-answer");
+    await expect(answer.locator(".pg-table")).not.toContainText("Not part of this backup");
+    const states = answer.locator('section[aria-label="Summary of every kind"]');
+    await expect(states).toContainText("By state");
+    const verdict = await page.locator('[data-layer="verdict"]').innerText();
+    if (backedUp?.[3]) expect(verdict).toContain(`${backedUp[3]} backed up`);
+    else expect(verdict).toContain(`${backedUp?.[1]} backed up`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    if (shot) await page.screenshot({ path: `${shot}/ask-coverage-${width}-${theme}.png`, fullPage: true });
+  }
+});
+
 // A month-long answer shaped like the live one (keelops K12): every changed row names
 // its settings in words, never Microsoft's field names, and none says "Not recorded".
 test("ask month answer names changed settings in words and lists no empty changed rows", async ({ page }) => {
@@ -4252,44 +4447,44 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
 // and refuses an approval by the person who made the change.
 test("emergency changes put alerts first, show each approved value, and refuse self-approval", async ({ page }) => {
   await open(page, "/emergency-changes");
-  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("One emergency change is approved right now; KEEL will not roll it back. The next approval ends in 3 hours.");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("One emergency change is approved right now; automatic rules will not undo it. The next approval ends in 3 hours.");
   // A change still there after its approval ended leads; the approval in force follows.
   const alerts = page.locator("#ec-attention .ui-alert");
   await expect(alerts).toHaveCount(2);
   await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
   await expect(alerts.nth(0)).toContainText("Finance (group) is still changed after its approval ended");
   await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /drift/);
-  await expect(alerts.nth(1)).toContainText("Block legacy auth (Conditional Access policy) is not rolled back until");
+  await expect(alerts.nth(1)).toContainText("Automatic rules leave Block legacy auth (Conditional Access policy) alone until");
   await expect(page.locator('.ui-tile[data-tile="active"] .ui-tile-value')).toHaveText("1");
   await expect(page.locator('.ui-tile[data-tile="next"] .ui-tile-value')).toHaveText("in 3 hours");
 
   const active = page.locator("li.change-intent.is-active");
   await expect(active.locator(".badge").first()).toHaveText("In force");
-  await expect(active.locator(".change-intent-sentence")).toHaveText(/^KEEL will not roll back the state change until .+ \(in 3 hours\)\.$/);
+  await expect(active.locator(".change-intent-sentence")).toHaveText(/^Automatic rules will not undo the state change until .+ \(in 3 hours\)\.$/);
   // The approved setting, as the baseline has it and as the approval allows it.
   const row = active.locator(".cv-row");
   await expect(row.locator('[data-side="before"]')).toContainText("enabled");
   await expect(row.locator('[data-side="after"]')).toContainText("enabled for reporting but not enforced");
-  await expect(active).toContainText("Other changes to this Conditional Access policy still roll back as usual.");
+  await expect(active).toContainText("Other changes to this Conditional Access policy follow your automatic rules as usual. When the approval ends, Keel checks it again but does not put the setting back by itself.");
   await expect(active).toContainText("CHG0031337");
 
   // Ended approvals sit last, in one table, each with how it ended and what KEEL found.
   const ended = page.locator("#ec-ended tr.change-intent.is-ended");
   await expect(ended.locator(".badge", { hasText: "Still changed" })).toHaveAttribute("data-tone", "soon");
-  await expect(ended.locator(".change-intent-settled")).toHaveText("Its policies acted on it as usual.");
+  await expect(ended.locator(".change-intent-settled")).toHaveText("Keel did not put it back. Review it on Changes.");
   await expect(page.locator("#ec-ended tr.change-intent.is-revoked .change-intent-sentence")).toHaveText("Revoked 47 hours ago by Amara Okafor: migration finished early.");
 
   const form = page.locator("form.change-intent-form");
   const submit = form.getByRole("button", { name: "Approve emergency change" });
   await expect(submit).toBeDisabled();
   await form.getByLabel("Visibility").check();
-  await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back 1 setting on Old project team (group) until");
+  await expect(form.locator(".pg-summary")).toContainText("Automatic rules will not undo 1 setting on Old project team (group) until");
   await form.getByLabel("Who made the change").selectOption({ label: "Amara Okafor" });
   await form.getByLabel("Reason").fill("Responders need the group open");
   await submit.click();
   const toast = page.locator(".toast").first();
   await expect(toast).toContainText("Not approved");
-  await expect(toast).toContainText("The person who made the change cannot approve it.");
+  await expect(toast).toContainText("The person who made the change cannot approve it while approvals need two people.");
 
   await active.getByLabel(/Why revoke the approval/).fill("Partner app fixed");
   await active.getByRole("button", { name: "Revoke" }).click();
@@ -4319,7 +4514,7 @@ for (const width of [1278, 390]) {
     const button = await top(submit);
     for (const name of ["Web.redirect Uris", "Notes"]) {
       await form.getByLabel(name).check();
-      await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back");
+      await expect(form.locator(".pg-summary")).toContainText("Automatic rules will not undo");
       expect(await Promise.all(fields.map(top))).toEqual(before);
       expect(await top(submit)).toBe(button);
     }
@@ -4610,9 +4805,20 @@ test("Alerts · a viewer sees the alerts, no amber action and no controls", asyn
   await expect(sheet.getByRole("link", { name: /Resolve|Mute/ })).toHaveCount(0);
 });
 
+// Audit 31 Oct 2026: the page said 197 waiting while the bell said 722. The tiles, the
+// verdict and the pill count every alert; the list says when it holds fewer.
+test("Alerts · the counts are the tenant's, not the list's", async ({ page }) => {
+  await open(page, "/alerts/many");
+  await expect(page.locator(".al-tile", { hasText: "Needs someone" }).locator(".al-tile-count")).toHaveText("1,722");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toContainText("1,722 alerts need someone");
+  await expect(page.locator(".al-listed")).toContainText("of 4,200 alerts");
+  await open(page, "/alerts");
+  await expect(page.locator(".al-listed")).toHaveCount(0);
+});
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001"]) {
+    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001", "/alerts/many"]) {
       test(`Alerts · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -4799,13 +5005,23 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
   const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks", "notifications"];
-  for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
+  // Codex review: the Waiting tile never adds approvals, alerts and incidents into one
+  // number; each part is its own link.
+  const waiting = page.locator('.ov-tile[data-tile="waiting"]');
+  await expect(waiting.locator(".ov-tile-count")).toHaveCount(0);
+  expect(await waiting.locator(".ov-tile-list a").evaluateAll((links) => links.map((link) => [link.textContent?.trim(), link.getAttribute("href")])))
+    .toEqual([["2 approvals", "#/approvals"], ["3 alerts", "#/alerts"], ["1 incident", "#/incidents"]]);
+  for (const link of await page.locator(".ov-tile:not(.ov-tile-parts), .ov-tile-list a, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
     expect(await link.evaluate((item) => item.tagName)).toBe("A");
     const href = (await link.getAttribute("href")) ?? "";
     expect(routes.some((route) => new RegExp(`^#?/${route}([?#]|$)`).test(href)), href).toBe(true);
   }
   await expect(page.locator('.ov-legend-link[href*="risk=tenant-lockout"]')).toContainText("2");
   await expect(page.locator('.ov-legend-link[href*="health=failed"]')).toContainText("4");
+  // Audit 31 Oct 2026: the ring's parts add up to every kind Keel knows.
+  const ringValues = await page.locator('#ov-coverage-heading').locator("xpath=ancestor::section[1]").locator(".ov-legend-link b").allTextContents();
+  expect(ringValues.reduce((sum, value) => sum + Number(value.replace(/,/g, "")), 0)).toBe(167);
+  await expect(page.locator(".ov-sub", { hasText: "kinds of settings Keel knows" })).toHaveText("167 kinds of settings Keel knows");
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
   // With no notification channel, alerts reach nobody: an Urgent row, first, opens Notifications.

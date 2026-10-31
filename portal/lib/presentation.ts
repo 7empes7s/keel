@@ -308,6 +308,7 @@ export const DISPLAY_ENUMS = {
     "automation-execution": "Automatic roll-backs",
     "content-effect-approval": "Content-effect approvals",
     "restore-approval-setting": "Restore approval settings",
+    "approval-mode": "Approval mode changes",
     "scuba-config-list": "ScubaGear lists",
     "recovery-completion": "Restore follow-up",
     "incident-recovery": "Incident recovery",

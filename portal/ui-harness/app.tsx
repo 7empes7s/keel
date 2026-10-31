@@ -20,10 +20,11 @@ import { ContentBackupsView } from "@/components/content-backups";
 import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
-import { protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
+import { coverageSummary, protectStatus, protectVerdict, restoreProofCounts, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
+import { ApprovalModeCard } from "@/components/approval-mode-card";
 import type { RestoreApprovalsView } from "@/lib/restore-approvals";
 import { RESTORE_APPROVAL_RULE_ORDER } from "@/lib/restore-approval-rules";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
@@ -78,16 +79,17 @@ import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICE
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
-import { type AlertItem } from "@/lib/alerts-view";
+import { alertCounts, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
-import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
+import { pageVerdict, resilienceAlerts, resilienceKinds, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
+import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
@@ -916,6 +918,14 @@ const BASELINES: BaselineRecord[] = [
   { id: "b1160000-0000-4000-8000-000000000116", label: "Before migration", description: null, setAt: "2026-08-20T10:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "Keel's scheduler", href: null }, active: false, resourceCount: 4502,
     version: 1, supersedesId: null, supersededById: "b1170000-0000-4000-8000-000000000117", supersededAt: "2026-09-01T09:00:00Z", capture: CAPTURED("2026-08-20T09:30:00Z", null, "legacy-resource-versions"), changesSinceCapture: COMPARED(44, 12, 3) },
 ];
+// Version 3 is a copy of version 1, put back after version 2: approved last, settings oldest.
+const PUT_BACK_BASELINES: BaselineRecord[] = [
+  { ...BASELINES[2], id: "b1190000-0000-4000-8000-000000000119", label: "Before migration (v3)", setAt: "2026-10-02T05:40:00Z", active: true, version: 3,
+    supersedesId: BASELINES[1].id, supersededById: null, supersededAt: null, reinstatedFrom: { id: BASELINES[2].id, version: 1 },
+    capture: { ...CAPTURED("2026-08-20T09:30:00Z", "0b5e0000-0000-4000-8000-0000000000a1"), types: ["group", "user"] }, changesSinceCapture: { ...COMPARED(0, 0, 0), state: "no-collection" } },
+  { ...BASELINES[1], supersededById: "b1190000-0000-4000-8000-000000000119", supersededAt: "2026-10-02T05:40:00Z", changesSinceCapture: { ...COMPARED(0, 0, 0), state: "no-collection" } },
+  { ...BASELINES[2], capture: { ...CAPTURED("2026-08-20T09:30:00Z", "0b5e0000-0000-4000-8000-0000000000a1"), types: ["group", "user"] }, changesSinceCapture: { ...COMPARED(0, 0, 0), state: "no-collection" } },
+];
 const CAPTURE_SOURCES = [
   { id: "0b5e0000-0000-4000-8000-0000000000d6", startedAt: "2026-10-02T09:00:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4840 },
   { id: "0b5e0000-0000-4000-8000-0000000000d5", startedAt: "2026-10-01T09:00:00Z", completedAt: "2026-10-01T09:11:00Z", resourceCount: 4838 },
@@ -1217,7 +1227,7 @@ const COVERAGE_TYPES: CoverageType[] = [
   ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, outcome: null, detail: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null, declaredEndpoint: null, writeCapability: null, observation: null }),
 ];
 const COVERAGE: CoverageData = { generatedAt: now, snapshot: { id: "5a2be911-0000-4000-8000-000000000002", status: "complete", startedAt: now, completedAt: now },
-  summary: { covered: 6, failed: 2, notCovered: 1, neverCollected: 1, stale: 1, total: COVERAGE_TYPES.length }, types: COVERAGE_TYPES };
+  summary: coverageSummary(COVERAGE_TYPES), types: COVERAGE_TYPES };
 const schedule = (id: string, job_kind: string, tier: string | null, cadence: Schedule["cadence"], extra: Partial<Schedule> = {}): Schedule => ({
   id, job_kind, tier, cadence, cron_override: null, enabled: true, next_due_at: "2026-10-02T10:00:00Z", last_job_id: null, last_run_at: null, last_status: null, last_error: null, ...extra,
 });
@@ -1420,8 +1430,8 @@ const header = (section: NavSection, title: string, description: string, marker?
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
-const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "3 kinds of settings are out of date", detail: "They were backed up, but not recently enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "21 kinds of settings are not backed up", detail: "Keel knows these kinds of settings but has no backup of them.", href: "/protect" };
+const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 kinds of settings are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect" };
 const ALERTS: DashboardData["alerts"][] = [
   [
     { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
@@ -1451,7 +1461,8 @@ function dashboard(posture: number): DashboardData {
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 3 }, { blastRadius: "cosmetic", count: 2 }],
     openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
-    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, notCovered: 17, neverCollected: 4, stale: 3, total: 167 },
+    // The buckets add up to the total, as coverageSummary makes them.
+    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
     headline: HEADLINES[posture],
@@ -1797,8 +1808,11 @@ const INBOX_ALERTS: AlertItem[] = [
 // good group backup, so the older copy still sets the point; a failed restore is
 // listed but is not a recovery time sample. RESILIENCE_EMPTY is a tenant with nothing
 // measured yet.
+// The Entra ID and Intune kinds are What's protected's own fixture (workloads have a "-").
+const ENTRA_INTUNE_TYPES = COVERAGE_TYPES.filter((item) => !item.type.includes("-"));
 const RESILIENCE: ResilienceData = {
   generatedAt: now,
+  kinds: resilienceKinds(ENTRA_INTUNE_TYPES),
   metrics: {
     version: 1, tenantRef: "sha256:5e7a0b0b0b0b0b0b", generatedAt: now,
     freshness: {
@@ -1858,6 +1872,11 @@ const RESILIENCE: ResilienceData = {
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,
+  // Conditional Access never read; Group's only read failed.
+  kinds: resilienceKinds([
+    ct("conditionalAccessPolicy", "protected", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null, detail: null, observation: null }),
+    ct("group", "failed", { outcome: "failed", itemCount: 0 }),
+  ]),
   metrics: {
     ...RESILIENCE.metrics,
     freshness: { state: "unmeasured", achievedRpoMs: null, required: 2, oldestDependency: null, latestFailures: [], gaps: [
@@ -2063,6 +2082,26 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   hoursSaved: null,
 };
 
+// Audit 31 Oct 2026: 98 requests, of which the old report sent only 50. `many` holds all
+// of them, so the pager reaches the last; `capped` is a report past the engine's cap,
+// whose list says it holds only part.
+const MANY_ROWS = Array.from({ length: 98 }, (_, index) => ({
+  ...VALUE_REPORT.outcomes.rows[2],
+  id: `restore-plan:7f3c0000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  planId: `7f3c0000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  firstRequestedAt: new Date(Date.parse("2026-09-30T08:00:00.000Z") - index * 3_600_000).toISOString(),
+  lastEventAt: new Date(Date.parse("2026-09-30T08:05:00.000Z") - index * 3_600_000).toISOString(),
+}));
+const MANY_SUMMARY = VALUE_SUMMARY(0, 0, 98, 0, 0, 98);
+const VALUE_REPORT_MANY: ValueReport = {
+  ...VALUE_REPORT,
+  outcomes: { ...VALUE_REPORT.outcomes, ...MANY_SUMMARY, byFamily: { restore: MANY_SUMMARY, remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: MANY_ROWS, rowsShown: 98 },
+};
+const VALUE_REPORT_CAPPED: ValueReport = {
+  ...VALUE_REPORT_MANY,
+  outcomes: { ...VALUE_REPORT_MANY.outcomes, rows: MANY_ROWS.slice(0, 50), rowsShown: 50 },
+};
+
 // The server reads `period=` and `entity=`; here they only change what the controls show.
 function HarnessReports({ report, owners }: { report: ValueReport; owners: string[] }) {
   const params = useSearchParams();
@@ -2182,6 +2221,21 @@ const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], s
   ],
   records: ASK_MONTH_RECORDS,
 } };
+
+// Backlog G2: "Is Intune backed up?" after a run of one tier. The engine read only the newest
+// snapshot (most kinds "Not part of this backup"); the page counts the same kinds as Setup.
+const ASK_COVERAGE_KINDS = COVERAGE_TYPES.filter((item) => typeService(item.type).code === "Intune").map((item) => item.type).sort();
+const ASK_COVERAGE: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: withSharedCoverage({
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "answered", intent: "coverage", question: "Is Intune backed up?", window: null, gaps: [],
+  known: { from: now, to: now },
+  plan: { intent: "coverage", params: { entity: null, from: null, to: null, resourceType: null, resourceTypes: ASK_COVERAGE_KINDS, name: null, changeType: null, limit: 100 } },
+  total: ASK_COVERAGE_KINDS.length, shown: ASK_COVERAGE_KINDS.length, sentence: "",
+  records: ASK_COVERAGE_KINDS.map((type, index) => ({
+    kind: "coverage" as const, backup: "settings" as const, id: `5a2be911/${type}`, resourceType: type, name: null, service: "Intune",
+    outcome: index === 0 ? "complete" : "not-requested", count: index === 0 ? 4 : null, window: { from: now, to: now },
+    source: { kind: "collection" as const, id: "5a2be911-0000-4000-8000-000000000002", href: "/protect" },
+  })),
+}, COVERAGE, now) };
 
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
@@ -2683,6 +2737,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT} />;
     case "/reports/scoped": return <HarnessReports owners={["FIN"]} report={VALUE_REPORT_SCOPED} />;
+    case "/reports/many": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_MANY} />;
+    case "/reports/capped": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_CAPPED} />;
     case "/sites": return sitesPage();
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
@@ -2690,6 +2746,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
     case "/ask/month": return askPage(ASK_MONTH);
+    case "/ask/coverage": return askPage(ASK_COVERAGE);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
@@ -2731,7 +2788,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/settings": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" />
+      <ApprovalModeCard canChange now={now} setting={{ mode: "two-person", changedAt: null, changedBy: null }} />
       <RestoreApprovalSettingsCard canChange now={now} settings={RESTORE_APPROVALS} /></>;
+    // Solo approval mode: the viewer may approve their own request, marked self-approved.
+    case "/approvals/solo": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for approval. Approval mode is Solo, so you can approve your own.", undefined, { tone: "soon", label: "1 waiting" })}
+      <ApprovalInbox approvalMode="solo" history={[{ ...APPROVAL_HISTORY[0], id: "a9e10000-0000-4000-8000-000000000160", requestedBy: MAROUANE.id, selfApproved: true, references: { ...APPROVAL_HISTORY[0].references!, people: { requested_by: MAROUANE, decided_by: MAROUANE } } }]} now={now} pending={[{ ...APPROVALS_PENDING[1], id: "a9e10000-0000-4000-8000-000000000161", requestedBy: MAROUANE.id, references: { ...APPROVALS_PENDING[1].references!, people: { requested_by: MAROUANE } } }]} viewerId={MAROUANE.id} />
+      <ApprovalModeCard canChange now={now} setting={{ mode: "solo", changedAt: "2026-10-01T09:00:00Z", changedBy: MAROUANE }} /></>;
     case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
@@ -2756,6 +2818,17 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.", undefined, integrationsStatus(alerts))}
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
+    case "/baselines/put-back": {
+      // Backlog B12 and D16: the version in use was put back from an older one, and the
+      // newest backup missed kinds, so there is nothing to capture a new version from.
+      const gap = { id: "0b5e0000-0000-4000-8000-0000000000e1", completedAt: "2026-10-02T07:40:00Z", notInBackup: [], partial: ["group"], failed: ["todoSettings"] };
+      const verdict = approvedVerdict(PUT_BACK_BASELINES[0], [], now, 0);
+      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(PUT_BACK_BASELINES[0], [], 0))}
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation">
+        <ApprovedSetup backedUp={[]} baselines={PUT_BACK_BASELINES} canBaseline gap={gap} items={[]} now={now} sources={[]} />
+      </div></>;
+    }
     case "/baselines": {
       // As on the live page: the badge and the verdict count every open change,
       // service setting changes included (openChangeCount), like the Overview.
@@ -2846,6 +2919,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/alerts/anonymous": {
       const alerts = hiddenAlerts();
       return <AlertsPage alerts={alerts} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} notice={ANONYMOUS_NOTE} now={now} />;
+    }
+    case "/alerts/many": {
+      // The tenant holds far more alerts than the page lists: the tiles, the verdict and
+      // the pill show the whole count, and the list says it holds fewer.
+      const counts = { ...alertCounts(INBOX_ALERTS, now), waiting: 1722, overdue: 15, resolved: 2400, resolvedWeek: 240, total: 4200 };
+      return <AlertsPage alerts={INBOX_ALERTS} canMute canRespond counts={counts} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
     }
     case "/alerts":
     case "/alerts/viewer": {

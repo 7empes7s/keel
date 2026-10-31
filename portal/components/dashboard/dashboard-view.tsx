@@ -53,7 +53,19 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
 
         <div className="ov-body" data-layer="explanation">
           <section aria-label="At a glance" className="ov-tiles" style={{ ["--ov-tiles" as string]: tiles.length }}>
-            {tiles.map((tile) => (
+            {tiles.map((tile) => tile.parts ? (
+              // Unlike kinds of work are never added up: the tile lists each one as its own link.
+              <div className="ov-tile ov-tile-parts" data-tile={tile.key} data-tone={tile.tone} key={tile.key}>
+                <span className="ov-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+                <ul className="ov-tile-list">
+                  {tile.parts.map((part) => (
+                    <li key={part.key}>
+                      <Link data-part={part.key} href={part.href}><b>{part.count.toLocaleString("en-GB")}</b> {part.label}<Icon name="chevron" /></Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
               <Link className="ov-tile" data-tile={tile.key} data-tone={tile.tone} href={tile.href} key={tile.key}>
                 <span className="ov-tile-label"><Icon name={tile.icon} />{tile.label}</span>
                 <b className="ov-tile-count">{tile.value}</b>
@@ -163,11 +175,13 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="Stale" value={data.coverage.stale} />
           <RecordField copy={false} label="Not covered" value={data.coverage.notCovered} />
           <RecordField copy={false} label="Never collected" value={data.coverage.neverCollected} />
-          <RecordField copy={false} label="Total types" value={data.coverage.total} />
+          <RecordField copy={false} label="Unavailable" value={data.coverage.unavailable} />
+          <RecordField copy={false} label="Total types" usage="sum of the six buckets above" value={data.coverage.total} />
         </RecordGroup>
         <RecordGroup title="Audit record">
           <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : "FAILED"} />
           <RecordField copy={false} label="Records in the chain" value={data.evidence.chainLength} />
+          <RecordField copy={false} label="Off-site check" value={data.evidence.check ?? "unavailable"} />
         </RecordGroup>
       </TechnicalDetails>
     </>

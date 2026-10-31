@@ -13,6 +13,7 @@ import { savedNames } from "@/lib/saved-names";
 import { personLabel } from "@/lib/sentences";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { WINDOW_HOURS, type ChangeIntent, type ChangeIntentsData, type IntentTransition } from "@/lib/change-intents-view";
+import { evidenceMessage, refuseWeakReason, WeakReasonError } from "@/lib/written-reason";
 
 // Roadmap task-93: approved emergency changes. Approving one, revoking one and reading
 // the list all require a central (tenant-wide) approve grant: an approval names any
@@ -130,6 +131,9 @@ export function guardedChangeIntentCreate(deps: GuardDeps = {}) {
     if (typeof body.reason !== "string" || typeof body.ownerPrincipalId !== "string" || !UUID.test(body.ownerPrincipalId)
       || !WINDOW_HOURS.includes(Number(body.windowHours) as (typeof WINDOW_HOURS)[number])
       || (body.externalChangeId != null && typeof body.externalChangeId !== "string")) throw new InvalidActionRequest();
+    refuseWeakReason(body.reason);
+    const ticketProblem = body.externalChangeId ? evidenceMessage("ticket", body.externalChangeId) : null;
+    if (ticketProblem) throw new WeakReasonError("externalChangeId", ticketProblem);
     const fromChange = body.driftId !== undefined;
     if (fromChange && (typeof body.driftId !== "string" || !UUID.test(body.driftId) || !Array.isArray(body.fields))) throw new InvalidActionRequest();
     if (!fromChange && (typeof body.naturalKey !== "string" || typeof body.resourceType !== "string" || !Array.isArray(body.transitions))) throw new InvalidActionRequest();
@@ -158,6 +162,7 @@ export function guardedChangeIntentRevoke(deps: GuardDeps = {}) {
     if (!UUID.test(id)) return Response.json({ error: "not-found" }, { status: 404, headers: NO_STORE });
     const body = await readActionParams(request);
     if (typeof body.reason !== "string") throw new InvalidActionRequest();
+    refuseWeakReason(body.reason);
     try {
       const { intent, settlement } = await revokeChangeIntent(client, { tenantRef, intentId: id, revokedBy: principalId, reason: body.reason });
       return Response.json({ intent: await shownIntent(client as Client, intent as ChangeIntent), settlement: settlement ? { currentState: settlement.currentState, driftId: settlement.driftId } : null }, { headers: NO_STORE });

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
@@ -38,6 +38,7 @@ import {
   dayLabel,
   filterChips,
   integrityWords,
+  isSelfApproved,
   outcomeTone,
   parseFilters,
   peopleIn,
@@ -61,7 +62,7 @@ import { displayAccount } from "@/lib/record-refs";
 import { type EngineRef, jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Activity (portal audit, pick A): a timeline by day. Four tiles count the last day's
 // jobs, what failed, what is running or waiting, and whether the audit record is intact;
@@ -102,7 +103,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/activity";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const opened = view.get("open");
@@ -217,6 +218,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         </span>
         <span className="ac-row-mid">
           <Badge icon={outcome.icon} tone={outcome.tone}>{outcome.label}</Badge>
+          {isSelfApproved(row.entry) ? <Badge icon="person" tone="soon" title="The person who asked approved it, under solo approval mode">Self-approved</Badge> : null}
           <span className="ac-row-who">{row.person ? <Person capitalise person={row.person} /> : <span className="ac-keel"><Icon name="clock" />Keel</span>}</span>
         </span>
         <span className="ac-row-acts">
@@ -267,6 +269,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               label="Activity"
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
+              partial={filters.show !== "jobs" && (nextBefore || before) ? "Only one page of the audit record is loaded. Older and newer entries are under the buttons below the list." : null}
               renderRow={renderRow}
               sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}

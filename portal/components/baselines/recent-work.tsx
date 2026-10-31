@@ -8,7 +8,7 @@ import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { jobDisplayStatus } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
-import { formatTimestamp } from "@/lib/presentation";
+import { displayEnum, formatTimestamp } from "@/lib/presentation";
 import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 function statusChip(status: string): { tone: RiskTone | null; label: string } {
@@ -53,7 +53,7 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
       ) : <p className="bl-help">Nothing yet. Creating an approved setup shows here while it runs.</p>}
       {jobs.length ? (
         <TechnicalDetails summary="Technical details: recent work">
-          {jobs.map((job) => <RecordGroup key={job.id} note={`${job.kind} · ${job.status}`} title={jobName(job)}><JobRecordFields job={job} /></RecordGroup>)}
+          {jobs.map((job) => <RecordGroup key={job.id} note={`${job.kind} · ${displayEnum("jobStatus", jobDisplayStatus(job))}`} title={jobName(job)}><JobRecordFields job={job} /></RecordGroup>)}
         </TechnicalDetails>
       ) : null}
     </section>

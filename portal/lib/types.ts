@@ -1,3 +1,4 @@
+import type { AuditCheck } from "@/lib/audit-check";
 import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef } from "@/lib/sentences";
 
@@ -29,6 +30,10 @@ export interface CoverageOutcomeDetail {
   pagesCompleted: number | null;
   startedAt: string | null;
   completedAt: string | null;
+  // A failed Microsoft call's ids and time, for a support case. Absent when not recorded.
+  requestId?: string;
+  clientRequestId?: string;
+  requestAt?: string;
 }
 
 // Evidence-backed operation capability (roadmap task-52), surfaced per
@@ -177,12 +182,15 @@ export interface CoverageType {
   observation?: CoverageObservation | null;
 }
 
+// Every kind in exactly one bucket, so the buckets add up to total
+// (lib/protect-view.ts coverageSummary). covered is backed up and current.
 export interface CoverageSummary {
   covered: number;
   failed: number;
-  notCovered: number;
-  neverCollected: number;
   stale: number;
+  neverCollected: number;
+  notCovered: number;
+  unavailable: number;
   total: number;
 }
 
@@ -220,8 +228,21 @@ export interface BaselineRecord {
   supersedesId?: string | null;
   supersededById?: string | null;
   supersededAt?: string | null;
+  // A version put back from an earlier one (reinstateBaseline): it holds that version's
+  // settings and keeps its capture, so it can read older than the version it replaced.
+  reinstatedFrom?: { id: string; version: number } | null;
   capture?: BaselineCapture;
   changesSinceCapture?: BaselineChanges;
+}
+
+// The newest finished backup when it cannot be the source of a new version, and why,
+// kind by kind (engine/govern/baseline.mjs#newestBackupGap).
+export interface BackupGap {
+  id: string;
+  completedAt: string;
+  notInBackup: string[];
+  partial: string[];
+  failed: string[];
 }
 
 // Roadmap task-87. The age of a baseline is measured from capturedAt, when its source
@@ -650,7 +671,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -668,7 +689,16 @@ export interface DashboardData {
   // entry per day for the trend window (zero-filled), so the sparkline is to scale.
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
-  evidence: { ok: boolean; chainLength: number };
+  // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
+  // "unchecked" when there is none to compare with; undefined when it could not be read.
+  evidence: { ok: boolean; chainLength: number; check?: AuditCheck };
+  // Whether a checked off-site copy holds every backed-up type (the Resilience page's
+  // recoverable point). Undefined when it could not be read.
+  offsite?: { measured: boolean };
+  // Whether the backups can be deleted where they are kept, as the Resilience page's
+  // storage alert reads it: "deletable" (the storage cannot lock them), "unknown" (no
+  // storage details set), "other" (locked, or locking not proven yet). Absent when unread.
+  backupStorage?: "deletable" | "unknown" | "other";
   alerts: DashboardAlert[];
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).

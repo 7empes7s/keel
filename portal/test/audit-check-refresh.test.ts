@@ -68,7 +68,8 @@ test("the background check verifies the record, so the Overview never does the f
 
   await append(4);
   const overview = await getDashboardData();
-  assert.deepEqual(overview.evidence, { ok: true, chainLength: 4 });
+  // No off-site copy in the test: the own chain is intact, so the record is "not checked".
+  assert.deepEqual(overview.evidence, { ok: true, chainLength: 4, check: "unchecked" });
   const after = evidenceChainCache.get(ref) as CacheEntry;
   assert.equal(after.tip.count, "4", "the page load hashed only the new record");
   assert.equal(after.fullAt, warmed.fullAt, "and did not walk the whole record again");

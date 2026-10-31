@@ -15,11 +15,13 @@ import { WINDOW_HOURS, intentAlerts, intentBadge, intentEnd, intentResource, int
 import { ago, formatTimestamp, fromNow, resourceTypeLabel, words } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
+import { ReasonHint } from "@/components/reason-hint";
+import { evidenceMessage, reasonProblem } from "@/lib/written-reason";
 
-// Roadmap task-93: an approved emergency change. KEEL keeps showing the change and does
-// not roll back exactly the approved fields until the window ends; any other change to
-// the same resource is handled as usual. When the window ends KEEL checks the resource
-// again and acts on what it finds, never by undoing the approval blindly.
+// Roadmap task-93: an approved emergency change. Keel keeps showing the change, and
+// automatic rules do not undo exactly the approved fields until the window ends; any
+// other change to the same resource is handled as usual. When the window ends Keel checks
+// the resource again. It never puts the setting back by itself, so the copy never says it does.
 
 function fieldList(transitions: IntentTransition[]): string {
   const names = shownTransitions(transitions).map((transition) => words(transition.field).toLowerCase());
@@ -41,7 +43,7 @@ function sideText(side: { present: boolean; value: unknown }): string {
 export function intentStateSentence(intent: ChangeIntent, now: string): string {
   const fields = fieldList(intent.transitions);
   switch (intent.state) {
-    case "active": return `KEEL will not roll back the ${fields} change until ${formatTimestamp(intent.windowEnd)} (${fromNow(intent.windowEnd, now)}).`;
+    case "active": return `Automatic rules will not undo the ${fields} change until ${formatTimestamp(intent.windowEnd)} (${fromNow(intent.windowEnd, now)}).`;
     case "scheduled": return `Approved ahead: the ${fields} change may be made from ${formatTimestamp(intent.windowStart)} (${fromNow(intent.windowStart, now)}).`;
     case "revoked": return `Revoked ${ago(intent.revokedAt, now)} by ${personName(intent.revokedBy)}${intent.revokeReason ? `: ${intent.revokeReason}` : ""}.`;
     default: return `Ended ${ago(intent.windowEnd, now)}.`;
@@ -122,6 +124,7 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
       <div className="pg-card-head">
         <h3 className="change-intent-name">{resource}</h3>
         <Badge tone={badge.tone}>{badge.label}</Badge>
+        {intent.selfApproved ? <Badge icon="person" tone="soon" title="The person who made the change approved it, under solo approval mode">Self-approved</Badge> : null}
       </div>
       <p className="change-intent-sentence">{intentStateSentence(intent, now)}</p>
       <TransitionRows transitions={intent.transitions} />
@@ -131,14 +134,15 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
         <div><dt>Reason</dt><dd>{intent.reason}</dd></div>
         {intent.externalChangeId ? <div><dt>Change ticket</dt><dd>{intent.externalChangeId}</dd></div> : null}
       </dl>
-      <p className="pg-help change-intent-other"><Icon name="info" />Other changes to this {resourceKind(intent)} still roll back as usual.</p>
+      <p className="pg-help change-intent-other"><Icon name="info" />Other changes to this {resourceKind(intent)} follow your automatic rules as usual. When the approval ends, Keel checks it again but does not put the setting back by itself.</p>
       {live && canRevoke ? (
         <div className="form-actions change-intent-revoke">
           <input aria-label={`Why revoke the approval for ${resource}`} onChange={(event) => setReason(event.target.value)} placeholder="Why end it now?" value={reason} />
+          <ReasonHint value={reason} />
           <ConfirmButton
             confirmLabel="Revoke"
-            description={<p>KEEL stops holding back the roll back of this change and checks {resource} again now.</p>}
-            disabled={busy || reason.trim().length === 0}
+            description={<p>Automatic rules can act on this change again, and Keel checks {resource} again now. Keel does not put the setting back by itself.</p>}
+            disabled={busy || reasonProblem(reason) !== null}
             onConfirm={revoke}
             size="sm"
             title={`Revoke the approval for ${resource}?`}
@@ -204,11 +208,12 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
   const [ticket, setTicket] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const ticketProblem = ticket.trim() ? evidenceMessage("ticket", ticket) : null;
 
   if (changes.length === 0) return <p className="pg-empty"><Icon name="info" />No open change to approve. One shows here once KEEL detects it.</p>;
 
   // Settings where only an empty value or list order differs are not offered, but are
-  // approved with the rest so KEEL does not roll back a change nobody can see.
+  // approved with the rest so automatic rules do not undo a change nobody can see.
   const picks = change ? shownTransitions(change.transitions) : [];
   const silent = change ? change.transitions.filter((transition) => transition.noChange).map((transition) => transition.field) : [];
   const ready = fields.length > 0 || (picks.length === 0 && silent.length > 0);
@@ -223,11 +228,11 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       });
       if (!response.ok) {
         const { error } = (await response.json().catch(() => ({}))) as { error?: string };
-        const detail = error === "owner-is-approver" ? "The person who made the change cannot approve it." : error === "approver-not-authorized" ? "You cannot approve changes." : "The approval was not recorded. Check the fields and try again.";
+        const detail = error === "owner-is-approver" ? "The person who made the change cannot approve it while approvals need two people." : error === "reason-required" ? "Approving your own emergency change needs a reason that says why, in a few words." : error === "approver-not-authorized" ? "You cannot approve changes." : "The approval was not recorded. Check the fields and try again.";
         toast({ tone: "warning", title: "Not approved", detail });
         return;
       }
-      toast({ title: "Emergency change approved", detail: "KEEL keeps showing the change and will not roll back these fields until the window ends." });
+      toast({ title: "Emergency change approved", detail: "Keel keeps showing the change, and automatic rules will not undo these settings until the window ends." });
       window.location.reload();
     } finally {
       setBusy(false);
@@ -262,10 +267,12 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       <label className="filter-field">
         <span>Change ticket (optional)</span>
         <input onChange={(event) => setTicket(event.target.value)} placeholder="For example CHG0031337" value={ticket} />
+        {ticket.trim() && ticketProblem ? <small className="reason-hint" role="status">{ticketProblem}</small> : null}
       </label>
       <label className="filter-field pg-wide">
         <span>Reason</span>
         <input onChange={(event) => setReason(event.target.value)} placeholder="Why is this change needed now?" required value={reason} />
+        <ReasonHint value={reason} />
       </label>
       <fieldset className="pg-wide pg-picks">
         <legend>Settings to approve</legend>
@@ -284,9 +291,9 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       </fieldset>
       <div className="pg-wide pg-form-foot">
         <p className="pg-summary" aria-live="polite">{ready
-          ? <><Icon name="pause" />KEEL will not roll back {fields.length === 0 ? "this change" : fields.length === 1 ? "1 setting" : `${fields.length} settings`} on {change ? intentResource(change) : "this change"} until {until}.</>
+          ? <><Icon name="pause" />Automatic rules will not undo {fields.length === 0 ? "this change" : fields.length === 1 ? "1 setting" : `${fields.length} settings`} on {change ? intentResource(change) : "this change"} until {until}.</>
           : <><Icon name="info" />Choose the settings to approve.</>}</p>
-        <button aria-busy={busy} className="btn btn-secondary" disabled={busy || !ready || !owner || reason.trim().length === 0} type="submit">Approve emergency change</button>
+        <button aria-busy={busy} className="btn btn-secondary" disabled={busy || !ready || !owner || reasonProblem(reason) !== null || (ticket.trim() !== "" && ticketProblem !== null)} type="submit">Approve emergency change</button>
       </div>
     </form>
   );
@@ -304,14 +311,14 @@ export function EmergencyChangesView({ data }: { data: ChangeIntentsData }) {
         <div className="rs-section-head">
           <h2 id="ec-attention-heading"><Icon name="alert" />Needs your attention</h2>
         </div>
-        <AlertList calm="Nothing needs you. KEEL rolls changes back as its policies say." items={intentAlerts(data)} />
+        <AlertList calm="Nothing needs you. Changes follow your automatic rules as usual." items={intentAlerts(data)} />
       </section>
       <StatTiles tiles={intentTiles(data)} />
       <section aria-labelledby="ec-approved-heading" id="ec-approved">
         <div className="rs-section-head">
           <div>
             <h2 id="ec-approved-heading"><Icon name="pause" />Approved now</h2>
-            <p className="rs-sub">KEEL holds off rolling back only these settings, until the approval ends.</p>
+            <p className="rs-sub">Automatic rules leave only these settings alone, until the approval ends.</p>
           </div>
           <Badge tone={live.length ? "soon" : "fine"}>{live.length ? `${live.length} in force or waiting` : "None"}</Badge>
         </div>

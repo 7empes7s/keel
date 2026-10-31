@@ -411,6 +411,27 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 });
 
+// Five tiles on a tablet wrap 4 + 1 (about 46 to 52rem): a tile left alone on a row
+// takes the full width, never one narrow column, on Activity and Schedules alike.
+test("Activity and Schedules · a wrapped lone tile spans the row at tablet widths", async ({ page }) => {
+  for (const [hash, tile] of [["/activity", ".ac-tile"], ["/schedules", ".sc-tile"]] as const) {
+    for (const width of [700, 760, 800, 840, 900, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, hash);
+      const boxes = await page.locator(tile).evaluateAll((items) => {
+        const parent = items[0].parentElement!.getBoundingClientRect();
+        return { parent: parent.width, tiles: items.map((item) => { const box = item.getBoundingClientRect(); return { top: Math.round(box.top), width: box.width }; }) };
+      });
+      expect(boxes.tiles).toHaveLength(5);
+      const rows = new Map<number, number[]>();
+      for (const box of boxes.tiles) rows.set(box.top, [...(rows.get(box.top) ?? []), box.width]);
+      for (const widths of rows.values()) {
+        if (widths.length === 1) expect(widths[0], `${hash} at ${width}px`).toBeGreaterThan(boxes.parent - 2);
+      }
+    }
+  }
+});
+
 // The page's done-test (portal audit, Activity, pick A: a timeline by day): the status
 // pill and verdict name what failed, the tiles are links that set a filter, the newest
 // day comes first, a row opens its panel (Back closes it), "Run again" on a failed

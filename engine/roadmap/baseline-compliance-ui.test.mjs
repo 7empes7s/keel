@@ -583,13 +583,13 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       }));
       const evaluationId = ${JSON.stringify(evaluation.id)};
       const future = new Date(Date.now() + 30 * 86400000).toISOString();
-      assert.equal((await grant(viewerHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'cut-over', expiresAt: future })).status, 403);
+      assert.equal((await grant(viewerHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'Cut-over to the new tenant', expiresAt: future })).status, 403);
       const adminHeaders = new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(admin)}], [CAPABILITIES_HEADER, 'read configuration']]);
-      const past = await grant(adminHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'cut-over', expiresAt: new Date(Date.now() - 1000).toISOString() });
+      const past = await grant(adminHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'Cut-over to the new tenant', expiresAt: new Date(Date.now() - 1000).toISOString() });
       assert.equal(past.status, 400);
       assert.equal((await past.json()).error, 'expiry_in_future');
-      assert.equal((await grant(adminHeaders, { evaluationId, owner: '', reason: 'cut-over', expiresAt: future })).status, 400);
-      const saved = await grant(adminHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'cut-over', expiresAt: future });
+      assert.equal((await grant(adminHeaders, { evaluationId, owner: '', reason: 'Cut-over to the new tenant', expiresAt: future })).status, 400);
+      const saved = await grant(adminHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'Cut-over to the new tenant', expiresAt: future });
       assert.equal(saved.status, 201, await saved.clone().text());
       const after = await getComplianceData();
       assert.equal(after.findings[0].exceptionState, 'authorized');

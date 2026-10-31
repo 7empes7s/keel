@@ -16,8 +16,8 @@ export function guardedComplianceException(deps: GuardDeps = {}) {
     if (typeof evaluationId !== "string" || !UUID.test(evaluationId)) return refuse("invalid_request");
     if (typeof owner !== "string" || owner.trim().length === 0 || owner.length > 320) return refuse("owner_required");
     if (typeof reason !== "string" || reason.trim().length === 0) return refuse("reason_required");
-    refuseWeakReason(reason);
     if (typeof expiresAt !== "string" || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) return refuse("expiry_in_future");
+    refuseWeakReason(reason);
 
     const { rows } = await client.query("SELECT verdict FROM benchmark_evaluation WHERE id = $1 AND tenant_ref = $2", [evaluationId, tenantRef]);
     if (!rows[0]) return refuse("not_found", 404);

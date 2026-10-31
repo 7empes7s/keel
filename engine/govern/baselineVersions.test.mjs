@@ -71,6 +71,23 @@ test('newest backup gap and put-back versions, against the database', async () =
     // Its settings are v1's, so its capture is older than v2's though it was approved later.
     assert.ok(Date.parse(byVersion.get(3).capture.capturedAt) < Date.parse(byVersion.get(2).capture.capturedAt));
 
+    // Capturing a new version right after a put-back can take the same backup v2 came
+    // from: that is a new capture, not a copy of v2.
+    const v4 = await resnapshotBaseline(client, { tenantRef, baselineId: v3.id, snapshotId: s2, setBy: 'tester' });
+    // Putting back a version that was itself put back names the version picked.
+    const v5 = await reinstateBaseline(client, { tenantRef, baselineId: v3.id, actor: 'tester', reason: 'test' });
+    const after = new Map((await baselineCompliance(client, { tenantRef })).map((entry) => [entry.version, entry]));
+    assert.equal(after.get(4).id, v4.id);
+    assert.equal(after.get(4).reinstatedFrom, null, 'a capture from the same backup as v2 is not a put-back');
+    assert.deepEqual(after.get(5).reinstatedFrom, { id: v3.id, version: 3 });
+    assert.equal(after.get(5).id, v5.id);
+
+    // Versions put back before the column existed take it from their audit record.
+    await client.query('UPDATE baseline SET reinstated_from_id = NULL WHERE tenant_ref = $1', [tenantRef]);
+    await client.query(schemaSql());
+    const backfilled = new Map((await baselineCompliance(client, { tenantRef })).map((entry) => [entry.version, entry.reinstatedFrom]));
+    assert.deepEqual([backfilled.get(3), backfilled.get(4), backfilled.get(5)], [{ id: v1, version: 1 }, null, { id: v3.id, version: 3 }]);
+
     // A newer backup that missed kinds: the page can say what, and still compares with
     // the newest complete one.
     const digest = fullSuccessfulCoverageDigest();

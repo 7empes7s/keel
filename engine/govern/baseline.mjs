@@ -634,13 +634,13 @@ export async function reinstateBaseline(client, {
     const { rows } = await client.query(
       `INSERT INTO baseline
          (tenant_ref, set_by, label, description, source_snapshot_id, captured_at,
-          observation_scope, version, supersedes_id, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          observation_scope, version, supersedes_id, active, reinstated_from_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id, version`,
       [
         tenantRef, actor, versionLabel(latest.label, nextVersion), source.description ?? null,
         source.source_snapshot_id ?? null, source.captured_at ?? null, source.observation_scope ?? null,
-        nextVersion, latest.id, latest.active,
+        nextVersion, latest.id, latest.active, source.id,
       ],
     );
     created = rows[0];

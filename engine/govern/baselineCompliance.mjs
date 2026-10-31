@@ -189,34 +189,14 @@ async function latestEligibleSnapshot(client, tenantRef) {
 
 /**
  * The versions that were put back (reinstateBaseline), each with the earlier version it
- * copies. A put-back version keeps that version's capture, so it can read older than the
- * version it replaced. reinstateBaseline copies the source snapshot and capture time
- * exactly, and a re-snapshot always takes a newer one, so the earliest earlier version
- * of the same chain with the same capture is the one it copies. A version whose capture
- * is not recorded cannot be matched, and is not named.
+ * copies, as reinstateBaseline recorded it (reinstated_from_id). A put-back version keeps
+ * that version's capture, so it can read older than the version it replaced.
  */
 function reinstatedFrom(baselines) {
   const byId = new Map(baselines.map((baseline) => [String(baseline.id), baseline]));
-  const root = (baseline) => {
-    let current = baseline;
-    const seen = new Set();
-    while (current.supersedes_id && byId.has(String(current.supersedes_id)) && !seen.has(String(current.id))) {
-      seen.add(String(current.id));
-      current = byId.get(String(current.supersedes_id));
-    }
-    return String(current.id);
-  };
-  const sameCapture = (a, b) => iso(a.captured_at) === iso(b.captured_at)
-    && String(a.source_snapshot_id ?? '') === String(b.source_snapshot_id ?? '');
   const result = new Map();
-  const roots = new Map(baselines.map((baseline) => [String(baseline.id), root(baseline)]));
   for (const baseline of baselines) {
-    if (!baseline.supersedes_id || !baseline.captured_at) continue;
-    const version = Number(baseline.version ?? 1);
-    const source = baselines
-      .filter((other) => other !== baseline && roots.get(String(other.id)) === roots.get(String(baseline.id))
-        && Number(other.version ?? 1) < version && sameCapture(other, baseline))
-      .sort((a, b) => Number(a.version ?? 1) - Number(b.version ?? 1))[0];
+    const source = baseline.reinstated_from_id ? byId.get(String(baseline.reinstated_from_id)) : null;
     if (source) result.set(String(baseline.id), { id: String(source.id), version: Number(source.version ?? 1) });
   }
   return result;

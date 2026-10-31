@@ -1539,12 +1539,13 @@ export async function getDashboardData(): Promise<DashboardData> {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
         // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
-        check: await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+        // A broken own chain is already a failed check: no second walk.
+        check: evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
           .then(auditCheckOf)
           .catch((error) => {
             console.error("[keel-portal] overview audit record check unavailable", error);
             return undefined;
-          }),
+          }) : "failed",
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
       offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })

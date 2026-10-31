@@ -66,6 +66,9 @@ test("Approvals splits For you and Waiting on others, and own requests have no d
   const opened = await renderApprovalInboxAt("open=r-mine", props);
   assert.match(opened, /You asked for this, so someone else must decide it/);
   assert.doesNotMatch(opened, />Approve</);
+  // And one you can decide opens on For you, even from a link that names the other tab.
+  const yours = await renderApprovalInboxAt("show=others&open=r-for-me", props);
+  assert.match(yours, />Approve</);
 });
 
 async function renderMenu(capabilities: { canApprove?: boolean; canRead?: boolean }, approvals: number | null, alerts: number | null): Promise<string> {

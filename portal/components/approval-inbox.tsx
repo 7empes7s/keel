@@ -279,7 +279,9 @@ export function ApprovalInbox({
   const onOthers = split.onOthers;
   const decidable = useMemo(() => new Set(waiting.map((request) => request.id)), [waiting]);
   // A link that opens a request (`?open=`) lands on the tab that lists it.
-  const show = showParam === "waiting" && opened && onOthers.some((request) => request.id === opened) ? "others" : showParam;
+  const show = showParam !== "decided" && opened
+    ? onOthers.some((request) => request.id === opened) ? "others" : waiting.some((request) => request.id === opened) ? "waiting" : showParam
+    : showParam;
   // The two waiting tiles add up: Expiring soon and Waiting on content changes show either.
   const waitTiles = useMemo<FilterTile<ApprovalRequestRecord>[]>(() => [
     { key: "soon", test: (request) => expiringSoon(request, now) },

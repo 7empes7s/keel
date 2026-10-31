@@ -13829,3 +13829,42 @@ item that needs it stays untouched.
   4. Any other job or timer active 14:05–14:08 (`journalctl --since "2026-10-31 14:04" --until "2026-10-31 14:09" -u 'keel-*' --no-pager | grep -viE 'pool full|DatabaseBusy' | head -40`).
 - **Report:** the three tables (minute × count), the quoted stack, and any other job in that window. Say plainly whether ~775 decisions
   (saved plus failed) fit the burst, or whether something else ran.
+
+### Q299: Turn on a Caddy access log for the Keel site, so each 503 can be traced to its path (Caddy config only, no tenant), about 10 minutes
+- Drafted by the "Log 503s so they can be traced" thread (2026-10-31, PR #863). Q296 found no Caddy access log for Keel, so the
+  31 Oct walk's 503s could not be placed. PR #863 makes the portal log every 503 it sends (`[keel-portal] 503 busy: GET /path (..., cf-ray <id>)`);
+  this item adds the Caddy side, so a 503 that never reaches the portal shows up too. **No tenant calls, no database writes.**
+  Caddy is reloaded (not restarted). Never print a token, a cookie, a person's address or a tenant id.
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Do, on Mulinux:
+  1. `caddy version`, and back up the Caddyfile: `cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-q299`.
+  2. `install -d -o caddy -g caddy -m 750 /var/log/caddy`.
+  3. In the Keel site block (the one with `reverse_proxy 127.0.0.1:3600`), add the block below. It drops the Access token, the signed-in
+     address and cookies from each line, and drops the query string. On Caddy older than 2.8, put the field lines inside
+     `format filter { wrap json  fields { ... } }` instead.
+     ```
+     log {
+       output file /var/log/caddy/keel-access.log {
+         roll_size 20MiB
+         roll_keep 10
+         roll_keep_for 720h
+       }
+       format filter {
+         request>headers>Cf-Access-Jwt-Assertion delete
+         request>headers>Cf-Access-Authenticated-User-Email delete
+         request>headers>Cookie delete
+         request>headers>Authorization delete
+         request>uri regexp \?.*$ ""
+         resp_headers>Set-Cookie delete
+       }
+     }
+     ```
+  4. `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`, then `systemctl reload caddy`. If validate fails, fix the block
+     (not anything else); if reload fails, restore the backup and reload, and report.
+  5. Check: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/api/health -H 'Host: keel.techinsiderbytes.com'` (or the site's
+     usual local check), then `tail -n 2 /var/log/caddy/keel-access.log | jq -c '{ts, status, uri: .request.uri, ray: .request.headers["Cf-Ray"]}'`.
+     Confirm with `grep -c -i 'cf-access-jwt-assertion\|cookie' /var/log/caddy/keel-access.log` that it is 0 (header names only, no values).
+  6. Leave it on. To find 503s later: `jq -c 'select(.status==503) | {ts, uri: .request.uri, ray: .request.headers["Cf-Ray"]}' /var/log/caddy/keel-access.log`.
+- **Report:** the Caddy version, the block as added, the validate and reload output, the two sample lines (status, path, ray only), and the
+  grep count from step 5.

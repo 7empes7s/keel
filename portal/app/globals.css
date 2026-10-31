@@ -9457,8 +9457,10 @@ body[data-sheet-open] .popover-panel { z-index: 80; }
 .ac-section { display: grid; gap: var(--space-md); min-width: 0; }
 .ac-section > * { min-width: 0; }
 
-.ac-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); grid-auto-rows: 1fr; align-items: stretch; }
-.ac-tiles > * { min-width: 0; }
+/* Five tiles: they wrap as space runs out, and a wrapped last row shares the full width,
+   so a lone tile is never one column wide (tablet widths wrap 4 + 1). */
+.ac-tiles { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: stretch; }
+.ac-tiles > * { flex: 1 1 9.5rem; min-width: 0; }
 .ac-tile { display: grid; align-content: start; grid-template-rows: auto auto 1fr; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; text-decoration: none; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
 .ac-tile:hover { border-color: var(--line-strong); background: var(--surface-raised); }
 .ac-tile:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -9537,7 +9539,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .ac-muted { color: var(--text-soft); font-size: 0.875rem; }
 
 @media (max-width: 46rem) {
-  .ac-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ac-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; }
   .ac-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .ac-tile { padding: var(--space-xs) var(--space-sm); }
   .ac-tile-count { font-size: 1.5rem; }
@@ -10942,8 +10944,10 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .sc-page > * { min-width: 0; }
 .sc-page [data-layer="explanation"] { display: grid; gap: var(--space-md); min-width: 0; }
 .sc-page [data-layer="explanation"] > * { min-width: 0; }
-.sc-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); grid-auto-rows: 1fr; align-items: stretch; }
-.sc-tiles > * { min-width: 0; }
+/* Five tiles: they wrap as space runs out, and a wrapped last row shares the full width,
+   so a lone tile is never one column wide (tablet widths wrap 4 + 1). */
+.sc-tiles { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: stretch; }
+.sc-tiles > * { flex: 1 1 9.5rem; min-width: 0; }
 .sc-tile { display: grid; align-content: start; grid-template-rows: auto auto 1fr; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; text-decoration: none; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
 .sc-tile:hover { border-color: var(--line-strong); background: var(--surface-raised); }
 .sc-tile:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -11018,7 +11022,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .sc-confirm-list { margin: 0; font-size: 0.875rem; overflow-wrap: anywhere; }
 
 @media (max-width: 46rem) {
-  .sc-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; }
   .sc-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .sc-tile { padding: var(--space-xs) var(--space-sm); }
   .sc-tile-count { font-size: 1.375rem; }

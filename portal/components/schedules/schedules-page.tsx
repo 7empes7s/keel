@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -32,7 +32,7 @@ import {
 } from "@/lib/schedules-view";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Schedules (portal audit, one design): a verdict, four tiles that set `status=` or
 // `load=` in the address (Next run opens that schedule), then every schedule in a
@@ -54,7 +54,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/schedules";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const openId = view.get("open");
   const step = (["off"] as const).find((value) => value === view.get("do")) ?? null;
   const picked = readList(view.get("pick"));

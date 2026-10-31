@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
@@ -41,7 +41,7 @@ import { serviceFor, serviceOrder } from "@/lib/services";
 import { itemKind, kindParts } from "@/lib/type-groups";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 const toneOf = (item: DriftRecord): RiskTone => impactTone(item.blastRadius);
 
@@ -156,7 +156,7 @@ export function ChangeList({
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/drift";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const router = useRouter();
   const [settled, setSettled] = useState<string[]>([]);
   // Service changes acknowledged here, shown as seen until the server read says so too.

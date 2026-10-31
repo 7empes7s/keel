@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -66,7 +66,7 @@ import {
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { formatTimestamp } from "@/lib/presentation";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // Value report (portal audit, pick A: dashboard of charts). Four count tiles, one
@@ -96,7 +96,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/reports";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const today = report.generatedAt.slice(0, 10);
   const verdict = valueVerdict(report);
   const look = needsLook(outcomes);

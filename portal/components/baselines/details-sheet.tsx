@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/shell/icons";
@@ -10,7 +10,16 @@ import { stepWords, type SheetStep } from "@/lib/sheet-step";
 // sheet on a phone, opening on a short spring (none under reduced motion). Esc, the
 // close button or the scrim closes it, and focus returns to what opened it. Tab stays
 // inside while it is open.
-export function DetailsSheet({ title, kicker, onClose, children, footer, wide = false, step = null, onStep, noun = "item" }: {
+export function DetailsSheet(props: SheetProps) {
+  // The panel goes into the page body, which only the browser has. A link that opens an
+  // item (`?open=`) drew it on the server too, which failed there ("document is not
+  // defined") and made React redraw the whole page in the browser. It now appears just
+  // after the page is drawn in the browser.
+  const inBrowser = useSyncExternalStore(noChange, () => true, () => false);
+  return inBrowser ? <SheetPanel {...props} /> : null;
+}
+
+type SheetProps = {
   title: string;
   kicker?: ReactNode;
   onClose: () => void;
@@ -22,7 +31,9 @@ export function DetailsSheet({ title, kicker, onClose, children, footer, wide = 
   step?: SheetStep | null;
   onStep?: (id: string) => void;
   noun?: string;
-}) {
+};
+
+function SheetPanel({ title, kicker, onClose, children, footer, wide = false, step = null, onStep, noun = "item" }: SheetProps) {
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -92,3 +103,5 @@ export function DetailsSheet({ title, kicker, onClose, children, footer, wide = 
     document.body,
   );
 }
+
+const noChange = () => () => {};

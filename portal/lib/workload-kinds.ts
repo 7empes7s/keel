@@ -23,6 +23,13 @@ function reportStatus(outcome: string): CoverageType["reportStatus"] {
   return "not-covered";
 }
 
+function failureDetail(raw: UnknownRecord, outcome: string): CoverageType["detail"] {
+  if (outcome !== "failed" && outcome !== "partial") return null;
+  const reasons = Array.isArray(raw.reasons) ? raw.reasons.filter((reason): reason is string => typeof reason === "string" && reason.length > 0) : [];
+  if (!reasons.length) return null;
+  return { httpStatus: null, graphCode: null, message: reasons.join("; "), endpoint: null, apiVersion: null, pagesCompleted: null, startedAt: null, completedAt: null };
+}
+
 /**
  * One workload from the coverage report as a kind on What's protected. The workload
  * code (exchange-mail-flow, teams-org-policies…) is the kind's type, so the taxonomy
@@ -44,7 +51,8 @@ export function workloadKind(raw: UnknownRecord, canRestore: boolean): CoverageT
     lastCollectedAt: ran ? iso(observation?.endedAt) : null,
     adapter: String(raw.workload),
     outcome: USABLE.has(outcome) || outcome === "failed" ? (outcome as CoverageType["outcome"]) : null,
-    detail: null,
+    // A failed or partial run keeps the collector's reasons, so the page can say why.
+    detail: failureDetail(raw, outcome),
     fidelity: { declared, measured: null, verifiedAt: null },
     criticality: null,
     blastRadius: null,

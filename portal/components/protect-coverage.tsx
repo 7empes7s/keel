@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
+import { FailureLine } from "@/components/backup-failure";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { coverageWindows, TypeDetails, TypeRecordFields } from "@/components/coverage-report";
@@ -18,6 +19,7 @@ import { Verdict } from "@/components/verdict";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
+import { failureReason, retryPlan, type RetryPlan } from "@/lib/backup-failure";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import {
@@ -219,10 +221,20 @@ const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
 ];
 const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
 
-export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
+const TIER_IDS = TIERS.map((tier) => tier.id);
+
+function retryTitle(plan: RetryPlan): string {
+  if (plan.kind === "tier") return `Runs every ${tierLabel(plan.tier)} kind again. It only reads your tenant.`;
+  if (plan.kind === "workloads") return "Runs the Exchange, SharePoint, Teams, Purview and Power Platform settings backup again. It only reads your tenant.";
+  return "This kind has no tier, so this runs a full backup. It only reads your tenant.";
+}
+
+export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, tierStrip, children }: {
   data: CoverageData;
   now: string;
   canBackup: boolean;
+  // Retrying a kind with no tier runs the settings or full backup, which needs collect.
+  canCollect?: boolean;
   tierStrip?: ReactNode;
   // The rest of the page's explanation layer (content backups, recent jobs), after the list.
   children?: ReactNode;
@@ -230,7 +242,8 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
   const params = useSearchParams();
-  const { backUp, busy, feedback } = useBackup();
+  const { backUp, retry, busy, feedback } = useBackup();
+  const canRetry = (plan: RetryPlan) => (plan.kind === "tier" ? canBackup : canCollect);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
   // The health tiles add up: `health=failed,out-of-date` shows kinds in either. Service narrows.
@@ -431,6 +444,9 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
             const state = backupHealth(item);
             const badge = HEALTH_BADGE[state];
             const tier = item.criticality && TIERS.some((entry) => entry.id === item.criticality) ? item.criticality : null;
+            // Every failed kind says why and can be run again, tier or not.
+            const reason = state === "failed" ? failureReason(item) : null;
+            const plan = state === "failed" ? retryPlan(item, TIER_IDS) : null;
             return (
               <div className={`pt-row health-${state}`}>
                 <span aria-hidden="true" className="pt-kind" data-tone={healthRisk(item)}><Icon name={typeService(item.type).icon} /></span>
@@ -441,9 +457,22 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
                 <span className="pt-row-mid">
                   <Badge tone={badge.tone}>{badge.label}</Badge>
                   <span className="pt-row-line">{backupSentence(item, now)}</span>
+                  {reason ? <span className="pt-row-why"><FailureLine compact reason={reason} /></span> : null}
                 </span>
                 <span className="pt-row-acts">
-                  {tier && PROBLEM.includes(state) ? (
+                  {plan ? (
+                    <button
+                      aria-busy={busy === item.type || undefined}
+                      aria-label={`Retry ${kindName(item)}`}
+                      className="btn btn-sm"
+                      disabled={!canRetry(plan) || busy !== null}
+                      onClick={() => void retry(plan, kindName(item), item.type)}
+                      title={canRetry(plan) ? retryTitle(plan) : "You need the backup permission to run this again."}
+                      type="button"
+                    >
+                      <Icon name="play" />Retry
+                    </button>
+                  ) : tier && PROBLEM.includes(state) ? (
                     <button
                       aria-busy={busy === item.type || undefined}
                       className="btn btn-sm"
@@ -478,7 +507,20 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
       {opened ? <BaselinesStyles /> : null}
       {opened ? (
         <DetailsSheet
-          footer={opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (
+          footer={backupHealth(opened) === "failed" && canRetry(retryPlan(opened, TIER_IDS)) ? (
+            <>
+              <button
+                aria-busy={busy === "sheet" || undefined}
+                className="btn btn-primary"
+                disabled={busy !== null}
+                onClick={() => void retry(retryPlan(opened, TIER_IDS), kindName(opened), "sheet")}
+                type="button"
+              >
+                <Icon name="play" />Retry {kindName(opened)}
+              </button>
+              <p className="bl-help">{retryTitle(retryPlan(opened, TIER_IDS))}</p>
+            </>
+          ) : opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (
             <>
               <button
                 aria-busy={busy === "sheet" || undefined}

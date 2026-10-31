@@ -1243,7 +1243,7 @@ test("a kind's details panel states its standing and keeps the recovery decision
   await expect(page).not.toHaveURL(/open=/);
 });
 
-test("What's protected sorts failed and out-of-date kinds first, each with a run of its tier", async ({ page }) => {
+test("What's protected sorts failed and out-of-date kinds first; each failed kind says why and can be retried", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("2 types failed their last backup.");
@@ -1253,8 +1253,24 @@ test("What's protected sorts failed and out-of-date kinds first, each with a run
   await expect(signIn.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
   const failed = signIn.locator(".sel-row").first();
   await expect(failed.locator(".badge")).toHaveText("Failed");
-  await failed.getByRole("button", { name: "Back up Tier 1 again" }).click();
+  // The reason names the missing permission and links to its row on Setup (audit issue 10).
+  await expect(failed.locator(".pt-row-why")).toContainText("Policy.Read.All");
+  await expect(failed.locator(".bf-need")).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
+  await failed.getByRole("button", { name: "Retry Authentication methods policy" }).click();
   await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+  // A failure that is not a permission says what happened, and is retried the same way.
+  const labels = page.locator(".sel-row", { hasText: "Retention label" }).first();
+  await expect(labels.locator(".pt-row-why")).toContainText("did not answer in time");
+  await expect(labels.locator(".bf-need")).toHaveCount(0);
+  await expect(labels.getByRole("button", { name: /^Retry / })).toBeVisible();
+  // Every failed kind has a retry button.
+  await expect(page.locator(".pt-row.health-failed")).toHaveCount(await page.locator(".pt-row.health-failed").getByRole("button", { name: /^Retry / }).count());
+  // The details panel puts the reason first, with the permission's link and a Retry.
+  await signIn.locator(".pt-row-link").first().click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator(".pt-details-why")).toContainText("Why the last backup failed");
+  await expect(sheet.locator(".pt-details-why .bf-need")).toHaveText("Policy.Read.All");
+  await expect(sheet.getByRole("button", { name: "Retry Authentication methods policy" })).toBeVisible();
 });
 
 // The page's done-test (portal audit, What's protected): tiles filter the list in the
@@ -2912,8 +2928,9 @@ test("Setup · one status tile per service, worst first, and a warning before a 
   const entra = tiles.filter({ hasText: "Entra ID" });
   await expect(entra).toHaveAttribute("data-tone", "urgent");
   await expect(entra.locator(".badge")).toHaveText("Failing");
-  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app is missing a permission Microsoft asks for.");
-  await expect(entra.getByRole("link", { name: "Check read access" })).toHaveAttribute("href", "#setup-read");
+  // The failed kind names the permission it needs and opens its row in the permission list.
+  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app does not hold the permission Policy.Read.All.");
+  await expect(entra.getByRole("link", { name: "Check Policy.Read.All" })).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
   const teams = tiles.filter({ hasText: "Teams" });
   await expect(teams.locator(".badge")).toHaveText("Out of date");
   await expect(teams.getByRole("link", { name: "See what is out of date" })).toHaveAttribute("href", /\/protect\?service=Teams&health=out-of-date$/);

@@ -80,7 +80,8 @@ function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: numb
         saveMenuData(sessionStorageOrUndefined(), data);
         setReady(true);
         if (retry.current.timer) clearTimeout(retry.current.timer);
-        retry.current = { attempt: 0, timer: null };
+        retry.current.attempt = 0;
+        retry.current.timer = null;
         return;
       }
       retryAfter = response.headers.get("retry-after");
@@ -91,7 +92,7 @@ function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: numb
     if (retry.current.timer) return;
     const delay = menuRetryDelay(retry.current.attempt + 1, retryAfter);
     if (delay === null) {
-      retry.current = { attempt: 0, timer: null };
+      retry.current.attempt = 0;
       return;
     }
     retry.current.attempt += 1;

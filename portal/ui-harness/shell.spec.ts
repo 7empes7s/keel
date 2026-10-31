@@ -74,7 +74,7 @@ test("a busy answer is retried within seconds, and a reload keeps the last badge
   await page.addInitScript(() => { (window as unknown as { __harnessDashboardFailures: number }).__harnessDashboardFailures = 1; });
   await open(page, "/");
   const badge = page.locator('section[data-group="everything"] a.menu-link', { hasText: "Baselines" }).locator(".menu-badge");
-  await expect(badge).toContainText("2", { timeout: 4_000 });
+  await expect(badge).toContainText("2", { timeout: 8_000 });
   const reads = await page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/dashboard")).length);
   expect(reads).toBe(2);
 

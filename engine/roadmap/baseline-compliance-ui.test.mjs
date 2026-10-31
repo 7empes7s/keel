@@ -564,7 +564,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       assert.match(html, /Owner .*Secops/);
       assert.match(html, /Backups are kept on this server(&#x27;|')s disk \(West Europe\)\.<\/b> They cannot be locked against deletion\./);
       assert.match(html, /It is not a certification of compliance with any regulation\./);
-      assert.match(html, /Golden state<\/a>, captured 10 days ago/);
+      assert.match(html, /Golden state<\/a>, settings from 10 days ago/);
       // A viewer holds no configuration permission: no exception control is offered.
       assert.doesNotMatch(html, /Renew (the )?exception|Grant (an )?exception/);
       const record = records(html);
@@ -597,9 +597,11 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       assert.equal(after.findings[0].exception.grantedByRef.id, ${JSON.stringify(admin)});
       assert.equal(complianceVerdict(after).tone, 'fine');
 
-      // Baselines: the age is the capture's; a viewer sees the re-capture disabled.
+      // Baselines: the verdict says when it was approved, as the Overview does, and the
+      // age of its settings is the capture's; a viewer sees the re-capture disabled.
       const baselineHtml = withRouter(await render('/baselines', baselines, viewerHeaders));
-      assert.match(baselineHtml, /\d+ changes? since “Golden state”, captured 10 days ago;/);
+      assert.match(baselineHtml, /\d+ changes? since “Golden state”, approved (just now|\d+ minutes? ago);/);
+      assert.match(baselineHtml, /<dt>Settings from<\/dt><dd>10 days ago/);
       assert.match(baselineHtml, /<button[^>]*disabled=""[^>]*>Capture new version<\/button>/);
       assert.ok(records(baselineHtml).includes(${JSON.stringify(evidenceSnapshot)}));
       assertPlain(visibleText(baselineHtml), 'Baselines');

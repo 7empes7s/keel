@@ -488,6 +488,7 @@ async function baselinesWithCapture(client: KeelClient, ref: string, now: Date):
       supersedesId: (entry.supersedesId as string | null) ?? null,
       supersededById: (entry.supersededById as string | null) ?? null,
       supersededAt: (entry.supersededAt as string | null) ?? null,
+      reinstatedFrom: (entry.reinstatedFrom as BaselineRecord["reinstatedFrom"]) ?? null,
       capture: entry.capture as BaselineCapture,
       changesSinceCapture: entry.changesSinceCapture as BaselineChanges,
     };

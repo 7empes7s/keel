@@ -223,8 +223,21 @@ export interface BaselineRecord {
   supersedesId?: string | null;
   supersededById?: string | null;
   supersededAt?: string | null;
+  // A version put back from an earlier one (reinstateBaseline): it holds that version's
+  // settings and keeps its capture, so it can read older than the version it replaced.
+  reinstatedFrom?: { id: string; version: number } | null;
   capture?: BaselineCapture;
   changesSinceCapture?: BaselineChanges;
+}
+
+// The newest finished backup when it cannot be the source of a new version, and why,
+// kind by kind (engine/govern/baseline.mjs#newestBackupGap).
+export interface BackupGap {
+  id: string;
+  completedAt: string;
+  notInBackup: string[];
+  partial: string[];
+  failed: string[];
 }
 
 // Roadmap task-87. The age of a baseline is measured from capturedAt, when its source

@@ -153,16 +153,25 @@ async function withPayloadsWhereHashesDiffer(client, baselineRows, latest) {
   for (const row of differing) row.payload = payloads.get(String(row.id)) ?? null;
 }
 
+// Read 50 backups at a time: tier backups can bury the newest complete one deeper than
+// one page, and the "Capture new version" list (listEligibleBaselineSnapshots) looks
+// through them all, so this must too.
+const SNAPSHOT_PAGE = 50;
+
 async function latestEligibleSnapshot(client, tenantRef) {
-  const { rows } = await client.query(
-    `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
-     FROM snapshot
-     WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
-     ORDER BY completed_at DESC
-     LIMIT 50`,
-    [tenantRef],
-  );
-  const snapshot = rows.find((candidate) => isEligibleBaselineSource(candidate, { tenantRef }));
+  let snapshot = null;
+  for (let offset = 0; !snapshot; offset += SNAPSHOT_PAGE) {
+    const { rows } = await client.query(
+      `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
+       FROM snapshot
+       WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
+       ORDER BY completed_at DESC, id DESC
+       LIMIT ${SNAPSHOT_PAGE} OFFSET $2`,
+      [tenantRef, offset],
+    );
+    snapshot = rows.find((candidate) => isEligibleBaselineSource(candidate, { tenantRef })) ?? null;
+    if (rows.length < SNAPSHOT_PAGE) break;
+  }
   if (!snapshot) return null;
   const { rows: versions } = await client.query(
     `SELECT id, natural_key, resource_type, payload_hash, hash_version, blast_radius
@@ -176,6 +185,41 @@ async function latestEligibleSnapshot(client, tenantRef) {
     ...serviceErrorLeftOut(snapshot.coverage_digest),
   ]);
   return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions, unavailableTypes };
+}
+
+/**
+ * The versions that were put back (reinstateBaseline), each with the earlier version it
+ * copies. A put-back version keeps that version's capture, so it can read older than the
+ * version it replaced. reinstateBaseline copies the source snapshot and capture time
+ * exactly, and a re-snapshot always takes a newer one, so the earliest earlier version
+ * of the same chain with the same capture is the one it copies. A version whose capture
+ * is not recorded cannot be matched, and is not named.
+ */
+function reinstatedFrom(baselines) {
+  const byId = new Map(baselines.map((baseline) => [String(baseline.id), baseline]));
+  const root = (baseline) => {
+    let current = baseline;
+    const seen = new Set();
+    while (current.supersedes_id && byId.has(String(current.supersedes_id)) && !seen.has(String(current.id))) {
+      seen.add(String(current.id));
+      current = byId.get(String(current.supersedes_id));
+    }
+    return String(current.id);
+  };
+  const sameCapture = (a, b) => iso(a.captured_at) === iso(b.captured_at)
+    && String(a.source_snapshot_id ?? '') === String(b.source_snapshot_id ?? '');
+  const result = new Map();
+  const roots = new Map(baselines.map((baseline) => [String(baseline.id), root(baseline)]));
+  for (const baseline of baselines) {
+    if (!baseline.supersedes_id || !baseline.captured_at) continue;
+    const version = Number(baseline.version ?? 1);
+    const source = baselines
+      .filter((other) => other !== baseline && roots.get(String(other.id)) === roots.get(String(baseline.id))
+        && Number(other.version ?? 1) < version && sameCapture(other, baseline))
+      .sort((a, b) => Number(a.version ?? 1) - Number(b.version ?? 1))[0];
+    if (source) result.set(String(baseline.id), { id: String(source.id), version: Number(source.version ?? 1) });
+  }
+  return result;
 }
 
 /** Every baseline of the tenant, newest first, with capture, scope, version chain and changes since capture. */
@@ -218,6 +262,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
   const successor = new Map(baselines
     .filter((baseline) => baseline.supersedes_id)
     .map((baseline) => [String(baseline.supersedes_id), String(baseline.id)]));
+  const reinstated = reinstatedFrom(baselines);
 
   return baselines.map((baseline) => {
     const rows = byBaseline.get(String(baseline.id)) ?? [];
@@ -237,6 +282,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
       supersedesId: baseline.supersedes_id ? String(baseline.supersedes_id) : null,
       supersededById: successor.get(String(baseline.id)) ?? null,
       supersededAt: iso(baseline.superseded_at),
+      reinstatedFrom: reinstated.get(String(baseline.id)) ?? null,
       serviceSettingCount: [...(serviceCounts.get(String(baseline.id))?.values() ?? [])].reduce((sum, count) => sum + count, 0),
       capture: captureOf(baseline, legacyWindow, now, serviceCounts.get(String(baseline.id))),
       changesSinceCapture: changesSince(rows, latest, new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type))),

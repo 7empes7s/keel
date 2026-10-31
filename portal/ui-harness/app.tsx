@@ -888,6 +888,14 @@ const BASELINES: BaselineRecord[] = [
   { id: "b1160000-0000-4000-8000-000000000116", label: "Before migration", description: null, setAt: "2026-08-20T10:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "Keel's scheduler", href: null }, active: false, resourceCount: 4502,
     version: 1, supersedesId: null, supersededById: "b1170000-0000-4000-8000-000000000117", supersededAt: "2026-09-01T09:00:00Z", capture: CAPTURED("2026-08-20T09:30:00Z", null, "legacy-resource-versions"), changesSinceCapture: COMPARED(44, 12, 3) },
 ];
+// Version 3 is a copy of version 1, put back after version 2: approved last, settings oldest.
+const PUT_BACK_BASELINES: BaselineRecord[] = [
+  { ...BASELINES[2], id: "b1190000-0000-4000-8000-000000000119", label: "Before migration (v3)", setAt: "2026-10-02T05:40:00Z", active: true, version: 3,
+    supersedesId: BASELINES[1].id, supersededById: null, supersededAt: null, reinstatedFrom: { id: BASELINES[2].id, version: 1 },
+    capture: { ...CAPTURED("2026-08-20T09:30:00Z", "0b5e0000-0000-4000-8000-0000000000a1"), types: ["group", "user"] }, changesSinceCapture: { ...COMPARED(0, 0, 0), state: "no-collection" } },
+  { ...BASELINES[1], supersededById: "b1190000-0000-4000-8000-000000000119", supersededAt: "2026-10-02T05:40:00Z", changesSinceCapture: { ...COMPARED(0, 0, 0), state: "no-collection" } },
+  { ...BASELINES[2], capture: { ...CAPTURED("2026-08-20T09:30:00Z", "0b5e0000-0000-4000-8000-0000000000a1"), types: ["group", "user"] }, changesSinceCapture: { ...COMPARED(0, 0, 0), state: "no-collection" } },
+];
 const CAPTURE_SOURCES = [
   { id: "0b5e0000-0000-4000-8000-0000000000d6", startedAt: "2026-10-02T09:00:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4840 },
   { id: "0b5e0000-0000-4000-8000-0000000000d5", startedAt: "2026-10-01T09:00:00Z", completedAt: "2026-10-01T09:11:00Z", resourceCount: 4838 },
@@ -2753,6 +2761,17 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.", undefined, integrationsStatus(alerts))}
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
+    case "/baselines/put-back": {
+      // Backlog B12 and D16: the version in use was put back from an older one, and the
+      // newest backup missed kinds, so there is nothing to capture a new version from.
+      const gap = { id: "0b5e0000-0000-4000-8000-0000000000e1", completedAt: "2026-10-02T07:40:00Z", notInBackup: [], partial: ["group"], failed: ["todoSettings"] };
+      const verdict = approvedVerdict(PUT_BACK_BASELINES[0], [], now, 0);
+      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(PUT_BACK_BASELINES[0], [], 0))}
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation">
+        <ApprovedSetup backedUp={[]} baselines={PUT_BACK_BASELINES} canBaseline gap={gap} items={[]} now={now} sources={[]} />
+      </div></>;
+    }
     case "/baselines": {
       // As on the live page: the badge and the verdict count every open change,
       // service setting changes included (openChangeCount), like the Overview.

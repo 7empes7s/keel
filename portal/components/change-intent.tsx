@@ -15,6 +15,8 @@ import { WINDOW_HOURS, intentAlerts, intentBadge, intentEnd, intentResource, int
 import { ago, formatTimestamp, fromNow, resourceTypeLabel, words } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
+import { ReasonHint } from "@/components/reason-hint";
+import { evidenceMessage, reasonProblem } from "@/lib/written-reason";
 
 // Roadmap task-93: an approved emergency change. KEEL keeps showing the change and does
 // not roll back exactly the approved fields until the window ends; any other change to
@@ -132,10 +134,11 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
       {live && canRevoke ? (
         <div className="form-actions change-intent-revoke">
           <input aria-label={`Why revoke the approval for ${resource}`} onChange={(event) => setReason(event.target.value)} placeholder="Why end it now?" value={reason} />
+          <ReasonHint value={reason} />
           <ConfirmButton
             confirmLabel="Revoke"
             description={<p>KEEL stops holding back the roll back of this change and checks {resource} again now.</p>}
-            disabled={busy || reason.trim().length === 0}
+            disabled={busy || reasonProblem(reason) !== null}
             onConfirm={revoke}
             size="sm"
             title={`Revoke the approval for ${resource}?`}
@@ -201,6 +204,7 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
   const [ticket, setTicket] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const ticketProblem = ticket.trim() ? evidenceMessage("ticket", ticket) : null;
 
   if (changes.length === 0) return <p className="pg-empty"><Icon name="info" />No open change to approve. One shows here once KEEL detects it.</p>;
 
@@ -265,16 +269,18 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       <label className="filter-field">
         <span>Change ticket (optional)</span>
         <input onChange={(event) => setTicket(event.target.value)} placeholder="For example CHG0031337" value={ticket} />
+        {ticket.trim() && ticketProblem ? <small className="reason-hint" role="status">{ticketProblem}</small> : null}
       </label>
       <label className="filter-field pg-wide">
         <span>Reason</span>
         <input onChange={(event) => setReason(event.target.value)} placeholder="Why is this change needed now?" required value={reason} />
+        <ReasonHint value={reason} />
       </label>
       <div className="pg-wide pg-form-foot">
         <p className="pg-summary" aria-live="polite">{fields.length
           ? <><Icon name="pause" />KEEL will not roll back {fields.length === 1 ? "1 setting" : `${fields.length} settings`} on {change ? intentResource(change) : "this change"} until {until}.</>
           : <><Icon name="info" />Choose the settings to approve.</>}</p>
-        <button aria-busy={busy} className="btn btn-secondary" disabled={busy || fields.length === 0 || !owner || reason.trim().length === 0} type="submit">Approve emergency change</button>
+        <button aria-busy={busy} className="btn btn-secondary" disabled={busy || fields.length === 0 || !owner || reasonProblem(reason) !== null || (ticket.trim() !== "" && ticketProblem !== null)} type="submit">Approve emergency change</button>
       </div>
     </form>
   );

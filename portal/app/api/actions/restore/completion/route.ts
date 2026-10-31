@@ -3,6 +3,7 @@ import {
 } from "../../../../../../engine/restore/completion.mjs";
 
 import { guarded, readActionParams } from "@/lib/action";
+import { evidenceMessage, optionalReasonMessage } from "@/lib/written-reason";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,6 +22,11 @@ export const POST = guarded(
     if (typeof itemId !== "string" || (action !== "complete" && action !== "reopen")) {
       return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
     }
+    // UI audit C1: "TEST-UX-001" or a blank reference proves nothing.
+    const weak = action === "complete"
+      ? evidenceMessage((evidence as { type?: unknown } | null)?.type, (evidence as { reference?: unknown } | null)?.reference)
+      : optionalReasonMessage(reason);
+    if (weak) return Response.json({ error: action === "complete" ? "weak_evidence" : "weak_reason", message: weak }, { status: 400, headers: NO_STORE });
     try {
       const result = action === "complete"
         ? await completeItem(client, { tenantRef, itemId, actorId: principalId, evidence })

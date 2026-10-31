@@ -21,6 +21,8 @@ import {
   type WorkloadChoices,
 } from "@/lib/restore-workloads-view";
 import type { SnapshotOption } from "@/lib/portal-jobs";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // One service's restore from the Restore page (Exchange, Teams, Purview): the same
 // steps as Entra ID and Intune. Choose objects from a backup, KEEL checks what would
@@ -490,9 +492,10 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
               <label className="filter-field">
                 <span>Why (optional, approvers see it)</span>
                 <input disabled={busy} onChange={(event) => setJustification(event.target.value)} placeholder="Why is this restore appropriate?" value={justification} />
+                <ReasonHint value={justification} />
               </label>
               <div className="drift-action-buttons">
-                <button aria-busy={busy || undefined} className="primary-action" disabled={!canRestore || busy} onClick={() => void send()} type="button">
+                <button aria-busy={busy || undefined} className="primary-action" disabled={!canRestore || busy || optionalReasonMessage(justification) !== null} onClick={() => void send()} type="button">
                   {sendable.length > 1 ? `Send ${sendable.length} for approval` : "Send for approval"}
                 </button>
                 <button className="secondary-action" disabled={busy} onClick={discard} type="button">Discard</button>

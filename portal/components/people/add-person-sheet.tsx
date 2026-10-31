@@ -10,6 +10,8 @@ import { addPerson, untilEndOf } from "@/lib/people-change";
 import { ROLES, type Role } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { toast } from "@/lib/toast";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // Add person: email, name, the first role and, for a temporary helper, an end date.
 // Keel does not open the sign-in gate (Cloudflare Access); the help line says so.
@@ -31,6 +33,8 @@ export function AddPersonSheet({ initialRole = "viewer", onAdded, onClose }: {
     event.preventDefault();
     setError(null);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError("Enter the email address they sign in with."); return; }
+    const weak = optionalReasonMessage(why);
+    if (weak) { setError(weak); return; }
     setBusy(true);
     try {
       const result = await addPerson({ email: email.trim(), displayName: name.trim() || null, role, activeUntil: untilEndOf(until), reason: why.trim() || null });
@@ -64,7 +68,7 @@ export function AddPersonSheet({ initialRole = "viewer", onAdded, onClose }: {
           <OptionPicker label="Role" onChange={setRole} options={ROLE_OPTIONS} value={role} />
           <p className="field-help">{ROLES[role].meaning}.</p>
           <label className="filter-field"><span>Until (optional)</span><input name="until" onChange={(event) => setUntil(event.target.value)} type="date" value={until} /></label>
-          <label className="filter-field"><span>Why (optional)</span><input autoComplete="off" maxLength={500} name="why" onChange={(event) => setWhy(event.target.value)} placeholder="New service desk lead" value={why} /></label>
+          <label className="filter-field"><span>Why (optional)</span><input autoComplete="off" maxLength={500} name="why" onChange={(event) => setWhy(event.target.value)} placeholder="New service desk lead" value={why} /><ReasonHint value={why} /></label>
         </fieldset>
         {error ? <p className="pe-error" role="alert">{error}</p> : null}
       </form>

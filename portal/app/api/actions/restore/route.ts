@@ -14,6 +14,7 @@ import { approvalTtlMs } from "@/lib/runtime-config";
 // requiresApproval shortcut) because this route must validate the referenced
 // artifact BEFORE any request is created — see the comment below.
 import { requestApproval, restoreExecutorForArtifact } from "../../../../../engine/govern/approvals.mjs";
+import { requireOptionalReason } from "@/lib/written-reason";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -61,7 +62,7 @@ export const POST = guarded(
       action: "restore",
       params: { artifactId },
       requestedBy: principalId,
-      justification: typeof justification === "string" ? justification : null,
+      justification: requireOptionalReason(justification, "justification"),
       ttlMs: approvalTtlMs(),
       executor,
     })) as Record<string, unknown>;

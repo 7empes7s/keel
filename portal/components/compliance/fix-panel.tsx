@@ -21,6 +21,8 @@ import { refusalSentence } from "@/lib/changes-view";
 import { ago } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 import type { ComplianceFinding, ComplianceFixCandidate } from "@/lib/types";
+import { ReasonHint } from "@/components/reason-hint";
+import { reasonProblem } from "@/lib/written-reason";
 
 // "Make it pass" (CoreView gap 6): one row per object the control fails on, with the
 // setting, its value now and after. A row's button asks Keel to plan the change (a dry
@@ -148,8 +150,9 @@ function FixRow({ finding, candidate, canRestore, now, primary }: {
           <label className="filter-field">
             <span>Why make this change?</span>
             <input onChange={(event) => setReason(event.target.value)} placeholder="Reason for the approver" value={reason} />
+            <ReasonHint value={reason} />
           </label>
-          <button aria-busy={busy || undefined} className="btn btn-primary btn-sm" disabled={busy || reason.trim().length === 0} onClick={() => void send(plan)} type="button">
+          <button aria-busy={busy || undefined} className="btn btn-primary btn-sm" disabled={busy || reasonProblem(reason) !== null} onClick={() => void send(plan)} type="button">
             Ask for approval
           </button>
         </div>

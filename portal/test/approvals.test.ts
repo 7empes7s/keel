@@ -451,6 +451,21 @@ test("rejection requires an operator-visible reason", async () => {
   assert.equal((await requestRow(id)).status, "pending");
 });
 
+// UI audit 31 Oct 2026, C1: "BECAUSE" was kept as a rejection reason.
+test("a placeholder rejection reason is refused in plain words", async () => {
+  const id = await createRestoreRequest();
+  for (const reason of ["BECAUSE", "x", "test"]) {
+    const response = await rejectRoute(
+      post(`/api/approvals/${id}/reject`, { ...approver, body: { reason } }),
+    );
+    assert.equal(response.status, 400, reason);
+    const body = await response.json();
+    assert.equal(body.error, "weak_reason");
+    assert.match(body.message, /real words|a little more/);
+  }
+  assert.equal((await requestRow(id)).status, "pending");
+});
+
 test("approval controls submit each listed request id and its rejection reason", async () => {
   // The page's buttons all go through decideRequest, so the browser-control-to-route
   // boundary is one function: the id and the rejection reason reach the right route.

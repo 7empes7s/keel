@@ -9,6 +9,7 @@ import { changeLabel, changeName, plannedActionWords, refusalSentence } from "@/
 import { addDays, type Day, type DayRange } from "@/lib/date-range";
 import { remediationParams } from "@/lib/drift-actions";
 import type { DriftRecord } from "@/lib/types";
+import { reasonMessage } from "@/lib/written-reason";
 
 interface UndoPreview {
   driftIds: string[];
@@ -100,6 +101,11 @@ export function ChangeDecision({
     const trimmed = reason.trim();
     if (!trimmed) {
       setError("Say why: a reason is required, and it is kept with the decision.");
+      return null;
+    }
+    const weak = reasonMessage(trimmed);
+    if (weak) {
+      setError(weak);
       return null;
     }
     return trimmed;

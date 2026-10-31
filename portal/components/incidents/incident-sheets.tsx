@@ -9,6 +9,7 @@ import { Icon } from "@/components/shell/icons";
 import { incidentAction, utcInstant } from "@/lib/incident-calls";
 import { WINDOW_HELP } from "@/lib/incidents-view";
 import type { DayRange } from "@/lib/date-range";
+import { reasonMessage } from "@/lib/written-reason";
 
 // Open a new incident, and add an attack window to one. Dates use the shared date
 // picker and a 24-hour time, always in UTC; nothing is saved until the button.
@@ -44,6 +45,8 @@ export function NewIncidentSheet({ today, onOpened, onClose }: {
     const startsAt = day ? utcInstant(day.from, time) : null;
     if (day && !startsAt) { setError("Write the time as hours and minutes, such as 22:40."); return; }
     if (startsAt && !reason.trim()) { setError("Say how you know when the attacker got in."); return; }
+    const weakWindow = startsAt ? reasonMessage(reason) : null;
+    if (weakWindow) { setError(weakWindow); return; }
     setBusy(true);
     try {
       const opened = await incidentAction("open", { title: title.trim() });
@@ -117,6 +120,8 @@ export function AttackWindowSheet({ incidentId, today, onSaved, onClose }: {
     if (ongoing === "ended" && !endsAt) { setError("Pick the day and time the access ended."); return; }
     if (endsAt && endsAt <= startsAt) { setError("The end must be after the start."); return; }
     if (!reason.trim()) { setError("Say how you know."); return; }
+    const weak = reasonMessage(reason);
+    if (weak) { setError(weak); return; }
     setBusy(true);
     try {
       const saved = await incidentAction("interval", { incidentId, startsAt, endsAt, reason: reason.trim() });

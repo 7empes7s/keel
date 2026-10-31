@@ -5155,3 +5155,37 @@ test("every change: an empty period says so, with no dead end", async ({ page })
   await expect(page.getByRole("heading", { name: "No changes in the last 7 days" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open changes" })).toBeVisible();
 });
+
+// In the portal the address catches up a moment after each key (Next.js applies a
+// history change in a transition), so a Find box bound straight to the address was
+// redrawn with the old text and dropped keys: "emergency" left "y". The harness shim
+// updates at once, so these checks hold each address change back a little to match.
+for (const { name, hash, box } of [
+  { name: "Alerts", hash: "/alerts", box: (page: Page) => page.locator(".sel-find input[type=search]") },
+  { name: "Sites", hash: "/sites", box: (page: Page) => page.getByPlaceholder("Find a site, address or owner") },
+  { name: "Setup permissions", hash: "/setup", box: (page: Page) => page.getByPlaceholder("Find permissions") },
+]) {
+  test(`Find · ${name}: fast typing keeps every key, then the search goes into the address`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const dispatch = window.dispatchEvent.bind(window);
+      window.dispatchEvent = (event: Event) => {
+        if (event.type !== "hashchange") return dispatch(event);
+        setTimeout(() => dispatch(event), 40);
+        return true;
+      };
+    });
+    await open(page, hash);
+    const input = box(page);
+    await input.click();
+    await page.keyboard.type("emergency");
+    await expect(input).toHaveValue("emergency");
+    await expect(page).toHaveURL(/q=emergency/);
+    // Typing on after the search landed keeps going from there.
+    await page.keyboard.type(" sign-in");
+    await expect(input).toHaveValue("emergency sign-in");
+    await expect(page).toHaveURL(/q=emergency(\+|%20)sign-in/);
+    // Emptying the box takes the search out of the address straight away.
+    await input.fill("");
+    await expect(page).not.toHaveURL(/q=/);
+  });
+}

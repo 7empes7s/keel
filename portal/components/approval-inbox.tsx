@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { FindInput } from "@/components/list/find-input";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { byTime } from "@/lib/paging";
@@ -614,7 +615,7 @@ export function ApprovalInbox({
               <span className="picker-label">Find</span>
               <span className="sel-find-box">
                 <Icon name="search" />
-                <input className="bare-input" onChange={(event) => view.set({ q: event.target.value })} placeholder="Find a request or a person" type="search" value={view.get("q")} />
+                <FindInput onChange={(text) => view.set({ q: text })} placeholder="Find a request or a person" value={view.get("q")} />
               </span>
             </label>
             <ActiveFilters extra={{ open: null }} filters={decidedFilters} noun={NOUN} shown={decided.length} total={history.length} />

@@ -688,6 +688,9 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Bytes held · bytes on disk": fact("Size, and size on disk", "How much space the backup takes."),
   "Last run": fact("Last run", "How the last run ended, and when."),
 
+  // What a setting points to that no backup names ("Who holds the role (no name in any backup)").
+  "No name in any backup": support("Not named by any backup", "The Microsoft 365 ID of something this setting points to that no backup names. The link looks it up."),
+
   // Dashboard risk counts ("Reach: Could lock out admins").
   "Reach:": count("Changes at risk level", "Open changes at this risk level."),
 };
@@ -718,6 +721,7 @@ const PATTERNS: readonly { pattern: RegExp; key: string; label?: (match: RegExpM
   { pattern: /^(.+): system account$/, key: "System account", label: (m) => `${m[1]}: built-in account` },
   { pattern: /^(.+): disabled at$/, key: "Disabled at", label: (m) => `${m[1]}: turned off` },
   { pattern: /^(.+): grant ID \((.+)\)$/, key: "Grant ID", label: (m) => `${m[1]}: role reference (${m[2]})` },
+  { pattern: /^(.+) \(no name in any backup\)$/, key: "No name in any backup", label: (m) => `${m[1]}: not named by any backup` },
   { pattern: /^(.+) \(account ID\)$/, key: "Requested by (account ID)", label: (m) => m[1] },
 ];
 

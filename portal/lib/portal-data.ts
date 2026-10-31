@@ -46,7 +46,7 @@ import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { objectIds, openChangeCount, payloadName } from "@/lib/changes-view";
 import { objectNameSql } from "../../engine/cir/objectName.mjs";
-import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
+import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, withWorkloadCoverage, workloadKinds } from "@/lib/workload-kinds";
@@ -988,9 +988,12 @@ async function withAppNames(client: KeelClient, ref: string, items: DriftRecord[
   const refs = unnamed.map(({ index, payload }) => referencedIds(items[index].resourceType, items[index].naturalKey, payload));
   const lookup = await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles));
   const out = [...items];
+  const known = new Set(Object.keys(lookup.ids));
   for (const { index, payload } of unnamed) {
     const name = derivedName(items[index].resourceType, items[index].naturalKey, payload, lookup);
-    if (name) out[index] = { ...items[index], name };
+    // What it points to that no backup names, listed with a lookup link under Technical details.
+    const unnamedRefs = unnamedReferences(items[index].resourceType, items[index].naturalKey, payload, known);
+    if (name || unnamedRefs.length) out[index] = { ...items[index], ...(name ? { name } : {}), ...(unnamedRefs.length ? { unnamedRefs } : {}) };
   }
   return out;
 }

@@ -1,3 +1,4 @@
+import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef } from "@/lib/sentences";
 
 export type ProtectionState =
@@ -477,6 +478,9 @@ export interface DriftRecord {
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.
   refNames?: Record<string, string>;
+  // What the setting points to (a role, who holds it, where) that no backup names: each
+  // id with a Microsoft Graph lookup link, for Technical details. Absent when all named.
+  unnamedRefs?: UnnamedReference[];
   // Task 91: who made the change, from audit evidence, and where a roll back of it
   // would be routed. Absent when the reader did not compute it.
   attribution?: ChangeAttribution | null;

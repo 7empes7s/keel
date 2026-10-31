@@ -2070,6 +2070,47 @@ being triggered by queue updates.
 - **Report:** the `age1...` recipient, each exit code, and the line "identity at /root/keel-offsite-age/identity.txt is
   waiting to be moved off the host". After the human operator confirms it is stored off-host, a later item removes it.
 
+### Q302: Audit record integrity: where the live chain breaks (read-only, no tenant), about 5 minutes
+- Drafted by the "Check audit record integrity warning" thread (2026-10-31). During the Codex run, Overview said "The audit record
+  failed its integrity check". Code finding: accepting a change (engine/govern/baseline.mjs `acceptDrift`) wrote its audit record
+  straight into `evidence` without moving `evidence_head` and without the tenant lock, so the check reports the record as cut short,
+  and the next record chains onto the stale head. The 14:06 burst wrote 880 accepts this way. This item confirms that on the live
+  database. **Read-only: SELECTs only, in a `BEGIN READ ONLY` session. No tenant calls, no writes, no status changes, no restarts.
+  Never modify or delete an audit row.** Never print the database URL, a password, a token or a tenant id (say "tenant A").
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Result:
+- Do, on Mulinux, against the live database:
+  1. Stored head against the table, per tenant:
+     ```sql
+     SELECT h.head_seq, h.record_count, h.updated_at,
+            (SELECT max(seq) FROM evidence e WHERE e.tenant_ref = h.tenant_ref) AS max_seq,
+            (SELECT count(*) FROM evidence e WHERE e.tenant_ref = h.tenant_ref) AS rows
+       FROM evidence_head h;
+     ```
+  2. Links that don't chain (a record whose prev_hash is not the previous record's hash):
+     ```sql
+     WITH c AS (
+       SELECT seq, kind, actor, occurred_at, prev_hash,
+              lag(record_hash) OVER (PARTITION BY tenant_ref ORDER BY seq) AS prior,
+              lag(kind) OVER (PARTITION BY tenant_ref ORDER BY seq) AS prior_kind
+         FROM evidence)
+     SELECT seq, kind, prior_kind, occurred_at FROM c
+      WHERE prev_hash IS DISTINCT FROM prior ORDER BY seq LIMIT 20;
+     ```
+     and the totals: same CTE, then `SELECT count(*) AS breaks, min(seq), max(seq) FROM c WHERE prev_hash IS DISTINCT FROM prior;`
+  3. Accept records: `SELECT count(*) AS all_disposition, count(*) FILTER (WHERE subject ? 'driftId') AS drift_accepts,
+     min(seq), max(seq), min(occurred_at), max(occurred_at),
+     count(*) FILTER (WHERE occurred_at >= '2026-10-31 14:06Z' AND occurred_at < '2026-10-31 14:08Z') AS burst
+     FROM evidence WHERE kind = 'disposition';`
+  4. The first drift accept record: `SELECT min(seq) FROM evidence WHERE kind = 'disposition' AND subject ? 'driftId';` and the
+     seq of the record written just after it, with its kind.
+  5. The deployed build (`/opt/keel-live` commit).
+- **Expected (if the code finding is the whole story):** step 1 head_seq < max_seq and record_count < rows; step 2's first break is
+  the first record written by something other than an accept, right after an accept record (prior_kind `disposition`).
+- **Report:** the numbers and rows from steps 1–5. No fix on the server: the code fix is a PR, and repairing old records is not
+  allowed (they are evidence). A later item may re-check after the fix deploys.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

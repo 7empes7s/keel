@@ -139,10 +139,10 @@ test("a tier's last run counts runs started by hand, and a partly done one is a 
   )).rows[0].id);
   await client.query("UPDATE schedule SET last_job_id = $2 WHERE id = $1", [ids[2], scheduled]);
   const partial = { partial: true, incompleteTypes: ["KEEL-RT-type"] };
-  await client.query(
+  const manual = String((await client.query(
     `INSERT INTO job (kind, status, params, requested_by, started_at, finished_at, result)
-     VALUES ('backup', 'succeeded', $1, $2, $3, $3, $4)`, [{ tenantRef: tenant, tier: "tier3" }, admin, at(1), partial],
-  );
+     VALUES ('backup', 'succeeded', $1, $2, $3, $3, $4) RETURNING id`, [{ tenantRef: tenant, tier: "tier3" }, admin, at(1), partial],
+  )).rows[0].id);
   // Another tenant's and another tier's newer runs are not this schedule's.
   await client.query(
     `INSERT INTO job (kind, status, params, requested_by, started_at) VALUES ('collect', 'failed', $1, $3, $4), ('collect', 'failed', $2, $3, $4)`,
@@ -153,6 +153,8 @@ test("a tier's last run counts runs started by hand, and a partly done one is a 
     const tier3 = data.schedules.find((s) => s.id === ids[2])!;
     assert.equal(tier3.last_status, "partial");
     assert.equal(tier3.last_run_at, at(1).toISOString());
+    assert.equal(tier3.last_job_id, manual, "the run link opens the run the status describes");
+    assert.ok(!("last_run_job_id" in tier3));
     const card = tierSummaries(data.schedules, data.generatedAt).find((tier) => tier.id === "tier3")!;
     assert.equal(card.partial, true);
     assert.match(card.last, /^Last run partly done (24 hours|1 day) ago/);

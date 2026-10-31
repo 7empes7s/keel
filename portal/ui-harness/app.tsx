@@ -88,6 +88,7 @@ import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
+import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
@@ -2163,6 +2164,21 @@ const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], s
   records: ASK_MONTH_RECORDS,
 } };
 
+// Backlog G2: "Is Intune backed up?" after a run of one tier. The engine read only the newest
+// snapshot (most kinds "Not part of this backup"); the page counts the same kinds as Setup.
+const ASK_COVERAGE_KINDS = COVERAGE_TYPES.filter((item) => typeService(item.type).code === "Intune").map((item) => item.type).sort();
+const ASK_COVERAGE: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: withSharedCoverage({
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "answered", intent: "coverage", question: "Is Intune backed up?", window: null, gaps: [],
+  known: { from: now, to: now },
+  plan: { intent: "coverage", params: { entity: null, from: null, to: null, resourceType: null, resourceTypes: ASK_COVERAGE_KINDS, name: null, changeType: null, limit: 100 } },
+  total: ASK_COVERAGE_KINDS.length, shown: ASK_COVERAGE_KINDS.length, sentence: "",
+  records: ASK_COVERAGE_KINDS.map((type, index) => ({
+    kind: "coverage" as const, backup: "settings" as const, id: `5a2be911/${type}`, resourceType: type, name: null, service: "Intune",
+    outcome: index === 0 ? "complete" : "not-requested", count: index === 0 ? 4 : null, window: { from: now, to: now },
+    source: { kind: "collection" as const, id: "5a2be911-0000-4000-8000-000000000002", href: "/protect" },
+  })),
+}, COVERAGE, now) };
+
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
   return <>{header("Reports", "Ask", "Ask about changes, backup coverage or failed jobs. Every answer comes from KEEL's own records and names them.")}
@@ -2670,6 +2686,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
     case "/ask/month": return askPage(ASK_MONTH);
+    case "/ask/coverage": return askPage(ASK_COVERAGE);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);

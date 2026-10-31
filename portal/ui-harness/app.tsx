@@ -24,6 +24,7 @@ import { coverageSummary, protectStatus, protectVerdict, restoreProofCounts, tie
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
+import { ApprovalModeCard } from "@/components/approval-mode-card";
 import type { RestoreApprovalsView } from "@/lib/restore-approvals";
 import { RESTORE_APPROVAL_RULE_ORDER } from "@/lib/restore-approval-rules";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
@@ -2750,7 +2751,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/settings": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" />
+      <ApprovalModeCard canChange now={now} setting={{ mode: "two-person", changedAt: null, changedBy: null }} />
       <RestoreApprovalSettingsCard canChange now={now} settings={RESTORE_APPROVALS} /></>;
+    // Solo approval mode: the viewer may approve their own request, marked self-approved.
+    case "/approvals/solo": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for approval. Approval mode is Solo, so you can approve your own.", undefined, { tone: "soon", label: "1 waiting" })}
+      <ApprovalInbox approvalMode="solo" history={[{ ...APPROVAL_HISTORY[0], id: "a9e10000-0000-4000-8000-000000000160", requestedBy: MAROUANE.id, selfApproved: true, references: { ...APPROVAL_HISTORY[0].references!, people: { requested_by: MAROUANE, decided_by: MAROUANE } } }]} now={now} pending={[{ ...APPROVALS_PENDING[1], id: "a9e10000-0000-4000-8000-000000000161", requestedBy: MAROUANE.id, references: { ...APPROVALS_PENDING[1].references!, people: { requested_by: MAROUANE } } }]} viewerId={MAROUANE.id} />
+      <ApprovalModeCard canChange now={now} setting={{ mode: "solo", changedAt: "2026-10-01T09:00:00Z", changedBy: MAROUANE }} /></>;
     case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}

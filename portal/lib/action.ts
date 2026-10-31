@@ -900,10 +900,13 @@ export function guardedApprovalDecision(
 
       try {
         if (decision === "approve") {
+          // Solo approval mode: approving your own request takes a reason that says why.
+          const { reason } = await readActionParams(request);
           const { job, signoffs, approvers, requiredApprovals } = (await approveRequest(client, {
             tenantRef: tenant,
             id,
             decidedBy: principalId,
+            reason: typeof reason === "string" ? reason : null,
             enforceScope: true,
             approverScope: entityScopeFrom(request.headers, "approve"),
           })) as { job: Record<string, unknown> | null; signoffs?: number; approvers?: string[]; requiredApprovals?: number };
@@ -942,7 +945,7 @@ export function guardedApprovalDecision(
         }
         if (error instanceof ApprovalReasonRequiredError) {
           return Response.json(
-            { error: "invalid_request" },
+            decision === "approve" ? { error: "reason_required", message: error.message } : { error: "invalid_request" },
             { status: 400, headers: NO_STORE },
           );
         }

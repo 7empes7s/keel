@@ -3,10 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 
 import {
-  APPROVAL_DECISION_EVIDENCE_KIND, SelfApprovalError, approveRequest, requestApproval, routeApproval,
+  APPROVAL_DECISION_EVIDENCE_KIND, ApprovalReasonRequiredError, SelfApprovalError, approveRequest, requestApproval, routeApproval,
 } from './approvals.mjs';
 import {
-  APPROVAL_MODE_EVIDENCE_KIND, ApprovalModeError, getApprovalMode, selfApprovalAllowed, setApprovalMode,
+  APPROVAL_MODE_EVIDENCE_KIND, ApprovalModeError, getApprovalMode, selfApprovalAllowed, selfApprovalReasonProblem, setApprovalMode,
 } from './approvalMode.mjs';
 import { setApprovalPolicy } from './approvalPolicy.mjs';
 import { assertDispositionApproval, DispositionApprovalError } from './dispositionReview.mjs';
@@ -96,7 +96,7 @@ test('two-person refuses self-approval; solo allows it and records it as self-ap
   await assert.rejects(approveRequest(client, { tenantRef, id: refused.id, decidedBy: admin }), SelfApprovalError);
 
   await solo(client, tenantRef, admin);
-  const decided = await approveRequest(client, { tenantRef, id: refused.id, decidedBy: admin });
+  const decided = await approveRequest(client, { tenantRef, id: refused.id, decidedBy: admin, reason: 'Restore the KEEL-RT- policy changed by mistake' });
   assert.equal(decided.request.status, 'approved');
   assert.equal(decided.request.self_approved, true);
   assert.ok(decided.job, 'the approved job is minted as usual');
@@ -117,7 +117,7 @@ test('two-person refuses self-approval; solo allows it and records it as self-ap
   await assert.rejects(approveRequest(client, { tenantRef, id: later.id, decidedBy: admin }), SelfApprovalError);
 });
 
-test('solo never lifts a two-person rule or lets a standing policy self-approve', async (t) => {
+test('solo has no two-person exceptions, but never lets a standing policy self-approve', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = tenant();
   const admin = await principal(client);
@@ -125,15 +125,47 @@ test('solo never lifts a two-person rule or lets a standing policy self-approve'
   await setApprovalPolicy(client, { tenantRef, actionClass: 'delete', twoPerson: true, actor: admin });
   const twoNeeded = await ask(client, tenantRef, admin, { policyActions: ['delete'] });
   assert.equal(twoNeeded.required_approvals, 2);
-  await assert.rejects(approveRequest(client, { tenantRef, id: twoNeeded.id, decidedBy: admin }), /two-person rule/);
-  const { rows: [still] } = await client.query('SELECT status FROM approval_request WHERE id = $1', [twoNeeded.id]);
-  assert.equal(still.status, 'pending');
+  const decided = await approveRequest(client, { tenantRef, id: twoNeeded.id, decidedBy: admin, reason: 'Restore the KEEL-RT- policy changed by mistake' });
+  assert.equal(decided.request.status, 'approved', 'a self-approval decides even a two-person-rule request in solo');
+  const [waived] = (await evidenceOf(client, tenantRef, APPROVAL_DECISION_EVIDENCE_KIND)).map((row) => row.subject);
+  assert.equal(waived.twoPersonRuleWaived, true);
+  assert.equal(waived.requiredApprovals, undefined);
+  assert.equal(decided.request.self_approved, true);
+  assert.ok(decided.job);
+
+  // Someone else's approval of a two-person-rule request is still a sign-off only.
+  const other = await principal(client);
+  const theirs = await ask(client, tenantRef, other, { policyActions: ['delete'] });
+  assert.equal((await approveRequest(client, { tenantRef, id: theirs.id, decidedBy: admin })).job, null);
 
   const standing = await ask(client, tenantRef, admin);
   await assert.rejects(
-    approveRequest(client, { tenantRef, id: standing.id, decidedBy: admin, standingPolicy: 'operator-test-tenant' }),
+    approveRequest(client, { tenantRef, id: standing.id, decidedBy: admin, standingPolicy: 'operator-test-tenant', reason: 'Restore the KEEL-RT- policy changed by mistake' }),
     SelfApprovalError,
   );
+});
+
+test('a self-approval needs a reason that says why', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const admin = await principal(client);
+  await solo(client, tenantRef, admin);
+  const request = await ask(client, tenantRef, admin);
+  for (const reason of [undefined, '', '   ', 'ok', 'test', 'xxxxxxxxxxxx', 'approved.', 'shortone']) {
+    await assert.rejects(approveRequest(client, { tenantRef, id: request.id, decidedBy: admin, reason }), ApprovalReasonRequiredError, `refused: ${JSON.stringify(reason)}`);
+  }
+  const { rows: [still] } = await client.query('SELECT status FROM approval_request WHERE id = $1', [request.id]);
+  assert.equal(still.status, 'pending');
+  const decided = await approveRequest(client, { tenantRef, id: request.id, decidedBy: admin, reason: 'Restore the KEEL-RT- policy changed by mistake' });
+  assert.equal(decided.request.reason, 'Restore the KEEL-RT- policy changed by mistake');
+  const [decision] = (await evidenceOf(client, tenantRef, APPROVAL_DECISION_EVIDENCE_KIND)).map((row) => row.subject);
+  assert.equal(decision.reason, 'Restore the KEEL-RT- policy changed by mistake');
+  assert.equal(decision.selfApproved, true);
+
+  assert.equal(selfApprovalReasonProblem('Restore the deleted policy'), null);
+  assert.match(selfApprovalReasonProblem('ok ok ok ok ok'), /reason/, 'the same word again is not a reason');
+  assert.equal(selfApprovalReasonProblem('誤って削除したポリシーを戻す'), null, 'a language without spaces counts letters');
+  assert.match(selfApprovalReasonProblem('n/a'), /reason/);
 });
 
 test('routing counts the requester as an approver only in solo mode', async (t) => {
@@ -158,7 +190,7 @@ test('a self-approved content restore runs only while the mode is still solo', a
   });
   await assert.rejects(approveRequest(client, { tenantRef, id: request.id, decidedBy: admin }), SelfApprovalError);
   await solo(client, tenantRef, admin);
-  await approveRequest(client, { tenantRef, id: request.id, decidedBy: admin });
+  await approveRequest(client, { tenantRef, id: request.id, decidedBy: admin, reason: 'Restore the KEEL-RT- policy changed by mistake' });
   await authorizeContentRestore(client, { actor: admin, approvalId: request.id, runId, tenantRef, canFn });
   await twoPerson(client, tenantRef, admin);
   await assert.rejects(
@@ -174,7 +206,9 @@ test('a self-approved accept or ignore counts only while the mode is still solo'
   await solo(client, tenantRef, admin);
   const request = await requestApproval(client, {
     tenantRef, action: 'dispose', params: { driftIds: ['d-1'], action: 'accept' }, requestedBy: admin,
+    justification: 'Accept the KEEL-RT- sharing change we made on purpose',
   });
+  // The request's own reason is enough when no new one is given.
   await approveRequest(client, { tenantRef, id: request.id, decidedBy: admin });
   const check = () => assertDispositionApproval(client, { approvalId: request.id, actor: admin, tenantRef, matches: () => true });
   assert.equal((await check()).self_approved, true);
@@ -199,6 +233,9 @@ test('content effects: self-approval only in solo mode, and the gate stops count
   });
   await assert.rejects(approve(), ContentEffectApprovalError);
   await solo(client, tenantRef, admin);
+  await assert.rejects(approveContentEffects(client, {
+    tenantRef, artifactId: artifact.id, approverId: admin, effectsDigest: contentEffectsDigest(contentEffects), justification: 'ok',
+  }), (error) => error instanceof ContentEffectApprovalError && /reason/.test(error.message));
   assert.equal((await approve()).self_approved, true);
   assert.ok(await assertContentEffectApproval(client, { artifact, effects: contentEffects }));
   await twoPerson(client, tenantRef, admin);
@@ -209,14 +246,15 @@ test('emergency changes: the owner approves their own only in solo mode, recorde
   const client = await schemaClient(t);
   const tenantRef = tenant();
   const admin = await principal(client);
-  const intent = () => createChangeIntent(client, {
-    tenantRef, approverPrincipalId: admin, ownerPrincipalId: admin, reason: 'KEEL-RT- outage',
+  const intent = (reason = 'KEEL-RT- outage') => createChangeIntent(client, {
+    tenantRef, approverPrincipalId: admin, ownerPrincipalId: admin, reason,
     naturalKey: 'group:KEEL-RT-2', resourceType: 'microsoft.graph.group',
     transitions: [{ field: 'visibility', before: 'Private', after: 'Public' }],
     windowEnd: new Date(Date.now() + 60 * 60 * 1000),
   });
   await assert.rejects(intent(), (error) => error instanceof ChangeIntentError && error.code === 'owner-is-approver');
   await solo(client, tenantRef, admin);
+  await assert.rejects(intent('fix'), (error) => error instanceof ChangeIntentError && error.code === 'reason-required');
   const made = await intent();
   assert.equal(made.selfApproved, true);
   const active = () => activeIntentsFor(client, { tenantRef, naturalKeys: ['group:KEEL-RT-2'] });

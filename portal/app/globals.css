@@ -9314,6 +9314,9 @@ section.wizard-panel {
 .ap-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm) var(--space-md); padding-top: var(--space-sm); border-top: 1px solid var(--line); }
 .ap-help { flex: 1 1 18rem; margin: 0; color: var(--text-soft); font-size: 0.8125rem; line-height: 1.45; }
 .ap-decide { display: flex; flex: none; gap: var(--space-xs); }
+.ap-self-reason { display: grid; flex: 1 1 100%; gap: var(--space-2xs); font-size: 0.8125rem; color: var(--text-soft); }
+.ap-self-reason input { width: 100%; min-height: 2.75rem; padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 0.9375rem; }
+.ap-self-reason input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ap-decide .btn .icon { width: 1rem; height: 1rem; }
 .ap-error { display: flex; align-items: start; gap: var(--space-xs); margin: 0; color: var(--urgent); font-size: 0.875rem; }
 .ap-error .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; }
@@ -12005,6 +12008,19 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 
 @media (max-width: 640px) {
   .undo-choice-options { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Approval mode (Approvals page): two people or solo. Tokens only; `.am-` prefix. */
+.am-card[data-mode="solo"] { border-color: color-mix(in oklab, var(--check-soon) 45%, var(--line)); }
+.am-card[data-mode="solo"] .am-icon { background: var(--check-soon-bg); color: var(--check-soon); }
+.am-changed { font-size: 0.8125rem; }
+.am-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--space-xs) var(--space-md); margin: 0; padding: 0; list-style: none; }
+.am-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-sm); min-width: 0; padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.am-option[data-current] { border-color: color-mix(in oklab, var(--fine) 45%, var(--line)); background: var(--fine-bg); }
+.am-card[data-mode="solo"] .am-option[data-current] { border-color: color-mix(in oklab, var(--check-soon) 45%, var(--line)); background: var(--check-soon-bg); }
+@media (max-width: 640px) {
+  .am-option { grid-template-columns: auto minmax(0, 1fr); }
+  .am-option > .btn, .am-option > .confirm-button { grid-column: 2 / -1; justify-self: start; }
 }
 
 /* Restore approvals (Approvals page): per service and per kind of restore, whether a

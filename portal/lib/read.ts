@@ -17,6 +17,7 @@ export const DATA_SURFACES = {
   evidencePage: { capability: "read", source: "evidence/page.tsx" },
   anonymityApi: { capability: "read", source: "api/anonymity/route.ts" },
   restoreApprovalsApi: { capability: "read", source: "api/restore-approvals/route.ts" },
+  approvalModeApi: { capability: "read", source: "api/approval-mode/route.ts" },
   principalsApi: { capability: "users", source: "api/principals/route.ts" },
   principalsPage: { capability: "users", source: "principals/page.tsx" },
   principalGrantApi: { capability: "roles", source: "api/principals/[id]/grant/route.ts" },

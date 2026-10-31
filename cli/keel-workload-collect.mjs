@@ -242,7 +242,8 @@ export async function importSeams() {
     { READ_FAMILIES, ledgerEvidenceFromWorkloadReadsAcceptance, workloadReadsRecordFile },
     { ledgerEvidenceFromStructureWritesAcceptance }, { STRUCTURE_WRITES_RECORD_FILE },
     { ledgerEvidenceFromDscWritesAcceptance }, { DSC_WRITES_RECORD_FILE },
-    { ledgerEvidenceFromRoleWritesAcceptance }, { ROLE_WRITES_RECORD_FILE }] = await Promise.all([
+    { ledgerEvidenceFromRoleWritesAcceptance }, { ROLE_WRITES_RECORD_FILE },
+    { ledgerEvidenceFromUnpublishAcceptance }, { UNPUBLISH_RECORD_FILE }] = await Promise.all([
     import('../tools/qualification/sharepointLive.mjs'), import('../tools/qualification/teamsLive.mjs'),
     import('../tools/qualification/exchangeLive.mjs'), import('../tools/qualification/onedrivePurviewLive.mjs'),
     import('../tools/qualification/workloadWritesLive.mjs'), import('../tools/qualification/workloadWritesAcceptance.mjs'),
@@ -252,6 +253,7 @@ export async function importSeams() {
     import('../tools/qualification/sharepointStructureWritesLive.mjs'), import('../tools/qualification/sharepointStructureWritesAcceptance.mjs'),
     import('../tools/qualification/dscDistributionGroupsLive.mjs'), import('../tools/qualification/dscDistributionGroupsAcceptance.mjs'),
     import('../tools/qualification/exchangeRoleDefinitionsLive.mjs'), import('../tools/qualification/exchangeRoleDefinitionsAcceptance.mjs'),
+    import('../tools/qualification/purviewUnpublishLive.mjs'), import('../tools/qualification/purviewUnpublishAcceptance.mjs'),
   ]);
   return [
     { file: 'sharepoint-live-acceptance.json', seam: ledgerEvidenceFromAcceptance },
@@ -282,6 +284,8 @@ export async function importSeams() {
     { file: DSC_WRITES_RECORD_FILE, optional: true, seam: ledgerEvidenceFromDscWritesAcceptance },
     // The custom Exchange admin role write through Exchange Online PowerShell, optional until captured.
     { file: ROLE_WRITES_RECORD_FILE, optional: true, seam: ledgerEvidenceFromRoleWritesAcceptance },
+    // Removing labels from a Purview label policy, optional until captured.
+    { file: UNPUBLISH_RECORD_FILE, optional: true, seam: ledgerEvidenceFromUnpublishAcceptance },
   ];
 }
 

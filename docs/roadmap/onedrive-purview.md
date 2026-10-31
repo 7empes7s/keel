@@ -99,6 +99,13 @@ with `enabledByDefault: false` and appear in the coverage report.
 | --- | --- | --- | --- | --- |
 | `purview.label.update` | `Set-Label` | `DisplayName`, `Tooltip`, `Comment` | `purview.label-definitions` | `Exchange.ManageAsApp`, Compliance Administrator |
 | `purview.label-policy.update` | `Set-LabelPolicy` | `AddLabels` only | `purview.label-publication` | `Exchange.ManageAsApp`, Compliance Administrator |
+| `purview.label-policy.remove-labels` | `Set-LabelPolicy` | `RemoveLabels` only, after its high-impact approval | `purview.label-publication` | `Exchange.ManageAsApp`, Compliance Administrator |
+
+`RemoveLabels` is not in the ordinary Purview allowlist (`assertPurviewCmdlet` still refuses
+it). Only `purviewUnpublishCmdlet` sends it, and only the label policy restore calls that.
+Its live proof is `tools/qualification/purviewUnpublishLive.mjs` (gate
+`purview-label-unpublish-live-acceptance`): one KEEL-RT- label removed from one KEEL-RT-
+policy, read back gone, and put back. It also needs `purview.label-policy.update` enabled.
 
 Each write needs all of these:
 - its own live write capture;
@@ -124,7 +131,8 @@ existing ones.
 | A label the source policy published and the live one does not | `Set-LabelPolicy -AddLabels` |
 | Encryption, content marking, site and group protection, guest access, `Disabled` | Manual. `weakensProtection: true` when restoring would weaken protection |
 | Priority, content type, sharing control type, policy mode or settings | Manual. `weakensProtection: null`: KEEL cannot tell, so it never writes these |
-| A label removed from a policy, or a policy location narrowed back | Manual. It would unpublish or uncover, so KEEL never does it |
+| A label the live policy publishes and the source policy did not | `Set-LabelPolicy -RemoveLabels`, a `weakens-protection` effect: sent only once a second person approves it, or when restore approvals are off for Purview. Only that operation waits; adding labels does not |
+| A policy location narrowed back | Manual. It would uncover, so KEEL never does it |
 | A label or policy deleted since the source | Manual. It is not recreated: a new object gets a new id, and labeled items are not relabeled |
 | A label or policy created since the source | Manual. KEEL never deletes one |
 | Item-applied labels, usage, labeled content | Excluded. Never read or restored |
@@ -192,8 +200,8 @@ never parsed. The Exchange allowlist is unchanged.
   - A rename, an encryption change, an added label, a deleted label and a policy change
     are each tracked and stored in the digest.
   - A failed policy read does not report the policy as removed.
-  - Labeled-item, usage and search cmdlets, `RemoveLabels` and `EncryptionEnabled` are
-    refused.
+  - Labeled-item, usage and search cmdlets, `RemoveLabels` (outside the one unpublish
+    call) and `EncryptionEnabled` are refused.
 - **Proof for another family cannot enable anything.**
   - With every predecessor read live, including `sharepoint.site-sharing`, OneDrive and
     Purview stay disabled and send nothing.

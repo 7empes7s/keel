@@ -706,7 +706,7 @@ export const WORKLOAD_GUIDE = Object.freeze({
   'onedrive-site-settings': Object.freeze({ name: 'OneDrive settings',
     todo: 'KEEL puts back a OneDrive\'s own sharing settings, default link type and permission, and guest and link expiry. A setting the backup shows following the tenant\'s OneDrive default is not pinned on the site. A locked site is never changed or unlocked. The owner, storage quota, sensitivity label and conditional access setting are changed by hand in the SharePoint admin center using the backup. Wider sharing needs a second approver.' }),
   'purview-labels': Object.freeze({ name: 'Purview sensitivity labels',
-    todo: 'KEEL only restores label names and tooltips, and adds labels back to a publishing policy. It never weakens a label or unpublishes one: those changes, and new labels, are made by hand in the Purview portal.' }),
+    todo: 'KEEL restores label names and tooltips, and which labels a publishing policy publishes: it adds labels back, and removes labels the backup did not publish. Removing a label needs a second approver while restore approvals are on. KEEL never weakens a label itself: those changes, and new labels, are made by hand in the Purview portal.' }),
   'exchange-mail-flow': Object.freeze({ name: 'Exchange mail flow and protection',
     todo: 'Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver while restore approvals are on. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.' }),
   'teams-org-policies': Object.freeze({ name: 'Teams organization policies',
@@ -759,7 +759,7 @@ const OPERATION_NOUNS = Object.freeze({
 const PROPER_START = /^(SharePoint|Exchange|OneDrive|Teams|DKIM|Safe|Microsoft)\b/;
 const TIER_WORDS = Object.freeze({ tier1: 'Tier 1, critical', tier2: 'Tier 2, important', tier3: 'Tier 3, low impact' });
 const EVERY = Object.freeze({ hour: 'every hour', day: 'daily', week: 'weekly' });
-const WRITE_VERBS = Object.freeze({ update: 'Put back', add: 'Add back', remove: 'Remove extras from' });
+const WRITE_VERBS = Object.freeze({ update: 'Put back', add: 'Add back', remove: 'Remove extras from', 'remove-labels': 'Remove labels the backup did not publish from' });
 
 function tierCadence() {
   const cadence = {};

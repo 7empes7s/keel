@@ -685,8 +685,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   // with its own proof. They run in the Security & Compliance session of the same
   // module, so they require the Exchange cmdlet write first (which requires Teams,
   // then SharePoint); Exchange proof is never Purview proof. Only display text and
-  // adding a label to a policy are writable: nothing KEEL writes can weaken a label's
-  // protection or unpublish a label. No OneDrive write is declared.
+  // adding a label to a policy are writable without approval: nothing KEEL writes can
+  // weaken a label's protection, and removing a label from a policy waits for its
+  // high-impact approval (below). No OneDrive write is declared.
   'purview.label.update': Object.freeze({
     workload: 'purview-labels',
     resourceType: 'purviewLabel',
@@ -711,6 +712,24 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] }),
     grantsRequired: true,
     requires: Object.freeze(['exchange.client-access.update']),
+    source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy',
+  }),
+  // Restore approvals: removing labels from a policy (unpublishing them) to match the
+  // backup. A 'weakens-protection' effect, sent only once a second person approved it
+  // (or the customer turned restore approvals off for Purview). Its own live proof;
+  // adding labels must be qualified first, since a capture puts a removed label back
+  // with it.
+  'purview.label-policy.remove-labels': Object.freeze({
+    workload: 'purview-labels',
+    resourceType: 'purviewLabelPolicy',
+    kind: 'cmdlet',
+    method: 'Set-LabelPolicy',
+    module: 'ExchangeOnlineManagement',
+    readBack: 'purview.label-publication',
+    fields: Object.freeze(['RemoveLabels']),
+    rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] }),
+    grantsRequired: true,
+    requires: Object.freeze(['purview.label-policy.update']),
     source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy',
   }),
   // Wave 2 WKLD: mail flow, Exchange settings, Teams org-wide and voice policies,

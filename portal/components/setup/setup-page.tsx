@@ -18,7 +18,7 @@ import { TIERS } from "@/lib/protect-view";
 import {
   PROGRESS_LABELS, PROGRESS_TONES, SCOPE_PURPOSE, SCOPE_TITLES,
   appRole, canContinue, canStartScope, currentStep, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
-  progressCounts, runSentence, setupPrimary, setupVerdict, stepHelp, stepLink, stepTitle, workloadChip, workloadLabel,
+  firstBackupLine, progressCounts, runSentence, setupPrimary, setupVerdict, stepHelp, stepLink, stepTitle, workloadChip, workloadLabel,
   type SetupPrimary, type SetupScope, type SetupState, type SetupStep,
 } from "@/lib/setup-view";
 import type { ServiceStatus } from "@/lib/setup-services";
@@ -81,7 +81,7 @@ export function SetupPage({ state, canStart, canBackup, services = null }: {
             <b className="su-tile-count">{first ? "Done" : "Not yet"}</b>
             <small>
               {first
-                ? <>{ago(first.completedAt, state.generatedAt)}: {first.read} types read{first.notRead ? `, ${first.notRead} not read` : ""}</>
+                ? firstBackupLine(first, state.generatedAt)
                 : state.collect.allowed ? "Ready to run" : "Can run once read access is done"}
             </small>
           </Link>

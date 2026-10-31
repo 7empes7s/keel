@@ -53,7 +53,7 @@ const sorted = (values) => [...values].sort();
  * null when the tenant could not be read. Returns { state, objectRef, wanted, observed }.
  */
 export function deriveConnection({ identity, appId, plan, servicePrincipals = [], uncheckedKinds = [],
-  credentialExpiresAt = null, previousMissingRoles = null, now = new Date() }) {
+  credentialExpiresAt = null, previousMissingRoles = null, confirmedRoles = [], now = new Date() }) {
   if (!appId) return { state: 'not-created', objectRef: null, wanted: null, observed: null };
   const expired = credentialExpiresAt !== null && Date.parse(credentialExpiresAt) <= now.getTime();
   if (!plan) return { state: expired ? 'needs-reconnect' : 'not-checked', objectRef: appId, wanted: null, observed: null };
@@ -82,10 +82,12 @@ export function deriveConnection({ identity, appId, plan, servicePrincipals = []
     grantedPermissions: sorted(consent?.consentedScopes ?? []),
     missingPermissions: sorted(consent?.missingScopes ?? []),
     extraPermissions: sorted(consent?.excessScopes ?? []),
-    // When Keel cannot see the role assignments this time, the last read stands; with
-    // none, null: no role is called missing, and none is called assigned either.
+    // When Keel cannot see the role assignments this time, the last read stands. With
+    // none, the setup run's own check stands when it saw every wanted role in place
+    // (Setup's step list says so too). Otherwise null: no role is called missing, and
+    // none is called assigned either.
     missingRoles: rolesChecked ? sorted(roles.filter((step) => step.status !== 'satisfied').map((step) => step.name))
-      : previousMissingRoles,
+      : previousMissingRoles ?? (roles.length > 0 && roles.every((step) => confirmedRoles.includes(step.name)) ? [] : null),
     rolesChecked,
   };
 
@@ -158,10 +160,12 @@ async function plannedObservation({ tenantRef, readers, identities, now }) {
  * Records each Keel app's connection for the tenant. `apps` maps an identity
  * (collector, content-reader, restorer, engage-writer) to { appId, credentialRef, credentialExpiresAt }
  * or null when the host has no credential for it. `readers` are the setup host's
- * read adapters, or null when the tenant cannot be read. Writes an access_event only
+ * read adapters, or null when the tenant cannot be read. `confirmedRoles` maps an
+ * identity to the Intune roles Setup shows as done (its setup run checked them), used
+ * only while Keel cannot read role assignments itself. Writes an access_event only
  * when something changed. Runs in its own transaction on `client`.
  */
-export async function syncConnections(client, { tenantRef, apps = {}, readers = null, actor = OBSERVER, now = new Date() }) {
+export async function syncConnections(client, { tenantRef, apps = {}, readers = null, confirmedRoles = {}, actor = OBSERVER, now = new Date() }) {
   assertTenantRef(tenantRef);
   const identities = CONNECTION_APPS.map((app) => app.identity).filter((identity) => apps[identity]?.appId);
   let observation;
@@ -187,6 +191,7 @@ export async function syncConnections(client, { tenantRef, apps = {}, readers = 
         identity: app.identity, appId: bound?.appId ?? null, ...observation,
         credentialExpiresAt: bound?.credentialExpiresAt ?? null, now,
         previousMissingRoles: current?.object_ref === bound?.appId ? current?.observed?.missingRoles ?? null : null,
+        confirmedRoles: confirmedRoles[app.identity] ?? [],
       });
       const next = assertTokenFree({
         state: derived.state, object_ref: derived.objectRef, wanted: derived.wanted, observed: derived.observed,

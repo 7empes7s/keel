@@ -78,6 +78,16 @@ test('derive: unknown is never absent, and each state comes from what was observ
   assert.equal(unseen.observed.missingRoles, null);
   assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: ['Read Only Operator'] }).state, 'missing-permission');
   assert.equal(derive(plan({}, ['satisfied']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: [] }).state, 'working');
+  // Re-test 2026-10-31: with no direct read yet, the setup run's check of the role stands,
+  // so the app agrees with Setup's "3 of 3" instead of saying "Not checked".
+  const confirmed = derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], confirmedRoles: ['Read Only Operator'] });
+  assert.equal(confirmed.state, 'working');
+  assert.deepEqual(confirmed.observed.missingRoles, []);
+  assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], confirmedRoles: ['Another role'] }).state, 'not-checked');
+  // A direct read always wins over the setup run.
+  assert.equal(derive(plan({}, ['pending-manual']), { confirmedRoles: ['Read Only Operator'] }).state, 'missing-permission');
+  assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: ['Read Only Operator'],
+    confirmedRoles: ['Read Only Operator'] }).state, 'missing-permission');
   assert.equal(derive(plan(), { servicePrincipals: [{ id: 'sp-1', accountEnabled: false }] }).state, 'switched-off');
   assert.equal(derive(plan(), { credentialExpiresAt: '2026-10-01T00:00:00Z' }).state, 'needs-reconnect');
   assert.deepEqual(derive(plan()).wanted, { permissions: ['A', 'B'], roles: [] });

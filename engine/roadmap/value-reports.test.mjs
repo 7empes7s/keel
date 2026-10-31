@@ -16,7 +16,7 @@ import { after, before, test } from 'node:test';
 import { main as valueReportCli } from '../../cli/keel-value-report.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import {
-  COUNTING_RULES, MAX_PERIOD_DAYS, OUTCOME_STATES, classifyChangeRemediation, classifyControlFinding,
+  COUNTING_RULES, MAX_OUTCOME_ROWS, MAX_PERIOD_DAYS, OUTCOME_STATES, classifyChangeRemediation, classifyControlFinding,
   classifyRestoreOutcome, estimateHours, loadValueReport, readEstimate, reportPeriod, summarizeOutcomes,
   valueReportCsv,
 } from '../reports/value.mjs';
@@ -482,6 +482,23 @@ test('totals, percentages and periods stay consistent, and every export carries 
   assert.throws(() => reportPeriod({ from: new Date(NOW.getTime() - (MAX_PERIOD_DAYS + 1) * 86_400_000), to: NOW, now: NOW }), RangeError);
   assert.equal(reportPeriod({ from: FROM, to: new Date('2027-01-01T00:00:00Z'), now: NOW }).to.toISOString(), NOW.toISOString(), 'a period never runs into the future');
   await assert.rejects(loadValueReport(client, { tenantRef: 'raw-tenant-id', from: FROM, to: NOW, now: NOW }), TypeError);
+});
+
+// Audit 31 Oct 2026: the page listed 50 of 98 requests and its pager could not reach
+// the rest. Every request in the period is serialized, so the page pages through all.
+test('the report lists every request of the period, not only the first 50', async () => {
+  const tenantRef = 'sha256:value-many-requests';
+  const sharedSnapshot = await snapshot(tenantRef, { completedAt: '2026-08-01T00:00:00Z' });
+  for (let index = 0; index < 98; index += 1) {
+    const { planId } = await plan(tenantRef, { snapshotId: sharedSnapshot });
+    await restoreJob(planId, { status: 'queued', createdAt: new Date(Date.parse('2026-09-10T00:00:00Z') + index * 60_000).toISOString() });
+  }
+  const current = await report(tenantRef);
+  assert.equal(current.outcomes.total, 98);
+  assert.equal(current.outcomes.rows.length, 98);
+  assert.equal(current.outcomes.rowsShown, 98);
+  assert.equal(new Set(current.outcomes.rows.map((row) => row.id)).size, 98);
+  assert.ok(MAX_OUTCOME_ROWS >= 1000, 'the cap is far above a real period');
 });
 
 test('an entity-scoped reader sees only its own outcomes; tenant-wide sections are withheld', async () => {

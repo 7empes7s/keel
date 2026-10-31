@@ -666,7 +666,7 @@ for (const theme of ["dark", "light"] as const) {
           await rows.nth(3).click({ modifiers: ["Shift"] });
           await expect(page.locator(".sel-bar-count")).toContainText("4 entries");
           await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 4 entries");
-          await page.getByRole("button", { name: /Select all 18 entries/ }).click();
+          await page.getByRole("button", { name: /Select all 18 loaded entries/ }).click();
           await expect(page.locator(".sel-bar-count")).toContainText("18 entries");
         }
       });
@@ -1626,6 +1626,25 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   // No ids outside Technical details.
   await open(page, "/reports");
   expect(await textOutside(page, "main#main-content", '[data-layer="record"]')).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|restore-plan:|finding:|sha256:/i);
+});
+
+// Audit 31 Oct 2026: the report listed 50 of 98 requests, its pager could not reach the
+// rest, and Select all said 50. Every request is listed and paged; a capped list says so.
+test("the value report pages through every request, and Select all states the true count", async ({ page }) => {
+  await open(page, "/reports/many");
+  const pager = page.getByRole("navigation", { name: "Pages of Requests" });
+  await expect(pager.locator(".list-pager-range")).toHaveText("Showing 1–25 of 98 requests");
+  await expect(page.getByRole("button", { name: "Select all 98 requests" })).toBeVisible();
+  await expect(page.locator(".sel-partial")).toHaveCount(0);
+  await pager.getByRole("button", { name: "Last page" }).click();
+  await expect(pager.locator(".list-pager-range")).toHaveText("Showing 76–98 of 98 requests");
+  await expect(page.locator(".vr-row-link")).toHaveCount(23);
+  await page.getByRole("button", { name: "Select all 98 requests" }).click();
+  await expect(page.locator(".sel-bar-count")).toContainText("98 requests");
+
+  await open(page, "/reports/capped");
+  await expect(page.getByRole("button", { name: "Select all 50 loaded requests" })).toBeVisible();
+  await expect(page.locator(".sel-partial")).toHaveText("Only the first 50 of 98 requests are listed. The tiles count every request.");
 });
 
 test("the value report fits 390 and 1440 in both themes, and every tile, chart and row is a working control", async ({ page }) => {

@@ -87,6 +87,10 @@ interface Props<T> {
   // Every row the find leaves, in the order the list shows them (grouping and sort), for
   // a details panel's previous and next.
   onOrder?: (ids: string[]) => void;
+  // When `items` is only part of what exists (a capped read, one loaded page), a plain
+  // line that says what is left out. Select all then calls its rows "loaded", so its
+  // count never reads as the whole.
+  partial?: string | null;
 }
 
 // What paging counts: a group, or one part of a group that has parts.
@@ -107,7 +111,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks, onOrder }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks, onOrder, partial = null }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -304,6 +308,8 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const selectedIds = [...allIds.filter((id) => selection.ids.has(id)), ...hiddenIds];
   const count = selectedIds.length;
   const allShownPicked = allIds.length > 0 && allIds.every((id) => selection.ids.has(id));
+  // A partial list says its rows are only the loaded ones: "Select all 50 loaded requests".
+  const allWords = partial ? `${allIds.length} loaded ${allIds.length === 1 ? noun.one : noun.many}` : plural(allIds.length, noun);
   const tray = keepPicks && pool && count ? picksTray(pool, getId, keepPicks.groupOf, selection.ids) : null;
 
   return (
@@ -337,8 +343,9 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           onClick={() => setSelection((current) => setMany(current, allIds, !allShownPicked))}
           type="button"
         >
-          {!allShownPicked ? `Select all ${plural(allIds.length, noun)}` : hiddenIds.length ? `Unselect these ${plural(allIds.length, noun)}` : "Clear selection"}
+          {!allShownPicked ? `Select all ${allWords}` : hiddenIds.length ? `Unselect these ${allWords}` : "Clear selection"}
         </button>
+        {partial ? <span className="sel-partial" role="note"><Icon name="info" />{partial}</span> : null}
         <span className="sel-help">
           Shift+click selects a range. On a phone, hold a row, then drag.
         </span>

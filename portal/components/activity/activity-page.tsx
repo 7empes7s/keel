@@ -267,6 +267,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               label="Activity"
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
+              partial={filters.show !== "jobs" && (nextBefore || before) ? "Only one page of the audit record is loaded. Older and newer entries are under the buttons below the list." : null}
               renderRow={renderRow}
               sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}

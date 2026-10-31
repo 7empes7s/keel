@@ -2044,6 +2044,26 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   hoursSaved: null,
 };
 
+// Audit 31 Oct 2026: 98 requests, of which the old report sent only 50. `many` holds all
+// of them, so the pager reaches the last; `capped` is a report past the engine's cap,
+// whose list says it holds only part.
+const MANY_ROWS = Array.from({ length: 98 }, (_, index) => ({
+  ...VALUE_REPORT.outcomes.rows[2],
+  id: `restore-plan:7f3c0000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  planId: `7f3c0000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  firstRequestedAt: new Date(Date.parse("2026-09-30T08:00:00.000Z") - index * 3_600_000).toISOString(),
+  lastEventAt: new Date(Date.parse("2026-09-30T08:05:00.000Z") - index * 3_600_000).toISOString(),
+}));
+const MANY_SUMMARY = VALUE_SUMMARY(0, 0, 98, 0, 0, 98);
+const VALUE_REPORT_MANY: ValueReport = {
+  ...VALUE_REPORT,
+  outcomes: { ...VALUE_REPORT.outcomes, ...MANY_SUMMARY, byFamily: { restore: MANY_SUMMARY, remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: MANY_ROWS, rowsShown: 98 },
+};
+const VALUE_REPORT_CAPPED: ValueReport = {
+  ...VALUE_REPORT_MANY,
+  outcomes: { ...VALUE_REPORT_MANY.outcomes, rows: MANY_ROWS.slice(0, 50), rowsShown: 50 },
+};
+
 // The server reads `period=` and `entity=`; here they only change what the controls show.
 function HarnessReports({ report, owners }: { report: ValueReport; owners: string[] }) {
   const params = useSearchParams();
@@ -2679,6 +2699,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT} />;
     case "/reports/scoped": return <HarnessReports owners={["FIN"]} report={VALUE_REPORT_SCOPED} />;
+    case "/reports/many": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_MANY} />;
+    case "/reports/capped": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_CAPPED} />;
     case "/sites": return sitesPage();
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);

@@ -9124,6 +9124,28 @@ section.wizard-panel {
 .pt-row-line { color: var(--text-soft); font-size: 0.8125rem; line-height: 1.35; }
 .pt-row-acts { display: flex; justify-content: end; }
 
+/* Why a kind's backup failed, with a link to each permission or role it needs on Setup. */
+.bf-line { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); min-width: 0; }
+.bf-line > .icon { width: 1rem; height: 1rem; flex: none; }
+.bf-line[data-tone="urgent"] > .icon { color: var(--urgent); }
+.bf-line[data-tone="soon"] > .icon { color: var(--check-soon); }
+.bf-text { min-width: 0; overflow-wrap: anywhere; }
+.pt-row-why { grid-column: 1 / -1; color: var(--text-soft); font-size: 0.8125rem; line-height: 1.35; }
+.pt-row-why .bf-text { color: var(--text); }
+.bf-needs { display: inline-flex; flex-wrap: wrap; gap: var(--space-2xs); min-width: 0; }
+.bf-need { display: inline-flex; align-items: center; gap: 0.25rem; max-width: 100%; min-height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--urgent); border-radius: 999px; background: var(--urgent-bg); color: var(--text); font-size: 0.75rem; text-decoration: none; }
+.bf-need:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+.bf-need:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bf-need .icon { width: 0.8125rem; height: 0.8125rem; flex: none; color: var(--urgent); }
+.bf-need code { overflow-wrap: anywhere; background: none; padding: 0; font-size: 0.75rem; }
+.pt-details-why { display: grid; gap: var(--space-xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--urgent); border-radius: var(--radius-md); background: var(--urgent-bg); }
+.pt-details-why[data-tone="soon"] { border-color: var(--check-soon); background: var(--check-soon-bg); }
+.pt-details-why[data-tone="neutral"] { border-color: var(--line); background: var(--neutral-bg); }
+.pt-details-why h3 { margin: 0; font-size: 0.9375rem; font-weight: 650; }
+.pt-details-why p { margin: 0; font-size: 0.875rem; }
+.pt-details-why ul { display: grid; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; font-size: 0.875rem; }
+.pt-details-why li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); }
+
 .pt-note { display: flex; align-items: start; gap: var(--space-xs); margin: 0; color: var(--text-soft); font-size: 0.875rem; }
 .pt-note .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; }
 .pt-filter-note { margin: 0; font-size: 0.875rem; }

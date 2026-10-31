@@ -90,9 +90,9 @@ test("requests that would read the same get the moment they were asked, then a n
   const c = rollback({ id: "c", createdAt: "2026-10-31T09:05:00Z" });
   const other = rollback({ id: "d", createdAt: "2026-10-31T09:05:00Z", action: "baseline-activate" });
   const titles = distinctTitles([a, b, c, other]);
-  assert.equal(titles.get("a"), "Undo 2 changes, including an unnamed group · asked 30 Oct 2026, 17:41");
-  assert.equal(titles.get("b"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 (1)");
-  assert.equal(titles.get("c"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 (2)");
+  assert.equal(titles.get("a"), "Undo 2 changes, including an unnamed group · asked 30 Oct 2026, 17:41 UTC");
+  assert.equal(titles.get("b"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 UTC (1)");
+  assert.equal(titles.get("c"), "Undo 2 changes, including an unnamed group · asked 31 Oct 2026, 09:05 UTC (2)");
   assert.equal(titles.get("d"), approvalTitle(other));
   assert.equal(new Set(titles.values()).size, 4);
 });

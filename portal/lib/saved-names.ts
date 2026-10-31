@@ -96,15 +96,27 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
   let rows: Record<string, unknown>[];
   try {
     ({ rows } = await client.query(
-      `WITH latest AS (
-         SELECT types.type, newest.id
-           FROM unnest($4::text[]) AS types(type)
-           CROSS JOIN LATERAL (
-             SELECT s.id FROM snapshot s
-              WHERE s.tenant_ref = $1
-                AND EXISTS (SELECT 1 FROM resource_version r WHERE r.snapshot_id = s.id AND r.resource_type = types.type)
-              ORDER BY (s.id = $5::uuid) IS TRUE DESC, s.started_at DESC LIMIT 1
-           ) newest
+      // The newest complete backup of each type comes from type_coverage_latest (one row
+      // per tenant and type, kept by triggers), so no backup history is walked. A type it
+      // has no row for falls back to the newest backup holding enterprise apps.
+      `WITH covered AS (
+         SELECT tcl.resource_type AS type, tcl.snapshot_id AS id
+           FROM type_coverage_latest tcl JOIN snapshot s ON s.id = tcl.snapshot_id
+          WHERE tcl.tenant_ref = $1 AND tcl.resource_type = ANY($4::text[])
+       ),
+       apps AS (
+         SELECT s.id FROM snapshot s
+          WHERE s.tenant_ref = $1
+            AND EXISTS (SELECT 1 FROM resource_version r WHERE r.snapshot_id = s.id AND r.resource_type = 'servicePrincipal')
+          ORDER BY s.started_at DESC LIMIT 1
+       ),
+       latest AS (
+         SELECT type, id FROM covered
+         UNION
+         SELECT types.type, apps.id FROM unnest($4::text[]) AS types(type), apps
+          WHERE types.type NOT IN (SELECT type FROM covered)
+         UNION
+         SELECT types.type, s.id FROM unnest($4::text[]) AS types(type), snapshot s WHERE s.id = $5::uuid AND s.tenant_ref = $1
        )
        SELECT rv.resource_type, lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
               lower(COALESCE(rv.payload->>'templateId', rv.payload->>'roleTemplateId')) AS template_id,
@@ -120,7 +132,7 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
             OR (rv.resource_type = 'crossTenantIdentitySyncPolicyPartner' AND lower(rv.payload->>'tenantId') = ANY($2::text[]))
             OR (rv.resource_type = 'servicePrincipal' AND jsonb_typeof(rv.payload->'appRoles') = 'array'
                 AND EXISTS (SELECT 1 FROM jsonb_array_elements(rv.payload->'appRoles') role WHERE lower(role->>'id') = ANY($3::text[]))))
-        ORDER BY (rv.resource_type = 'servicePrincipal') DESC`,
+        ORDER BY (rv.resource_type = 'servicePrincipal') DESC, (rv.snapshot_id = $5::uuid) IS TRUE DESC`,
       [tenantRef, wantedIds, wantedRoles, LOOKUP_TYPES, snapshotId],
     ));
   } catch (error) {

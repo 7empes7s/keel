@@ -166,10 +166,13 @@ const EXO_ROLE_ID = "6a0b0000-0000-4000-8000-0000000000d1";
 const GRACE_ID = "6a0b0000-0000-4000-8000-0000000000c2";
 const GHOST_ID = "6a0b0000-0000-4000-8000-0000000000c9";
 
+// Each backup's coverage digest names the types it read, as a real backup's does, so
+// type_coverage_latest points at the newest backup of each type.
 async function backup(tenant: string, at: string, rows: { key: string; type: string; payload: Record<string, unknown> }[]) {
+  const digest = Object.fromEntries(rows.map((row) => [row.type, { outcome: "complete" }]));
   const { rows: made } = await client.query(
-    "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', $2, $2) RETURNING id",
-    [tenant, at],
+    "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at, coverage_digest) VALUES ($1, 'complete', $2, $2, $3) RETURNING id",
+    [tenant, at, JSON.stringify(digest)],
   );
   for (const row of rows) {
     await client.query(
@@ -213,7 +216,7 @@ test("what no backup names is listed with a Graph lookup link, never left as wor
   assert.match(refs[0].lookup, /^https:\/\/developer\.microsoft\.com\/en-us\/graph\/graph-explorer\?request=directoryObjects%2F6a0b0000/);
   const role = unnamedReferences("exchangeRoleAssignment", "ra-5", { roleDefinitionId: EXO_ROLE_ID, principalId: `/Users/${GRACE_ID}` }, new Set([GRACE_ID]));
   assert.deepEqual(role.map((ref) => ref.what), ["Admin role"]);
-  assert.match(role[0].lookup, /roleManagement%2Fexchange%2FroleDefinitions%2F/);
+  assert.match(role[0].lookup, /roleManagement%2Fexchange%2FroleDefinitions%2F.*&version=beta&/);
 });
 
 test("an id inside a changed value is named from the backup that holds its type", async () => {

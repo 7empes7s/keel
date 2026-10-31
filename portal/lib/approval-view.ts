@@ -38,7 +38,7 @@ export function approvalTitle(request: Pick<ApprovalRequestRecord, "action" | "p
 
 /**
  * Each request's title, made unique: requests that would read the same get the moment
- * they were asked ("… · asked 31 Oct 2026, 17:41"), and a number if that matches too,
+ * they were asked ("… · asked 31 Oct 2026, 17:41 UTC"), and a number if that matches too,
  * so a list never shows two identical lines.
  */
 export function distinctTitles(requests: Pick<ApprovalRequestRecord, "id" | "action" | "params" | "references" | "createdAt">[]): Map<string, string> {
@@ -51,7 +51,7 @@ export function distinctTitles(requests: Pick<ApprovalRequestRecord, "id" | "act
   const titles = new Map<string, string>();
   for (const [title, group] of groups) {
     if (group.length === 1) { titles.set(group[0].id, title); continue; }
-    const timed = group.map((request) => ({ id: request.id, title: `${title} · asked ${formatTimestamp(request.createdAt).replace(/ UTC$/, "")}`, at: request.createdAt ?? "" }));
+    const timed = group.map((request) => ({ id: request.id, title: `${title} · asked ${formatTimestamp(request.createdAt)}`, at: request.createdAt ?? "" }));
     const seen = new Map<string, number>();
     for (const entry of timed) seen.set(entry.title, (seen.get(entry.title) ?? 0) + 1);
     const numbered = new Map<string, number>();

@@ -66,17 +66,13 @@ const POINTED_TO_TYPES = [
 
 async function namesFromOtherBackups(client: QueryClient, snapshots: string[], wanted: string[]): Promise<Record<string, string>> {
   const { rows } = await client.query(
-    `WITH tenants AS (SELECT DISTINCT tenant_ref FROM snapshot WHERE id = ANY($1::uuid[])),
-          latest AS (
-            SELECT types.type, newest.id
-              FROM unnest($3::text[]) AS types(type)
-              CROSS JOIN LATERAL (
-                SELECT s.id FROM snapshot s
-                 WHERE s.tenant_ref IN (SELECT tenant_ref FROM tenants)
-                   AND EXISTS (SELECT 1 FROM resource_version r WHERE r.snapshot_id = s.id AND r.resource_type = types.type)
-                 ORDER BY s.started_at DESC LIMIT 1
-              ) newest
-          )
+    // type_coverage_latest holds the newest complete backup of each type per tenant.
+    `WITH latest AS (
+       SELECT tcl.resource_type AS type, tcl.snapshot_id AS id
+         FROM type_coverage_latest tcl JOIN snapshot s ON s.id = tcl.snapshot_id
+        WHERE tcl.tenant_ref IN (SELECT tenant_ref FROM snapshot WHERE id = ANY($1::uuid[]))
+          AND tcl.resource_type = ANY($3::text[])
+     )
      SELECT lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
             lower(COALESCE(rv.payload->>'roleTemplateId', rv.payload->>'templateId')) AS template_id, ${NAME_SQL} AS name
        FROM resource_version rv

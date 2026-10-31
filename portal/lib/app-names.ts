@@ -378,8 +378,8 @@ const ROLE_PROVIDERS: Record<string, string> = {
 };
 
 /** A Graph Explorer link that reads one object (signed in as an admin of the tenant). */
-export function graphLookupUrl(path: string): string {
-  return `https://developer.microsoft.com/en-us/graph/graph-explorer?request=${encodeURIComponent(path)}&method=GET&version=v1.0&GraphUrl=https://graph.microsoft.com`;
+export function graphLookupUrl(path: string, version: "v1.0" | "beta" = "v1.0"): string {
+  return `https://developer.microsoft.com/en-us/graph/graph-explorer?request=${encodeURIComponent(path)}&method=GET&version=${version}&GraphUrl=https://graph.microsoft.com`;
 }
 
 /**
@@ -391,16 +391,18 @@ export function unnamedReferences(resourceType: string | null | undefined, natur
   const type = edgeKeyType(naturalKey) ?? resourceType ?? "";
   const record = recordOf(payload);
   const out = new Map<string, UnnamedReference>();
-  const add = (value: unknown, what: string, path: (id: string) => string) => {
+  const add = (value: unknown, what: string, path: (id: string) => string, version: "v1.0" | "beta" = "v1.0") => {
     const ref = parseRef(value);
     if (!ref?.id || known.has(ref.id) || out.has(ref.id)) return;
-    out.set(ref.id, { id: ref.id, what, lookup: graphLookupUrl(path(ref.id)) });
+    out.set(ref.id, { id: ref.id, what, lookup: graphLookupUrl(path(ref.id), version) });
   };
   const object = (id: string) => `directoryObjects/${id}`;
   if (ROLE_ASSIGNMENT_TYPES.has(type) || type === "unifiedRoleManagementPolicyAssignment") {
     const provider = ROLE_PROVIDERS[type] ?? "directory";
     const role = parseRef(record.roleDefinitionId);
-    if (!(role?.id && BUILT_IN_ROLES[role.id])) add(record.roleDefinitionId, "Admin role", (id) => `roleManagement/${provider}/roleDefinitions/${id}`);
+    // Exchange and Defender role management is in Graph beta only.
+    const version = provider === "exchange" || provider === "defender" ? "beta" : "v1.0";
+    if (!(role?.id && BUILT_IN_ROLES[role.id])) add(record.roleDefinitionId, "Admin role", (id) => `roleManagement/${provider}/roleDefinitions/${id}`, version);
     for (const principal of type === "unifiedRoleManagementPolicyAssignment" ? [] : principalsOf(type, record)) add(principal, "Who holds the role", object);
     for (const scope of scopesOf(type, record)) add(scope, "Where the role applies", object);
   } else if (type === "accessPackageAssignment") {

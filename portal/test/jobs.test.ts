@@ -40,6 +40,18 @@ test("the jobs table displays failed-job error text and a detail link", () => {
   assert.ok(!succeeded.includes(row.error));
 });
 
+test("a list of only the newest failed restores says how many it stands for and links back", () => {
+  const html = renderToStaticMarkup(createElement(JobTable, {
+    headingId: "restore-jobs-heading", jobs: [normalizeJob(row)], title: "Failed restores", total: 47,
+    link: { label: "All restores and checks", href: "/restore#restore-jobs-heading" },
+  }));
+  assert.ok(html.includes("Showing 1 of 47 jobs"), "the total comes from the shared count, never from the rows shown");
+  assert.ok(html.includes('href="/restore#restore-jobs-heading"'));
+  // When the list holds every row it just counts them.
+  const whole = renderToStaticMarkup(createElement(JobTable, { headingId: "jobs", jobs: [normalizeJob(row)], title: "Failed restores", total: 1 }));
+  assert.ok(whole.includes("1 job") && !whole.includes("Showing"));
+});
+
 test("job details preserve the full error and expose params, result, worker and heartbeat", () => {
   const job = normalizeJob(row);
   const html = renderToStaticMarkup(createElement(JobDetail, { job }));

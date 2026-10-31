@@ -110,19 +110,27 @@ export function JobTable({
   jobs,
   title,
   now = new Date().toISOString(),
+  total,
+  link = { label: "All activity", href: "/activity" },
+  empty = "No jobs of this kind have run yet.",
 }: {
   headingId: string;
   jobs: JobRecord[];
   title: string;
   now?: string;
+  /** How many jobs the list stands for, when it shows only the newest of them. */
+  total?: number;
+  link?: { label: string; href: string };
+  empty?: string;
 }) {
+  const shown = total !== undefined && total > jobs.length ? `Showing ${jobs.length} of ${total} jobs` : null;
   return (
     <section aria-labelledby={headingId} className="report-section job-list">
       <div className="section-heading-row report-heading">
         <h2 id={headingId}>{title}</h2>
         <span className="section-aside">
-          <span className="job-count">{jobs.length} {jobs.length === 1 ? "job" : "jobs"}</span>
-          <Link className="text-link" href="/activity">All activity</Link>
+          <span className="job-count">{shown ?? `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`}</span>
+          <Link className="text-link" href={link.href}>{link.label}</Link>
         </span>
       </div>
 
@@ -148,7 +156,7 @@ export function JobTable({
           </TechnicalDetails>
         </>
       ) : (
-        <p className="empty-state">No jobs of this kind have run yet.</p>
+        <p className="empty-state">{empty}</p>
       )}
     </section>
   );

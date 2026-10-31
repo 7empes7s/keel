@@ -63,6 +63,7 @@ import {
   type ValueReportData,
   type Withheld,
 } from "@/lib/value-report-view";
+import { failedRestoresLine } from "@/lib/failed-restores";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { formatTimestamp } from "@/lib/presentation";
 import { pushUrl } from "@/lib/url-history";
@@ -265,6 +266,12 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
                   <div><dt>Slowest restore</dt><dd>{shortDuration(shownRecovery.recoveryTime.worstMs)}</dd></div>
                   <div><dt>Oldest backup at the end</dt><dd>{shownRecovery.freshness.state === "measured" ? shortDuration(shownRecovery.freshness.achievedRpoMs) : "Not measured"}</dd></div>
                 </dl>
+                {failedRestoresLine(shownRecovery.failedRestores) ? (
+                  <p className="vr-muted" data-line="failed-restores">
+                    <Badge tone={shownRecovery.failedRestores.period?.count ? "urgent" : "neutral"}>{shownRecovery.failedRestores.period?.count ?? 0} failed in this period</Badge>{" "}
+                    <Link href={shownRecovery.failedRestores.href}>{failedRestoresLine(shownRecovery.failedRestores)}</Link>, counted the same way on Resilience and Restore.
+                  </p>
+                ) : null}
                 <p className="vr-muted">{recoverySentence(recovery)} {freshnessSentence(shownRecovery)}</p>
                 {shownRecovery.recoveryTime.notCounted ? <p className="vr-muted">{plural(shownRecovery.recoveryTime.notCounted, "other attempt was", "other attempts were")} not counted because {shownRecovery.recoveryTime.notCounted === 1 ? "it" : "they"} failed or {shownRecovery.recoveryTime.notCounted === 1 ? "was" : "were"} not checked.</p> : null}
               </>
@@ -407,7 +414,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
 function stillOpenWords(outcomes: OutcomeSummary): string {
   const waiting = outcomes.states.queued + outcomes.states.unconfirmed;
   const parts = [];
-  if (outcomes.states.failed) parts.push(`${outcomes.states.failed} failed`);
+  if (outcomes.states.failed) parts.push(`${plural(outcomes.states.failed, "request")} failed`);
   if (outcomes.states.reopened) parts.push(`${outcomes.states.reopened} changed again`);
   if (waiting) parts.push(`${waiting} waiting`);
   return parts.length ? parts.join(" · ") : "Nothing open";
@@ -415,7 +422,7 @@ function stillOpenWords(outcomes: OutcomeSummary): string {
 
 function resultsBadge(outcomes: OutcomeSummary): { tone: BadgeTone; label: string } {
   if (!outcomes.total) return { tone: "neutral", label: "Nothing asked" };
-  if (outcomes.states.failed) return { tone: "urgent", label: `${outcomes.states.failed} failed` };
+  if (outcomes.states.failed) return { tone: "urgent", label: `${plural(outcomes.states.failed, "request")} failed` };
   if (outcomes.states.reopened) return { tone: "soon", label: `${outcomes.states.reopened} changed again` };
   const waiting = outcomes.total - outcomes.states.verified;
   return waiting ? { tone: "low", label: `${waiting} waiting` } : { tone: "fine", label: "All checked" };

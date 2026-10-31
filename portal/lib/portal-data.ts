@@ -17,6 +17,7 @@ import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
 import { alertStateCounts } from "../../engine/notify/alerts.mjs";
 import {
   getActiveBaseline,
@@ -24,6 +25,7 @@ import {
 } from "../../engine/store/governance.mjs";
 import { connect } from "@/lib/db";
 import { evidenceChainCache } from "@/lib/evidence-chain-cache";
+import type { FailedRestoreCounts } from "@/lib/failed-restores";
 import { checkAuditRecord } from "@/lib/evidence";
 import { AUDIT_CHECK_WORDS, AUDIT_RECORD_HREF, auditCheckOf, dashboardAuditCheck } from "@/lib/audit-check";
 import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
@@ -1641,6 +1643,7 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
+    const failedRestores = (await countFailedRestores(client, { tenantRef: ref, now })) as FailedRestoreCounts;
     // The same follow-up totals as Overview and Restore, not a count of restore attempts.
     // Secondary: if it cannot be read, the page still loads and leaves the alert out.
     let followUps: OpenFollowUpTotals | null;
@@ -1651,7 +1654,7 @@ export async function getResilienceData(): Promise<ResilienceData> {
     }
     // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
     const kinds = resilienceKinds((await coverageFor(client, ref)).types);
-    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage, followUps };
+    return { generatedAt: now.toISOString(), metrics, failedRestores, kinds, incidents, storage, followUps };
   });
 }
 

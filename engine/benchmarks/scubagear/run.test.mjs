@@ -110,14 +110,13 @@ test('every rule of every product is a control, and each gets an answer on the f
   // Every rule Keel can check has a worked-out answer, and gets exactly it.
   const checked = Object.fromEntries(Object.entries(verdicts).filter(([, verdict]) => verdict !== 'unknown'));
   assert.deepEqual(checked, { ...FIXTURE_EXPECTED });
-  assert.equal(Object.keys(checked).length, 68);
+  assert.equal(Object.keys(checked).length, 69);
 });
 
 test('a rule Keel cannot check says why, and is never a pass', () => {
   const reason = (policyId) => run(id(policyId)).reason;
   assert.equal(reason('MS.AAD.2.2v1'), 'scubagear:check-by-hand');
   assert.equal(reason('MS.AAD.5.2v1'), 'scubagear:not-read:risky_delegated_permission_classifications');
-  assert.equal(reason('MS.AAD.7.5v1'), 'scubagear:field-not-read:privileged_roles.StartDateTime');
   assert.match(reason('MS.AAD.9.1v1'), /^scubagear:field-not-read:conditional_access_policies\.AgentIdRiskLevels,/);
   assert.equal(reason('MS.EXO.2.2v3'), 'scubagear:not-read:spf_records');
   assert.equal(reason('MS.SECURITYSUITE.1.3v1'), 'scubagear:not-read:built_in_protection_rules');
@@ -129,8 +128,8 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.TEAMS.5.1v2'), 'scubagear:not-read:tenant_app_settings');
   assert.equal(reason('MS.POWERPLATFORM.1.1v1'), 'scubagear:not-read:environment_creation');
   const unchecked = scuba().filter((control) => control.unchecked);
-  // 39 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
-  assert.equal(unchecked.length, 39);
+  // 38 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
+  assert.equal(unchecked.length, 38);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 
@@ -242,6 +241,25 @@ test('a PIM eligibility counts only while it is in effect, and one with unreadab
     const result = run(id('MS.AAD.7.1v1'), unreadable);
     assert.deepEqual([result.verdict, result.reason], ['unknown', 'scubagear:incomplete:privileged_users']);
   }
+});
+
+test('7.5 follows ScubaGear: an assignment made outside PIM has no start date, even when Graph gives its schedule one', () => {
+  // Every active assignment through a PIM request: each has a real start date, so 7.5 passes.
+  const throughPim = (schedule) => ({ ...schedule, createdUsing: `request-${schedule.id}`, createdDateTime: '2026-06-01T00:00:00Z',
+    scheduleInfo: { startDateTime: '2026-06-01T00:00:00Z', expiration: { type: 'noExpiration' } } });
+  const scheduleOf = (assignment) => ({ id: `sched-${assignment.id}`, principalId: assignment.principalId, roleDefinitionId: assignment.roleDefinitionId,
+    directoryScopeId: assignment.directoryScopeId, assignmentType: 'Assigned', memberType: 'Direct', status: 'Provisioned' });
+  const allPim = { ...FIXTURE_BACKUPS, roleAssignmentSchedule: FIXTURE_BACKUPS.roleAssignment.map((assignment) => throughPim(scheduleOf(assignment))) };
+  assert.equal(run(id('MS.AAD.7.5v1'), allPim).verdict, 'pass');
+  // Q294: one made directly names no request and no creation time; Graph's v1.0 schedule still gives the read
+  // time as its start, but ScubaGear's schedule instance has none, so 7.5 fails.
+  const [first, ...rest] = allPim.roleAssignmentSchedule;
+  const direct = { ...first, createdUsing: null, createdDateTime: null, scheduleInfo: { startDateTime: '2026-10-31T00:40:12.3456789Z', expiration: { type: 'noExpiration' } } };
+  assert.equal(run(id('MS.AAD.7.5v1'), { ...allPim, roleAssignmentSchedule: [direct, ...rest] }).verdict, 'fail');
+  // A schedule backed up without those fields cannot say which it is.
+  const { createdUsing, createdDateTime, ...unsaid } = first;
+  const result = run(id('MS.AAD.7.5v1'), { ...allPim, roleAssignmentSchedule: [unsaid, ...rest] });
+  assert.deepEqual([result.verdict, result.reason], ['unknown', 'scubagear:incomplete:privileged_roles']);
 });
 
 test('an empty backup of a setting every tenant has once is could not check, never a pass', () => {

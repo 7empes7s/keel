@@ -18,7 +18,8 @@ function matchingInstances() {
   const instances = facts.roleAssignmentSchedule.map((schedule) => ({
     principalId: schedule.principalId, roleDefinitionId: schedule.roleDefinitionId, directoryScopeId: schedule.directoryScopeId ?? '/',
     memberType: schedule.memberType ?? 'Direct', assignmentType: 'Assigned',
-    startDateTime: schedule.scheduleInfo?.startDateTime ?? null,
+    // An assignment made outside PIM has no start date in the instances (Q294).
+    startDateTime: schedule.createdUsing == null && schedule.createdDateTime == null ? null : schedule.scheduleInfo?.startDateTime ?? null,
     endDateTime: schedule.scheduleInfo?.expiration?.type === 'noExpiration' ? null : schedule.scheduleInfo?.expiration?.endDateTime ?? null,
   }));
   for (const active of facts.roleAssignment) {
@@ -49,7 +50,7 @@ test('a schedule start date where ScubaGear sees none is a difference, and chang
     .some((schedule) => schedule.principalId === instance.principalId && schedule.roleDefinitionId === instance.roleDefinitionId))
     .map((instance) => ({ ...instance, startDateTime: null }));
   const scheduled = { ...facts, roleAssignment: [], roleAssignmentSchedule: facts.roleAssignmentSchedule.map((schedule) => ({
-    ...schedule, scheduleInfo: { ...schedule.scheduleInfo, startDateTime: '2026-01-01T00:00:00Z' },
+    ...schedule, createdUsing: `request-${schedule.id}`, createdDateTime: '2026-01-01T00:00:00Z', scheduleInfo: { ...schedule.scheduleInfo, startDateTime: '2026-01-01T00:00:00Z' },
   })) };
   const result = comparePim({ facts: scheduled, instances });
   assert.equal(result.agree, false);
@@ -57,6 +58,21 @@ test('a schedule start date where ScubaGear sees none is a difference, and chang
   assert.ok(differing.length > 0);
   assert.ok(differing.every((role) => role.differences.every((text) => text === 'start date: Keel set, ScubaGear not set')));
   assert.ok(differing.some((role) => role.keelSays['7.5 any assignment with no start date'] !== role.scubaGearSays['7.5 any assignment with no start date']));
+});
+
+test('a schedule made outside PIM has no start date on either side, and the clues count which fields were set', () => {
+  // Q294: Graph's v1.0 schedule gives a direct assignment the read time as its start; the beta instance has none.
+  const ada = facts.roleAssignmentSchedule.find((schedule) => schedule.createdUsing === null);
+  assert.ok(ada?.scheduleInfo.startDateTime, 'the fixture holds a direct assignment with a v1.0 start date');
+  const result = comparePim({ facts, instances: matchingInstances() });
+  assert.equal(result.agree, true, JSON.stringify(result.roles, null, 2));
+  const ga = result.roles.find((role) => role.role === 'Global Administrator');
+  assert.equal(ga.scubaGearSays['7.5 any assignment with no start date'], true);
+  assert.equal(ga.keelSays['7.5 any assignment with no start date'], true);
+  assert.deepEqual(result.startDateClues, {
+    'ScubaGear start set, createdUsing set, createdDateTime set, assignmentType Activated': 1,
+    'ScubaGear start not set, createdUsing not set, createdDateTime not set, assignmentType Assigned': 1,
+  });
 });
 
 test('missing and extra assignments are named, a group holder is only counted, and no id, name or date is printed', () => {

@@ -218,9 +218,25 @@ function privilegedUsers(facts, run = {}) {
 }
 
 /**
+ * Whether an assignment schedule was made outside PIM (directly, through the role
+ * assignments API or before PIM). Graph's v1.0 schedule for such an assignment names no
+ * PIM request (createdUsing) and no creation time, and gives the time of the read as
+ * its start (issue #288), while the beta schedule instance ScubaGear reads has no start
+ * date at all (Q294: 15 live assignments). A schedule backed up without these two
+ * fields cannot say which it is.
+ */
+function madeOutsidePim(schedule) {
+  if (!('createdUsing' in schedule) && !('createdDateTime' in schedule)) {
+    throw new CouldNotBuild('privileged_roles', 'an assignment schedule was backed up without the fields that say whether it was made in PIM');
+  }
+  return (schedule.createdUsing ?? null) === null && (schedule.createdDateTime ?? null) === null;
+}
+
+/**
  * One role's active assignments, as Get-PrivilegedRole lists them, built from Keel's
  * backups: each assignment schedule, then each active assignment with no schedule
- * (made outside PIM, so it never ends and has no start date). Exported for
+ * (made outside PIM, so it never ends and has no start date). A schedule made outside
+ * PIM has no start date either, as in ScubaGear's read. Exported for
  * tools/scubagear-pim-check.mjs, which compares it with the schedule instances
  * ScubaGear's provider reads.
  */
@@ -234,7 +250,7 @@ export function roleAssignmentsOf(facts, templateId) {
     DirectoryScopeId: schedule.directoryScopeId ?? '/',
     AssignmentType: schedule.assignmentType ?? null,
     MemberType: schedule.memberType ?? null,
-    StartDateTime: schedule.scheduleInfo?.startDateTime ?? null,
+    StartDateTime: madeOutsidePim(schedule) ? null : schedule.scheduleInfo?.startDateTime ?? null,
     EndDateTime: expiration(schedule).type === 'noExpiration' ? null
       : expiration(schedule).endDateTime ?? (expiration(schedule).duration ? `after ${expiration(schedule).duration}` : null),
   }));
@@ -484,10 +500,6 @@ export const ADAPTERS = Object.freeze({
     reads: ['roleDefinition', 'roleAssignment', 'roleAssignmentSchedule', 'roleEligibilitySchedule', 'unifiedRoleManagementPolicy',
       'unifiedRoleManagementPolicyAssignment', 'subscribedSku', 'group', 'user', 'servicePrincipal'].map(graph),
     fields: 'all',
-    // The provider reads schedule instances, where an assignment made outside PIM has no
-    // start date. Keel backs up schedules, whose start date for such an assignment is
-    // not confirmed against a live tenant yet, so the rule that asks it is not run.
-    lacks: ['StartDateTime'],
     build: privilegedRoles,
   }),
 

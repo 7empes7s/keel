@@ -125,7 +125,14 @@ export const FIXTURE_BACKUPS = Object.freeze({
   roleAssignmentSchedule: [
     {
       id: 'sched-ben-ga', principalId: BEN, roleDefinitionId: GA, directoryScopeId: '/', assignmentType: 'Activated', memberType: 'Direct', status: 'Provisioned',
+      createdUsing: 'request-ben-ga', createdDateTime: '2026-10-30T08:00:00Z',
       scheduleInfo: { startDateTime: '2026-10-30T08:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2026-10-30T16:00:00Z' } },
+    },
+    // Ada's assignment was made outside PIM: Graph names no request and gives the read time as its start.
+    {
+      id: 'ra-ada-ga', principalId: ADA, roleDefinitionId: GA, directoryScopeId: '/', assignmentType: 'Assigned', memberType: 'Direct', status: 'Provisioned',
+      createdUsing: null, createdDateTime: null,
+      scheduleInfo: { startDateTime: '2026-10-31T00:40:12.3456789Z', expiration: { type: 'noExpiration' } },
     },
   ],
   roleEligibilitySchedule: [
@@ -258,6 +265,7 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.AAD.7.2v1': 'fail', // two Global Administrators against one other admin
   'MS.AAD.7.3v1': 'fail', // Ben is synced from on-premises
   'MS.AAD.7.4v1': 'fail', // Ada's Global Administrator assignment is permanent
+  'MS.AAD.7.5v1': 'fail', // Ada's Global Administrator assignment was made outside PIM
   'MS.AAD.7.6v1': 'pass', // Global Administrator activation needs approval
   'MS.AAD.7.7v1': 'fail', // other roles send no assignment alerts
   'MS.AAD.7.8v1': 'pass', // Global Administrator activations send alerts

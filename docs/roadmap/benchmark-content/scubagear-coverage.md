@@ -8,14 +8,14 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 
 | Product | Rules | Run | Could not check |
 |---|---:|---:|---:|
-| Entra ID | 34 | 28 | 6 |
+| Entra ID | 34 | 29 | 5 |
 | Exchange Online | 12 | 6 | 6 |
 | Security Suite (Defender and Purview) | 24 | 13 | 11 |
 | SharePoint and OneDrive | 8 | 2 | 6 |
 | Teams | 14 | 11 | 3 |
 | Power Platform | 9 | 2 | 7 |
 | Power BI | 8 | 8 | 0 |
-| **All** | **109** | **70** | **39** |
+| **All** | **109** | **71** | **38** |
 
 ## Summary
 
@@ -204,7 +204,6 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.AAD.2.2v1 | CISA marks it as a check to do by hand. |
 | MS.AAD.4.1v1 | CISA marks it as a check to do by hand. |
 | MS.AAD.5.2v1 | Keel does not read `risky_delegated_permission_classifications`. |
-| MS.AAD.7.5v1 | Keel's read of `privileged_roles` does not keep `StartDateTime`. |
 | MS.AAD.8.3v1 | CISA marks it as a check to do by hand. |
 | MS.AAD.9.1v1 | Keel's read of `conditional_access_policies` does not keep `AgentIdRiskLevels`, `ExcludeAgentIdServicePrincipals`, `IncludeAgentIdServicePrincipals`. |
 | MS.EXO.2.2v3 | Keel does not read `spf_records`. |

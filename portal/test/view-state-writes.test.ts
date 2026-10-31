@@ -51,13 +51,13 @@ test("writes made before the page redraws keep each other", (t) => {
 
 test("a removed filter stays removed when another write follows", (t) => {
   t.after(() => { delete (globalThis as { window?: unknown }).window; });
-  const address = fakeAddress("?service=entra&q=policy");
+  const address = fakeAddress("?sort=oldest&service=entra&q=policy");
   const set = captureSet();
 
   set({ service: null });
   set({ q: "rule" }, { q: "" });
 
-  assert.equal(address.search, "?q=rule");
+  assert.equal(address.search, "?sort=oldest&q=rule");
 });
 
 test("defaults and empty values leave the address", (t) => {

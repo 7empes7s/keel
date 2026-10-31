@@ -325,7 +325,12 @@ export function integrityWords(integrity: ChainIntegrity | null): { state: Integ
     return { state: "intact", label: "Intact", tone: "fine", sentence: `Verified against the off-site copy${pending ? `. ${pending} newer ${pending === 1 ? "entry waits" : "entries wait"} for the next copy` : ""}.` };
   }
   // Same words as the Overview: not checked is amber, only a failed check is red.
-  if (integrity.status === "unanchored") return { state: "unchecked", label: "Not checked: no off-site copy", tone: "soon", sentence: "Keel checks the record against an off-site copy, and none exists yet. Nothing is known to be wrong." };
+  if (integrity.status === "unanchored") {
+    // Only a missing checkpoint is harmless; one that exists but cannot be read or trusted is not.
+    return integrity.reason === "missing-external-anchor"
+      ? { state: "unchecked", label: "Not checked: no off-site copy", tone: "soon", sentence: "Keel checks the record against an off-site copy, and none exists yet. Nothing is known to be wrong." }
+      : { state: "unchecked", label: "Not checked: off-site copy unreadable", tone: "soon", sentence: "Keel could not read or trust the off-site copy it checks the record against. Find out why before relying on it." };
+  }
   return { state: "broken", label: "Failed the check", tone: "urgent", sentence: "The record failed its integrity check. Investigate before trusting who did what." };
 }
 

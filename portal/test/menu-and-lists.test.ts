@@ -100,7 +100,6 @@ test("section statuses come from the Overview's data, in plain words", () => {
   assert.deepEqual(statuses.Baselines, { tone: "urgent", count: 2, note: "2 changes could lock out admins, of 7 changes since your approved setup" });
   assert.equal(statuses.Restore?.count, 1);
   assert.equal(statuses["Audit log"]?.tone, "urgent");
-  assert.deepEqual(menuStatuses({ ...base, evidence: { ok: false, chainLength: 10, status: "unanchored" } }, 2)["Audit log"], { tone: "soon", note: "The audit record is not checked: no off-site copy" });
   assert.deepEqual(statuses.Inbox, { tone: "soon", count: 5, note: "2 approvals and 3 alerts waiting" });
   assert.equal(statuses.Dashboards?.tone, "soon");
   // A critical alert turns the Overview's banner red, and the menu's dot with it.

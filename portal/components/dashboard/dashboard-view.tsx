@@ -179,7 +179,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="Total types" usage="sum of the six buckets above" value={data.coverage.total} />
         </RecordGroup>
         <RecordGroup title="Audit record">
-          <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : data.evidence.status === "unanchored" ? "not checked (no off-site copy)" : "FAILED"} />
+          <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : "FAILED"} />
           <RecordField copy={false} label="Records in the chain" value={data.evidence.chainLength} />
         </RecordGroup>
       </TechnicalDetails>

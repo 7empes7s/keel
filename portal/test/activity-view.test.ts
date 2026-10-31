@@ -126,7 +126,8 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   assert.deepEqual(retryOf({ ...JOBS[1], status: "failed" }), { kind: "collect" });
   assert.deepEqual(retryOf(JOBS[3]), { kind: "plan", href: "/restore", label: "Plan it again" });
   assert.equal(integrityWords({ ok: true, status: "verified", unanchoredRecords: 4 }).sentence, "Verified against the off-site copy. 4 newer entries wait for the next copy.");
-  assert.equal(integrityWords({ ok: false, status: "unanchored" }).label, "Not checked: no off-site copy");
+  assert.equal(integrityWords({ ok: false, status: "unanchored", reason: "missing-external-anchor" }).label, "Not checked: no off-site copy");
+  assert.equal(integrityWords({ ok: false, status: "unanchored", reason: "external-trust-unavailable" }).label, "Not checked: off-site copy unreadable");
   assert.equal(integrityWords({ ok: false, status: "unanchored" }).tone, "soon");
   assert.equal(integrityWords({ ok: false, status: "broken-at-sequence" }).label, "Failed the check");
   assert.equal(integrityWords({ ok: false, status: "broken-at-sequence" }).tone, "urgent");

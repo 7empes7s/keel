@@ -1,7 +1,7 @@
 import { readNamer } from "../../engine/insights/anonymity.mjs";
 import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
-import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
+import { loadRecoverablePoint, loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
@@ -1412,29 +1412,22 @@ export function buildAlerts({
     });
   }
 
-  // No off-site copy: one Check soon item, linked to Resilience. It also explains an audit
-  // record that cannot be checked, since that check needs the same off-site copy.
-  const unchecked = !evidence.ok && evidence.status === "unanchored";
-  if (offsite && !offsite.measured) {
+  // No safe off-site copy: one Check soon item, linked to Resilience (the same recoverable
+  // point that page shows). Left out while nothing is backed up yet: that alert comes first.
+  if (offsite && !offsite.measured && coverage.covered > 0) {
     alerts.push({
       key: "no-offsite",
       severity: "warning",
       title: "No safe copy outside this server",
-      detail: `If this server is lost, its backups are lost with it. Fix the daily off-site copy.${unchecked ? " Until then the audit record cannot be checked either." : ""}`,
+      detail: "If this server is lost, its backups are lost with it. Fix the daily off-site copy.",
       href: "/resilience",
     });
   }
 
-  // Failing the check and not being checked are different: only a failed check is urgent.
-  if (unchecked && !(offsite && !offsite.measured)) {
-    alerts.push({
-      key: "audit-unchecked",
-      severity: "warning",
-      title: "The audit record is not checked: no off-site copy",
-      detail: "Keel checks the record against an off-site copy, and none exists yet. Nothing is known to be wrong.",
-      href: "/activity?show=records",
-    });
-  } else if (!evidence.ok && !unchecked) {
+  // getEvidenceIntegrity checks the record's own hash chain, not the off-site checkpoint,
+  // so ok false here is a real failed check. "Not checked" lives on Activity, which reads
+  // the off-site checkpoint.
+  if (!evidence.ok) {
     alerts.push({
       key: "audit",
       severity: "critical",
@@ -1497,7 +1490,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     const evidenceRaw = (await getEvidenceIntegrity(client, {
       tenantRef: ref,
       chainCache: evidenceChainCache,
-    })) as { ok: boolean; chainLength: number; status?: string };
+    })) as { ok: boolean; chainLength: number };
     const generatedAt = new Date();
     // Open changes in every service: the approved-setup changes (Entra ID and Intune)
     // and the service setting changes the Changes page lists beside them, counted
@@ -1542,11 +1535,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
-        ...(typeof evidenceRaw.status === "string" ? { status: evidenceRaw.status } : {}),
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
-      offsite: await loadRecoveryMetrics(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
-        .then((metrics) => ({ measured: (metrics as RecoveryMetrics).recoverablePoint.state === "measured" && Boolean((metrics as RecoveryMetrics).recoverablePoint.point) }))
+      offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
+        .then((point) => ({ measured: (point as RecoveryMetrics["recoverablePoint"]).state === "measured" && Boolean((point as RecoveryMetrics["recoverablePoint"]).point) }))
         .catch((error: unknown) => {
           console.error("[keel-portal] overview off-site copy state unavailable", error);
           return undefined;

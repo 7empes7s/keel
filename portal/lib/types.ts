@@ -653,7 +653,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite";
   href?: string;
 }
 
@@ -671,9 +671,7 @@ export interface DashboardData {
   // entry per day for the trend window (zero-filled), so the sparkline is to scale.
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
-  // status "unanchored": there is no off-site checkpoint to check the record against, so
-  // it is not checked, which is not the same as failing the check.
-  evidence: { ok: boolean; chainLength: number; status?: string };
+  evidence: { ok: boolean; chainLength: number };
   // Whether a checked off-site copy holds every backed-up type (the Resilience page's
   // recoverable point). Undefined when it could not be read.
   offsite?: { measured: boolean };

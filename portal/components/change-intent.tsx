@@ -119,6 +119,7 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
       <div className="pg-card-head">
         <h3 className="change-intent-name">{resource}</h3>
         <Badge tone={badge.tone}>{badge.label}</Badge>
+        {intent.selfApproved ? <Badge icon="person" tone="soon" title="The person who made the change approved it, under solo approval mode">Self-approved</Badge> : null}
       </div>
       <p className="change-intent-sentence">{intentStateSentence(intent, now)}</p>
       <TransitionRows transitions={intent.transitions} />
@@ -214,7 +215,7 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       });
       if (!response.ok) {
         const { error } = (await response.json().catch(() => ({}))) as { error?: string };
-        const detail = error === "owner-is-approver" ? "The person who made the change cannot approve it." : error === "approver-not-authorized" ? "You cannot approve changes." : "The approval was not recorded. Check the fields and try again.";
+        const detail = error === "owner-is-approver" ? "The person who made the change cannot approve it while approvals need two people." : error === "approver-not-authorized" ? "You cannot approve changes." : "The approval was not recorded. Check the fields and try again.";
         toast({ tone: "warning", title: "Not approved", detail });
         return;
       }

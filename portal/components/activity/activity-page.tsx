@@ -38,6 +38,7 @@ import {
   dayLabel,
   filterChips,
   integrityWords,
+  isSelfApproved,
   outcomeTone,
   parseFilters,
   peopleIn,
@@ -215,6 +216,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         </span>
         <span className="ac-row-mid">
           <Badge icon={outcome.icon} tone={outcome.tone}>{outcome.label}</Badge>
+          {isSelfApproved(row.entry) ? <Badge icon="person" tone="soon" title="The person who asked approved it, under solo approval mode">Self-approved</Badge> : null}
           <span className="ac-row-who">{row.person ? <Person capitalise person={row.person} /> : <span className="ac-keel"><Icon name="clock" />Keel</span>}</span>
         </span>
         <span className="ac-row-acts">

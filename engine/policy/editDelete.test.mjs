@@ -69,6 +69,8 @@ try {
   const unchanged = await updatePolicy(client, { tenantRef, policyId: alert.id, name: 'Alert on FIN users', maxBlastRadius: 'cosmetic', maxActionsPerWindow: 50, windowSeconds: 3600, actor: 'admin' });
   assert.equal(unchanged.max_actions_per_window, 50);
   assert.equal((await changes()).length, 2, 'an edit that changes nothing records nothing');
+  await updatePolicy(client, { tenantRef, policyId: alert.id, name: 'Alert on FIN users', resourceType: '', naturalKeyGlob: '', maxBlastRadius: 'cosmetic', maxActionsPerWindow: 50, windowSeconds: 3600, actor: 'admin' });
+  assert.equal((await changes()).length, 2, 'an empty value is the same as none, not a change');
   await assert.rejects(updatePolicy(client, { tenantRef, policyId: alert.id, name: 'x', maxBlastRadius: 'cosmetic' }), /needs an actor/);
 
   await assert.rejects(updatePolicy(client, { tenantRef, policyId: alert.id, name: ' ', maxBlastRadius: 'cosmetic', actor: 'admin' }), /name is required/);

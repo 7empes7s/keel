@@ -335,7 +335,8 @@ async function withRecord(client, work) {
  * cleared limit is an explicit null. Tenant-scoped; a deleted rule reads as not found.
  *
  * The audit record (POLICY_CHANGE_EVIDENCE_KIND) names each setting that changed with
- * its old and new value. An edit that changes nothing writes nothing. The record and the change
+ * its old and new value. An edit that changes nothing writes nothing and leaves the
+ * rule as it is, so an undo rule saved unchanged stays on: its preview still holds. The record and the change
  * are written in one transaction from the locked row, so neither exists without the
  * other and the record always describes the change made. */
 export async function updatePolicy(client, {
@@ -349,8 +350,9 @@ export async function updatePolicy(client, {
   if (changeType != null && !CHANGE_TYPES.includes(changeType)) throw new Error(`invalid change type: ${changeType}`);
   if ((maxActionsPerWindow == null) !== (windowSeconds == null)) throw new Error('a rate limit needs both a count and a window');
   const next = {
-    name: name.trim(), resourceType: resourceType ?? null, naturalKeyGlob: naturalKeyGlob ?? null,
-    changeType: changeType ?? null, blastRadius: blastRadius ?? null, maxBlastRadius,
+    // An empty value means "any", the same as none, so it never reads as a change.
+    name: name.trim(), resourceType: resourceType || null, naturalKeyGlob: naturalKeyGlob || null,
+    changeType: changeType || null, blastRadius: blastRadius || null, maxBlastRadius,
     maxActionsPerWindow: maxActionsPerWindow ?? null, windowSeconds: windowSeconds ?? null,
   };
   return withRecord(client, async () => {

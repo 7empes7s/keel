@@ -6,8 +6,8 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
-  bytesWords, compareItemId, compareItemLine, containerWords, contentItemWords, countsWords, differenceTotals, groupKind, notComparedReasons, settingsByKind,
-  sideWords, workloadLabel, workloadNotComparedSentence,
+  bytesWords, compareItemId, compareItemLine, containerWords, contentItemWords, countsWords, differenceTotals, groupKind, kindCountsWords, notComparedCounts, notComparedReasons, settingsByKind,
+  sideWords, workloadLabel, workloadNotComparedSentence, workloadStatus,
   type ChangeType, type CompareData, type CompareOpenable, type CompareField, type CompareResult, type GapTone, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
@@ -61,6 +61,8 @@ const CSS = `
 .compare-item.compare-added { border-left-color: var(--protected); }
 .compare-item.compare-removed { border-left-color: var(--failed); }
 .compare-note { margin: 0; color: var(--text-soft); }
+.compare-skipped { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); padding: var(--space-sm) var(--space-md); border-style: dashed; }
+.bl-tile[data-tile="not-compared"] { border-color: var(--partial); }
 .compare-gaps { display: grid; gap: var(--space-xs); }
 .compare-gaps-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
 .compare-gaps-head h3 { margin: 0; }
@@ -187,14 +189,16 @@ function sumCounts(groups: { added?: number; removed?: number; changed?: number 
 
 /** A kind group's heading inside a service, shown even when the service has one group,
  * so every service reads the same way. */
-function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part }: { part: KindPart<T> }) {
+function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part, words }: { part: KindPart<T>; words?: (items: T[]) => string }) {
   return (
     <h4 className="compare-kind-heading">
       {part.label}
-      <small>{part.items.length === 1 ? "1 kind" : `${part.items.length} kinds`} · {countsWords(sumCounts(part.items))}</small>
+      <small>{part.items.length === 1 ? "1 kind" : `${part.items.length} kinds`} · {words ? words(part.items) : countsWords(sumCounts(part.items))}</small>
     </h4>
   );
 }
+
+const kindsWords = (count: number) => (count === 1 ? "1 kind" : `${count.toLocaleString("en-GB")} kinds`);
 
 const GAP_TONES: Record<GapTone, BadgeTone> = { failed: "urgent", partial: "soon", neutral: "neutral" };
 
@@ -238,7 +242,7 @@ function NotCompared({ entries, sides }: { entries: SettingsSection["notCompared
   return (
     <div className="compare-gaps" data-gaps="not-compared">
       <div className="compare-gaps-head">
-        <h3>Not compared</h3>
+        <h3 id="compare-not-compared-heading">Not compared</h3>
         <Badge tone="neutral">{entries.length === 1 ? "1 kind" : `${entries.length.toLocaleString("en-GB")} kinds`}</Badge>
       </div>
       <p className="compare-note">Keel compares a kind only when both sides read it in full, so nothing here is reported as added or removed.</p>
@@ -308,7 +312,8 @@ function SettingsPanel({ settings, portable, sides, restore }: { settings: Setti
     <section aria-labelledby="compare-settings-heading" className="item-card compare-section">
       <h2 id="compare-settings-heading">Settings</h2>
       <p className="compare-help">
-        {countsWords(settings.totals)} across every kind Keel backs up; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
+        {countsWords(settings.totals)} across every kind both sides read in full; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
+        {settings.notCompared.length + settings.unmatched.length ? ` ${kindsWords(settings.notCompared.length + settings.unmatched.length)} not compared, listed below.` : ""}
         {" "}Open a kind, then See what changed on an item, to see each setting before and after.
         {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
       </p>
@@ -356,15 +361,24 @@ function FieldRecords({ fields, prefix }: { fields?: CompareField[]; prefix?: st
 }
 
 function WorkloadGroupView({ group, index, sides }: { group: WorkloadGroup; index: number; sides: Sides }) {
-  if (group.state !== "compared") {
-    return <li><strong>{workloadLabel(group.workload)}</strong>: {workloadNotComparedSentence(group)}</li>;
+  const status = workloadStatus(group);
+  if (status === "not-compared") {
+    return (
+      <li className="compare-group compare-skipped" data-status="not-compared">
+        <span className="compare-group-name">{workloadLabel(group.workload)}</span>
+        <Badge tone={group.reason === "collection-failed" ? "soon" : "neutral"}>Not compared</Badge>
+        <span className="compare-group-counts">{workloadNotComparedSentence(group)}</span>
+      </li>
+    );
   }
   return (
-    <li>
+    <li data-status={status}>
       <details className="compare-group">
         <summary>
           <span className="compare-group-name">{workloadLabel(group.workload)}</span>
-          <span className="compare-group-counts">{countsWords(group)}</span>
+          <span className="compare-group-counts">
+            {status === "partly" ? <Badge tone="soon">Compared in part</Badge> : null} {countsWords(group)}
+          </span>
           <Icon className="compare-group-chevron" name="chevron-down" />
         </summary>
         <ul className="compare-items">
@@ -387,11 +401,13 @@ function WorkloadGroupView({ group, index, sides }: { group: WorkloadGroup; inde
 }
 
 function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: WorkloadsSection; liveStored: boolean; sides: Sides }) {
+  const skipped = workloads.groups.filter((group) => workloadStatus(group) !== "compared").length;
   return (
     <section aria-labelledby="compare-workloads-heading" className="item-card compare-section">
       <h2 id="compare-workloads-heading">App settings</h2>
       <p className="compare-help">
         Exchange, Teams, Purview, SharePoint and other app settings, as each side last read them: {countsWords(workloads.totals)}.
+        {skipped ? ` ${kindsWords(skipped)} not compared in full, marked below.` : ""}
         {liveStored ? " The second side uses the newest stored collection." : ""}
       </p>
       {workloads.groups.length === 0 ? <p className="compare-note">No workload settings were collected for either side.</p> : null}
@@ -400,7 +416,7 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} />
+              <KindHeading part={part} words={kindCountsWords} />
               <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
                 {part.items.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
               </ul>
@@ -528,10 +544,13 @@ function shortSide(side: CompareResult["left"], tenants: CompareData["tenants"],
 
 function Summary({ data, result }: { data: CompareData; result: CompareResult }) {
   const totals = differenceTotals(result);
+  const gaps = notComparedCounts(result);
+  const gapParts = [gaps.settings ? `${gaps.settings} settings` : "", gaps.workloads ? `${gaps.workloads} app settings` : ""].filter(Boolean).join(", ");
   const tiles = [
     { key: "settings", label: "Settings", count: totals.settings, note: totals.settings === 1 ? "difference" : "differences", href: "#compare-settings-heading", shown: Boolean(result.settings) },
     { key: "workloads", label: "App settings", count: totals.workloads, note: totals.workloads === 1 ? "difference" : "differences", href: "#compare-workloads-heading", shown: Boolean(result.workloads) },
     { key: "content", label: "Content", count: totals.content, note: result.content?.by === "holdings" ? (totals.content === 1 ? "item in one tenant only" : "items in one tenant only") : (totals.content === 1 ? "item differs" : "items differ"), href: "#compare-content-heading", shown: Boolean(result.content) },
+    ...(gaps.total ? [{ key: "not-compared", label: "Not compared", count: gaps.total, note: `${gaps.total === 1 ? "kind" : "kinds"} (${gapParts})`, href: gaps.settings ? "#compare-settings-heading" : "#compare-workloads-heading", shown: true }] : []),
   ];
   return (
     <section aria-labelledby="compare-summary-heading" className="bl-section compare-section">
@@ -546,7 +565,7 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
       ) : <h2 className="visually-hidden" id="compare-summary-heading">What is different</h2>}
       <dl className="compare-summary bl-tiles">
         {tiles.map((tile) => (
-          <div className="bl-card bl-tile" key={tile.key}>
+          <div className="bl-card bl-tile" data-tile={tile.key} key={tile.key}>
             <dt className="bl-tile-label">{tile.label}</dt>
             <dd>
               <b className="bl-tile-count">{tile.count.toLocaleString("en-GB")}</b>

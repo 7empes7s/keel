@@ -4187,6 +4187,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await page.setViewportSize(viewport);
     await open(page, "/compare", "dark");
     await expect(page.locator('[data-layer="verdict"]')).toContainText("8 differences between the two backups");
+    // Parts one side never read say Not compared, never "no differences", and one count
+    // adds up the two sections' lists.
+    const skippedTile = page.locator('[data-tile="not-compared"]');
+    await expect(skippedTile.locator(".bl-tile-count")).toHaveText("6");
+    await expect(skippedTile).toContainText("kinds (5 settings, 1 app settings)");
+    const apps = page.locator("section", { has: page.locator("#compare-workloads-heading") });
+    await expect(apps.locator('[data-status="not-compared"]')).toContainText("Not compared");
+    await expect(apps.locator(".compare-kind-heading", { hasText: "not compared" })).toHaveCount(1);
+    await expect(apps.locator(".compare-kind-heading", { hasText: "no differences" })).toHaveCount(0);
     await expect(page.locator("form[method='get']")).toHaveCount(1);
     await expect(page.locator("form[method='post']")).toHaveCount(0);
     const settings = page.locator("section", { has: page.locator("#compare-settings-heading") });

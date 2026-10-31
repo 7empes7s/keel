@@ -107,13 +107,18 @@ export function respondResult(action: "acknowledge" | "resolve", done: number, f
   return failed ? `${head}; ${failed} could not be recorded` : head;
 }
 
-/** "37 changes since the approved setup of 2 days ago; 2 could lock out administrators." */
-/** The Changes page verdict. Service setting changes (`serviceRead`) have no approved
- * setup, so they are counted apart: they wait for review, they did not move away from it. */
+const formatCount = (value: number) => value.toLocaleString("en-GB");
+const serviceWords = (waiting: number) => `${formatCount(waiting)} service setting ${waiting === 1 ? "change waits" : "changes wait"} for review`;
+
+/** "37 changes since the approved setup of 2 days ago; 2 could lock out administrators."
+ * The Changes page verdict. Service setting changes (`serviceRead`) have no approved
+ * setup, so they are counted apart: they wait for review, they did not move away from it.
+ * The page passes the changes its service, kind and find filters leave, so the verdict
+ * and the tiles below it always count the same changes. */
 export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null, now: string): { text: string; tone: "good" | "attention" | "critical" } {
   const items = all.filter((item) => !item.serviceRead);
   const waiting = all.filter(isWaiting).length;
-  const services = `${waiting} service setting ${waiting === 1 ? "change waits" : "changes wait"} for review`;
+  const services = serviceWords(waiting);
   if (baselineSetAt === null) {
     return { text: `No setup is approved yet, so Keel cannot tell what changed${waiting ? `; ${services}` : ""}.`, tone: "critical" };
   }
@@ -124,13 +129,28 @@ export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null,
       : { text: `Nothing has changed ${since}.`, tone: "good" };
   }
   const lockout = items.filter((item) => item.blastRadius === "tenant-lockout").length;
-  const count = `${items.length} ${items.length === 1 ? "change" : "changes"} ${since}`;
+  const changed = `${formatCount(items.length)} ${items.length === 1 ? "change" : "changes"} ${since}`;
   const tail = waiting ? `, and ${services}` : "";
-  if (lockout) return { text: `${count}; ${lockout} could lock out administrators${tail}.`, tone: "critical" };
+  if (lockout) return { text: `${changed}; ${formatCount(lockout)} could lock out administrators${tail}.`, tone: "critical" };
   const access = items.filter((item) => item.blastRadius === "access-affecting").length;
   return access
-    ? { text: `${count}; ${access} ${access === 1 ? "affects" : "affect"} access${tail}.`, tone: "attention" }
-    : { text: `${count}; none affects access${tail}.`, tone: "attention" };
+    ? { text: `${changed}; ${formatCount(access)} ${access === 1 ? "affects" : "affect"} access${tail}.`, tone: "attention" }
+    : { text: `${changed}; none affects access${tail}.`, tone: "attention" };
+}
+
+/** Under a filtered verdict: which filters it counts, and the whole tenant's totals, so a
+ * filter never hides that other services have changes waiting.
+ * "Counts follow your filter: In Entra ID. Across all services: 1,159 changes, and 112
+ * service setting changes wait for review." */
+export function changesScopeDetail(filters: string[], all: DriftRecord[]): string {
+  const items = all.filter((item) => !item.serviceRead).length;
+  const waiting = all.filter(isWaiting).length;
+  const parts = [
+    ...(items ? [`${formatCount(items)} ${items === 1 ? "change" : "changes"}`] : []),
+    ...(waiting ? [serviceWords(waiting)] : []),
+  ];
+  const totals = parts.length ? parts.join(", and ") : "nothing to review";
+  return `Counts follow your ${filters.length === 1 ? "filter" : "filters"}: ${filters.join(", ")}. Across all services: ${totals}.`;
 }
 
 /** "conditions.users.excludeGroups" → "Conditions › users › exclude groups". */

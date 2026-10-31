@@ -13766,7 +13766,13 @@ item that needs it stays untouched.
   (`portal/lib/api-response.ts`, logs `[keel-portal] data request failed`). This item finds which one, and the error behind it.
   **Read-only: no tenant calls, no database writes, no restarts, no config changes.** Never print the database URL, a password, a token or a tenant id.
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
+- Status: done
+- Result: done, no 503 from the portal in the walk window (2026-10-31 18:50 UTC, keel-operator). Build **9c6f4b6c** (#837). Read-only: journal, Caddy config and journal, deployed source. No tenant calls, no DB, no restarts.
+  - **Step 1:** keel-portal MainPID 3109868, NRestarts 0, MemoryCurrent ~211 MiB, ActiveEnter 2026-10-31 15:25:36 UTC (deploy restart). Same process for the whole walk.
+  - **Step 2 (17:30–18:00):** 16 journal lines in total: 14 `keel-events` lines (17:40–17:48) and one pg `DeprecationWarning: Calling client.query() when the client is already executing a query` at 17:35:52 (two lines). **0** `database pool full`, **0** `data request failed`, **0** `DatabaseBusyError`, **0** other `Error`. No start or stop. Nothing to quote.
+  - **Step 3:** **no Caddy access log** (the Keel block in `/etc/caddy/Caddyfile` has no `log` directive; it only does `reverse_proxy 127.0.0.1:3600`). The Caddy journal for the window has one line: 17:43:33 `reverse_proxy` "aborting with incomplete response", `context canceled` (the client went away; not a 503).
+  - **Step 4 (whole of 31 Oct, per hour):** `database pool full` 553, `DatabaseBusyError` 495 (each with `[cause]: Error: timeout exceeded when trying to connect`), all in hour **14**: 125 at 14:06, 428 at 14:07 (old PID 2949069). First 3 verbatim: `[keel-portal] database pool full: gave up waiting for a connection (8 held, oldest 297 ms, 244 waiting)`, `(8 held, oldest 300 ms, 243 waiting)`, `(8 held, oldest 307 ms, 242 waiting)`; last at 14:07:29 `(8 held, oldest 293 ms, 31 waiting)`. `data request failed`: **0** all day. Other hours: no errors. Restarts at 02:00:01, 15:04:32 and 15:25:36.
+  - **Which 503 path:** neither, for 17:37–17:50. Both portal 503 paths log every time (`lib/db.ts:87` logs "pool full" before every `DatabaseBusyError`, which is how `proxy.ts` returns "busy"; `lib/api-response.ts` logs "data request failed"), and neither logged. So the 503s the walk saw did not come from those paths. In the deployed source the other 503s are `lib/action.ts` (guarded actions, which log) and `app/api/reports/value` (silent, but not a menu read). Inference: the 503s came from somewhere before the portal (Cloudflare/Access edge) or from a silent route; the only real pool-full storm today was 14:06–14:07 (244 waiting), 3.5 h before the walk. Suggest the thread log status per path (a Caddy `log` block, or a line in `proxy.ts` `busy()`) before the next walk.
 - Do, on Mulinux:
   1. `git -C /opt/keel-live log --oneline -1` and `systemctl show keel-portal -p MainPID -p MemoryCurrent -p NRestarts -p ActiveEnterTimestamp`.
   2. `journalctl -u keel-portal --since "2026-10-31 17:30" --until "2026-10-31 18:00" --no-pager`: per minute, the count of
@@ -13784,7 +13790,18 @@ item that needs it stays untouched.
   ends 29 Oct 2027, or whether the stored date is stale. **Read-only: no tenant writes, no database writes, no restarts.** Never print
   a key, a certificate body, a token or a tenant id.
 - Needs: nothing. **Quick: take it between other items.**
-- Status: todo
+- Status: done
+- Result: done, stored dates are correct (2026-10-31 18:55 UTC, keel-operator). Read-only. Host files via `openssl x509 -enddate -subject`; DB select (read); Entra GET with Collector `/etc/keel/tenant.json`. Nothing written; global admin not used. No key, thumbprint or certificate body printed.
+
+  | App (role) | Subject CN | Host file end | Stored `credential_expires_at` | Entra keyCredential end |
+  |---|---|---|---|---|
+  | KEEL Collector (settings-reader) | KEEL collector (sandbox) | 2028-09-02 12:57:29 | 2028-09-02 12:57:29 | 2028-09-02T12:57:29Z (1 cert) |
+  | Keel Restorer (settings-restorer) | KEEL restorer (sandbox) | 2028-09-02 12:57:29 | 2028-09-02 12:57:29 | 2028-09-02T12:57:29Z (1 cert) |
+  | KEEL Content Reader (content-reader) | KEEL Content Reader | 2028-10-13 21:44:09 | 2028-10-13 21:44:09 | 2028-10-13T21:44:09Z (1 cert) |
+  | KEEL-RT-engage-writer (engage-writer) | KEEL-RT-engage-writer | **2027-10-29 12:37:44** | **2027-10-29 12:37:44** | **2027-10-29T12:37:44Z** (1 cert) |
+
+  - **The Engage writer really ends 29 Oct 2027**, so Setup's "valid until at least 29 Oct 2027" is the true earliest date. No stored date differs from its host file or from Entra. Rows' `updated_at`/`observed_at` 2026-10-31 17:50:02 (content-reader `updated_at` 2026-10-23, observed 17:50:02).
+  - So the bug is in the Setup display: the app rows should show each app's own date (the Engage writer row ends 2027, not 2028).
 - Do, on Mulinux:
   1. For each credential file Keel signs in with (collector `/etc/keel/tenant.json`, restorer `/etc/keel/restorer.json`, content reader,
      Engage writer): read its `certPath` and run `openssl x509 -in <certPath> -noout -enddate -subject`. Report role, subject CN and end date.

@@ -44,13 +44,13 @@ import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
-import { objectIds, payloadName } from "@/lib/changes-view";
+import { objectIds, openChangeCount, payloadName } from "@/lib/changes-view";
 import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, withWorkloadCoverage, workloadKinds } from "@/lib/workload-kinds";
-import { loadServiceChanges } from "@/lib/service-changes";
+import { countOpenServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
@@ -1462,12 +1462,13 @@ export async function getDashboardData(): Promise<DashboardData> {
     })) as { ok: boolean; chainLength: number };
     const generatedAt = new Date();
     // Open changes in every service: the approved-setup changes (Entra ID and Intune)
-    // and the service setting changes the Changes page lists beside them.
-    const serviceChanges = await loadServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
+    // and the service setting changes the Changes page lists beside them, counted
+    // without the list's row limit (openChangeCount, the same as the Changes page).
+    const serviceChanges = await countOpenServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
       console.error("[keel-portal] overview service changes unavailable", error);
-      return [] as DriftRecord[];
+      return { total: 0, byBlastRadius: {} as Record<string, number> };
     });
-    const drift = [...await activeDriftFor(client, ref, activeBaseline?.id ?? null), ...serviceChanges];
+    const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
     const rawCoverage = await rawCoverageReport(client, ref);
     const coverageData = await coverageFor(client, ref, rawCoverage);
     // Task-129: the Overview sentence comes from this same report, never a constant.
@@ -1478,10 +1479,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     const openDriftByBlastRadius = [...new Set([
       ...BLAST_RADIUS_ORDER,
       ...drift.map((item) => item.blastRadius),
+      ...Object.keys(serviceChanges.byBlastRadius),
     ])]
       .map((blastRadius) => ({
         blastRadius,
-        count: drift.filter((item) => item.blastRadius === blastRadius).length,
+        count: drift.filter((item) => item.blastRadius === blastRadius).length + (serviceChanges.byBlastRadius[blastRadius] ?? 0),
       }))
       .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
     const lastCollection = lastCollectionRaw
@@ -1496,7 +1498,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       lastCollection,
       lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
       openDriftByBlastRadius,
-      openDriftTotal: drift.length,
+      openDriftTotal: openChangeCount(drift.length, serviceChanges.total),
       driftTrend,
       coverage: withWorkloadCoverage(coverageData.summary, coverageData.workloads),
       evidence: {

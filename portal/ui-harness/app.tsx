@@ -9,6 +9,7 @@ import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
 import { ChangeFeed } from "@/components/baselines/change-feed";
 import { ChangesViews } from "@/components/baselines/changes-views";
+import { openChangeCount } from "@/lib/changes-view";
 import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
@@ -2299,6 +2300,9 @@ const serviceChange = (id: string, workload: string, resourceKey: string, name: 
   },
   ...over,
 });
+// Open service setting changes beyond the list's row limit, for /drift/services-capped.
+const CAPPED_SERVICE_CHANGES = 300;
+
 const SERVICE_CHANGES: DriftRecord[] = [
   serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
     // One app lost its write access, and one gained read access: each reads by its name.
@@ -2642,11 +2646,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
     }
     case "/drift":
-    case "/drift/services": {
-      // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
-      const items = path === "/drift/services" ? [...DRIFT_DECIDED, ...SERVICE_CHANGES] : DRIFT_DECIDED;
-      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
-        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} /></>;
+    case "/drift/services":
+    case "/drift/services-capped": {
+      // The visual baseline is the plain Changes page; /drift/services adds service setting
+      // changes; /drift/services-capped has more open service setting changes than the list holds.
+      const items = path === "/drift" ? DRIFT_DECIDED : [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const serviceTotal = path === "/drift" ? 0 : SERVICE_CHANGES.length + (path === "/drift/services-capped" ? CAPPED_SERVICE_CHANGES : 0);
+      // As on the live page: the header counts every open change (openChangeCount).
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, serviceTotal)))}
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={serviceTotal} summary={DRIFT_SUMMARY} /></>;
     }
     case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
@@ -2689,7 +2697,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
-      const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
+      // As on the live page: the badge and the verdict count every open change,
+      // service setting changes included (openChangeCount), like the Overview.
+      const openItems = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const verdict = approvedVerdict(BASELINES[0], openItems, now, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length));
       // As on the live page: Entra ID and Intune kinds from the coverage types, the other
       // services as service reads with their changes since the previous backup.
       const isRead = (type: string) => Object.hasOwn(WORKLOAD_LABELS, type);
@@ -2699,7 +2710,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           .reduce((tally, item) => ({ ...tally, [item.changeType]: tally[item.changeType] + 1 }), { added: 0, modified: 0, removed: 0 }) }));
       // The 4,812 settings the setup holds, per kind (adds up to its resourceCount).
       const held = { conditionalAccessPolicy: 24, group: 640, namedLocation: 8, roleAssignment: 140, user: 3900, application: 100 };
-      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
+      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], openItems, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline held={held} items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />

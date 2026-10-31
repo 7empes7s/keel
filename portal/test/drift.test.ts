@@ -11,7 +11,10 @@ import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
+import { setupStatus } from "@/lib/baselines-view";
+import { openChangeCount } from "@/lib/changes-view";
 import { getDashboardData, getDriftData } from "@/lib/portal-data";
+import { getServiceChanges } from "@/lib/service-changes";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
@@ -382,6 +385,10 @@ test("the Overview counts open service setting changes beside the approved-setup
 
   const after = await getDashboardData();
   assert.equal(after.openDriftTotal, before.openDriftTotal + 1, "the mail flow rule change counts");
+  // The same number the Changes and Approved setup pages show (openChangeCount).
+  const [drift, service] = await Promise.all([getDriftData(), getServiceChanges()]);
+  assert.equal(after.openDriftTotal, openChangeCount(drift.items.length, service.total));
+  assert.equal(setupStatus(drift.baseline, [...drift.items, ...service.items], after.openDriftTotal).label, `${after.openDriftTotal} ${after.openDriftTotal === 1 ? "change" : "changes"} to review`);
   const accessAffecting = (data: typeof after) => data.openDriftByBlastRadius.find((item) => item.blastRadius === "access-affecting")?.count ?? 0;
   assert.equal(accessAffecting(after), accessAffecting(before) + 1);
 });

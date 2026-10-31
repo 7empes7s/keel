@@ -160,7 +160,7 @@ export function NewRuleSheet({ onClose, policy = null }: { onClose: () => void; 
             <p className="po-check"><Icon name={RULE_KINDS[does].icon} />{RULE_KINDS[does].label}. To make it do something else, create a new rule and delete this one.</p>
           ) : (
             <>
-              <Segmented label="What to do" onChange={setDoes} options={DOES} value={does} />
+              <div className="po-does"><Segmented label="What to do" onChange={setDoes} options={DOES} value={does} /></div>
               <p className="field-help">{DO_HELP[does]}</p>
             </>
           )}

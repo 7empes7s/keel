@@ -60,9 +60,10 @@ export function menuStatuses(data: Pick<DashboardData, "headline" | "coverage" |
   const recovery = (data.waiting?.openIncidents ?? 0) + (data.waiting?.restoreFollowUps ?? 0);
   if (recovery > 0) statuses.Restore = { tone: "soon", count: recovery, note: `${plural(recovery, "incident or restore step needs", "incidents or restore steps need")} someone` };
 
-  // The Overview's two audit record states, in its words.
+  // The Overview's audit record states, in its words.
   const audit = dashboardAuditCheck(data.evidence);
   if (audit === "failed") statuses["Audit log"] = { tone: "urgent", note: AUDIT_CHECK_WORDS.failed.title };
+  else if (audit === "known") statuses["Audit log"] = { tone: "soon", note: AUDIT_CHECK_WORDS.known.title };
   else if (audit === "unchecked") statuses["Audit log"] = { tone: "soon", note: AUDIT_CHECK_WORDS.unchecked.title };
 
   const inbox = (pendingApprovals ?? 0) + (data.waiting?.openAlerts ?? 0);

@@ -1462,15 +1462,26 @@ export function buildAlerts({
       });
   }
 
-  // The same two states, and words, as Activity, the menu and Integrations: a failed
-  // check is Urgent, a record with no off-site copy to compare with is Check soon.
+  // The same states, and words, as Activity, the menu and Integrations: a failed check
+  // is Urgent; a known, explained break or a record with no off-site copy to compare
+  // with is Check soon.
   const audit = dashboardAuditCheck(evidence);
-  if (audit === "failed" || audit === "unchecked") {
+  if (audit === "failed" || audit === "known" || audit === "unchecked") {
     alerts.push({
       key: "audit",
       severity: audit === "failed" ? "critical" : "warning",
       title: AUDIT_CHECK_WORDS[audit].title,
       detail: AUDIT_CHECK_WORDS[audit].detail,
+      href: AUDIT_RECORD_HREF,
+    });
+  }
+  // A known break outranks "no off-site copy", but the missing copy still needs fixing.
+  if (audit === "known" && evidence?.unanchored) {
+    alerts.push({
+      key: "audit-unchecked",
+      severity: "warning",
+      title: AUDIT_CHECK_WORDS.unchecked.title,
+      detail: AUDIT_CHECK_WORDS.unchecked.detail,
       href: AUDIT_RECORD_HREF,
     });
   }
@@ -1575,12 +1586,16 @@ export async function getDashboardData(): Promise<DashboardData> {
         chainLength: Number(evidenceRaw.chainLength),
         // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
         // A broken own chain is already a failed check: no second walk.
-        check: evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
-          .then(auditCheckOf)
+        ...(evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+          .then((integrity) => {
+            const check = auditCheckOf(integrity);
+            // Only a known break hides "no off-site copy"; say it separately then.
+            return { check, ...(check === "known" && integrity.status === "unanchored" ? { unanchored: true } : {}) };
+          })
           .catch((error) => {
             console.error("[keel-portal] overview audit record check unavailable", error);
-            return undefined;
-          }) : "failed",
+            return {};
+          }) : { check: "failed" as const }),
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
       offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })

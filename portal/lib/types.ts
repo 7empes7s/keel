@@ -671,7 +671,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite" | "deletable";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -691,7 +691,9 @@ export interface DashboardData {
   coverage: CoverageSummary;
   // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
   // "unchecked" when there is none to compare with; undefined when it could not be read.
-  evidence: { ok: boolean; chainLength: number; check?: AuditCheck };
+  // "known" (an explained break) can hide "unchecked", so unanchored says there is also no
+  // off-site copy to compare with.
+  evidence: { ok: boolean; chainLength: number; check?: AuditCheck; unanchored?: boolean };
   // Whether a checked off-site copy holds every backed-up type (the Resilience page's
   // recoverable point). Undefined when it could not be read.
   offsite?: { measured: boolean };

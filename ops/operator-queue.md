@@ -14026,3 +14026,117 @@ item that needs it stays untouched.
   (report its keys; the three values are not secret). If every To Do variant answers 500 (or 400/404 for forms Microsoft does not
   support) and the role is held, it is a Microsoft fault: the thread files it as a known Microsoft limit.
 - **Report:** step 1 per backup, the step 2 lines verbatim, the step 3 yes/no, and the build at `/opt/keel-live`.
+
+### Q303: Time the slow pages' server reads on live, query by query (read-only, no tenant), about 10 minutes
+- Drafted by the "Speed up slow portal pages" thread (2026-10-31, backlog B11). In the 31 Oct audit, Compliance took 24–26 s,
+  Activity 18–19 s, Approved setup 12–16 s, Changes 9–15 s, What's protected 9–12 s (browser waits). Live has no request timings,
+  so this item runs each of those pages' data loaders once per step on the live database and times every SQL statement they send.
+  **Read-only: every connection is opened with `default_transaction_read_only=on`, so any write fails instead of landing. No tenant
+  calls, no restarts, no config changes, nothing installed.** Never print the database URL, a password, a token, a tenant id or a
+  person's address. The output holds only SQL text (first 110 characters, no parameter values), counts and times.
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Result:
+- Do, on Mulinux:
+  1. `git -C /opt/keel-live log --oneline -1`. In your own checkout or worktree at that commit (never `/opt/keel`), make sure
+     `portal/node_modules` exists (if not, symlink it to `/opt/keel-live/portal/node_modules`) and that
+     `portal/node_modules/.bin/tsx` is there. If tsx is missing, stop and report `blocked` (do not install anything).
+  2. Save the script below as `<checkout>/portal/profile-reads.mts` (scratch file, do not commit it).
+  3. Pick a principal with read access, without printing it:
+     `P=$(psql "$KEEL_DB_URL" -Atc "SELECT principal_id FROM role_grant GROUP BY 1 ORDER BY count(*) DESC LIMIT 1")`.
+  4. From `<checkout>/portal`, with the portal's env loaded (not printed):
+     ```bash
+     set -a; . /etc/keel/db.env; . /etc/keel/portal.env; set +a
+     PGOPTIONS="-c default_transaction_read_only=on" timeout 600 node --import tsx profile-reads.mts "$P" 2>&1 | grep -v "^    at " | tee /tmp/q303.txt
+     ```
+     It runs each loader three times and prints, per loader, the three times and the six slowest statements of the last run.
+     If it runs past 10 minutes, stop it and report what it printed. Delete `profile-reads.mts` and `/tmp/q303.txt` afterwards.
+  5. Sizes: `SELECT count(*) FROM snapshot`, `SELECT count(*) FROM snapshot WHERE completed_at IS NOT NULL`,
+     `SELECT pg_size_pretty(sum(pg_column_size(coverage_digest))::bigint) FROM snapshot`, `SELECT count(*), count(DISTINCT control_id) FROM benchmark_evaluation`,
+     `SELECT count(*) FROM baseline`, `SELECT count(*) FROM baseline_resource`, `SELECT count(*) FROM workload_collection`,
+     `SELECT count(*) FROM workload_observation`, `SELECT count(*) FROM drift`, `SELECT count(*) FROM workload_drift` (skip a table that does not exist).
+- **Report:** the commit, step 4's output verbatim (it holds no ids or values), any line that says `read-only transaction`, and step 5's numbers.
+- Script:
+  ```ts
+  // Read-only profile of the slow pages' server reads. Run from <checkout>/portal:
+  //   PGOPTIONS="-c default_transaction_read_only=on" node --import tsx profile-reads.ts [principalId]
+  // Every connection is read-only, so a write anywhere fails instead of landing.
+  import pg from "pg";
+  
+  type Stat = { n: number; ms: number; rows: number };
+  let stats = new Map<string, Stat>();
+  const original = pg.Client.prototype.query as (...args: unknown[]) => unknown;
+  (pg.Client.prototype as { query: unknown }).query = function patched(this: unknown, ...args: unknown[]) {
+    const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string })?.text ?? "";
+    const key = text.replace(/\s+/g, " ").trim().slice(0, 110);
+    const start = performance.now();
+    const result = original.apply(this, args);
+    if (result && typeof (result as Promise<unknown>).then === "function") {
+      (result as Promise<{ rowCount?: number; rows?: unknown[] }>).then((r) => {
+        const s = stats.get(key) ?? { n: 0, ms: 0, rows: 0 };
+        s.n += 1; s.ms += performance.now() - start; s.rows += r?.rows?.length ?? 0;
+        stats.set(key, s);
+      }, () => {});
+    }
+    return result;
+  };
+  
+  const principal = process.argv[2] ?? "";
+  const headers = new Headers({ "x-keel-principal-id": principal, "x-keel-capabilities": "read configuration" });
+  const get = (handler: (r: Request) => Promise<Response>, path: string) => async () => {
+    const res = await handler(new Request(`http://localhost${path}`, { headers }));
+    if (!res.ok) throw new Error(`${path} ${res.status}`);
+    return res.json();
+  };
+  
+  const data = await import("@/lib/portal-data");
+  const { getServiceChanges, getServiceReadTotals } = await import("@/lib/service-changes");
+  const { getChangeFeed } = await import("@/lib/change-feed");
+  const { getRecentJobs } = await import("@/lib/portal-jobs");
+  const { getDiscoveryInventory } = await import("@/lib/discovery");
+  const { getContentBackups } = await import("@/lib/content-backups");
+  const { getScubaListsView } = await import("@/lib/scuba-lists");
+  const evidence = await import("@/app/api/evidence/route");
+  const verify = await import("@/app/api/evidence/verify/route");
+  const jobs = await import("@/app/api/jobs/route");
+  const alerts = await import("@/app/api/alerts/route");
+  
+  const loaders: Record<string, () => Promise<unknown>> = {
+    "compliance getComplianceData": () => data.getComplianceData(),
+    "compliance getOwnCheckChoices": () => data.getOwnCheckChoices(),
+    "compliance getScubaListsView": () => getScubaListsView(),
+    "baselines getBaselinesData": () => data.getBaselinesData(),
+    "baselines getDriftData": () => data.getDriftData(),
+    "baselines getCoverageData": () => data.getCoverageData(),
+    "baselines getServiceChanges": () => getServiceChanges(),
+    "baselines getServiceReadTotals": () => getServiceReadTotals(),
+    "changes getChangeFeed30": () => getChangeFeed({ days: 30 }),
+    "resilience getResilienceData": () => data.getResilienceData(),
+    "protect getDiscoveryInventory": () => getDiscoveryInventory(),
+    "protect getContentBackups": () => getContentBackups(new Date()),
+    "protect getRecentJobs": () => getRecentJobs(["backup"], 10),
+    "activity /api/jobs": get(jobs.GET, "/api/jobs?limit=100"),
+    "activity /api/evidence": get(evidence.GET, "/api/evidence"),
+    "activity /api/evidence/verify": get(verify.GET, "/api/evidence/verify"),
+    "alerts /api/alerts": get(alerts.GET, "/api/alerts"),
+  };
+  
+  const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
+  for (const [name, run] of Object.entries(loaders)) {
+    if (only && !only.test(name)) continue;
+    const times: number[] = [];
+    let top: [string, Stat][] = [];
+    let error = "";
+    for (let i = 0; i < 3; i += 1) {
+      stats = new Map();
+      const start = performance.now();
+      try { await run(); } catch (e) { error = String((e as Error)?.message ?? e).slice(0, 160); }
+      times.push(Math.round(performance.now() - start));
+      top = [...stats.entries()].sort((a, b) => b[1].ms - a[1].ms);
+    }
+    const sql = top.reduce((sum, [, s]) => sum + s.ms, 0);
+    console.log(`\n## ${name}: ${times.join(" / ")} ms (last run: ${top.reduce((n, [, s]) => n + s.n, 0)} queries, ${Math.round(sql)} ms in SQL)${error ? ` ERROR ${error}` : ""}`);
+    for (const [key, s] of top.slice(0, 6)) console.log(`  ${Math.round(s.ms)} ms  x${s.n}  ${s.rows} rows  ${key}`);
+  }
+  process.exit(0);
+  ```

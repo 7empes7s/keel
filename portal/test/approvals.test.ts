@@ -393,6 +393,14 @@ test("a self-authored request is visible but cannot be approved", async () => {
   const listed = await inboxRoute(get("/api/approvals", selfApprover));
   const inbox = await listed.json();
   assert.ok(inbox.pending.some((candidate: { id: string }) => candidate.id === id));
+  // Listed, but not counted as waiting for them: the menu's count and the page's
+  // "Waiting for you" leave out every request the viewer asked for.
+  type Waiting = { requestedBy: string; signoffs: { id: string }[] };
+  const theirs = [...inbox.pending, ...inbox.awaitingContentEffects] as Waiting[];
+  const decidable = theirs.filter((candidate) => candidate.requestedBy !== RESTORER && !candidate.signoffs.some((person) => person.id === RESTORER));
+  assert.ok(decidable.length < theirs.length);
+  assert.equal(inbox.waitingForYou, decidable.length);
+  assert.equal(await getPendingApprovalCount({ central: true, entities: [] }, RESTORER), decidable.length, "the menu badge agrees with the page");
 
   const decision = await approveRoute(
     post(`/api/approvals/${id}/approve`, selfApprover),

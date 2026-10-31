@@ -215,6 +215,7 @@ const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
   { key: "backed-up", label: "Backed up", icon: "check-circle" },
   { key: "failed", label: "Failed", icon: "x-circle" },
   { key: "out-of-date", label: "Out of date or never", icon: "clock" },
+  { key: "not-backed-up", label: "Not backed up", icon: "info" },
   { key: "proven", label: "Restore proven", icon: "restore" },
 ];
 const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
@@ -275,17 +276,20 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip, children }: {
     "backed-up": `of ${counts.total} ${counts.total === 1 ? "kind" : "kinds"}`,
     failed: counts.failed ? "Their last backup did not finish" : "Nothing failed",
     "out-of-date": `${counts.stale} out of date, ${counts.never} never`,
+    "not-backed-up": `${counts.never} never, ${counts.notCollected} not read yet`,
     proven: "By a test restore on this tenant",
   };
   const tileValue: Record<HealthFilter, string> = {
     "backed-up": String(counts.backedUp),
     failed: String(counts.failed),
     "out-of-date": String(counts.stale + counts.never),
+    "not-backed-up": String(counts.never + counts.notCollected),
     proven: `${counts.proven} of ${counts.restorable}`,
   };
   const tileTone: Partial<Record<HealthFilter, RiskTone>> = {
     failed: counts.failed ? "urgent" : undefined,
     "out-of-date": counts.stale + counts.never ? "soon" : undefined,
+    "not-backed-up": counts.never + counts.notCollected ? "soon" : undefined,
   };
 
   const activeFilters: ActiveFilter[] = [

@@ -62,6 +62,8 @@ export interface AlertItem {
 export interface AlertInboxData {
   generatedAt: string;
   alerts: AlertItem[];
+  // The alert a link opened (`?open=<id>`) when it is not among the newest listed.
+  linked?: AlertItem;
 }
 
 export const ACTIVE_STATES: AlertState[] = ["open", "reopened", "acknowledged"];

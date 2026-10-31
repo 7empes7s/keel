@@ -19,6 +19,7 @@ import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/a
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { SemanticDiff } from "@/components/semantic-diff";
 import { Verdict } from "@/components/verdict";
+import { MissingOpened } from "@/components/list/missing-opened";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
@@ -320,6 +321,7 @@ export function ChangeList({
     {notice}
     <div className="bl-page" data-layer="explanation">
       <BaselinesStyles />
+      {view.get("open") && !opened ? <MissingOpened noun="change" onDismiss={() => view.set({ open: null })} /> : null}
       <section aria-label="Open changes by risk" className="bl-tiles">
         {radii.map((radius) => {
           const active = picked.includes(radius);

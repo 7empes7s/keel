@@ -1365,7 +1365,7 @@ const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1,
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
 const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "3 kinds of settings are out of date", detail: "They were backed up, but not recently enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "21 kinds of settings are not backed up", detail: "Keel knows these kinds of settings but has no backup of them.", href: "/protect" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "21 kinds of settings are not backed up", detail: "Keel knows these kinds of settings but has no backup of them.", href: "/protect?health=not-backed-up" };
 const ALERTS: DashboardData["alerts"][] = [
   [
     { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
@@ -1733,6 +1733,16 @@ const INBOX_ALERTS: AlertItem[] = [
   },
 ];
 
+// The emergency sign-in that "Review the sign-in" on Emergency access links to. It is
+// older than the newest alerts the inbox lists, so the server sends it on its own
+// (`linked`): the link opens it, and the list and its counts stay the same.
+const LINKED_ALERT: AlertItem = {
+  ...INBOX_ALERTS.find((alert) => alert.id === "a1e70000-0000-4000-8000-000000000005")!,
+  id: "a1e70000-0000-4000-8000-000000000094", resourceKey: "user:bg2@contoso.onmicrosoft.com", name: "Emergency admin 2",
+  state: "open", acknowledgedAt: null, acknowledgedByName: null, firstOpenedAt: "2026-10-02T08:40:00Z", occurrenceStartedAt: "2026-10-02T08:40:00Z",
+  lastFiringAt: "2026-10-02T08:40:00Z", ackDeadlineAt: "2026-10-02T08:55:00Z", lastEventId: "breakglass-sign-in:si-7f21",
+  history: [alertEntry("94", 1, null, "open", "condition-firing", "2026-10-02T08:40:00Z")],
+};
 
 // Task-73: measured recovery point and recovery time. A newer off-site copy lacks a
 // good group backup, so the older copy still sets the point; a failed restore is
@@ -2782,7 +2792,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
       return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
-        <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+        <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} linked={LINKED_ALERT} now={now} /></>;
     }
     case "/setup/anonymous": {
       const state = hiddenSetup();

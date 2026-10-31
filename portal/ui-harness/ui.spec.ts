@@ -1269,7 +1269,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   // On a desktop the list is grouped by service; the service cards are the phone's.
   await expect(page.locator(".pt-by-service")).toBeHidden();
   const tiles = page.locator(".pt-tile");
-  await expect(tiles).toHaveCount(4);
+  await expect(tiles).toHaveCount(5);
   const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
   for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/health=/);
@@ -1315,7 +1315,8 @@ test("What's protected · the verdict and tiles follow the service filter", asyn
     await page.setViewportSize({ width, height: 900 });
     await open(page, "/protect");
     const verdict = page.locator('[data-layer="verdict"]');
-    const tile = (name: string) => page.locator(".pt-tile", { hasText: name });
+    // Anchored: "Backed up" must not also match the "Not backed up" tile.
+    const tile = (name: string) => page.locator(".pt-tile", { hasText: new RegExp(`^${name}`) });
     const allSentence = await verdict.locator(".verdict-sentence").innerText();
     const allBackedUp = await tile("Backed up").locator(".pt-tile-count").innerText();
     await expect(verdict.locator(".verdict-sentence")).toHaveText("2 types failed their last backup.");
@@ -5155,3 +5156,58 @@ test("every change: an empty period says so, with no dead end", async ({ page })
   await expect(page.getByRole("heading", { name: "No changes in the last 7 days" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open changes" })).toBeVisible();
 });
+
+// Audit 2026-10-31, issue 4: a link that opens one item on another page opens it, or
+// says plainly that it is not there. "Review the sign-in" on Emergency access opens the
+// emergency sign-in's alert even though it is older than the alerts the list shows.
+test("open links: Review the sign-in opens its alert; a gone item says so; Not backed up filters", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/readiness");
+  await page.locator('[data-layer="verdict"]').getByRole("link", { name: "Review the sign-in" }).click();
+  await expect(page).toHaveURL(/alerts\?open=a1e70000-0000-4000-8000-000000000094/);
+  const sheet = page.getByRole("dialog", { name: "Emergency admin 2 (user)" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Acknowledge" })).toBeVisible();
+  await expect(page.locator("[data-missing-opened]")).toHaveCount(0);
+  // The linked alert opens but is not added to the list.
+  await expect(page.locator(".al-row-link", { hasText: "Emergency admin 2" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(page.locator(".toast", { hasText: "Alert acknowledged" })).toBeVisible();
+
+  // An item that is gone: each page that other pages link into says so, and Dismiss
+  // clears the link from the address.
+  for (const [hash, words] of [
+    ["/alerts?open=a1e70000-0000-4000-8000-0000000000ff", "The alert this link points to is not here"],
+    ["/drift?open=a5c00000-0000-4000-8000-0000000000ff", "The change this link points to is not here"],
+    ["/schedules?open=5c4e0000-0000-4000-8000-0000000000ff", "The schedule this link points to is not here"],
+  ] as const) {
+    await open(page, hash);
+    const notice = page.locator("[data-missing-opened]");
+    await expect(notice).toContainText(words);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await notice.getByRole("button", { name: "Dismiss" }).click();
+    await expect(notice).toHaveCount(0);
+    await expect(page).not.toHaveURL(/open=/);
+  }
+
+  // Overview's "Not backed up" opens What's protected filtered to those kinds.
+  await open(page, "/");
+  const notBacked = page.locator(".ov-legend-link", { hasText: "Not backed up" });
+  await expect(notBacked).toHaveAttribute("href", /\/protect\?health=not-backed-up$/);
+  await notBacked.click();
+  await expect(page).toHaveURL(/protect\?health=not-backed-up/);
+  await expect(page.locator(".pt-tile", { hasText: /^Not backed up/ })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("button", { name: "Remove filter: Not backed up" }).first()).toBeVisible();
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`open links · ${width} · ${theme}: the gone-item notice reads at a glance`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/alerts?open=a1e70000-0000-4000-8000-0000000000ff", theme);
+      await expect(page.locator("[data-missing-opened]")).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      await page.locator("[data-missing-opened]").screenshot({ path: test.info().outputPath(`missing-opened-${width}-${theme}.png`) });
+    });
+  }
+}

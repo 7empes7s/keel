@@ -272,9 +272,9 @@ export function tierSummaries(schedules: Schedule[], now: string): TierSummary[]
 
 // The What's protected page (portal audit: grouped list on a desktop, service cards on a phone).
 // Health in four words a tile and a badge can share; tones are risk colours only.
-export type HealthFilter = "backed-up" | "failed" | "out-of-date" | "proven";
+export type HealthFilter = "backed-up" | "failed" | "out-of-date" | "not-backed-up" | "proven";
 
-export const HEALTH_FILTERS: HealthFilter[] = ["backed-up", "failed", "out-of-date", "proven"];
+export const HEALTH_FILTERS: HealthFilter[] = ["backed-up", "failed", "out-of-date", "not-backed-up", "proven"];
 
 export function isHealthFilter(value: string): value is HealthFilter {
   return (HEALTH_FILTERS as string[]).includes(value);
@@ -286,6 +286,8 @@ export function matchesHealth(item: CoverageType, filter: HealthFilter): boolean
     case "backed-up": return health === "ok" || health === "empty";
     case "failed": return health === "failed";
     case "out-of-date": return health === "stale" || health === "never";
+    // Overview's "Not backed up": never backed up, or no backup of the kind exists yet.
+    case "not-backed-up": return health === "never" || health === "not-collected";
     case "proven": return restoreStanding(item) === "protected" || restoreStanding(item) === "partial";
   }
 }
@@ -314,6 +316,7 @@ export interface ProtectCounts {
   failed: number;
   stale: number;
   never: number;
+  notCollected: number;
   proven: number;
   restorable: number;
 }
@@ -327,6 +330,7 @@ export function protectCounts(types: CoverageType[]): ProtectCounts {
     failed: health.filter((value) => value === "failed").length,
     stale: health.filter((value) => value === "stale").length,
     never: health.filter((value) => value === "never").length,
+    notCollected: health.filter((value) => value === "not-collected").length,
     proven: standing.filter((value) => value === "protected" || value === "partial").length,
     restorable: standing.filter((value) => value !== "cannot-restore").length,
   };

@@ -57,6 +57,7 @@ import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
+import { MissingOpened } from "@/components/list/missing-opened";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
 import { readList, useViewState } from "@/lib/use-view-state";
@@ -79,8 +80,11 @@ const ALERT_SORTS: ListSort<AlertItem>[] = [
 ];
 const plural = (count: number) => `${count} ${count === 1 ? "alert" : "alerts"}`;
 
-export function AlertsPage({ alerts, now, canRespond, canMute }: {
+export function AlertsPage({ alerts, linked, now, canRespond, canMute }: {
   alerts: AlertItem[];
+  // The alert a link opened when it is older than the newest listed: it opens, but it is
+  // not added to the list or its counts.
+  linked?: AlertItem;
   now: string;
   canRespond: boolean;
   canMute: boolean;
@@ -103,19 +107,20 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
 
   // What this page changed, until the server's next read says where each alert stands.
   const [changed, setChanged] = useState<Record<string, AlertState>>({});
-  useEffect(() => { setChanged({}); }, [alerts]);
-  const items = useMemo(() => alerts.map((alert) => {
+  useEffect(() => { setChanged({}); }, [alerts, linked]);
+  const known = useMemo(() => (linked && !alerts.some((alert) => alert.id === linked.id) ? [...alerts, linked] : alerts).map((alert) => {
     const state = changed[alert.id];
     if (!state || state === alert.state) return alert;
     return { ...alert, state, acknowledgedAt: state === "acknowledged" ? alert.acknowledgedAt ?? now : alert.acknowledgedAt, acknowledgedByName: state === "acknowledged" ? alert.acknowledgedByName ?? "you" : alert.acknowledgedByName };
-  }), [alerts, changed, now]);
+  }), [alerts, linked, changed, now]);
+  const items = useMemo(() => known.slice(0, alerts.length), [known, alerts.length]);
 
   const counts = useMemo(() => alertCounts(items, now), [items, now]);
   const verdict = useMemo(() => alertsVerdict(items, now), [items, now]);
   const ordered = useMemo(() => inboxOrder(items), [items]);
   const shown = useMemo(() => applyFilters(ordered, stateTiles, filter), [ordered, stateTiles, filter]);
   const tileTotals = useMemo(() => new Map(tileCounts(ordered, stateTiles, filter).map((entry) => [entry.key, entry])), [ordered, stateTiles, filter]);
-  const opened = items.find((alert) => alert.id === openId) ?? null;
+  const opened = known.find((alert) => alert.id === openId) ?? null;
   const pickedAlerts = items.filter((alert) => picked.includes(alert.id));
   const overdueIds = items.filter((alert) => isOverdue(alert, now)).map((alert) => alert.id);
 
@@ -138,7 +143,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
 
   // One call per alert; one toast that names what did not change.
   async function run(action: AlertAction, ids: string[], text?: string): Promise<string | null> {
-    const chosen = items.filter((alert) => ids.includes(alert.id) && actionable(action, alert));
+    const chosen = known.filter((alert) => ids.includes(alert.id) && actionable(action, alert));
     if (chosen.length === 0) {
       toast({ tone: "warning", title: "Nothing to change", detail: action === "acknowledge" ? "The chosen alerts are already acknowledged or closed." : "The chosen alerts are already in that state." });
       return null;
@@ -229,6 +234,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
     <div className="al-page">
       <Verdict action={verdictAction} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
+        {openId && !opened ? <MissingOpened noun="alert" onDismiss={() => view.set({ open: null, do: null })} /> : null}
         <section aria-label="Alerts at a glance" className="al-tiles">
           {tiles.map((tile) => {
             const active = filter.includes(tile.key);

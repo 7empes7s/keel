@@ -124,8 +124,16 @@ export async function alertObjects(client: QueryClient, tenantRef: string, keys:
 }
 
 export function guardedAlertInbox(deps: GuardDeps = {}) {
-  return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
-    const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
+  return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef, request }) => {
+    const listed = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
+    // A link to one alert (`?open=<id>`) opens it even when it is older than the newest
+    // 200: that one alert is read on its own and sent apart from the list, so the
+    // list and its counts stay the same.
+    const openId = new URL(request.url).searchParams.get("open");
+    const extra = openId && UUID.test(openId) && !listed.some((row) => String(row.id) === openId)
+      ? await listAlerts(client, { tenantRef, actor: principalId, ids: [openId], limit: 1 }) as Row[]
+      : [];
+    const rows = [...listed, ...extra];
     // Every alert's history in one read, not one per alert: the page polls.
     const histories = new Map<string, Row[]>();
     const transitions = await listAlertTransitionsFor(client, { tenantRef, actor: principalId, alertIds: rows.map((row) => String(row.id)) }) as Row[];
@@ -192,7 +200,11 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
         })),
       };
     });
-    const body: AlertInboxData = { generatedAt: new Date().toISOString(), alerts };
+    const body: AlertInboxData = {
+      generatedAt: new Date().toISOString(),
+      alerts: alerts.slice(0, listed.length),
+      ...(extra.length ? { linked: alerts[listed.length] } : {}),
+    };
     return Response.json(body, { headers: NO_STORE });
   }, deps);
 }

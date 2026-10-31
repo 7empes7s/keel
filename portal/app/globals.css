@@ -9060,7 +9060,7 @@ section.wizard-panel {
 .pt-section-head p { margin: var(--space-2xs) 0 0; color: var(--text-soft); font-size: 0.875rem; }
 .pt-section-head .btn .icon { width: 1rem; height: 1rem; }
 
-.pt-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
+.pt-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 1fr; align-items: stretch; }
 .pt-tile { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; text-decoration: none; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
 .pt-tile:hover { border-color: var(--line-strong); background: var(--surface-raised); }
 .pt-tile:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -9142,6 +9142,8 @@ section.wizard-panel {
 
 @media (max-width: 46rem) {
   .pt-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Five tiles on two columns: the last one spans the row. */
+  .pt-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .pt-tile { padding: var(--space-xs) var(--space-sm); }
   .pt-tile-count { font-size: 1.5rem; }
   .pt-tiers { grid-template-columns: minmax(0, 1fr); }
@@ -11966,3 +11968,11 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .ra-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .ra-row > .btn { grid-column: 2 / -1; justify-self: start; }
 }
+
+/* A link opened an item the page does not hold (components/list/missing-opened.tsx). */
+.missing-opened { display: flex; gap: var(--space-sm); align-items: flex-start; margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in srgb, var(--check-soon) 45%, var(--line)); border-radius: var(--radius-md); background: var(--surface); color: var(--text); }
+.missing-opened-icon { display: inline-grid; flex: none; place-items: center; width: 1.5rem; height: 1.5rem; color: var(--check-soon); }
+.missing-opened-icon .icon { width: 1rem; height: 1rem; }
+.missing-opened-body { flex: 1; min-width: 0; }
+.missing-opened-body p { margin: var(--space-2xs) 0 0; color: var(--text-soft); line-height: 1.5; }
+.missing-opened .btn { flex: none; }

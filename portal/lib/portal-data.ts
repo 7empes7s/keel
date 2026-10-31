@@ -1404,7 +1404,7 @@ export function buildAlerts({
       severity: "warning",
       title: `${kinds(uncovered, "kind of setting is", "kinds of settings are")} not backed up`,
       detail: "Keel knows these kinds of settings but has no backup of them.",
-      href: "/protect",
+      href: "/protect?health=not-backed-up",
     });
   }
 

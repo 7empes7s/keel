@@ -74,7 +74,7 @@ export function verdictAction(headline: ProtectionHeadline): { label: string; hr
 export const COVERAGE_LINKS = {
   covered: "/protect?health=backed-up",
   failed: "/protect?health=failed",
-  uncovered: "/protect",
+  uncovered: "/protect?health=not-backed-up",
 } as const;
 
 export interface CoverageSegment { key: keyof typeof COVERAGE_LINKS; label: string; value: number; href: string }

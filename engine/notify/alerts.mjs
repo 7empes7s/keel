@@ -405,14 +405,22 @@ export async function unsuppressAlert(client, { tenantRef, alertId, actor, at = 
   });
 }
 
-/** Alerts of one tenant, newest change first. Same gate as listAlertTransitions. */
-export async function listAlerts(client, { tenantRef, actor, states = null, limit = 100, at = new Date() }) {
+/**
+ * Alerts of one tenant, newest change first. Same gate as listAlertTransitions.
+ * `ids` narrows the read to those alerts, for a link that opens one alert the newest
+ * page of the inbox no longer holds.
+ * @param {any} client
+ * @param {{ tenantRef: string, actor: string, states?: string[] | null, ids?: string[] | null, limit?: number, at?: Date }} options
+ */
+export async function listAlerts(client, { tenantRef, actor, states = null, ids = null, limit = 100, at = new Date() }) {
   await authorize(client, { tenantRef, actor, capability: ALERT_READ_CAPABILITY, at });
   if (states && states.some((state) => !ALERT_STATES.includes(state))) throw new Error('unknown alert state');
+  if (ids !== null && (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))) throw new Error('ids must be an array of strings');
   const { rows } = await client.query(
     `SELECT * FROM alert WHERE tenant_ref = $1 AND ($2::text[] IS NULL OR state = ANY($2))
+        AND ($4::text[] IS NULL OR id::text = ANY($4))
       ORDER BY updated_at DESC, id LIMIT $3`,
-    [tenantRef, states, limit],
+    [tenantRef, states, limit, ids],
   );
   return rows;
 }

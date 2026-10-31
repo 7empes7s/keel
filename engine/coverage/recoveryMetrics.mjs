@@ -469,17 +469,6 @@ async function loadRequiredRelationships(client, { tenantRef }) {
   return rows.map((row) => relationshipDependency(row.parent_type, row.family));
 }
 
-/**
- * The tenant's recovery metrics. requiredTypes are the configuration types KEEL
- * collects (the collector descriptors); required relationship families are every
- * family KEEL has read for this tenant (an unsupported-only family is not one).
- *
- * Freshness also requires every service-settings workload that has run (not only
- * `disabled`) and every content workload with a recorded run (serviceBackups.mjs), so
- * the oldest good backup is the oldest across every service. The recoverable point is
- * still measured over the Entra ID and Intune settings only: an off-site copy's manifest
- * lists settings-backup observations, never service settings or content runs.
- */
 // The recoverable point from already loaded required types and observations.
 async function recoverablePointFrom(client, { tenantRef, required, observations, now }) {
   // A type the tenant does not use is not required of an off-site copy either.
@@ -514,6 +503,17 @@ export async function loadRecoverablePoint(client, { tenantRef, requiredTypes, n
   return recoverablePointFrom(client, { tenantRef, required, observations, now: generatedAt });
 }
 
+/**
+ * The tenant's recovery metrics. requiredTypes are the configuration types KEEL
+ * collects (the collector descriptors); required relationship families are every
+ * family KEEL has read for this tenant (an unsupported-only family is not one).
+ *
+ * Freshness also requires every service-settings workload that has run (not only
+ * `disabled`) and every content workload with a recorded run (serviceBackups.mjs), so
+ * the oldest good backup is the oldest across every service. The recoverable point is
+ * still measured over the Entra ID and Intune settings only: an off-site copy's manifest
+ * lists settings-backup observations, never service settings or content runs.
+ */
 export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, now = new Date() }) {
   assertTenantRef(tenantRef);
   if (!Array.isArray(requiredTypes)) throw new TypeError('requiredTypes must be an array of type names');

@@ -1732,6 +1732,12 @@ dd {
   background: var(--failed-bg);
 }
 .evidence-broken h2 { color: var(--failed); }
+.evidence-unchecked {
+  border-color: color-mix(in oklab, var(--check-soon) 55%, var(--line));
+  border-left-color: var(--check-soon);
+  background: var(--check-soon-bg);
+}
+.evidence-unchecked h2 { color: var(--check-soon); }
 .evidence-filters {
   display: flex;
   margin-bottom: var(--space-lg);

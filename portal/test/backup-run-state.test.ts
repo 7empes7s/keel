@@ -71,6 +71,6 @@ test("every Back up button turns off while its tier is queued or running", () =>
   const controls = readFileSync(new URL("../components/backup-controls.tsx", import.meta.url), "utf8");
   const coverage = readFileSync(new URL("../components/protect-coverage.tsx", import.meta.url), "utf8");
   assert.equal((controls.match(/run !== null/g) ?? []).length, 2, "the tier card button and each tier in the header menu");
-  assert.equal((coverage.match(/run !== null/g) ?? []).length, 2, "the kind row's button and the details panel's button");
+  assert.equal((coverage.match(/run !== null/g) ?? []).length, 3, "the kind row's Retry and Back up buttons, and the details panel's button");
   assert.match(controls, /alreadyActive === true/);
 });

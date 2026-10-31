@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import {
-  apiPermissionsLink, appFor, consentLink, currentStep, missingSentence, missingWords, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
+  apiPermissionsLink, appFor, confirmedRoles, consentLink, firstBackupLine, currentStep, missingSentence, missingWords, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
   roleLink, setupPrimary, setupStatus, stepHelp, stepLink, stepTitle,
   type PermissionEntry, type SetupPermissions, type SetupScope, type SetupState, type SetupStep,
 } from "../lib/setup-view";
@@ -217,4 +217,21 @@ test("admin roles: a missing role links to its assignment page, never to consent
   // Intune's role lists unreadable: the Intune role is not checked, never missing.
   const intune = permissionRows(state([scope([step({ progress: "done" })])], { permissions: catalog({ ...observed, uncheckedApis: ["intune"], byIdentity: { ...observed.byIdentity, collector: { ...observed.byIdentity.collector, granted: heldCollector.filter((entry) => entry.api !== "intune") } } }) }));
   assert.equal(intune.find((row) => row.name === "Read Only Operator")!.status, "not-checked");
+});
+
+test("the first backup line says how many types it read, and never \"0 types read\"", () => {
+  const first = { snapshotId: "s1", completedAt: "2026-09-04T12:00:00Z", read: 0, notRead: 0 };
+  const now = "2026-10-31T12:00:00Z";
+  assert.equal(firstBackupLine(first, now), "57 days ago");
+  assert.equal(firstBackupLine({ ...first, read: 1 }, now), "57 days ago: 1 type read");
+  assert.equal(firstBackupLine({ ...first, read: 12, notRead: 2 }, now), "57 days ago: 12 types read, 2 not read");
+});
+
+test("connections take the Intune roles Setup shows as done, per app", () => {
+  const role = (identity: SetupStep["identity"], name: string, progress: SetupStep["progress"]) =>
+    step({ id: `${identity}:${name}`, kind: "workload-rbac", identity, name, progress });
+  assert.deepEqual(confirmedRoles(state([
+    scope([role("collector", "Read Only Operator", "done"), step({ identity: "collector", progress: "done" })], { scope: "read" }),
+    scope([role("restorer", "Policy and Profile Manager", "waiting-for-you")]),
+  ])), { collector: ["Read Only Operator"] });
 });

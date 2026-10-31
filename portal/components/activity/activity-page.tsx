@@ -38,6 +38,7 @@ import {
   dayLabel,
   filterChips,
   integrityWords,
+  isSelfApproved,
   outcomeTone,
   parseFilters,
   peopleIn,
@@ -217,6 +218,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         </span>
         <span className="ac-row-mid">
           <Badge icon={outcome.icon} tone={outcome.tone}>{outcome.label}</Badge>
+          {isSelfApproved(row.entry) ? <Badge icon="person" tone="soon" title="The person who asked approved it, under solo approval mode">Self-approved</Badge> : null}
           <span className="ac-row-who">{row.person ? <Person capitalise person={row.person} /> : <span className="ac-keel"><Icon name="clock" />Keel</span>}</span>
         </span>
         <span className="ac-row-acts">
@@ -267,6 +269,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               label="Activity"
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
+              partial={filters.show !== "jobs" && (nextBefore || before) ? "Only one page of the audit record is loaded. Older and newer entries are under the buttons below the list." : null}
               renderRow={renderRow}
               sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}

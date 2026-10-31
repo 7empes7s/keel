@@ -3,6 +3,7 @@
 // approval requests, audit-record entries — built from their own fields and the
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
+import type { UnnamedReference } from "@/lib/app-names";
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
 import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
@@ -39,6 +40,8 @@ export interface ChangeRef extends EngineRef {
   resourceType?: string;
   changeType?: string;
   blastRadius?: string;
+  // What it points to that no backup names, each with a lookup link (filled in by the page).
+  unnamedRefs?: UnnamedReference[];
 }
 
 export interface SnapshotRef extends EngineRef {
@@ -331,8 +334,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "approval-request": return `${actorName} asked for approval: ${actionWords(subject.action)}`;
     case "approval-decision": {
       const verb = /^reject/.test(String(subject.decision ?? "")) || subject.status === "rejected" ? "rejected" : "approved";
-      return typeof subject.action === "string" ? `${actorName} ${verb} ${anAction(subject.action)}` : `${actorName} ${verb} a request`;
+      const own = subject.selfApproved === true ? " they asked for themselves (self-approved: approval mode is Solo)" : "";
+      return typeof subject.action === "string" ? `${actorName} ${verb} ${anAction(subject.action)}${own}` : `${actorName} ${verb} a request${own}`;
     }
+    case "approval-mode": return subject.mode === "solo"
+      ? `${actorName} switched approval mode to Solo, so the person who asks can approve their own requests. They confirmed the risk warning`
+      : `${actorName} switched approval mode to Two people, so someone other than the person who asked approves`;
     case "approval-signoff": return typeof subject.action === "string" ? `${actorName} signed off ${anAction(subject.action)}; another approval is still needed` : `${actorName} signed off a request; another approval is still needed`;
     case "approval.decided": return `${actorName} decided an approval`;
     case "action-attempt": return subject.decision === "denied"
@@ -342,7 +349,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       ? `Policies checked a change to ${namedResource(subject.naturalKey, names)}${subject.matched ? ", and one applied" : ""}`
       : "Policies checked a change";
     case "automation-execution": return `Automation ${subject.outcome === "executed" ? "rolled back a change" : "tried to roll back a change"}`;
-    case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared`;
+    case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared${subject.selfApproved === true ? " they asked for themselves (self-approved: approval mode is Solo)" : ""}`;
     case "recovery-completion": return `${actorName} updated the follow-up work of a restore`;
     case "incident-recovery": return `${actorName} updated incident recovery: ${typeof subject.transition === "string" ? words(subject.transition).toLowerCase() : "a change"}`;
     case "incident-recovery-check": return "KEEL checked a restore for malicious items left behind";

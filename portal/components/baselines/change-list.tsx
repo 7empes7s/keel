@@ -400,6 +400,7 @@ export function ChangeList({
             more={more}
             sorts={SORTS}
             noun={{ one: "change", many: "changes" }}
+            partial={serviceListNote(listedService, serviceTotal ?? listedService)}
             renderRow={(item) => {
               const who = changedBy(item);
               const state = reviewState(item);

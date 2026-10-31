@@ -176,6 +176,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
             label="Every change"
             matches={(row, text) => rowText(row).includes(text.trim())}
             noun={NOUN}
+            partial={feed.truncated ? `Only the newest ${feed.rows.length} are listed. Pick a shorter period to see all of them.` : null}
             renderRow={(row) => (
               <div className="bl-row cf-row" data-source={row.source}>
                 <span aria-hidden="true" className="bl-kind-icon" data-tone={toneOf(row) ?? undefined}><Icon name={serviceFor(row.service).icon} /></span>

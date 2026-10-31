@@ -70,6 +70,50 @@ export function isEligibleBaselineSource(snapshot, { tenantRef }) {
 }
 
 /**
+ * Why a completed snapshot is not a whole-estate baseline source, kind by kind: the
+ * kinds it did not read at all (a tier backup, or a kind added to Keel after it ran),
+ * the kinds it read only in part, and the kinds whose read failed. Every list is sorted
+ * and empty for an eligible source. Uses the same rule as isEligibleBaselineSource.
+ */
+export function baselineSourceGap(snapshot) {
+  const digest = isRecord(snapshot?.coverage_digest) ? snapshot.coverage_digest : {};
+  const gap = { notInBackup: [], partial: [], failed: [] };
+  for (const { type } of DESCRIPTORS) {
+    const coverage = digest[type];
+    if (!isRecord(coverage) || coverage.outcome === 'not-requested') gap.notInBackup.push(type);
+    else if (['complete', 'complete-empty', 'unavailable'].includes(coverage.outcome) || leftOutForServiceError(type, coverage)) continue;
+    else if (coverage.outcome === 'partial') gap.partial.push(type);
+    else gap.failed.push(type);
+  }
+  for (const list of Object.values(gap)) list.sort();
+  return gap;
+}
+
+/**
+ * The newest finished backup when it cannot be a baseline source, with why
+ * (baselineSourceGap); null when it can, or when no backup has finished. The Approved
+ * setup page says this beside a disabled "Capture new version".
+ */
+export async function newestBackupGap(client, { tenantRef }) {
+  assertTenantRef(tenantRef);
+  const { rows } = await client.query(
+    `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
+     FROM snapshot
+     WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC, id DESC
+     LIMIT 1`,
+    [tenantRef],
+  );
+  const snapshot = rows[0];
+  if (!snapshot || isEligibleBaselineSource(snapshot, { tenantRef })) return null;
+  return {
+    id: String(snapshot.id),
+    completedAt: snapshot.completed_at instanceof Date ? snapshot.completed_at.toISOString() : String(snapshot.completed_at),
+    ...baselineSourceGap(snapshot),
+  };
+}
+
+/**
  * The portal's baseline picker and seedFromSnapshot share this contract. Keep
  * tier-filtered snapshots available to restore/history callers; this list is
  * specifically for whole-estate baseline sources.
@@ -559,13 +603,13 @@ export async function reinstateBaseline(client, {
     const { rows } = await client.query(
       `INSERT INTO baseline
          (tenant_ref, set_by, label, description, source_snapshot_id, captured_at,
-          observation_scope, version, supersedes_id, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          observation_scope, version, supersedes_id, active, reinstated_from_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id, version`,
       [
         tenantRef, actor, versionLabel(latest.label, nextVersion), source.description ?? null,
         source.source_snapshot_id ?? null, source.captured_at ?? null, source.observation_scope ?? null,
-        nextVersion, latest.id, latest.active,
+        nextVersion, latest.id, latest.active, source.id,
       ],
     );
     created = rows[0];

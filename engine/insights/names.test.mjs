@@ -199,3 +199,33 @@ test('describeObject never shows an id as a name', () => {
   assert.equal(describeObject('x', { status: 'found', name: 'Group 5e170000-0000-4000-8000-000000000001' }).name, null);
   assert.equal(describeObject('someNewType:Thing', { status: 'unknown' }).typeName, 'Some new type');
 });
+
+// Backlog B11: a lookup by object id or app id read the payload of every saved version
+// (more than 9 minutes on live, operator queue Q303). It now reads the expression
+// indexes in store/schema.d/91 and still finds an app by its app id, in any case.
+test('an app is found by its app id, and a bare id is looked up through the indexes', async () => {
+  const APP_ID = 'a9900000-0000-4000-8000-0000000000aa';
+  const SP_ID = 'a9900000-0000-4000-8000-0000000000bb';
+  await backup(TENANT, daysAgo(1), 'complete', [[`servicePrincipal:${SP_ID}`, 'servicePrincipal', { id: SP_ID, appId: APP_ID, displayName: 'Payroll' }]]);
+  const names = await lookupNames(client, { tenantRef: TENANT, ids: [APP_ID.toUpperCase()] });
+  assert.equal(names.get(APP_ID.toUpperCase()).name, 'Payroll');
+  assert.equal(names.get(APP_ID.toUpperCase()).status, 'found');
+
+  const plans = [];
+  const explaining = {
+    async query(text, values) {
+      await client.query('SET enable_seqscan = off');
+      try {
+        const { rows } = await client.query(`EXPLAIN ${text}`, values);
+        plans.push(rows.map((row) => row['QUERY PLAN']).join('\n'));
+      } finally {
+        await client.query('RESET enable_seqscan');
+      }
+      return { rows: [] };
+    },
+  };
+  await lookupNames(explaining, { tenantRef: TENANT, ids: [SP_ID] });
+  assert.match(plans[0], /resource_version_object_id_idx/);
+  assert.match(plans[0], /resource_version_app_id_idx/);
+  assert.doesNotMatch(plans[0], /Seq Scan on resource_version/);
+});

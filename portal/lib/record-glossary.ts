@@ -83,6 +83,9 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Full error": error("Error", "What went wrong, word for word."),
   "Last error": error("Last error", "What went wrong the last time."),
   "Last read error": error("Last read error", "What Microsoft answered when the last read failed."),
+  "Microsoft request ID": support("Microsoft request ID", "The ID Microsoft gave the call that failed. Quote it in a Microsoft support case."),
+  "Client request ID": support("Client request ID", "The ID Keel sent with the call that failed. Microsoft support may ask for it too."),
+  "Failed call at": support("Failed call at", "When the call failed, in UTC (Microsoft's time when it sent one). Quote it with the request ID."),
   "Escalation error": error("Escalation error", "Why the alert could not be passed on."),
   "Estimate problem": error("Problem with the estimate", "Why the time-saved estimate could not be used."),
   "Workload": fact("Service", "The Microsoft 365 service this belongs to."),
@@ -323,6 +326,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Subject": fact("About", "What the entry is about."),
   "Evidence chain": fact("Tamper-proof log", "Whether every record in the log still checks out."),
   "Records in the chain": count("Records in the log", "How many records the tamper-proof log holds."),
+  "Off-site check": fact("Off-site check", "Whether the log matched its off-site copy: intact, unchecked (no copy), failed or unavailable."),
   "Evidence": fact("Proof", "The record that proves this."),
 
   // Alerts and notifications.

@@ -181,6 +181,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
         <RecordGroup title="Audit record">
           <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : "FAILED"} />
           <RecordField copy={false} label="Records in the chain" value={data.evidence.chainLength} />
+          <RecordField copy={false} label="Off-site check" value={data.evidence.check ?? "unavailable"} />
         </RecordGroup>
       </TechnicalDetails>
     </>

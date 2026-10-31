@@ -8,6 +8,7 @@ import { Icon } from "@/components/shell/icons";
 import { Popover } from "@/components/shell/popover";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { postAction } from "@/lib/action-client";
+import type { RetryPlan } from "@/lib/backup-failure";
 import { TIERS, activeRunSentence, tierLabel, type ActiveTierRun, type ActiveTierRuns, type TierSummary } from "@/lib/protect-view";
 import { toast } from "@/lib/toast";
 
@@ -90,8 +91,30 @@ export function useBackup(active: ActiveTierRuns = NO_RUNS, stamp?: string) {
     router.refresh();
   }
 
+  // Retry one failed kind (portal audit, issue 10): its tier's backup, the service
+  // settings backup for a workload kind, or a full read for a kind with no tier.
+  async function retry(plan: RetryPlan, name: string, source: string) {
+    if (plan.kind === "tier") return backUp([plan.tier], source);
+    const [path, label] = plan.kind === "workloads"
+      ? ["/api/actions/workload-collect", "Service settings backup"]
+      : ["/api/actions/collect", "Full backup"];
+    setBusy(source);
+    setError(null);
+    keys.current[plan.kind] ??= crypto.randomUUID();
+    try {
+      const { payload } = await postAction(path, {}, keys.current[plan.kind]);
+      const job = payload.job as { id: string };
+      toast({ title: `${label} queued`, detail: `It reads ${name} again. It only reads your tenant; nothing changes.`, href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
+      keys.current[plan.kind] = crypto.randomUUID();
+    } catch {
+      setError(`Keel could not queue the ${label.toLowerCase()}. Try again in a minute.`);
+    }
+    setBusy(null);
+    router.refresh();
+  }
+
   const feedback = error ? <p className="action-error" role="alert">{error}</p> : null;
-  return { backUp, busy, feedback, runOf };
+  return { backUp, retry, busy, feedback, runOf };
 }
 
 /** "Queued" or "Running" for a tier's button while its backup is in progress. */

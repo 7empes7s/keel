@@ -184,7 +184,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
           </p>
           <p>
             Lockout checks always run, Keel never writes sign-in trust or certificate settings, and a two-person rule you
-            set up still applies.
+            set up still applies, unless the approval mode on Approvals is Solo.
           </p>
         </div>
       </div>

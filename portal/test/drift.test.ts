@@ -250,15 +250,22 @@ test("accepting or ignoring a sign-in change goes to a second person", async () 
   const jobsBefore = await jobCount();
 
   const forever = await disposeRoute(post("/api/actions/dispose", {
-    ...operator, body: { driftId: drift.id, action: "ignore", reason: "noise", expiresAt: "infinity" },
+    ...operator, body: { driftId: drift.id, action: "ignore", reason: "Known noise from the vendor sync", expiresAt: "infinity" },
   }));
   assert.equal(forever.status, 400);
   assert.match((await forever.json()).message, /real date/);
   const tooLong = await disposeRoute(post("/api/actions/dispose", {
-    ...operator, body: { driftId: drift.id, action: "ignore", reason: "noise", expiresAt: new Date(Date.now() + 91 * 86_400_000).toISOString() },
+    ...operator, body: { driftId: drift.id, action: "ignore", reason: "Known noise from the vendor sync", expiresAt: new Date(Date.now() + 91 * 86_400_000).toISOString() },
   }));
   assert.equal(tooLong.status, 400);
   assert.match((await tooLong.json()).message, /at most 90 days/);
+
+  // UI audit 31 Oct 2026, C1: "x" was kept as the reason to accept a change.
+  const placeholder = await disposeRoute(post("/api/actions/dispose", {
+    ...operator, body: { driftId: drift.id, action: "accept", reason: "x" },
+  }));
+  assert.equal(placeholder.status, 400);
+  assert.equal((await placeholder.json()).error, "weak_reason");
 
   const response = await disposeRoute(post("/api/actions/dispose", {
     ...operator, body: { driftId: drift.id, action: "accept", reason: "turned off on purpose" },

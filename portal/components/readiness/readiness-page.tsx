@@ -52,6 +52,8 @@ import {
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // Emergency access (portal audit, one design): a verdict whose one amber action is the
 // next thing to do (review a use, record a due test, or add an account); four tiles;
@@ -599,6 +601,8 @@ function RecordSheet({ account, kind, now, onSave, onClose }: {
     const at = utcInstant(day.from, time);
     if (!at) { setError("Write the time as hours and minutes, such as 09:30."); return; }
     if (Date.parse(at) > Date.parse(now) + 5 * 60_000) { setError("The time must be in the past."); return; }
+    const weak = optionalReasonMessage(note);
+    if (weak) { setError(weak); return; }
     void run(at, note.trim());
   }
 
@@ -633,6 +637,7 @@ function RecordSheet({ account, kind, now, onSave, onClose }: {
       <label className="filter-field">
         <span>Note (optional)</span>
         <textarea disabled={busy} maxLength={500} name="note" onChange={(event) => setNote(event.target.value)} placeholder={test ? "For example: quarterly test with the service desk" : "For example: new security key issued"} rows={2} value={note} />
+        <ReasonHint value={note} />
       </label>
     </SheetForm>
   );

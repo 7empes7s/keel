@@ -213,6 +213,7 @@ export function summarizeSemanticDrift(items) {
   let behaviouralSettings = 0;
   let fixedSettings = 0;
   let cosmeticOnly = 0;
+  let emptyOrOrderOnly = 0;
   let unknownBefore = 0;
   let mismatched = 0;
   for (const item of items) {
@@ -224,7 +225,11 @@ export function summarizeSemanticDrift(items) {
       group.settings += semantic.groups.behaviour + semantic.groups.fixed;
       behaviouralSettings += semantic.groups.behaviour;
       fixedSettings += semantic.groups.fixed;
-      if (semantic.state === 'compared' && semantic.total === 0) cosmeticOnly += 1;
+      if (semantic.state === 'compared' && semantic.total === 0) {
+        // Only empty values or list order differ: not "settings Microsoft manages".
+        if (semantic.ignored) emptyOrOrderOnly += 1;
+        else cosmeticOnly += 1;
+      }
       if (semantic.state === 'unknown-before') unknownBefore += 1;
     }
     if (item.evidence && item.evidence.mismatches > 0) mismatched += 1;
@@ -235,7 +240,7 @@ export function summarizeSemanticDrift(items) {
     const rb = BLAST_ORDER.indexOf(b.blastRadius);
     return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb) || a.blastRadius.localeCompare(b.blastRadius);
   });
-  return { total: items.length, byImpact, behaviouralSettings, fixedSettings, cosmeticOnly, unknownBefore, mismatched };
+  return { total: items.length, byImpact, behaviouralSettings, fixedSettings, cosmeticOnly, emptyOrOrderOnly, unknownBefore, mismatched };
 }
 
 function hashState(expected, actual, { present }) {

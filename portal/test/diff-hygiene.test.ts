@@ -55,3 +55,10 @@ test("a hidden value reads in plain words", () => {
   assert.equal(readableValue(HIDDEN_VALUE), HIDDEN_WORDS);
   assert.ok(valueText({ hint: HIDDEN_VALUE }).includes(HIDDEN_WORDS));
 });
+
+test("Changes comparison: a changed secret still reads as changed, shown hidden", () => {
+  const comparison = compareSettings({ wifi: { preSharedKey: "old-key-1" } }, { wifi: { preSharedKey: "new-key-2" } });
+  assert.equal(comparison.differing, 1);
+  const text = JSON.stringify(comparison.rows);
+  assert.equal(text.includes("old-key-1") || text.includes("new-key-2"), false, text);
+});

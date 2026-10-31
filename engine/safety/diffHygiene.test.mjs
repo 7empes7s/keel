@@ -63,3 +63,11 @@ test('Changes, Compare and Activity diffs (semanticChange) skip no-op difference
   const reordered = semanticChange({ resourceType: 'application', changeType: 'modified', before: { tags: ['a', 'b'], description: null }, after: { tags: ['b', 'a'], description: '' } });
   assert.equal(reordered.total, 0);
 });
+
+test('the Changes summary counts empty-or-order-only changes apart from Microsoft-managed ones', async () => {
+  const { semanticChange, summarizeSemanticDrift } = await import('../govern/semanticDrift.mjs');
+  const semantic = semanticChange({ resourceType: 'application', changeType: 'modified', before: { tags: ['a', 'b'] }, after: { tags: ['b', 'a'] } });
+  const summary = summarizeSemanticDrift([{ blastRadius: 'cosmetic', semantic, evidence: null }]);
+  assert.equal(summary.cosmeticOnly, 0);
+  assert.equal(summary.emptyOrOrderOnly, 1);
+});

@@ -111,9 +111,12 @@ export function compareSettings(before: unknown, after: unknown, names: Readonly
   const hasBefore = before !== null && before !== undefined;
   const hasAfter = after !== null && after !== undefined;
   if (!hasBefore && !hasAfter) return { rows: [], counts, differing: 0 };
-  // Credential values (password hints and the like) are never shown.
-  const was = hasBefore ? settings(maskCredentials(before)) : new Map<string, unknown>();
-  const now = hasAfter ? settings(maskCredentials(after)) : new Map<string, unknown>();
+  // Compared on the stored values, shown with credential values (password hints and
+  // the like) hidden, so a changed secret still reads as changed.
+  const was = hasBefore ? settings(before) : new Map<string, unknown>();
+  const now = hasAfter ? settings(after) : new Map<string, unknown>();
+  const wasShown = hasBefore ? settings(maskCredentials(before)) : new Map<string, unknown>();
+  const nowShown = hasAfter ? settings(maskCredentials(after)) : new Map<string, unknown>();
   // A setting that is empty on its only side is no setting: "Not set -> not set" never shows.
   const paths = [...new Set([...was.keys(), ...now.keys()])].filter((path) => (was.has(path) && now.has(path)) || !isEmptyValue(was.has(path) ? was.get(path) : now.get(path)));
   const rows: SettingRow[] = paths.map((path) => {
@@ -125,14 +128,16 @@ export function compareSettings(before: unknown, after: unknown, names: Readonly
       : !inWas ? "added"
         : !inNow ? "removed"
           : same(old, value) ? "same" : "changed";
+    const oldShown = wasShown.get(path);
+    const valueShown = nowShown.get(path);
     const listy = Array.isArray(old) || Array.isArray(value);
     const entries = listy && diff !== "same" && diff !== "unknown"
-      ? listDiff(Array.isArray(old) ? old : [], Array.isArray(value) ? value : [], names)
+      ? listDiff(Array.isArray(oldShown) ? oldShown : [], Array.isArray(valueShown) ? valueShown : [], names)
       : null;
     return {
       path, ...placed(path), diff,
-      before: inWas ? sideWords(old, names) : null,
-      after: inNow ? sideWords(value, names) : null,
+      before: inWas ? sideWords(oldShown, names) : null,
+      after: inNow ? sideWords(valueShown, names) : null,
       // A list whose entries are only plain words reads fine as two sides when short.
       entries: entries && entries.length ? entries : null,
     };

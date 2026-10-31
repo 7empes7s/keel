@@ -22,6 +22,7 @@ export function DecisionWorkbook({ summary }: { summary: SemanticSummary }) {
     summary.mismatched ? `${plural(summary.mismatched, "change rests", "changes rest")} on records that do not match each other. Each one says which.` : null,
     summary.unknownBefore ? `${plural(summary.unknownBefore, "change has", "changes have")} no copy in the approved setup, so earlier values are not known.` : null,
     summary.cosmeticOnly ? `${plural(summary.cosmeticOnly, "change touches", "changes touch")} only settings Microsoft manages itself.` : null,
+    summary.emptyOrOrderOnly ? `${plural(summary.emptyOrOrderOnly, "change differs", "changes differ")} only in empty values or the order of a list.` : null,
   ].filter((note): note is string => note !== null);
   return (
     <section aria-labelledby="decision-workbook-heading" className="report-section decision-workbook">

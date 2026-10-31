@@ -56,7 +56,9 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
     }
     await appendEvidence(fixture, { tenantRef: "other-tenant", kind: "policy-evaluation", subject: { secret: true }, actor: "other" });
     const { rows } = await fixture.query("SELECT * FROM evidence WHERE tenant_ref = $1 ORDER BY seq DESC", [tenant]);
-    assert.equal((await (await guardedEvidenceVerify(deps)(request())).json()).status, "unanchored");
+    // No off-site checkpoint: not checked, and the record's own chain is checked instead.
+    const unanchoredVerify = guardedEvidenceVerify(deps, undefined, new Map());
+    assert.deepEqual(await (await unanchoredVerify(request())).json(), { ok: false, status: "unanchored", reason: "external-trust-unavailable", ownChain: "intact" });
     options.checkpointRef = await publishCheckpoint(fixture, options);
     assert.equal((await (await verify(request())).json()).status, "verified");
     const query = "kind=policy-evaluation&from=2000-01-01&to=2100-01-01&limit=2";
@@ -103,6 +105,10 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
     const tampered = await (await verify(request())).json();
     assert.deepEqual(tampered, { ok: false, brokenAtSeq: rows[2].seq, status: "broken-at-sequence" as const });
     assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: tampered })), /evidence-broken/);
+    // A missing off-site checkpoint never hides the tampering (Codex review P0-02).
+    const tamperedUnanchored = await (await unanchoredVerify(request())).json();
+    assert.equal(tamperedUnanchored.ownChain, "broken");
+    assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: tamperedUnanchored })), /evidence-broken[\s\S]*Failed the check/);
     await fixture.query("UPDATE evidence SET record_hash = $1 WHERE seq = $2", [rows[2].record_hash, rows[2].seq]);
     await fixture.query("DELETE FROM evidence WHERE seq = $1", [rows[0].seq]);
     assert.deepEqual(await (await verify(request())).json(), { ok: false, status: "truncated", expectedSeq: rows[0].seq, actualSeq: rows[1].seq });

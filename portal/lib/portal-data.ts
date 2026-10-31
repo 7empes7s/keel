@@ -24,6 +24,8 @@ import {
 } from "../../engine/store/governance.mjs";
 import { connect } from "@/lib/db";
 import { evidenceChainCache } from "@/lib/evidence-chain-cache";
+import { checkAuditRecord } from "@/lib/evidence";
+import { AUDIT_CHECK_WORDS, AUDIT_RECORD_HREF, auditCheckOf, dashboardAuditCheck } from "@/lib/audit-check";
 import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
@@ -1459,16 +1461,16 @@ export function buildAlerts({
       });
   }
 
-  // getEvidenceIntegrity checks the record's own hash chain, not the off-site checkpoint,
-  // so ok false here is a real failed check. "Not checked" lives on Activity, which reads
-  // the off-site checkpoint.
-  if (!evidence.ok) {
+  // The same two states, and words, as Activity, the menu and Integrations: a failed
+  // check is Urgent, a record with no off-site copy to compare with is Check soon.
+  const audit = dashboardAuditCheck(evidence);
+  if (audit === "failed" || audit === "unchecked") {
     alerts.push({
       key: "audit",
-      severity: "critical",
-      title: "The audit record failed its integrity check",
-      detail: "Who-did-what records cannot be trusted until this is investigated.",
-      href: "/activity?show=records",
+      severity: audit === "failed" ? "critical" : "warning",
+      title: AUDIT_CHECK_WORDS[audit].title,
+      detail: AUDIT_CHECK_WORDS[audit].detail,
+      href: AUDIT_RECORD_HREF,
     });
   }
 
@@ -1570,6 +1572,14 @@ export async function getDashboardData(): Promise<DashboardData> {
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
+        // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
+        // A broken own chain is already a failed check: no second walk.
+        check: evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+          .then(auditCheckOf)
+          .catch((error) => {
+            console.error("[keel-portal] overview audit record check unavailable", error);
+            return undefined;
+          }) : "failed",
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
       offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })

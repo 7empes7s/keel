@@ -326,6 +326,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Subject": fact("About", "What the entry is about."),
   "Evidence chain": fact("Tamper-proof log", "Whether every record in the log still checks out."),
   "Records in the chain": count("Records in the log", "How many records the tamper-proof log holds."),
+  "Off-site check": fact("Off-site check", "Whether the log matched its off-site copy: intact, unchecked (no copy), failed or unavailable."),
   "Evidence": fact("Proof", "The record that proves this."),
 
   // Alerts and notifications.

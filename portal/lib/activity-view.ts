@@ -7,6 +7,7 @@ import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { type Day, type DayRange, normalise, rangeFromParam } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
+import { AUDIT_CHECK_WORDS, auditCheckOf } from "@/lib/audit-check";
 import { jobDisplayStatus, jobErrorLine, type NamedKeys } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
@@ -317,18 +318,20 @@ export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
 
 export type IntegrityState = "intact" | "unchecked" | "broken" | "unknown";
 
-/** The audit record's integrity as a word, a sentence and a tone. */
+/** The audit record's integrity as a word, a sentence and a tone (lib/audit-check.ts words). */
 export function integrityWords(integrity: ChainIntegrity | null): { state: IntegrityState; label: string; sentence: string; tone: BadgeTone } {
-  if (integrity === null) return { state: "unknown", label: "Could not check", sentence: "The audit record's integrity could not be read right now.", tone: "neutral" };
-  if (integrity.ok) {
-    const pending = integrity.unanchoredRecords ?? 0;
+  const check = auditCheckOf(integrity);
+  if (check === "unknown") return { state: "unknown", label: "Could not check", sentence: "The audit record's integrity could not be read right now.", tone: "neutral" };
+  if (check === "intact") {
+    const pending = integrity?.unanchoredRecords ?? 0;
     return { state: "intact", label: "Intact", tone: "fine", sentence: `Verified against the off-site copy${pending ? `. ${pending} newer ${pending === 1 ? "entry waits" : "entries wait"} for the next copy` : ""}.` };
   }
-  // Same words as the Overview: not checked is amber, only a failed check is red.
-  // No usable off-site checkpoint (none set up, or it cannot be read): not checked, which
-  // is amber and never the same as failing the check.
-  if (integrity.status === "unanchored") return { state: "unchecked", label: "Not checked: no off-site copy", tone: "soon", sentence: "Keel checks the record against an off-site copy, and none could be read. Set up or fix the off-site copy." };
-  return { state: "broken", label: "Failed the check", tone: "urgent", sentence: "The record failed its integrity check. Investigate before trusting who did what." };
+  // Not checked is amber and only a failed check is red, on every page. A broken own
+  // chain is a failed check even when there is no off-site copy to compare with.
+  if (check === "unchecked") return { state: "unchecked", label: AUDIT_CHECK_WORDS.unchecked.label, tone: "soon", sentence: `${AUDIT_CHECK_WORDS.unchecked.detail} Set up or fix the off-site copy.` };
+  return { state: "broken", label: AUDIT_CHECK_WORDS.failed.label, tone: "urgent", sentence: integrity?.ownChain === "broken"
+    ? "The record's own chain of entries does not match, and there is no off-site copy to compare with. Investigate before trusting who did what."
+    : "The record failed its integrity check. Investigate before trusting who did what." };
 }
 
 export function activityStatus(counts: ActivityCounts): { tone: RiskTone; label: string } {
@@ -357,7 +360,7 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
   const integrityState = integrityWords(integrity);
   if (!showJobs) {
     return integrityState.state === "broken"
-      ? { text: "The audit record failed its integrity check; investigate before trusting it.", tone: "urgent", retry: null }
+      ? { text: `${AUDIT_CHECK_WORDS.failed.title}; investigate before trusting it.`, tone: "urgent", retry: null }
       : { text: "Showing the audit record: who did what, newest first.", tone: "fine", retry: null };
   }
   const failed = counts.newestFailed;
@@ -373,7 +376,7 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
     };
   }
   if (integrityState.state === "broken") {
-    return { text: "The audit record failed its integrity check; investigate before trusting it.", tone: "urgent", retry: null };
+    return { text: `${AUDIT_CHECK_WORDS.failed.title}; investigate before trusting it.`, tone: "urgent", retry: null };
   }
   if (counts.jobsDay === 0) {
     return { text: `Keel ran no jobs in the last day${counts.running || counts.waiting ? `; ${plural(counts.running + counts.waiting, "job is", "jobs are")} running or waiting` : ""}.`, tone: "fine", retry: null };

@@ -28,6 +28,10 @@ const SITE_KEY = `sharepoint-site-settings:site:${FINANCE}`;
 const NAMELESS_SITE_KEY = `sharepoint-site-settings:site:${NAMELESS_SITE}`;
 const OLD_TEAM_ID = "0f1a0000-0000-4000-8000-000000000002";
 const SALES_ID = "0f1a0000-0000-4000-8000-000000000003";
+// A role assignment whose holder no backup names: the alert lists the id with a lookup link.
+const GA_TEMPLATE = "62e90394-69f5-4237-9190-012177145e10";
+const GHOST_ID = "0f1a0000-0000-4000-8000-0000000000c9";
+const ASSIGNMENT_KEY = `roleAssignment:${GA_TEMPLATE}:${GHOST_ID}@/`;
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 let database: { url: string; connect(): Promise<TestClient>; cleanup(): Promise<void> };
@@ -67,6 +71,7 @@ before(async () => {
   for (const [key, type, payload] of [
     [SCRIPT_ID, "deviceManagementScript", { id: SCRIPT_ID, displayName: "Set time zone" }],
     [NAMELESS_ID, "oauth2PermissionGrant", { id: NAMELESS_ID, scope: "User.Read" }],
+    [ASSIGNMENT_KEY, "roleAssignment", { id: "ra-ghost", roleDefinitionId: GA_TEMPLATE, principalId: GHOST_ID, directoryScopeId: "/" }],
   ] as const) {
     await client.query(
       `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
@@ -106,6 +111,15 @@ test("each alerted resource reads the newest name this tenant's backups and site
   assert.equal(names.has(NAMELESS_SITE_KEY), false);
   assert.equal(names.has(NAMELESS_ID), false);
   assert.equal(names.has("sharepoint-site-settings:tenant"), false);
+});
+
+test("what an alerted setting points to that no backup names is listed with a Graph lookup link", async () => {
+  const unnamedRefs = new Map();
+  await alertResourceNames(client, TENANT, [ASSIGNMENT_KEY, SCRIPT_ID], new Map(), unnamedRefs);
+  const refs = unnamedRefs.get(ASSIGNMENT_KEY);
+  assert.deepEqual(refs.map((ref: { what: string; id: string }) => [ref.what, ref.id]), [["Admin role", GA_TEMPLATE], ["Who holds the role", GHOST_ID]]);
+  assert.match(refs[1].lookup, /^https:\/\/developer\.microsoft\.com\/en-us\/graph\/graph-explorer\?request=directoryObjects%2F0f1a0000/);
+  assert.equal(unnamedRefs.has(SCRIPT_ID), false, "a setting with a name of its own has none");
 });
 
 test("cmdlet workload resources are named by the Title, Name or DisplayName PowerShell gives them", async () => {
@@ -178,6 +192,22 @@ test("the list shows names in its rows and keeps the keys in Technical details",
   assert.ok(names.some((name) => name.startsWith("Unnamed ")));
   for (const name of names) assert.doesNotMatch(name, GUID);
   assert.ok(html.includes(SITE_KEY), "the stored key stays available under Technical details");
+});
+
+test("an alert lists each unnamed id with its lookup link under Technical details only", async () => {
+  const lookup = "https://developer.microsoft.com/en-us/graph/graph-explorer?request=directoryObjects%2F" + GHOST_ID + "&method=GET&version=v1.0&GraphUrl=https://graph.microsoft.com";
+  const html = await renderAlertsAt("", {
+    alerts: [alert({ resourceKey: ASSIGNMENT_KEY, name: null, unnamedRefs: [{ id: GHOST_ID, what: "Who holds the role", lookup }], cause: { changeType: "added", resourceType: "roleAssignment", snapshotId: null } })],
+    now: "2026-10-15T12:00:00Z",
+    canRespond: true,
+    canMute: false,
+  });
+  const details = [...html.matchAll(/<details[\s\S]*?<\/details>/g)].map((match) => match[0]).join("");
+  assert.ok(details.includes(GHOST_ID), "the id is in Technical details");
+  assert.ok(details.includes(lookup.replaceAll("&", "&amp;")), "with its lookup link");
+  assert.match(details, /Look it up in Microsoft Graph Explorer/);
+  const visible = html.replace(/<details[\s\S]*?<\/details>/g, "");
+  assert.ok(!visible.includes(GHOST_ID), "never outside Technical details");
 });
 
 test("SharePoint alerts say what differs from the approved setup, never a baseline", () => {

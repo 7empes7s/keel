@@ -104,8 +104,12 @@ test("existing guarded job handlers serve the requested history limit and job de
   // Activity: kind and status narrow the query itself; an unknown status is refused.
   const filtered = await guardedJobList(deps)(new Request("http://localhost/api/jobs?limit=20&kind=backup,collect&status=failed", { headers }));
   assert.equal(filtered.status, 200);
-  assert.match(queries.at(-1)?.sql ?? "", /status = ANY/);
+  assert.match(queries.at(-1)?.sql ?? "", /ELSE status END = ANY/);
   assert.deepEqual(queries.at(-1)?.values, [20, ["backup", "collect"], ["failed"]]);
+  // "Partly done" is its own status in the query, so older partial runs are found too.
+  await guardedJobList(deps)(new Request("http://localhost/api/jobs?limit=100&status=partial", { headers }));
+  assert.match(queries.at(-1)?.sql ?? "", /THEN 'partial' ELSE status END = ANY/);
+  assert.deepEqual(queries.at(-1)?.values, [100, null, ["partial"]]);
   const refused = await guardedJobList(deps)(new Request("http://localhost/api/jobs?status=exploded", { headers }));
   assert.equal(refused.status, 400);
   assert.equal((await guardedJobList(deps)(new Request("http://localhost/api/jobs?kind=drop%20table", { headers }))).status, 400);

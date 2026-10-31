@@ -108,8 +108,8 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   assert.equal(counts.running, 1);
   assert.equal(counts.waiting, 1);
   assert.equal(counts.days.length, 7);
-  assert.deepEqual(counts.days.at(-1), { day: "2026-10-02", jobs: 3, failed: 1 });
-  assert.deepEqual(counts.days[0], { day: "2026-09-26", jobs: 0, failed: 0 });
+  assert.deepEqual(counts.days.at(-1), { day: "2026-10-02", jobs: 3, failed: 1, partial: 0 });
+  assert.deepEqual(counts.days[0], { day: "2026-09-26", jobs: 0, failed: 0, partial: 0 });
   assert.equal(counts.newestFailed?.id, JOBS[2].id);
   assert.deepEqual(activityStatus(counts), { tone: "urgent", label: "2 failed today" });
   assert.deepEqual(activityStatus(activityCounts([JOBS[0]], NOW)), { tone: "low", label: "1 running" });
@@ -126,7 +126,12 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   assert.deepEqual(retryOf({ ...JOBS[1], status: "failed" }), { kind: "collect" });
   assert.deepEqual(retryOf(JOBS[3]), { kind: "plan", href: "/restore", label: "Plan it again" });
   assert.equal(integrityWords({ ok: true, status: "verified", unanchoredRecords: 4 }).sentence, "Verified against the off-site copy. 4 newer entries wait for the next copy.");
-  assert.equal(integrityWords({ ok: false, status: "unanchored" }).label, "Not copied yet");
+  // The live route reports external-trust-unavailable when no off-site storage is set up.
+  assert.equal(integrityWords({ ok: false, status: "unanchored", reason: "external-trust-unavailable" }).label, "Not checked: no off-site copy");
+  assert.equal(integrityWords({ ok: false, status: "unanchored", reason: "missing-external-anchor" }).label, "Not checked: no off-site copy");
+  assert.equal(integrityWords({ ok: false, status: "unanchored" }).tone, "soon");
+  assert.equal(integrityWords({ ok: false, status: "broken-at-sequence" }).label, "Failed the check");
+  assert.equal(integrityWords({ ok: false, status: "broken-at-sequence" }).tone, "urgent");
   assert.equal(integrityWords(null).tone, "neutral");
 });
 
@@ -196,4 +201,31 @@ test("the page body renders rows by day, filters by address, and keeps ids in th
   assert.ok(!viewer.includes("btn-primary"), "no amber action without the backup capability");
   const records = await renderActivityAt("show=records", { ...props, jobs: [] });
   assert.ok(records.includes("Showing the audit record: who did what, newest first."));
+});
+
+test("a backup that ended partly done is a warning everywhere on Activity, never finished (audit issue 2)", () => {
+  const partly = job("6", "backup", "succeeded", { result: { partial: true, incompleteTypes: [{ type: "deviceManagementSettings", outcome: "failed", httpStatus: 400 }] } });
+  const whole = job("7", "backup", "succeeded");
+  assert.equal(jobOutcome("partial"), "partial");
+  assert.equal(jobOutcome("succeeded"), "finished");
+  const [row] = activityRows([partly], [], {}, {}, NOW);
+  assert.equal(row.outcome, "partial");
+  assert.match(row.line, /Partly done/);
+  assert.equal(activityRows([whole], [], {}, {}, NOW)[0].outcome, "finished");
+  // The outcome filter tells the two apart: "Finished" never shows a partly done run.
+  assert.ok(rowMatches(row, parseFilters((key) => (key === "outcome" ? "partial" : null))));
+  assert.ok(!rowMatches(row, parseFilters((key) => (key === "outcome" ? "finished" : null))));
+
+  const counts = activityCounts([partly, whole], NOW);
+  assert.equal(counts.failedDay, 0);
+  assert.equal(counts.partialDay, 1);
+  assert.equal(counts.partialWeek, 1);
+  assert.deepEqual(counts.days.at(-1), { day: "2026-10-02", jobs: 2, failed: 0, partial: 1 });
+  assert.deepEqual(activityStatus(counts), { tone: "soon", label: "1 partly done today" });
+  const verdict = activityVerdict(counts, true, { ok: true, status: "verified" });
+  assert.equal(verdict.tone, "soon");
+  assert.equal(verdict.text, "Keel ran 2 jobs in the last day; none failed, but 1 was only partly done.");
+  assert.doesNotMatch(verdict.text, /none failed\./);
+  // Only whole runs read as fine.
+  assert.deepEqual(activityStatus(activityCounts([whole], NOW)), { tone: "fine", label: "All finished" });
 });

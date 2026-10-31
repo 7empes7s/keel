@@ -7,7 +7,8 @@ import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { type Day, type DayRange, normalise, rangeFromParam } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
-import { jobErrorLine, type NamedKeys } from "@/lib/job-names";
+import { AUDIT_CHECK_WORDS, auditCheckOf } from "@/lib/audit-check";
+import { jobDisplayStatus, jobErrorLine, type NamedKeys } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { displayEnum } from "@/lib/presentation";
@@ -24,11 +25,11 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check"] },
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
   setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot"] },
-  approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting"] },
+  approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting", "approval-mode"] },
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
-  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity"] },
+  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action"] },
 };
 export const ACTIVITY_KIND_ORDER: ActivityKind[] = ["backup", "restore", "rollback", "setup", "approval", "policy", "drill", "copy", "other"];
 
@@ -56,10 +57,14 @@ export function actorsOf(value: string | null | undefined): string[] {
 }
 
 /** How a row ended: the picker's choices under "Outcome", and the chip on each row. */
-export type Outcome = "failed" | "refused" | "running" | "waiting" | "finished" | "recorded" | "cancelled";
+export type Outcome = "failed" | "partial" | "refused" | "running" | "waiting" | "finished" | "recorded" | "cancelled";
 
 export const OUTCOMES: Record<Outcome, { label: string; plural: string; tone: BadgeTone; icon: IconName; jobStatuses: string[] }> = {
   failed: { label: "Failed", plural: "Failed", tone: "urgent", icon: "x-circle", jobStatuses: ["failed"] },
+  // A finished backup that could not read some types in full: a warning, never "Finished".
+  // The engine stores it as succeeded; the job list filters on the status a person reads,
+  // so "partial" finds every partly done run and "succeeded" only the gap-free ones.
+  partial: { label: "Partly done", plural: "Partly done", tone: "soon", icon: "alert", jobStatuses: ["partial"] },
   refused: { label: "Refused", plural: "Refused", tone: "soon", icon: "alert", jobStatuses: [] },
   running: { label: "Running", plural: "Running", tone: "low", icon: "play", jobStatuses: ["running"] },
   waiting: { label: "Waiting", plural: "Waiting to start", tone: "low", icon: "clock", jobStatuses: ["queued"] },
@@ -67,7 +72,7 @@ export const OUTCOMES: Record<Outcome, { label: string; plural: string; tone: Ba
   recorded: { label: "Recorded", plural: "Recorded", tone: "neutral", icon: "audit", jobStatuses: [] },
   cancelled: { label: "Cancelled", plural: "Cancelled", tone: "neutral", icon: "pause", jobStatuses: ["cancelled"] },
 };
-export const OUTCOME_ORDER: Outcome[] = ["failed", "refused", "running", "waiting", "finished", "recorded", "cancelled"];
+export const OUTCOME_ORDER: Outcome[] = ["failed", "partial", "refused", "running", "waiting", "finished", "recorded", "cancelled"];
 
 export function outcomeOf(value: string | null | undefined): Outcome | null {
   return value && value in OUTCOMES ? (value as Outcome) : null;
@@ -79,7 +84,9 @@ export function outcomesOf(value: string | null | undefined): Outcome[] {
   return OUTCOME_ORDER.filter((key) => picked.includes(key));
 }
 
+/** A job's outcome from the status a person reads (`jobDisplayStatus`): "partial" is its own. */
 export function jobOutcome(status: string): Outcome {
+  if (status === "partial") return "partial";
   return OUTCOME_ORDER.find((key) => OUTCOMES[key].jobStatuses.includes(status)) ?? "recorded";
 }
 
@@ -93,6 +100,13 @@ export function recordOutcome(entry: Pick<EvidenceEntry, "kind" | "subject">): O
   if (entry.kind === "automation-execution" && subject.outcome !== "executed") return "failed";
   if (entry.kind === "incident-recovery-check" && subject.outcome === "unsafe") return "failed";
   return "recorded";
+}
+
+/** The person who asked approved it themselves, under solo approval mode. */
+export function isSelfApproved(entry: Pick<EvidenceEntry, "kind" | "subject"> | null | undefined): boolean {
+  if (!entry) return false;
+  return ["approval-decision", "content-effect-approval", "change-intent"].includes(entry.kind)
+    && ((entry.subject ?? {}) as Record<string, unknown>).selfApproved === true;
 }
 
 export type RowTone = RiskTone | null;
@@ -137,7 +151,7 @@ export function actorName(actor: string, people: ActivityPeople): string {
 export function jobRow(job: JobRecord, now: string): ActivityRow {
   const at = job.finishedAt ?? job.startedAt ?? job.createdAt ?? null;
   const kind = kindOfJob(job.kind);
-  const outcome = jobOutcome(job.status);
+  const outcome = jobOutcome(jobDisplayStatus(job));
   const person = job.references?.people.requested_by ?? null;
   const went = job.status === "failed" && job.error ? jobErrorLine(job.error) : capital(jobStatusSentence(job, now));
   return {
@@ -172,6 +186,7 @@ export function recordKindWords(kind: string): string {
     "automation-execution": "Automatic roll back",
     "content-effect-approval": "Content-effect approval",
     "restore-approval-setting": "Restore approval setting",
+    "approval-mode": "Approval mode change",
     "scuba-config-list": "ScubaGear list",
     "recovery-completion": "Restore follow-up",
     "incident-recovery": "Incident recovery",
@@ -184,6 +199,7 @@ export function recordKindWords(kind: string): string {
     "benchmark-exception": "Control exception",
     "collection.completed": "Backup finished",
     "job.started": "Job started",
+    "alert-action": "Alert",
   };
   return words[kind] ?? displayEnum("eventKind", kind);
 }
@@ -204,6 +220,7 @@ export function rowHref(row: ActivityRow): string | null {
   if (row.entry?.kind === "recovery-drill" || row.entry?.kind === "fidelity-drill") return "/resilience";
   if (row.entry?.kind === "offsite-copy") return "/integrations";
   if (row.entry?.kind === "benchmark-evaluation" || row.entry?.kind === "benchmark-exception") return "/benchmarks";
+  if (row.entry?.kind === "alert-action" && typeof subject.alertId === "string" && subject.alertId) return `/alerts?open=${encodeURIComponent(subject.alertId)}`;
   return null;
 }
 
@@ -216,6 +233,7 @@ export function rowHrefLabel(row: ActivityRow): string {
   if (href.startsWith("/approvals")) return "Show decided approvals";
   if (href.startsWith("/resilience")) return "Show recovery readiness";
   if (href.startsWith("/integrations")) return "Show off-site copy settings";
+  if (href.startsWith("/alerts")) return "Open the alert";
   return "Show the control checks";
 }
 
@@ -242,10 +260,13 @@ export interface ActivityCounts {
   jobsDay: number;
   failedDay: number;
   failedWeek: number;
+  // Finished, but some types were not read in full: counted apart, never as fine.
+  partialDay: number;
+  partialWeek: number;
   running: number;
   waiting: number;
-  // Seven days, oldest first: all jobs that day and how many failed.
-  days: { day: Day; jobs: number; failed: number }[];
+  // Seven days, oldest first: all jobs that day, how many failed and how many were partly done.
+  days: { day: Day; jobs: number; failed: number; partial: number }[];
   newestFailed: JobRecord | null;
 }
 
@@ -275,6 +296,8 @@ export function clockWords(value: string | null): string {
   return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(date);
 }
 
+const isPartial = (job: JobRecord) => jobDisplayStatus(job) === "partial";
+
 /** Counts by `createdAt`, the same window the verdict uses, so the numbers agree. */
 export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
   const end = new Date(now).valueOf();
@@ -285,13 +308,15 @@ export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
   const days = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(end - (6 - index) * DAY).toISOString().slice(0, 10);
     const own = jobs.filter((job) => dayKey(job.createdAt) === day);
-    return { day, jobs: own.length, failed: own.filter((job) => job.status === "failed").length };
+    return { day, jobs: own.length, failed: own.filter((job) => job.status === "failed").length, partial: own.filter(isPartial).length };
   });
   const failed = [...jobs].filter((job) => job.status === "failed").sort((a, b) => String(b.finishedAt ?? b.createdAt ?? "").localeCompare(String(a.finishedAt ?? a.createdAt ?? "")));
   return {
     jobsDay: recent.length,
     failedDay: recent.filter((job) => job.status === "failed").length,
     failedWeek: week.filter((job) => job.status === "failed").length,
+    partialDay: recent.filter(isPartial).length,
+    partialWeek: week.filter(isPartial).length,
     running: jobs.filter((job) => job.status === "running").length,
     waiting: jobs.filter((job) => job.status === "queued").length,
     days,
@@ -301,19 +326,25 @@ export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
 
 export type IntegrityState = "intact" | "unchecked" | "broken" | "unknown";
 
-/** The audit record's integrity as a word, a sentence and a tone. */
+/** The audit record's integrity as a word, a sentence and a tone (lib/audit-check.ts words). */
 export function integrityWords(integrity: ChainIntegrity | null): { state: IntegrityState; label: string; sentence: string; tone: BadgeTone } {
-  if (integrity === null) return { state: "unknown", label: "Not checked", sentence: "The audit record's integrity could not be checked right now.", tone: "neutral" };
-  if (integrity.ok) {
-    const pending = integrity.unanchoredRecords ?? 0;
+  const check = auditCheckOf(integrity);
+  if (check === "unknown") return { state: "unknown", label: "Could not check", sentence: "The audit record's integrity could not be read right now.", tone: "neutral" };
+  if (check === "intact") {
+    const pending = integrity?.unanchoredRecords ?? 0;
     return { state: "intact", label: "Intact", tone: "fine", sentence: `Verified against the off-site copy${pending ? `. ${pending} newer ${pending === 1 ? "entry waits" : "entries wait"} for the next copy` : ""}.` };
   }
-  if (integrity.status === "unanchored") return { state: "unchecked", label: "Not copied yet", tone: "soon", sentence: "No off-site copy exists yet, so the record cannot be verified." };
-  return { state: "broken", label: "Check failed", tone: "urgent", sentence: "The record failed its integrity check. Investigate before trusting who did what." };
+  // Not checked is amber and only a failed check is red, on every page. A broken own
+  // chain is a failed check even when there is no off-site copy to compare with.
+  if (check === "unchecked") return { state: "unchecked", label: AUDIT_CHECK_WORDS.unchecked.label, tone: "soon", sentence: `${AUDIT_CHECK_WORDS.unchecked.detail} Set up or fix the off-site copy.` };
+  return { state: "broken", label: AUDIT_CHECK_WORDS.failed.label, tone: "urgent", sentence: integrity?.ownChain === "broken"
+    ? "The record's own chain of entries does not match, and there is no off-site copy to compare with. Investigate before trusting who did what."
+    : "The record failed its integrity check. Investigate before trusting who did what." };
 }
 
 export function activityStatus(counts: ActivityCounts): { tone: RiskTone; label: string } {
   if (counts.failedDay) return { tone: "urgent", label: `${counts.failedDay} failed today` };
+  if (counts.partialDay) return { tone: "soon", label: `${counts.partialDay} partly done today` };
   const active = counts.running + counts.waiting;
   if (active) return { tone: "low", label: counts.running ? `${counts.running} running` : `${counts.waiting} waiting` };
   if (counts.jobsDay) return { tone: "fine", label: "All finished" };
@@ -337,7 +368,7 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
   const integrityState = integrityWords(integrity);
   if (!showJobs) {
     return integrityState.state === "broken"
-      ? { text: "The audit record failed its integrity check; investigate before trusting it.", tone: "urgent", retry: null }
+      ? { text: `${AUDIT_CHECK_WORDS.failed.title}; investigate before trusting it.`, tone: "urgent", retry: null }
       : { text: "Showing the audit record: who did what, newest first.", tone: "fine", retry: null };
   }
   const failed = counts.newestFailed;
@@ -353,12 +384,20 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
     };
   }
   if (integrityState.state === "broken") {
-    return { text: "The audit record failed its integrity check; investigate before trusting it.", tone: "urgent", retry: null };
+    return { text: `${AUDIT_CHECK_WORDS.failed.title}; investigate before trusting it.`, tone: "urgent", retry: null };
   }
   if (counts.jobsDay === 0) {
     return { text: `Keel ran no jobs in the last day${counts.running || counts.waiting ? `; ${plural(counts.running + counts.waiting, "job is", "jobs are")} running or waiting` : ""}.`, tone: "fine", retry: null };
   }
   const active = counts.running + counts.waiting;
+  if (counts.partialDay) {
+    return {
+      text: `Keel ran ${plural(counts.jobsDay, "job")} in the last day; none failed, but ${counts.partialDay} ${counts.partialDay === 1 ? "was" : "were"} only partly done${active ? `; ${plural(active, "is", "are")} still running or waiting` : ""}.`,
+      detail: "Some types were not backed up. Open a partly done run to see which.",
+      tone: "soon",
+      retry: null,
+    };
+  }
   return {
     text: `Keel ran ${plural(counts.jobsDay, "job")} in the last day, none failed${active ? `; ${plural(active, "is", "are")} still running or waiting` : ""}.`,
     tone: active ? "low" : "fine",

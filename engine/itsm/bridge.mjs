@@ -29,7 +29,7 @@
 //      (itsm_identity_map); an unmapped user is refused;
 //   4. that principal is, NOW, an eligible approver of that request: approveRequest runs
 //      with enforceScope, so current grants and task-90 entity scope decide, and
-//      self-approval is refused as always.
+//      self-approval is refused unless the tenant's approval mode is solo.
 // When the request was already decided (by the portal, or by an earlier callback), a
 // callback with the same outcome is `already-decided` and acts no further; one with the
 // other outcome is a `conflict`: the first committed decision stands (the request row
@@ -47,7 +47,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import {
-  ApprovalClosedError, ApprovalExpiredError, ApprovalInvalidatedError, ApprovalJobConflictError, ApprovalPlanChangedError, ApprovalScopeError,
+  ApprovalClosedError, ApprovalExpiredError, ApprovalInvalidatedError, ApprovalJobConflictError, ApprovalPlanChangedError, ApprovalReasonRequiredError, ApprovalScopeError,
   PromotionRefusedError, SelfApprovalError, approvalPlanDigest, approveRequest, rejectRequest, supersedeRequest,
 } from '../govern/approvals.mjs';
 import { getChangeIntent } from '../policy/changeIntent.mjs';
@@ -418,6 +418,8 @@ function normalizeEvent(event) {
  *   unmapped-identity     the external user is not mapped to an enabled principal
  *   refused-not-eligible  the mapped principal may not decide this request now
  *   refused-self-approval the mapped principal requested it
+ *   refused-reason-required solo approval mode: the requester approved their own request
+ *                         without a reason that says why
  *   refused-invalidated   the request's ownership or requester grant changed (task-90)
  *   refused-expired       the request expired or was superseded
  *   refused-promotion     a restore's dry run cannot be promoted
@@ -495,7 +497,8 @@ export async function receiveCallback(client, { tenantRef, adapter, event }) {
   let jobId = null;
   try {
     if (callback.status === 'approved') {
-      ({ job: { id: jobId } } = await approveRequest(client, decide));
+      // Solo approval mode: a self-approval needs a reason; the external record's own counts.
+      ({ job: { id: jobId } } = await approveRequest(client, { ...decide, reason: callback.reason ?? null }));
     } else {
       await rejectRequest(client, { ...decide, reason: callback.reason ?? `rejected in ${name} ${callback.externalRef}` });
     }
@@ -536,6 +539,7 @@ export async function receiveCallback(client, { tenantRef, adapter, event }) {
     }
     if (error instanceof ApprovalPlanChangedError) return finish('stale-plan', { currentVersion: record.version });
     if (error instanceof SelfApprovalError) return finish('refused-self-approval', { principalId: String(principal.id) });
+    if (error instanceof ApprovalReasonRequiredError) return finish('refused-reason-required', { principalId: String(principal.id), reason: error.message });
     if (error instanceof ApprovalScopeError) return finish('refused-not-eligible', { principalId: String(principal.id), reason: error.reason });
     if (error instanceof ApprovalInvalidatedError) return finish('refused-invalidated', { reason: error.reason });
     if (error instanceof ApprovalExpiredError) return finish('refused-expired');

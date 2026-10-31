@@ -326,7 +326,8 @@ async function disposition(driftId) {
     });
 
     if (action !== 'rollback') {
-      console.log(`disposition ${action} applied${result ? `: ${result}` : ''}`);
+      if (result?.alreadyAccepted) console.log('disposition accept skipped: this change was already accepted');
+      else console.log(`disposition ${action} applied${result ? `: ${result}` : ''}`);
       return;
     }
 

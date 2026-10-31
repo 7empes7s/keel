@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
@@ -38,6 +38,7 @@ import {
   dayLabel,
   filterChips,
   integrityWords,
+  isSelfApproved,
   outcomeTone,
   parseFilters,
   peopleIn,
@@ -61,7 +62,7 @@ import { displayAccount } from "@/lib/record-refs";
 import { type EngineRef, jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Activity (portal audit, pick A): a timeline by day. Four tiles count the last day's
 // jobs, what failed, what is running or waiting, and whether the audit record is intact;
@@ -102,7 +103,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/activity";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps
   const opened = view.get("open");
@@ -170,10 +171,12 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
     return { changes: { outcome: OUTCOME_ORDER.filter((key) => next.includes(key)).join(",") || null, before: null }, active: on };
   };
   const failedTile = outcomeTile(["failed"]);
+  const partialTile = outcomeTile(["partial"]);
   const activeTile = outcomeTile(["running", "waiting"]);
   const tiles: { key: string; label: string; icon: IconName; value: string; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
-    { key: "jobs", label: "Jobs in the last day", icon: "swap", value: String(counts.jobsDay), small: "Each bar is a day; red is what failed", changes: { ...SERVER_KEYS }, active: filters.show === "all" && !filters.outcomes.length && !filters.what.length && !filters.who.length && !filters.range },
+    { key: "jobs", label: "Jobs in the last day", icon: "swap", value: String(counts.jobsDay), small: "Each bar is a day; red failed, amber partly done", changes: { ...SERVER_KEYS }, active: filters.show === "all" && !filters.outcomes.length && !filters.what.length && !filters.who.length && !filters.range },
     { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedWeek ? `${counts.failedWeek} failed in the last 7 days` : "Nothing failed in the last 7 days", changes: failedTile.changes, tone: counts.failedDay ? "urgent" : undefined, active: failedTile.active },
+    { key: "partial", label: "Partly done", icon: "alert", value: String(counts.partialDay), small: counts.partialWeek ? `${counts.partialWeek} partly done in the last 7 days` : "Every backup read everything", changes: partialTile.changes, tone: counts.partialDay ? "soon" : undefined, active: partialTile.active },
     { key: "active", label: "Running or waiting", icon: "play", value: String(counts.running + counts.waiting), small: counts.running + counts.waiting ? `${counts.running} running, ${counts.waiting} waiting to start` : "Nothing is running", changes: activeTile.changes, active: activeTile.active },
     { key: "record", label: "Audit record", icon: "audit", value: record.label, small: record.sentence, changes: { show: filters.show === "records" ? null : "records", before: null }, tone: record.state === "broken" ? "urgent" : record.state === "unchecked" ? "soon" : undefined, active: filters.show === "records" },
   ];
@@ -215,6 +218,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         </span>
         <span className="ac-row-mid">
           <Badge icon={outcome.icon} tone={outcome.tone}>{outcome.label}</Badge>
+          {isSelfApproved(row.entry) ? <Badge icon="person" tone="soon" title="The person who asked approved it, under solo approval mode">Self-approved</Badge> : null}
           <span className="ac-row-who">{row.person ? <Person capitalise person={row.person} /> : <span className="ac-keel"><Icon name="clock" />Keel</span>}</span>
         </span>
         <span className="ac-row-acts">
@@ -265,6 +269,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               label="Activity"
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
+              partial={filters.show !== "jobs" && (nextBefore || before) ? "Only one page of the audit record is loaded. Older and newer entries are under the buttons below the list." : null}
               renderRow={renderRow}
               sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}
@@ -332,7 +337,7 @@ function failedWords(list: ActivityRow[]): string {
 }
 
 /** Seven bars, one per day, drawn to scale: all jobs that day, and what failed in red. */
-function Spark({ days }: { days: { day: string; jobs: number; failed: number }[] }) {
+function Spark({ days }: { days: { day: string; jobs: number; failed: number; partial: number }[] }) {
   const max = Math.max(1, ...days.map((day) => day.jobs));
   const width = 96;
   const height = 28;
@@ -340,16 +345,19 @@ function Spark({ days }: { days: { day: string; jobs: number; failed: number }[]
   const bar = (width - gap * (days.length - 1)) / days.length;
   const total = days.reduce((sum, day) => sum + day.jobs, 0);
   const failed = days.reduce((sum, day) => sum + day.failed, 0);
+  const partial = days.reduce((sum, day) => sum + day.partial, 0);
   return (
-    <svg aria-label={`${total} jobs over the last 7 days, ${failed} failed`} className="ac-spark" role="img" viewBox={`0 0 ${width} ${height}`}>
+    <svg aria-label={`${total} jobs over the last 7 days, ${failed} failed, ${partial} partly done`} className="ac-spark" role="img" viewBox={`0 0 ${width} ${height}`}>
       <line className="ac-spark-base" x1="0" x2={width} y1={height - 0.5} y2={height - 0.5} />
       {days.map((day, index) => {
         const h = day.jobs ? Math.max(2, (day.jobs / max) * (height - 4)) : 1;
-        const f = day.failed ? Math.max(2, (day.failed / max) * (height - 4)) : 0;
+        const f = day.failed ? Math.min(h, Math.max(2, (day.failed / max) * (height - 4))) : 0;
+        const p = day.partial ? Math.min(h - f, Math.max(2, (day.partial / max) * (height - 4))) : 0;
         return (
           <g key={day.day}>
             <rect className="ac-spark-bar" data-empty={!day.jobs || undefined} height={h} rx="1" width={bar} x={index * (bar + gap)} y={height - 1 - h} />
             {f ? <rect className="ac-spark-failed" height={f} rx="1" width={bar} x={index * (bar + gap)} y={height - 1 - f} /> : null}
+            {p ? <rect className="ac-spark-partial" height={p} rx="1" width={bar} x={index * (bar + gap)} y={height - 1 - f - p} /> : null}
           </g>
         );
       })}

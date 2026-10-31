@@ -81,7 +81,7 @@ test("undoing changes previews before confirming, blocks refusals, and invalidat
     // check itself — not the empty-reason gate — must block the submission.
     const refusedReason = find(render(), (element) => element.props.placeholder === "Why is this decision right?");
     assert.ok(refusedReason);
-    (refusedReason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "justified" } });
+    (refusedReason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "Justified by the change owner" } });
     click("Send for approval");
     assert.equal(calls.length, 1, "a refused preview cannot submit even with a justification through its handler");
     chosen = ["one", "two"];
@@ -93,10 +93,10 @@ test("undoing changes previews before confirming, blocks refusals, and invalidat
     assert.equal(button("Send for approval")?.props.disabled, false);
     const reason = find(render(), (element) => element.props.placeholder === "Why is this decision right?");
     assert.ok(reason);
-    (reason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "reviewed" } });
+    (reason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "Reviewed with the change owner" } });
     click("Send for approval");
     await settle();
-    assert.deepEqual(calls.at(-1), { path: "/api/actions/remediate", body: { driftIds: ["two"], justification: "reviewed" } });
+    assert.deepEqual(calls.at(-1), { path: "/api/actions/remediate", body: { driftIds: ["two"], justification: "Reviewed with the change owner" } });
     assert.equal(button("Send for approval"), undefined, "confirmation consumes the preview");
     assert.deepEqual(done, ["Sent to approvers. Nothing changes until one of them approves."]);
   } finally {

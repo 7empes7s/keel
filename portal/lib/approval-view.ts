@@ -3,8 +3,10 @@
 // tested without a browser. Ids never appear in anything these return.
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
+import type { UnnamedReference } from "@/lib/app-names";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import type { RiskTone } from "@/lib/menu-status";
+import { formatTimestamp } from "@/lib/presentation";
 import { approvalSentence, personLabel } from "@/lib/sentences";
 
 export type ApprovalKind = "restore" | "undo" | "rollback" | "decision" | "setup" | "other";
@@ -33,6 +35,46 @@ export const KIND_ORDER: ApprovalKind[] = ["restore", "undo", "rollback", "decis
 /** The request's title: what approving it does, with names. */
 export function approvalTitle(request: Pick<ApprovalRequestRecord, "action" | "params" | "references">): string {
   return approvalSentence(request);
+}
+
+/**
+ * Each request's title, made unique: requests that would read the same get the moment
+ * they were asked ("… · asked 31 Oct 2026, 17:41 UTC"), and a number if that matches too,
+ * so a list never shows two identical lines.
+ */
+export function distinctTitles(requests: Pick<ApprovalRequestRecord, "id" | "action" | "params" | "references" | "createdAt">[]): Map<string, string> {
+  const base = new Map(requests.map((request) => [request.id, approvalTitle(request)]));
+  const groups = new Map<string, typeof requests>();
+  for (const request of requests) {
+    const title = base.get(request.id)!;
+    groups.set(title, [...(groups.get(title) ?? []), request]);
+  }
+  const titles = new Map<string, string>();
+  for (const [title, group] of groups) {
+    if (group.length === 1) { titles.set(group[0].id, title); continue; }
+    const timed = group.map((request) => ({ id: request.id, title: `${title} · asked ${formatTimestamp(request.createdAt)}`, at: request.createdAt ?? "" }));
+    const seen = new Map<string, number>();
+    for (const entry of timed) seen.set(entry.title, (seen.get(entry.title) ?? 0) + 1);
+    const numbered = new Map<string, number>();
+    for (const entry of [...timed].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
+      if ((seen.get(entry.title) ?? 0) < 2) { titles.set(entry.id, entry.title); continue; }
+      const n = (numbered.get(entry.title) ?? 0) + 1;
+      numbered.set(entry.title, n);
+      titles.set(entry.id, `${entry.title} (${n})`);
+    }
+  }
+  return titles;
+}
+
+/**
+ * What a request's changes point to that no backup names (a role, who holds it, where),
+ * once each, so Technical details lists every ID with a link that looks it up.
+ */
+export function approvalUnnamedRefs(request: Pick<ApprovalRequestRecord, "references" | "preview">): UnnamedReference[] {
+  const out = new Map<string, UnnamedReference>();
+  const lists = [...(request.references?.changes ?? []).map((change) => change?.unnamedRefs), ...(request.preview?.changes ?? []).map((change) => change.unnamedRefs)];
+  for (const refs of lists) for (const ref of refs ?? []) if (!out.has(ref.id)) out.set(ref.id, ref);
+  return [...out.values()];
 }
 
 const HOUR = 3_600_000;
@@ -130,7 +172,7 @@ export function sortWaiting<T extends Pick<ApprovalRequestRecord, "expiresAt" | 
 }
 
 /** The verdict, in at most 25 words. */
-export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
+export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string, approvalMode: "two-person" | "solo" = "two-person"): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
   if (counts.waiting === 0) return { text: "Nothing is waiting for your decision.", tone: "fine", detail: "Restores, undo changes and approved-setup switches will appear here when someone asks for one." };
   const count = counts.waiting === 1 ? "1 request is" : `${counts.waiting} requests are`;
   const left = oldest ? hoursLeft(oldest, now) : null;
@@ -139,7 +181,9 @@ export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequest
   return {
     text: `${count} waiting for you.${soon}`,
     tone: counts.expiringSoon ? "urgent" : "soon",
-    detail: "Nothing changes until someone other than the person who asked approves.",
+    detail: approvalMode === "solo"
+      ? "Nothing changes until it is approved. Approval mode is Solo, so you can approve your own requests; each is marked self-approved."
+      : "Nothing changes until someone other than the person who asked approves.",
   };
 }
 
@@ -150,10 +194,11 @@ export function approvalsStatus(counts: ApprovalCounts): { tone: RiskTone; label
 
 /** Why a decision was refused, in words next to the button. */
 export function decisionError(status: number, payload: { error?: string; handoff?: string } | null): string {
-  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it.";
+  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it: approvals need two people.";
   if (status === 409 && payload?.error === "no_change") return "Nothing to roll back: the setting already holds the same values as the approved setup. Reject this request.";
   if (status === 409) return "Someone else decided it first, or it expired. The list will refresh.";
   if (status === 404) return "This request no longer exists. The list will refresh.";
+  if (status === 400 && payload?.error === "reason_required") return "Approving your own request needs a reason that says why, in a few words.";
   if (status === 400) return "Write a reason to reject.";
   return "Keel could not record the decision. Try again in a moment.";
 }

@@ -3,7 +3,9 @@
 // §3.3, plan task 14: approvals. Requesting a `requiresApproval` action creates an
 // approval_request row, never a job. Only `approveRequest` mints the job, and only
 // when the deciding principal differs from the requester — self-approval is refused
-// here, server-side, however powerful the approver's roles. `rejectRequest` closes
+// here, server-side, however powerful the approver's roles — unless the tenant's
+// approval mode is solo (approvalMode.mjs): then the requester may decide their own
+// request, and the decision is recorded as self-approved. `rejectRequest` closes
 // the request without minting anything. Both the request and the decision are
 // written to the evidence chain (evidence.mjs) so the whole exchange is provable
 // later. Requests carry a configurable TTL and expire *closed*: the first decision
@@ -21,6 +23,7 @@ import { can, capabilityScope } from '../authz/can.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { classifyApprovalActions, requiredApprovalsFor, standingPolicyRefusal } from './approvalPolicy.mjs';
+import { selfApprovalAllowed, selfApprovalReasonProblem } from './approvalMode.mjs';
 import {
   RESTORE_APPROVALS_OFF_BASIS, RESTORE_APPROVALS_OFF_DECIDER, approvalsOffReason, contentRestoreNeedsApproval,
   effectsNeedApproval, restoreNeedsApproval,
@@ -144,7 +147,7 @@ export async function listApprovalRequests(client, {
   const { rows } = await client.query(
     `SELECT id, action, params, requested_by, justification, status, executor,
             decided_by, decided_at, reason, created_at, expires_at, entity_scope, route,
-            required_approvals,
+            required_approvals, self_approved,
             CASE
               WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
               ELSE status
@@ -412,7 +415,8 @@ const MAX_ROUTE_APPROVERS = 500;
  *
  * A cross-entity request is never routed to one of its entities, and a changed owner
  * is never followed to the new owner on the old request: routing never widens who may
- * decide. `approvers` excludes the requester (self-approval is refused anyway) and
+ * decide. `approvers` excludes the requester (self-approval is refused) unless the
+ * tenant's approval mode is solo, and
  * lists principal ids in a stable order; entity approvers are those whose `approve`
  * covers that entity, central ones those who hold it tenant-wide.
  * `approverCache` (a Map) may be shared by one reader across calls at the same `at`.
@@ -421,9 +425,11 @@ const MAX_ROUTE_APPROVERS = 500;
  * @param {{ tenantRef: string, entityScope: any, requesterId?: string | null, at?: Date, approverCache?: Map<string, string[]> | null }} options
  */
 export async function routeApproval(client, { tenantRef, entityScope, requesterId = null, at = new Date(), approverCache = null }) {
+  // Solo approval mode: the requester may decide their own request, so they count.
+  const skipRequester = requesterId != null && !(await selfApprovalAllowed(client, { tenantRef }));
   // A reader routing many changes at once may share one cache across calls.
   const approvers = async (entityCode) => {
-    const key = `${entityCode ?? '*'}|${requesterId ?? ''}`;
+    const key = `${entityCode ?? '*'}|${skipRequester ? requesterId : ''}`;
     if (approverCache?.has(key)) return approverCache.get(key);
     const ids = await eligibleApprovers(entityCode);
     approverCache?.set(key, ids);
@@ -435,7 +441,7 @@ export async function routeApproval(client, { tenantRef, entityScope, requesterI
     );
     const ids = [];
     for (const principal of rows) {
-      if (principal.id === requesterId) continue;
+      if (skipRequester && principal.id === requesterId) continue;
       const scope = await capabilityScope(client, principal, 'approve', at);
       if (entityCode ? !scope.central && scope.entities.includes(entityCode) : scope.central) ids.push(principal.id);
     }
@@ -522,10 +528,10 @@ function jobMatchesApproval(job, { kind, requestedBy, params }) {
 }
 
 /** @param {any} client
- * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null, standingPolicy?: string | null, testTenantRefs?: readonly string[] }} options
+ * @param {{ tenantRef: string, id: string, decidedBy: string, reason?: string | null, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null, standingPolicy?: string | null, testTenantRefs?: readonly string[] }} options
  */
 export async function approveRequest(client, {
-  tenantRef, id, decidedBy, enforceScope = false, approverScope = null, expectedPlanDigest = null, standingPolicy = null,
+  tenantRef, id, decidedBy, reason = null, enforceScope = false, approverScope = null, expectedPlanDigest = null, standingPolicy = null,
   testTenantRefs = undefined,
 }) {
   let decided;
@@ -549,10 +555,21 @@ export async function approveRequest(client, {
     if (expectedPlanDigest != null && expectedPlanDigest !== approvalPlanDigest(request)) {
       throw new ApprovalPlanChangedError(`approval request ${id} is for another plan than the one decided`);
     }
-    // Self-approval is refused server-side, always: the approver principal must
-    // differ from the requester.
-    if (decidedBy === request.requested_by) {
-      throw new SelfApprovalError('an approver can never approve their own request');
+    // Self-approval is refused server-side unless the tenant's approval mode is solo.
+    // A standing policy never decides the requester's own request. A self-approval
+    // needs a reason that says why: the one given now, or else the request's own.
+    const selfApproved = decidedBy === request.requested_by;
+    let selfApprovalReason = null;
+    if (selfApproved) {
+      if (!(await selfApprovalAllowed(client, { tenantRef }))) {
+        throw new SelfApprovalError('an approver can never approve their own request while approvals need two people');
+      }
+      if (standingPolicy != null) throw new SelfApprovalError('a standing policy never approves the requester\'s own request');
+      const given = typeof reason === 'string' && reason.trim().length > 0 ? reason : null;
+      const problem = selfApprovalReasonProblem(given ?? request.justification);
+      if (problem) throw new ApprovalReasonRequiredError(problem);
+      // Only a reason given now is stored as the decision reason; the request keeps its own.
+      selfApprovalReason = given ? given.trim() : null;
     }
     const ineligible = await checkEligibility(client, { tenantRef, request, decidedBy, enforceScope, approverScope });
     if (ineligible instanceof ApprovalInvalidatedError) {
@@ -600,9 +617,11 @@ export async function approveRequest(client, {
 
     // Wave 2 RBAC: the two-person rule. Below the approvers it needs, this approval is a
     // sign-off only: committed, evidenced, and the request stays pending.
+    // Solo approval mode has no exceptions: a self-approval decides the request, even one
+    // a two-person rule covers, since a business with one admin has nobody else to ask.
     const requiredApprovals = await requiredApprovalsNow(client, { tenantRef, request });
     let approvers = [decidedBy];
-    if (requiredApprovals > 1) {
+    if (requiredApprovals > 1 && !selfApproved) {
       approvers = await signOff(client, { request, decidedBy, standingPolicy });
       if (approvers.length < requiredApprovals) {
         await client.query('COMMIT');
@@ -637,10 +656,11 @@ export async function approveRequest(client, {
     }
     const { rows } = await client.query(
       `UPDATE approval_request
-       SET status = 'approved', decided_by = $2, decided_at = now(), standing_policy = $3
+       SET status = 'approved', decided_by = $2, decided_at = now(), standing_policy = $3, self_approved = $4,
+           reason = COALESCE($5, reason)
        WHERE id = $1
        RETURNING *`,
-      [id, decidedBy, standingPolicy],
+      [id, decidedBy, standingPolicy, selfApproved, selfApprovalReason],
     );
     decided = { request: rows[0], job, approvers, requiredApprovals };
     await client.query('COMMIT');
@@ -658,8 +678,11 @@ export async function approveRequest(client, {
       decision: 'approved',
       executor: decided.request.executor,
       jobId: decided.job?.id ?? null,
-      ...(decided.requiredApprovals > 1 ? { approvers: decided.approvers, requiredApprovals: decided.requiredApprovals } : {}),
+      ...(decided.requiredApprovals > 1 && !decided.request.self_approved ? { approvers: decided.approvers, requiredApprovals: decided.requiredApprovals } : {}),
+      // Solo approval mode has no exceptions: the record says a two-person rule was set aside.
+      ...(decided.requiredApprovals > 1 && decided.request.self_approved ? { twoPersonRuleWaived: true } : {}),
       ...(standingPolicy != null ? { standingPolicy } : {}),
+      ...(decided.request.self_approved ? { selfApproved: true, approvalMode: 'solo', reason: decided.request.reason ?? decided.request.justification } : {}),
     },
     actor: decidedBy,
   });

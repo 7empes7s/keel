@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -67,7 +67,7 @@ import { failedRestoresLine } from "@/lib/failed-restores";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { formatTimestamp } from "@/lib/presentation";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // Value report (portal audit, pick A: dashboard of charts). Four count tiles, one
@@ -97,7 +97,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/reports";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const today = report.generatedAt.slice(0, 10);
   const verdict = valueVerdict(report);
   const look = needsLook(outcomes);
@@ -332,12 +332,12 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
               label="Requests"
               matches={(item, text) => `${outcomeName(item)} ${outcomeMeta(item, today)} ${OUTCOME_STATE_LABELS[item.state]}`.toLowerCase().includes(text)}
               noun={{ one: "request", many: "requests" }}
+              partial={outcomes.rowsShown < outcomes.total ? `Only the first ${outcomes.rowsShown.toLocaleString("en-GB")} of ${outcomes.total.toLocaleString("en-GB")} requests are listed. The tiles count every request.` : null}
               renderRow={renderRow}
               rowName={(item) => outcomeName(item)}
               toneOf={(item) => OUTCOME_WORDS[item.state].tone}
             />
           )}
-          {outcomes.rowsShown < outcomes.total ? <p className="vr-muted">Showing {outcomes.rowsShown} of {outcomes.total}. The tiles and the downloads count every request.</p> : null}
         </section>
 
         <section aria-labelledby="vr-checks-heading" className="vr-section" id="vr-checks">

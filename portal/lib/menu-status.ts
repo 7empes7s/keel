@@ -1,4 +1,5 @@
 import type { NavSection } from "@/components/nav-links";
+import { AUDIT_CHECK_WORDS, dashboardAuditCheck } from "@/lib/audit-check";
 import { overviewVerdict } from "@/lib/overview-view";
 import type { DashboardData } from "@/lib/types";
 
@@ -59,7 +60,10 @@ export function menuStatuses(data: Pick<DashboardData, "headline" | "coverage" |
   const recovery = (data.waiting?.openIncidents ?? 0) + (data.waiting?.restoreFollowUps ?? 0);
   if (recovery > 0) statuses.Restore = { tone: "soon", count: recovery, note: `${plural(recovery, "incident or restore step needs", "incidents or restore steps need")} someone` };
 
-  if (data.evidence && !data.evidence.ok) statuses["Audit log"] = { tone: "urgent", note: "The audit record failed its integrity check" };
+  // The Overview's two audit record states, in its words.
+  const audit = dashboardAuditCheck(data.evidence);
+  if (audit === "failed") statuses["Audit log"] = { tone: "urgent", note: AUDIT_CHECK_WORDS.failed.title };
+  else if (audit === "unchecked") statuses["Audit log"] = { tone: "soon", note: AUDIT_CHECK_WORDS.unchecked.title };
 
   const inbox = (pendingApprovals ?? 0) + (data.waiting?.openAlerts ?? 0);
   if (inbox > 0) statuses.Inbox = { tone: "soon", count: inbox, note: inboxNote(pendingApprovals ?? 0, data.waiting?.openAlerts ?? 0) };

@@ -124,7 +124,11 @@ test("retiring asks for a reason, then keeps the history", async () => {
   const noReason = await call({ op: "retire", accountId: BG1, reason: " " });
   assert.equal(noReason.status, 409);
   assert.equal(await message(noReason), "Write why. It is kept with the record.");
-  assert.equal((await call({ op: "retire", accountId: BG1, reason: "replaced" })).status, 200);
+  // UI audit 31 Oct 2026, C1: a placeholder reason is not kept.
+  const weak = await call({ op: "retire", accountId: BG1, reason: "x" });
+  assert.equal(weak.status, 400);
+  assert.equal(((await weak.json()) as { error?: string }).error, "weak_reason");
+  assert.equal((await call({ op: "retire", accountId: BG1, reason: "Replaced by a new emergency account" })).status, 200);
   const gone = await call({ op: "record", accountId: BG1, kind: "validated" });
   assert.equal(gone.status, 409);
   assert.match(String(await message(gone)), /not an emergency account any more/);

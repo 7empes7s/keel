@@ -1,4 +1,5 @@
-import type { CoverageSummary, CoverageType } from "@/lib/types";
+import { backupHealth, type BackupHealth } from "@/lib/protect-view";
+import type { CoverageType } from "@/lib/types";
 
 // The coverage report lists the Microsoft 365 workloads (Exchange, SharePoint and
 // OneDrive, Teams, Purview, Power Platform) beside the Entra ID and Intune types, never
@@ -23,6 +24,13 @@ function reportStatus(outcome: string): CoverageType["reportStatus"] {
   return "not-covered";
 }
 
+function failureDetail(raw: UnknownRecord, outcome: string): CoverageType["detail"] {
+  if (outcome !== "failed" && outcome !== "partial") return null;
+  const reasons = Array.isArray(raw.reasons) ? raw.reasons.filter((reason): reason is string => typeof reason === "string" && reason.length > 0) : [];
+  if (!reasons.length) return null;
+  return { httpStatus: null, graphCode: null, message: reasons.join("; "), endpoint: null, apiVersion: null, pagesCompleted: null, startedAt: null, completedAt: null };
+}
+
 /**
  * One workload from the coverage report as a kind on What's protected. The workload
  * code (exchange-mail-flow, teams-org-policies…) is the kind's type, so the taxonomy
@@ -44,7 +52,8 @@ export function workloadKind(raw: UnknownRecord, canRestore: boolean): CoverageT
     lastCollectedAt: ran ? iso(observation?.endedAt) : null,
     adapter: String(raw.workload),
     outcome: USABLE.has(outcome) || outcome === "failed" ? (outcome as CoverageType["outcome"]) : null,
-    detail: null,
+    // A failed or partial run keeps the collector's reasons, so the page can say why.
+    detail: failureDetail(raw, outcome),
     fidelity: { declared, measured: null, verifiedAt: null },
     criticality: null,
     blastRadius: null,
@@ -60,45 +69,36 @@ export function workloadKinds(workloads: unknown, restorable: ReadonlySet<string
     .map((raw) => workloadKind(raw, restorable.has(String(raw.workload))));
 }
 
-/**
- * The Overview's coverage counts with the workloads added, counted the way What's
- * protected shows them: a workload that ran and was usable is backed up, a failed one
- * failed, and one never read or switched off is not backed up yet (it waits for a live
- * read check, so it is not "never backed up").
- */
-export function withWorkloadCoverage(summary: CoverageSummary, workloads: readonly CoverageType[] | undefined): CoverageSummary {
-  const list = workloads ?? [];
-  const count = (status: CoverageType["reportStatus"]) => list.filter((kind) => kind.reportStatus === status).length;
-  return {
-    ...summary,
-    covered: summary.covered + count("covered"),
-    failed: summary.failed + count("failed"),
-    notCovered: summary.notCovered + count("not-covered") + count("never-collected"),
-    total: summary.total + list.length,
-  };
-}
+const HEADLINE_STATUS: Record<BackupHealth, HeadlineEntry["status"]> = {
+  ok: "covered", empty: "covered", stale: "covered", failed: "failed", never: "never-collected",
+  "not-collected": "not-covered", unavailable: "not-covered",
+};
 
 /**
- * Workloads in the shape the engine's protection headline reads, so the Overview
- * sentence counts every service. A workload never read is left out of the failing
- * count, as on What's protected.
+ * Every kind (the report's types and workloads, as on What's protected) in the shape the
+ * engine's protection headline reads, its status taken from backupHealth so the Overview
+ * sentence counts exactly what the coverage buckets count (lib/protect-view.ts
+ * coverageBuckets): a partly done read is failed, and a kind not switched on or not on
+ * this tenant is left out. Restore evidence (fidelity, writers) comes from the raw entry.
  */
-export function headlineEntries(workloads: readonly CoverageType[] | undefined): HeadlineEntry[] {
-  return (workloads ?? []).map((kind) => ({
-    type: kind.type,
-    status: kind.reportStatus === "covered" ? "covered" : kind.reportStatus === "failed" ? "failed" : "not-covered",
-    outcome: kind.outcome,
-    stale: false,
-    lastCollectedAt: kind.lastCollectedAt,
-    fidelity: { declared: kind.fidelity?.declared ?? null, verifiedBy: null },
-  }));
+export function headlineEntries(rawTypes: readonly unknown[], kinds: readonly CoverageType[]): HeadlineEntry[] {
+  const raw = new Map((rawTypes as UnknownRecord[]).map((entry) => [String(entry.type), entry]));
+  return kinds.map((kind) => {
+    const health = backupHealth(kind);
+    const base = raw.get(kind.type) ?? {
+      type: kind.type,
+      lastCollectedAt: kind.lastCollectedAt,
+      fidelity: { declared: kind.fidelity?.declared ?? null, verifiedBy: null },
+    };
+    return { ...base, type: kind.type, status: HEADLINE_STATUS[health], outcome: kind.outcome, stale: health === "stale" } as HeadlineEntry;
+  });
 }
 
 export interface HeadlineEntry {
   type: string;
-  status: "covered" | "failed" | "not-covered";
+  status: "covered" | "failed" | "never-collected" | "not-covered";
   outcome: CoverageType["outcome"];
   stale: boolean;
-  lastCollectedAt: string | null;
-  fidelity: { declared: string | null; verifiedBy: null };
+  lastCollectedAt?: unknown;
+  fidelity?: unknown;
 }

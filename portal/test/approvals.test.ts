@@ -276,6 +276,7 @@ test("an approver can list and decide another principal's request", async () => 
     status: "pending",
     decidedBy: null,
     decidedAt: null,
+    selfApproved: false,
     reason: null,
     createdAt: request.createdAt,
     expiresAt: request.expiresAt,
@@ -451,6 +452,21 @@ test("rejection requires an operator-visible reason", async () => {
   assert.equal((await requestRow(id)).status, "pending");
 });
 
+// UI audit 31 Oct 2026, C1: "BECAUSE" was kept as a rejection reason.
+test("a placeholder rejection reason is refused in plain words", async () => {
+  const id = await createRestoreRequest();
+  for (const reason of ["BECAUSE", "x", "test"]) {
+    const response = await rejectRoute(
+      post(`/api/approvals/${id}/reject`, { ...approver, body: { reason } }),
+    );
+    assert.equal(response.status, 400, reason);
+    const body = await response.json();
+    assert.equal(body.error, "weak_reason");
+    assert.match(body.message, /real words|a little more/);
+  }
+  assert.equal((await requestRow(id)).status, "pending");
+});
+
 test("approval controls submit each listed request id and its rejection reason", async () => {
   // The page's buttons all go through decideRequest, so the browser-control-to-route
   // boundary is one function: the id and the rejection reason reach the right route.
@@ -477,6 +493,8 @@ test("approval controls submit each listed request id and its rejection reason",
     assert.deepEqual(approved, { ok: true, status: 202, payload: { job: { id: "job-1" } } });
     const rejected = await decideRequest("00000000-0000-4000-8000-000000000202", "reject", "outside the approved change window");
     assert.equal(rejected.ok, true);
+    // Solo approval mode: approving your own request sends the reason you wrote.
+    await decideRequest("00000000-0000-4000-8000-000000000303", "approve", "Restore the policy deleted by mistake");
 
     assert.deepEqual(requests, [
       {
@@ -490,6 +508,12 @@ test("approval controls submit each listed request id and its rejection reason",
         method: "POST",
         contentType: "application/json",
         body: { reason: "outside the approved change window" },
+      },
+      {
+        url: "/api/approvals/00000000-0000-4000-8000-000000000303/approve",
+        method: "POST",
+        contentType: "application/json",
+        body: { reason: "Restore the policy deleted by mistake" },
       },
     ]);
   } finally {

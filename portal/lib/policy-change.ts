@@ -61,3 +61,34 @@ export async function createRule(rule: NewRule): Promise<CreateResult> {
     return { ok: false, reason: "Keel could not create the rule. Try again in a minute." };
   }
 }
+
+/** The body POST /api/policies/<id>/edit takes (lib/policies.ts, guardedPolicyEdit): the
+ * whole edited rule, so a cleared limit is an explicit null. What it does is not edited. */
+export type RuleEdit = Omit<NewRule, "action" | "runAsPrincipalId">;
+
+export async function editRule(policyId: string, rule: RuleEdit): Promise<ChangeResult> {
+  try {
+    const response = await post(`/api/policies/${encodeURIComponent(policyId)}/edit`, {
+      name: rule.name, maxBlastRadius: rule.maxBlastRadius, resourceType: rule.resourceType ?? null, naturalKeyGlob: rule.naturalKeyGlob ?? null,
+      changeType: rule.changeType ?? null, blastRadius: rule.blastRadius ?? null, maxActionsPerWindow: rule.maxActionsPerWindow ?? null, windowSeconds: rule.windowSeconds ?? null,
+    });
+    if (response.ok) return { ok: true };
+    if (response.status === 403) return { ok: false, reason: "You do not have the policies permission." };
+    if (response.status === 404) return { ok: false, reason: "This rule no longer exists. It may have been deleted." };
+    return { ok: false, reason: "Keel could not save the rule. Check the name and the limits." };
+  } catch {
+    return { ok: false, reason: "Keel could not save the rule. Try again in a minute." };
+  }
+}
+
+export async function deleteRule(policyId: string): Promise<ChangeResult> {
+  try {
+    const response = await post(`/api/policies/${encodeURIComponent(policyId)}/delete`, {});
+    if (response.ok) return { ok: true };
+    if (response.status === 403) return { ok: false, reason: "You do not have the policies permission." };
+    if (response.status === 404) return { ok: false, reason: "This rule no longer exists. It may have been deleted already." };
+    return { ok: false, reason: "Keel could not delete the rule. Try again in a minute." };
+  } catch {
+    return { ok: false, reason: "Keel could not delete the rule. Try again in a minute." };
+  }
+}

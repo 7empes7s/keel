@@ -55,6 +55,8 @@ import { workloadOrder, type RestoreWorkload } from "@/lib/restore-workloads-vie
 import { useViewState } from "@/lib/use-view-state";
 import { typeService } from "@/lib/baselines-view";
 import { itemArea, itemKind, kindOrder, kindParts } from "@/lib/type-groups";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 const DRY_RUN_POLL_MS = 3000;
 
@@ -1027,13 +1029,14 @@ export function RestoreSelection({
                     placeholder="Why is this restore appropriate?"
                     value={justification}
                   />
+                  <ReasonHint value={justification} />
                 </label>
               </div>
               <div className="drift-action-buttons">
                 <button
                   aria-busy={submitting || undefined}
                   className="primary-action"
-                  disabled={!canRestore || submitting}
+                  disabled={!canRestore || submitting || optionalReasonMessage(justification) !== null}
                   onClick={() => void confirm()}
                   type="button"
                 >

@@ -4,6 +4,7 @@ import {
 } from "../../../../../engine/govern/incidents.mjs";
 
 import { guarded, readActionParams } from "@/lib/action";
+import { refuseWeakReason } from "@/lib/written-reason";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,6 +18,15 @@ type Client = Parameters<typeof openIncident>[0];
 // checks the downstreamed `investigate` capability; each engine write re-checks the
 // actor's CURRENT grant in the database and scopes every read to this tenant, so a
 // grant revoked after the page loaded, or another tenant's incident, refuses.
+// Each left-out setting carries its own reason, held to the same rule.
+function checkedExclusions(exclusions: unknown): unknown {
+  if (!Array.isArray(exclusions)) return exclusions ?? [];
+  for (const entry of exclusions) {
+    if (entry && typeof entry === "object") refuseWeakReason((entry as { reason?: unknown }).reason, "exclusion reason");
+  }
+  return exclusions;
+}
+
 const OPERATIONS: Record<string, (client: Client, tenantRef: string, actorId: string, params: Params) => Promise<unknown>> = {
   open: async (client, tenantRef, actorId, { title }) => ({
     incident: await openIncident(client, { tenantRef, title: title as string, actorId }),
@@ -26,28 +36,28 @@ const OPERATIONS: Record<string, (client: Client, tenantRef: string, actorId: st
   }),
   interval: async (client, tenantRef, actorId, { incidentId, startsAt, endsAt, reason }) => ({
     interval: await recordCompromiseInterval(client, {
-      tenantRef, incidentId: incidentId as string, startsAt: startsAt as string, endsAt: (endsAt ?? null) as string | null, reason: reason as string, actorId,
+      tenantRef, incidentId: incidentId as string, startsAt: startsAt as string, endsAt: (endsAt ?? null) as string | null, reason: refuseWeakReason(reason) as string, actorId,
     }),
   }),
   assess: async (client, tenantRef, actorId, { incidentId, snapshotId, verdict, exclusions, rationale }) => ({
     assessment: await assessSnapshot(client, {
       tenantRef, incidentId: incidentId as string, snapshotId: snapshotId as string, verdict: verdict as string,
-      exclusions: (exclusions ?? []) as never, rationale: rationale as string, actorId,
+      exclusions: checkedExclusions(exclusions) as never, rationale: refuseWeakReason(rationale, "rationale") as string, actorId,
     }),
   }),
   override: async (client, tenantRef, actorId, { incidentId, snapshotId, reason }) => ({
     override: await authorizeRecoveryOverride(client, {
-      tenantRef, incidentId: incidentId as string, snapshotId: snapshotId as string, reason: reason as string, actorId,
+      tenantRef, incidentId: incidentId as string, snapshotId: snapshotId as string, reason: refuseWeakReason(reason) as string, actorId,
     }),
   }),
   "revoke-override": async (client, tenantRef, actorId, { overrideId }) => ({
     override: await revokeRecoveryOverride(client, { tenantRef, overrideId: overrideId as string, actorId }),
   }),
   pin: async (client, tenantRef, actorId, { incidentId, snapshotId, reason }) => ({
-    pin: await pinSnapshot(client, { tenantRef, incidentId: incidentId as string, snapshotId: snapshotId as string, reason: reason as string, actorId }),
+    pin: await pinSnapshot(client, { tenantRef, incidentId: incidentId as string, snapshotId: snapshotId as string, reason: refuseWeakReason(reason) as string, actorId }),
   }),
   release: async (client, tenantRef, actorId, { pinId, reason }) => ({
-    pin: await releasePin(client, { tenantRef, pinId: pinId as string, reason: reason as string, actorId }),
+    pin: await releasePin(client, { tenantRef, pinId: pinId as string, reason: refuseWeakReason(reason) as string, actorId }),
   }),
 };
 

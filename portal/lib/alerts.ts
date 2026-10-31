@@ -1,14 +1,20 @@
 import {
-  ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitionsFor,
+  ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, alertStateCounts, listAlerts, listAlertTransitionsFor,
   resolveAlert, suppressAlert, unsuppressAlert,
 } from "../../engine/notify/alerts.mjs";
 import { lookupNames } from "../../engine/insights/names.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
-import { alertWorkload, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+import { alertWorkload, type AlertCounts, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+
+// How many alerts the page lists: every open one up to ACTIVE_LIMIT, and the latest closed ones.
+export const ACTIVE_LIMIT = 1000;
+export const CLOSED_LIMIT = 200;
 import type { ObjectFacts } from "@/lib/object-label";
+import type { UnnamedReference } from "@/lib/app-names";
 import { savedNames } from "@/lib/saved-names";
 import { peopleNamer, principalPerson, type Namer } from "@/lib/people-names";
 import { personLabel } from "@/lib/sentences";
+import { requireOptionalReason, refuseWeakReason } from "@/lib/written-reason";
 
 // Roadmap task-83: what the alerts inbox reads and what an operator can do to an alert.
 // Viewing needs `read`; acknowledging and resolving need the drift response right
@@ -61,9 +67,10 @@ const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "DisplayName", "name", "Na
  * the newest backup holding one saved; a workload key (`<workload>:<key>`, such as a
  * SharePoint site) reads the newest workload read that named it. A failed read leaves
  * the resource unnamed, never the page down. `families` gets the template family each
- * backup key's saved copy carries, when it has one.
+ * backup key's saved copy carries, when it has one; `unnamedRefs` gets what each backup
+ * key points to that no backup names, with a lookup link.
  */
-export async function alertResourceNames(client: QueryClient, tenantRef: string, keys: string[], families: Map<string, string> = new Map()): Promise<Map<string, string>> {
+export async function alertResourceNames(client: QueryClient, tenantRef: string, keys: string[], families: Map<string, string> = new Map(), unnamedRefs: Map<string, UnnamedReference[]> = new Map()): Promise<Map<string, string>> {
   const names = new Map<string, string>();
   const unique = [...new Set(keys)];
   const workloadKeys = unique.filter((key) => alertWorkload(key) !== null);
@@ -73,6 +80,7 @@ export async function alertResourceNames(client: QueryClient, tenantRef: string,
     for (const [key, entry] of Object.entries(saved)) {
       if (entry.name?.trim()) names.set(key, entry.name.trim());
       if (entry.templateFamily) families.set(key, entry.templateFamily);
+      if (entry.unnamedRefs?.length) unnamedRefs.set(key, entry.unnamedRefs);
     }
   } catch (error) {
     console.error("[keel-portal] alert resource names unavailable", error);
@@ -125,7 +133,13 @@ export async function alertObjects(client: QueryClient, tenantRef: string, keys:
 
 export function guardedAlertInbox(deps: GuardDeps = {}) {
   return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
-    const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
+    // Every alert someone still has to act on, then the most recent closed ones. The
+    // tiles take their numbers from alertStateCounts, never from this list.
+    const now = new Date();
+    const active = await listAlerts(client, { tenantRef, actor: principalId, states: ["open", "reopened", "acknowledged"], limit: ACTIVE_LIMIT, at: now }) as Row[];
+    const closed = await listAlerts(client, { tenantRef, actor: principalId, states: ["resolved", "suppressed"], limit: CLOSED_LIMIT, at: now }) as Row[];
+    const counts = await alertStateCounts(client, { tenantRef, now }) as AlertCounts;
+    const rows = [...active, ...closed];
     // Every alert's history in one read, not one per alert: the page polls.
     const histories = new Map<string, Row[]>();
     const transitions = await listAlertTransitionsFor(client, { tenantRef, actor: principalId, alertIds: rows.map((row) => String(row.id)) }) as Row[];
@@ -146,11 +160,15 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
     const namer = people.size ? await peopleNamer(client as QueryClient) : null;
     const keys = rows.map((row) => String(row.resource_key));
     const families = new Map<string, string>();
-    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, keys, families);
+    const unnamedRefs = new Map<string, UnnamedReference[]>();
+    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, keys, families, unnamedRefs);
     const objects = await alertObjects(client as QueryClient, tenantRef, keys);
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
-      const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : null;
+      // Alerts acknowledged before the acknowledger became the owner (2026-10-31) have no
+      // owner stored: the person who acknowledged the current occurrence owns it.
+      const ackOwner = row.state === "acknowledged" && typeof row.acknowledged_by === "string" && UUID.test(row.acknowledged_by) ? row.acknowledged_by : null;
+      const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : ackOwner;
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),
@@ -177,6 +195,7 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
           snapshotId: (detail.snapshotId as string | undefined) ?? null,
         },
         ...(families.has(String(row.resource_key)) ? { templateFamily: families.get(String(row.resource_key))! } : {}),
+        ...(unnamedRefs.has(String(row.resource_key)) ? { unnamedRefs: unnamedRefs.get(String(row.resource_key))! } : {}),
         lastEventId: String(row.last_event_id),
         history: (histories.get(String(row.id)) ?? []).map((entry) => ({
           id: String(entry.id),
@@ -192,9 +211,24 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
         })),
       };
     });
-    const body: AlertInboxData = { generatedAt: new Date().toISOString(), alerts };
+    const body: AlertInboxData = { generatedAt: now.toISOString(), alerts, counts };
     return Response.json(body, { headers: NO_STORE });
   }, deps);
+}
+
+// The alert's owner as the inbox shows one, or null. A failed name read gives no name
+// rather than failing an acknowledge that is already recorded.
+async function ownerOf(client: QueryClient, id: unknown): Promise<AlertItem["owner"]> {
+  if (typeof id !== "string" || !UUID.test(id)) return null;
+  try {
+    const { rows: [row] } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = $1", [id]);
+    if (!row) return { id, name: "someone no longer listed" };
+    const namer = await peopleNamer(client);
+    return { id, name: personName(row, namer) ?? "someone no longer listed", ...(principalPerson(row, namer).pseudonym ? { pseudonym: true } : {}) };
+  } catch (error) {
+    console.error("[keel-portal] alert owner name unavailable", error);
+    return null;
+  }
 }
 
 export function guardedAlertAction(deps: GuardDeps = {}) {
@@ -206,11 +240,14 @@ export function guardedAlertAction(deps: GuardDeps = {}) {
       if (typeof alertId !== "string" || !UUID.test(alertId)) throw new InvalidActionRequest("alertId is required");
       if (action !== "acknowledge" && action !== "resolve") throw new InvalidActionRequest("action must be acknowledge or resolve");
       if (note !== undefined && typeof note !== "string") throw new InvalidActionRequest("note must be text");
+      requireOptionalReason(note, "note");
       try {
         const alert = action === "acknowledge"
           ? await acknowledgeAlert(client, { tenantRef, alertId, actor: principalId, note: note ?? null } as unknown as Parameters<typeof acknowledgeAlert>[1])
           : await resolveAlert(client, { tenantRef, alertId, actor: principalId, reason: note?.trim() || "Resolved by hand from the alerts inbox" });
-        return Response.json({ alert: { id: String((alert as Row).id), state: (alert as Row).state } }, { headers: NO_STORE });
+        // The acknowledger owns it now: the page shows them as owner before its next read.
+        const owner = action === "acknowledge" ? await ownerOf(client as QueryClient, (alert as Row).owner_principal_id) : undefined;
+        return Response.json({ alert: { id: String((alert as Row).id), state: (alert as Row).state, ...(owner !== undefined ? { owner } : {}) } }, { headers: NO_STORE });
       } catch (error) {
         if (error instanceof AlertAuthorizationError) return Response.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
         if (error instanceof AlertStateError) return Response.json({ error: "conflict" }, { status: 409, headers: NO_STORE });
@@ -232,6 +269,7 @@ export function guardedAlertMute(deps: GuardDeps = {}) {
       if (action !== "mute" && action !== "unmute") throw new InvalidActionRequest("action must be mute or unmute");
       if (note !== undefined && typeof note !== "string") throw new InvalidActionRequest("note must be text");
       if (action === "mute" && !note?.trim()) throw new InvalidActionRequest("a reason is required to mute an alert");
+      if (action === "mute") refuseWeakReason(note, "note");
       try {
         const alert = action === "mute"
           ? await suppressAlert(client, { tenantRef, alertId, actor: principalId, reason: note!.trim() })

@@ -184,6 +184,7 @@ export async function acceptServiceChange(client, { tenantRef, changeId, actor, 
     await assertDispositionApproval(client, {
       approvalId,
       actor,
+      tenantRef,
       matches: (params) => String(params.serviceChangeId) === String(changeId) && params.action === 'accept'
         && params.tenantRef === tenantRef,
     });

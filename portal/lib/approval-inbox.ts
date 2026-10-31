@@ -5,6 +5,7 @@ import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/go
 import { resolvePrincipals } from "../../engine/govern/references.mjs";
 import { getDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
+import { getApprovalMode } from "../../engine/govern/approvalMode.mjs";
 import { connect } from "@/lib/db";
 
 import { itemKindName, itemService } from "@/lib/baselines-view";
@@ -12,6 +13,7 @@ import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import { recordsNoChange } from "../../engine/store/openDrift.mjs";
 import { templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
+import type { UnnamedReference } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
@@ -46,6 +48,8 @@ export interface ApprovalRequestRecord {
   status: string;
   decidedBy: string | null;
   decidedAt: string | null;
+  // The requester approved it themselves, under solo approval mode.
+  selfApproved?: boolean;
   reason: string | null;
   createdAt: string | null;
   expiresAt: string | null;
@@ -71,6 +75,8 @@ export interface ApprovalChange {
   line: string | null;
   fields: { field: string; now: string; after: string }[];
   moreFields: number;
+  // What it points to that no backup names, each with a lookup link (Technical details).
+  unnamedRefs?: UnnamedReference[];
 }
 
 export interface ApprovalPreview {
@@ -87,6 +93,9 @@ export interface ApprovalInboxData {
   // for a decision too, so they are listed and counted with `pending`, not in history.
   awaitingContentEffects: ApprovalRequestRecord[];
   history: ApprovalRequestRecord[];
+  // Who may approve: "two-person" (never the one who asked) or "solo" (they may approve
+  // their own request; it is recorded as self-approved). Absent reads as two-person.
+  approvalMode?: "two-person" | "solo";
 }
 
 /** Everything waiting for an approver: requests and content effects alike. */
@@ -156,6 +165,7 @@ export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRec
     status: String(row.effective_status ?? row.status),
     decidedBy: (row.decided_by as string | null) ?? null,
     decidedAt: iso(row.decided_at),
+    selfApproved: row.self_approved === true,
     reason: (row.reason as string | null) ?? null,
     createdAt: iso(row.created_at),
     expiresAt: iso(row.expires_at),
@@ -209,7 +219,7 @@ async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<
   const changes = ordered.slice(0, PREVIEW_CHANGES).map((row) => {
     const key = String(row.natural_key);
     const type = String(row.resource_type);
-    const base = { name: namedResource(key, names, type), kind: itemKindName(driftItem(row)) };
+    const base = { name: namedResource(key, names, type), kind: itemKindName(driftItem(row)), ...unnamedOf(key, names) };
     if (row.change_type === "added") return { ...base, line: "Removed: it is not in the approved setup", fields: [], moreFields: 0 };
     if (row.change_type === "removed") return { ...base, line: "Put back as the approved setup holds it", fields: [], moreFields: 0 };
     // Only a stored fingerprint differed: approving would put back what is there.
@@ -232,7 +242,7 @@ async function restorePreview(client: KeelClient, artifactId: string): Promise<A
   if (applied.length === 0) return null;
   const names = await savedNames(client, tenantRef(), applied);
   const changes = applied.slice(0, PREVIEW_CHANGES).map((key) => ({
-    name: namedResource(key, names, keyType(key)), kind: itemKindName(keyItem(key, names)), line: "Put back as the backup holds it", fields: [], moreFields: 0,
+    name: namedResource(key, names, keyType(key)), kind: itemKindName(keyItem(key, names)), line: "Put back as the backup holds it", fields: [], moreFields: 0, ...unnamedOf(key, names),
   }));
   return { total: applied.length, services: servicesOf(applied.map((key) => keyItem(key, names))), changes, more: Math.max(0, applied.length - changes.length) };
 }
@@ -254,6 +264,12 @@ export async function approvalPreview(client: KeelClient, request: ApprovalReque
   return null;
 }
 
+/** The ids a saved setting points to that no backup names, as a spreadable field. */
+function unnamedOf(key: string, names: NamedKeys): { unnamedRefs?: UnnamedReference[] } {
+  const refs = names[key]?.unnamedRefs;
+  return refs?.length ? { unnamedRefs: refs } : {};
+}
+
 /**
  * Each change a request rolls back, named by the name its backup holds, so the title
  * reads "Roll back 2 changes, including Finance (group)", never an id. A change whose
@@ -269,7 +285,8 @@ export function withChangeNames(request: ApprovalRequestRecord, names: NamedKeys
       changes: refs.changes.map((change) => {
         if (!change?.readable || !change.naturalKey) return change;
         const name = namedSubject(change.naturalKey, names, change.resourceType);
-        return name.includes("Unnamed ") || holdsObjectId(name) ? change : { ...change, name };
+        const named = name.includes("Unnamed ") || holdsObjectId(name) ? change : { ...change, name };
+        return { ...named, ...unnamedOf(change.naturalKey, names) };
       }),
     },
   };
@@ -338,8 +355,10 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
     const waiting: ApprovalRequestRecord[] = [];
     // Sequential: one client runs one query at a time.
     for (const request of [...signed.slice(0, pending.length), ...awaitingRequests]) waiting.push({ ...request, preview: await approvalPreview(client, request) });
+    const { mode } = (await getApprovalMode(client, { tenantRef: tenantRef() })) as { mode: "two-person" | "solo" };
     return {
       generatedAt: new Date().toISOString(),
+      approvalMode: mode,
       pending: waiting.slice(0, pending.length),
       awaitingContentEffects: waiting.slice(pending.length),
       history: decided.filter((request) => !awaiting.has(request.id)),

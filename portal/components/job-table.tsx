@@ -8,7 +8,7 @@ import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Person } from "@/components/ui/person";
 import { incompleteTypesLine, jobDisplayStatus, jobErrorLine, jobIncompleteTypes } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
-import { ago, formatTimestamp } from "@/lib/presentation";
+import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import { jobName, jobStatusSentence } from "@/lib/sentences";
 
 // Recent jobs on the backups, baselines and restore surfaces (plan task 16), named by
@@ -20,7 +20,10 @@ export function JobRecordFields({ job }: { job: JobRecord }) {
     <>
       <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
       <RecordField copy={false} label="Kind" value={job.kind} />
-      <RecordField copy={false} label="Status" value={job.status} />
+      {/* The status a person reads on the page: a partly done job says so here too, and the
+          stored code (what the API returns) sits beside it. */}
+      <RecordField copy={false} label="Status" value={displayEnum("jobStatus", jobDisplayStatus(job))} />
+      {jobDisplayStatus(job) !== job.status ? <RecordField copy={false} label="Stored status (API)" value={job.status} /> : null}
       <RecordField label="Requested by (account ID)" usage={refUsage(job.references?.people.requested_by)} value={displayAccount(job.requestedBy, job.references?.people.requested_by)} />
       <RecordField copy={false} label="Created" value={job.createdAt} />
       <RecordField copy={false} label="Started" value={job.startedAt} />

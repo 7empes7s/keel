@@ -11,6 +11,9 @@ import { Icon } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import {
+  BY_HAND_HELP,
+  twinLine,
+  unknownAction,
   EXCEPTION_EFFECT,
   NOT_RUN_YET,
   NOT_SET_UP_HELP,
@@ -82,7 +85,9 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
   // Fixing beats accepting: when Keel can fix it, the exception is the second choice.
   const fixable = canFixOn(finding, canRestore);
   // Every setting the control checked, current against expected (none while it could not check).
-  const checks = result === "unknown" || result === "not-relevant" ? [] : controlChecks(finding);
+  const checks = result === "unknown" || result === "by-hand" || result === "not-relevant" ? [] : controlChecks(finding);
+  const next = unknownAction(finding);
+  const twin = twinLine(finding);
   const removable = canConfigure && Boolean(finding.own);
   const [removing, setRemoving] = useState(false);
 
@@ -140,6 +145,10 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         </dl>
         {!snapshot ? <p className="cp-muted">{evidenceSentence(finding, now)}</p> : null}
         {result === "unknown" ? <p className="cp-muted">{NOT_RUN_YET}</p> : null}
+        {result === "by-hand" ? <p className="cp-callout"><Icon name="person" />{BY_HAND_HELP}</p> : null}
+        {next.kind === "how-to" && next.href ? <p><a className="btn btn-sm" href={next.href} rel="noreferrer" target="_blank"><Icon name="page" />How to check it (CISA&apos;s steps)</a></p> : null}
+        {next.kind === "backup" && next.href ? <p><Link className="btn btn-sm" href={next.href}><Icon name="backup" />Run a backup</Link></p> : null}
+        {twin ? <p className="cp-twin"><Icon name="link" />{twin}. Keel shows the two as one control.</p> : null}
         {result === "not-set-up" ? <p className="cp-callout" data-tone="soon"><Icon name="plus" />{NOT_SET_UP_HELP}</p> : null}
 
         {checks.length ? <ControlChecks checks={checks} counts={checkCounts(finding)} key={finding.id} subject={checkSubjectWord(finding)} /> : null}

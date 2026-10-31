@@ -14,6 +14,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
 import { fixFor, listFixCandidates } from '../benchmarks/fix.mjs';
+import { BY_HAND_REASON, foldTwins } from '../benchmarks/standards.mjs';
 import { OWN_PREFIX, controlFromRow, ownCheckRows, shapeOwnCheck } from '../benchmarks/ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
@@ -539,7 +540,9 @@ function fixDescriptor(controlId) {
   return { resourceType: fix.resourceType, field: fix.field, to: fix.to };
 }
 
-function summarize(findings) {
+// Counted once per setting: a Keel check and its CISA twin are one result (standards.mjs).
+function summarize(all) {
+  const findings = foldTwins(all);
   return {
     controls: findings.length,
     exposed: findings.filter((finding) => finding.exposed).length,
@@ -550,6 +553,8 @@ function summarize(findings) {
     notConfigured: findings.filter((finding) => finding.exposed && finding.reason === 'not-configured').length,
     passing: findings.filter((finding) => finding.verdict === 'pass').length,
     unknown: findings.filter((finding) => finding.verdict === 'unknown').length,
+    // Of the unknowns, the rules CISA marks as checks to do by hand: no backup answers them.
+    byHand: findings.filter((finding) => finding.verdict === 'unknown' && finding.reason === BY_HAND_REASON).length,
     notApplicable: findings.filter((finding) => finding.verdict === 'not-applicable').length,
   };
 }

@@ -25,6 +25,7 @@ import { loadScubaSettings } from './scubagear/config.mjs';
 import { evaluateControl, recordEvaluation } from './evaluate.mjs';
 import { listOwnControls } from './ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, listControls } from './registry.mjs';
+import { BY_HAND_REASON } from './standards.mjs';
 
 // How many recent snapshots are searched for a complete read of a type. A type
 // read only further back would be stale for every shipped control anyway.
@@ -126,7 +127,7 @@ export async function newestWorkloadRead(client, { tenantRef, resourceType, part
 /**
  * @param {any} client
  * @param {{ tenantRef: string, actor: string, now?: Date, controls?: readonly any[] | null }} options
- * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, notConfigured: number, evaluations: object[] }>}
+ * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, byHand: number, notApplicable: number, notConfigured: number, evaluations: object[] }>}
  */
 export async function runComplianceChecks(client, { tenantRef, actor, now = new Date(), controls = null }) {
   assertTenantRef(tenantRef);
@@ -168,6 +169,8 @@ export async function runComplianceChecks(client, { tenantRef, actor, now = new 
     pass: count('pass'),
     fail: count('fail'),
     unknown: count('unknown'),
+    // Of the unknowns, the rules CISA marks as checks to do by hand.
+    byHand: evaluations.filter((evaluation) => evaluation.verdict === 'unknown' && evaluation.reason === BY_HAND_REASON).length,
     notApplicable: count('not-applicable'),
     // Of the fails, those where the setting does not exist yet.
     notConfigured: evaluations.filter((evaluation) => evaluation.reason === 'not-configured').length,

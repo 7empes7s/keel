@@ -180,7 +180,8 @@ export const BY_HAND_REASON = 'scubagear:check-by-hand';
 
 /**
  * One result per Keel check and its CISA twin. The CISA rule's result stays, unless
- * it could not be judged and Keel's check could: then Keel's stays. The one kept
+ * it could not be judged and Keel's check could, or Keel's fails where CISA's does not:
+ * then Keel's stays, so a fail is never hidden. The one kept
  * carries the other as `twin`. Findings without a twin pass through unchanged.
  * @template {{ controlId: string, verdict: string }} T
  * @param {T[]} findings
@@ -194,7 +195,8 @@ export function foldTwins(findings) {
     const keel = byControl.get(keelId);
     const cisa = byControl.get(`${SCUBA_CONTROL_PREFIX}${ref}`);
     if (!keel || !cisa) continue;
-    const keepKeel = cisa.verdict === 'unknown' && keel.verdict !== 'unknown';
+    const keepKeel = (cisa.verdict === 'unknown' && keel.verdict !== 'unknown')
+      || (keel.verdict === 'fail' && cisa.verdict !== 'fail' && cisa.verdict !== 'unknown');
     const [stay, go] = keepKeel ? [keel, cisa] : [cisa, keel];
     dropped.add(go);
     kept.set(stay, go);

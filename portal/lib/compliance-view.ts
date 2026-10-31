@@ -641,6 +641,7 @@ export function complianceStatus(counts: ComplianceCounts): { tone: RiskTone; la
   if (counts.failing) return { tone: "urgent", label: `${counts.failing} failing` };
   if (counts["not-set-up"]) return { tone: "soon", label: `${counts["not-set-up"]} not set up yet` };
   if (counts.unknown) return { tone: "soon", label: `${counts.unknown} could not be checked` };
+  if (counts["by-hand"]) return { tone: "low", label: `${counts["by-hand"]} to check by hand` };
   return { tone: "fine", label: "All pass" };
 }
 

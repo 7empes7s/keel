@@ -5,6 +5,7 @@ import { KEEL_TWINS, SCUBA_POLICY_IDS } from "../../engine/benchmarks/standards.
 import { controlFor } from "../../engine/benchmarks/registry.mjs";
 import {
   complianceCounts,
+  complianceStatus,
   complianceVerdict,
   countsFromSummary,
   foldedFindings,
@@ -40,6 +41,7 @@ test("a rule CISA leaves to a person is 'Check by hand', counted apart from 'cou
   assert.equal(resultLine(BY_HAND, "2026-10-31T12:00:00Z"), "CISA lists this as a check to do by hand");
   const counts = complianceCounts([BY_HAND, NOT_READ, STALE, finding("scubagear.MS.AAD.3.2v2", "pass")]);
   assert.deepEqual([counts.unknown, counts["by-hand"], counts.passing], [2, 1, 1]);
+  assert.deepEqual(complianceStatus(complianceCounts([BY_HAND, finding("scubagear.MS.AAD.3.2v2", "pass")])), { tone: "low", label: "1 to check by hand" });
   // The engine's summary counts by-hand rules inside its unknowns; the page takes them out.
   const summary = countsFromSummary({ controls: 10, exposed: 0, excepted: 0, expiredExceptions: 0, incompleteExceptions: 0, passing: 4, unknown: 6, byHand: 5, notApplicable: 0 });
   assert.deepEqual([summary.unknown, summary["by-hand"]], [1, 5]);
@@ -86,6 +88,11 @@ test("a Keel check and the CISA rule that tests the same thing show once", () =>
   const keelOnly = foldedFindings([keel, finding("scubagear.MS.AAD.1.1v1", "unknown", { reason: "scubagear:not-read:x" })]);
   assert.deepEqual(keelOnly.map((entry) => entry.controlId), ["keel-custom.conditional-access.block-legacy"]);
   assert.equal(twinLine(keelOnly[0]), "CISA MS.AAD.1.1v1 tests the same: could not check");
+  // Keel's fails where CISA's passes: Keel's stays, so the fail still counts.
+  const keelFails = foldedFindings([keel, finding("scubagear.MS.AAD.1.1v1", "pass")]);
+  assert.deepEqual(keelFails.map((entry) => entry.controlId), [keel.controlId]);
+  assert.equal(twinLine(keelFails[0]), "CISA MS.AAD.1.1v1 tests the same: passes");
+  assert.equal(complianceCounts(keelFails).failing, 1);
   // A Keel check with no CISA result loaded is left alone.
   assert.deepEqual(foldedFindings([keel, other]).map((entry) => entry.controlId), [keel.controlId, other.controlId]);
   // Folding counts one result per setting.

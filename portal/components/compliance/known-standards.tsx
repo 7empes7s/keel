@@ -70,7 +70,7 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
   const { start, end } = pageWindow(paging.pageOf(shown.length), shown.length, paging.size);
   const pick = (id: string) => {
     if (id === standard.id) return;
-    view.set({ [STANDARD_KEY]: id === standards[0]?.id ? null : id, [RESULT_KEY]: null, [LIST_KEY]: null, ...paging.resetPage });
+    view.set({ [STANDARD_KEY]: id === standards[0]?.id ? null : id, [RESULT_KEY]: null, [LIST_KEY]: null, [`${PREFIX}sort`]: null, [`${PREFIX}dir`]: null, [`${PREFIX}size`]: null, ...paging.resetPage });
   };
 
   return (
@@ -118,7 +118,7 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
             </button>
           ) : (
           <>
-          <button aria-expanded="true" className="btn btn-sm cp-known-toggle" onClick={() => view.set({ [LIST_KEY]: null, [RESULT_KEY]: null, [`${PREFIX}sort`]: null, [`${PREFIX}dir`]: null, ...paging.resetPage })} type="button">
+          <button aria-expanded="true" className="btn btn-sm cp-known-toggle" onClick={() => view.set({ [LIST_KEY]: null, [RESULT_KEY]: null, [`${PREFIX}sort`]: null, [`${PREFIX}dir`]: null, [`${PREFIX}size`]: null, ...paging.resetPage })} type="button">
             <Icon name="up" />Hide the policies
           </button>
           {shown.length ? (

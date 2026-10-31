@@ -188,7 +188,10 @@ export async function listJobs(client, { limit = 50, kinds = null, statuses = nu
   const { rows } = await client.query(
     `SELECT *, started_at::text AS event_started_at FROM job
       WHERE ($2::text[] IS NULL OR kind = ANY($2))
-        AND ($3::text[] IS NULL OR ${DISPLAY_STATUS_SQL} = ANY($3))
+        AND ($3::text[] IS NULL OR (
+          -- The stored status first, so the status index still narrows the scan.
+          status = ANY(array_replace($3::text[], 'partial', 'succeeded'))
+          AND ${DISPLAY_STATUS_SQL} = ANY($3)))
       ORDER BY created_at DESC LIMIT $1`,
     [limit, kinds, statuses],
   );

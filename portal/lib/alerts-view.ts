@@ -196,6 +196,45 @@ export function inboxOrder(alerts: AlertItem[]): AlertItem[] {
   return [...alerts].sort((a, b) => rank(a) - rank(b) || deadline(a) - deadline(b) || b.lastFiringAt.localeCompare(a.lastFiringAt));
 }
 
+/**
+ * The note left when this occurrence was acknowledged, or null. It lives in the
+ * alert's history; an earlier occurrence's note does not carry over.
+ */
+export function acknowledgeNote(alert: Pick<AlertItem, "state" | "occurrence" | "history">): string | null {
+  if (alert.state !== "acknowledged") return null;
+  for (let index = alert.history.length - 1; index >= 0; index -= 1) {
+    const entry = alert.history[index];
+    if (entry.toState === "acknowledged" && entry.reason === "acknowledged") return entry.occurrence === alert.occurrence ? entry.note ?? null : null;
+  }
+  return null;
+}
+
+/**
+ * What the page shows right after its own acknowledge, resolve or mute, until the
+ * server's next read: the new state, the acknowledger as owner and the note in the
+ * history. The banner, tiles and header pill all count this one list.
+ */
+export interface LocalChange { state: AlertState; owner?: AlertItem["owner"]; note?: string | null; at: string; by: string }
+
+export function withLocalChanges(alerts: AlertItem[], changes: Record<string, LocalChange>): AlertItem[] {
+  return alerts.map((alert) => {
+    const change = changes[alert.id];
+    if (!change || change.state === alert.state) return alert;
+    if (change.state !== "acknowledged") return { ...alert, state: change.state };
+    return {
+      ...alert,
+      state: change.state,
+      acknowledgedAt: alert.acknowledgedAt ?? change.at,
+      acknowledgedByName: alert.acknowledgedByName ?? change.by,
+      owner: change.owner ?? alert.owner,
+      history: [...alert.history, {
+        id: `local-${alert.id}`, occurrence: alert.occurrence, fromState: alert.state, toState: "acknowledged", reason: "acknowledged",
+        actor: "", actorName: change.by, at: change.at, eventId: null, note: change.note?.trim() || null,
+      }],
+    };
+  });
+}
+
 export function alertsVerdict(alerts: AlertItem[], now: string): { text: string; tone: "good" | "attention" | "critical" } {
   const waiting = alerts.filter((alert) => alert.state === "open" || alert.state === "reopened");
   const overdue = waiting.filter((alert) => isOverdue(alert, now)).length;

@@ -28,7 +28,7 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
-  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity"] },
+  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action"] },
 };
 export const ACTIVITY_KIND_ORDER: ActivityKind[] = ["backup", "restore", "rollback", "setup", "approval", "policy", "drill", "copy", "other"];
 
@@ -184,6 +184,7 @@ export function recordKindWords(kind: string): string {
     "benchmark-exception": "Control exception",
     "collection.completed": "Backup finished",
     "job.started": "Job started",
+    "alert-action": "Alert",
   };
   return words[kind] ?? displayEnum("eventKind", kind);
 }
@@ -204,6 +205,7 @@ export function rowHref(row: ActivityRow): string | null {
   if (row.entry?.kind === "recovery-drill" || row.entry?.kind === "fidelity-drill") return "/resilience";
   if (row.entry?.kind === "offsite-copy") return "/integrations";
   if (row.entry?.kind === "benchmark-evaluation" || row.entry?.kind === "benchmark-exception") return "/benchmarks";
+  if (row.entry?.kind === "alert-action" && typeof subject.alertId === "string" && subject.alertId) return `/alerts?open=${encodeURIComponent(subject.alertId)}`;
   return null;
 }
 
@@ -216,6 +218,7 @@ export function rowHrefLabel(row: ActivityRow): string {
   if (href.startsWith("/approvals")) return "Show decided approvals";
   if (href.startsWith("/resilience")) return "Show recovery readiness";
   if (href.startsWith("/integrations")) return "Show off-site copy settings";
+  if (href.startsWith("/alerts")) return "Open the alert";
   return "Show the control checks";
 }
 

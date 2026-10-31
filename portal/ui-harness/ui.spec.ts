@@ -4397,6 +4397,45 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
+// UI audit 2026-10-31 (B5): after Acknowledge the banner moved but the header pill did
+// not, the alert kept "No owner" and the note showed nowhere. The harness never reloads
+// the server data, like a refresh that has not come back yet: the page alone must agree.
+test("Alerts · acknowledge moves the pill, banner and tiles together, makes you the owner and keeps the note", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/alerts");
+  const pill = page.locator(".status-pill");
+  const verdict = page.locator('[data-layer="verdict"] .verdict-sentence');
+  const waiting = page.locator(".al-tile").filter({ hasText: "Needs someone" }).locator(".al-tile-count");
+  await expect(pill).toHaveText("1 overdue");
+  await expect(waiting).toHaveText("3");
+
+  // Acknowledge Finance from its panel, with a note.
+  await page.locator(".al-row-link", { hasText: "Finance (group)" }).click();
+  let sheet = page.getByRole("dialog", { name: "Finance (group)" });
+  await sheet.getByLabel("Note (optional)").fill("KEEL-RT- looking into it with the network team");
+  await sheet.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(page.locator(".toast", { hasText: "Alert acknowledged" })).toBeVisible();
+  await expect(verdict).toHaveText("2 alerts need someone to acknowledge them; 1 is past the deadline.");
+  await expect(waiting).toHaveText("2");
+  await expect(pill).toHaveText("1 overdue");
+  // The panel now names the owner and shows the note, in the facts and the history.
+  await expect(sheet).toContainText("Marouane Defili");
+  await expect(sheet.locator(".al-ack-note")).toContainText("KEEL-RT- looking into it with the network team");
+  await expect(sheet.locator(".al-timeline > li").first()).toContainText("KEEL-RT- looking into it with the network team");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".sel-row", { hasText: "Finance (group)" })).not.toContainText("No owner");
+  await expect(page.locator(".sel-row", { hasText: "Finance (group)" })).toContainText("Marouane Defili");
+
+  // The overdue one: the pill and the banner change in the same step.
+  await page.getByRole("button", { name: "Acknowledge the overdue one" }).click();
+  await expect(verdict).toHaveText("1 alert needs someone to acknowledge it.");
+  await expect(pill).toHaveText("1 waiting");
+  await expect(waiting).toHaveText("1");
+  sheet = page.getByRole("dialog");
+  await expect(sheet).toHaveCount(0);
+});
+
 test("Alerts · a viewer sees the alerts, no amber action and no controls", async ({ page }) => {
   await open(page, "/alerts/viewer");
   await expect(page.locator(".al-tile")).toHaveCount(4);

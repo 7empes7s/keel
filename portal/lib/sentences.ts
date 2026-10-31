@@ -377,6 +377,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       if (count === 0) return `${actorName} cleared the ScubaGear list of ${list}`;
       return `${actorName} set the ScubaGear list of ${list}${count === null ? "" : ` to ${count} ${count === 1 ? "entry" : "entries"}`}`;
     }
+    case "alert-action": {
+      const verb = { acknowledged: "acknowledged", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(subject.action)] ?? "changed";
+      const about = typeof subject.naturalKey === "string" && subject.naturalKey ? ` about ${namedResource(subject.naturalKey, names)}` : "";
+      const note = typeof subject.note === "string" && subject.note.trim() ? subject.note.trim() : null;
+      return `${actorName} ${verb} an alert${about}${note ? `: “${note.length > 140 ? `${note.slice(0, 139)}…` : note}”` : ""}`;
+    }
     case "people-anonymity": return subject.enabled === true
       ? `${actorName} turned on "Hide people's names"`
       : `${actorName} turned off "Hide people's names", so names show again`;

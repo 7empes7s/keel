@@ -77,7 +77,7 @@ import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICE
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
-import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
+import { type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
@@ -327,7 +327,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as { alertId?: string; action?: string };
     const alert = INBOX_ALERTS.find((entry) => entry.id === body.alertId);
     const state = body.action === "acknowledge" ? "acknowledged" : body.action === "resolve" ? "resolved" : body.action === "mute" ? "suppressed" : alert?.conditionActive ? "open" : "resolved";
-    return json({ alert: { id: body.alertId, state } });
+    // The acknowledger owns it now, as the route answers (UI audit B5).
+    return json({ alert: { id: body.alertId, state, ...(body.action === "acknowledge" ? { owner: { id: "8c1e0000-0000-4000-8000-0000000000b5", name: "Marouane Defili" } } : {}) } });
   }
   // Schedules: the engine's floor refuses a backup every 10 minutes; other saves succeed.
   if (url.endsWith("/api/schedules") && init?.method === "POST") {
@@ -2774,15 +2775,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/alerts/anonymous": {
       const alerts = hiddenAlerts();
-      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(alerts, now)))}
-        {ANONYMOUS_NOTE}
-        <AlertsPage alerts={alerts} canMute canRespond now={now} /></>;
+      return <AlertsPage alerts={alerts} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} notice={ANONYMOUS_NOTE} now={now} />;
     }
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
-      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
-        <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
     }
     case "/setup/anonymous": {
       const state = hiddenSetup();

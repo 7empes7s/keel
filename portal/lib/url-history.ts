@@ -9,3 +9,10 @@ export function replaceUrl(href: string): void {
 export function pushUrl(href: string): void {
   window.history.pushState(null, "", href);
 }
+
+/** The query string the address bar holds right now, without the "?". Read this, not
+ * useSearchParams, when building the next address: the hook only catches up on the next
+ * draw, so two writes close together would each start from the same old query. */
+export function currentQuery(): string {
+  return window.location.search.replace(/^\?/, "");
+}

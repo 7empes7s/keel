@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { createPolicy, getPolicy, listPolicies, listPolicyActions, setPolicyEnabled, clearPolicyPause } from "../../engine/policy/evaluate.mjs";
+import { createPolicy, deletePolicy, getPolicy, listPolicies, listPolicyActions, setPolicyEnabled, clearPolicyPause, updatePolicy } from "../../engine/policy/evaluate.mjs";
 import { AUTOMATION_KILL_SWITCH_PATH } from "../../engine/policy/execute.mjs";
 import {
   ActivationNotFoundError, ActivationRefusedError, activatePolicy, createActivationPreview, summarizeAutomationOutcomes,
@@ -270,7 +270,7 @@ export function guardedPolicyUpdate(operation: "enabled" | "clear-pause", surfac
   return guarded({ action: `policies:${operation}`, capability: surface.capability, recordAttempt: true }, async ({ client, tenantRef, request }) => {
     const id = new URL(request.url).pathname.split("/").at(-2) ?? "";
     if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
-    const { rows } = await client.query("SELECT id, action FROM policy WHERE id = $1 AND tenant_ref = $2", [id, tenantRef]);
+    const { rows } = await client.query("SELECT id, action FROM policy WHERE id = $1 AND tenant_ref = $2 AND deleted_at IS NULL", [id, tenantRef]);
     if (!rows[0]) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
     const body = await readActionParams(request);
     if (operation === "enabled" && typeof body.enabled !== "boolean") throw new InvalidActionRequest();
@@ -285,6 +285,51 @@ export function guardedPolicyUpdate(operation: "enabled" | "clear-pause", surfac
       return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0] }, { headers: NO_STORE });
     } catch {
       return Response.json({ error: "conflict" }, { status: 409, headers: NO_STORE });
+    }
+  }, deps);
+}
+
+/** Edit a rule: the whole edited rule (name, what it watches, limits) in one body, so a
+ * cleared limit is sent as null rather than left out. What it does stays as it is. An
+ * undo rule that is on is turned off by the edit and needs a fresh preview. */
+export function guardedPolicyEdit(surface: DataSurface, deps: GuardDeps = {}) {
+  return guarded({ action: "policies:edit", capability: surface.capability, recordAttempt: true }, async ({ client, tenantRef, request }) => {
+    const id = new URL(request.url).pathname.split("/").at(-2) ?? "";
+    if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    const body = await readActionParams(request);
+    if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 120 || !BLAST.includes(String(body.maxBlastRadius))) throw new InvalidActionRequest();
+    for (const key of ["resourceType", "naturalKeyGlob", "changeType", "blastRadius"]) {
+      if (body[key] != null && typeof body[key] !== "string") throw new InvalidActionRequest();
+    }
+    if (body.blastRadius != null && !BLAST.includes(String(body.blastRadius))) throw new InvalidActionRequest();
+    if (body.changeType != null && !["added", "modified", "removed"].includes(String(body.changeType))) throw new InvalidActionRequest();
+    for (const key of ["maxActionsPerWindow", "windowSeconds"]) {
+      if (body[key] != null && (!Number.isSafeInteger(body[key]) || Number(body[key]) <= 0)) throw new InvalidActionRequest();
+    }
+    if ((body.maxActionsPerWindow == null) !== (body.windowSeconds == null)) throw new InvalidActionRequest();
+    try {
+      const policy = await updatePolicy(client, {
+        tenantRef, policyId: id, name: body.name, resourceType: body.resourceType, blastRadius: body.blastRadius,
+        naturalKeyGlob: body.naturalKeyGlob, changeType: body.changeType, maxBlastRadius: body.maxBlastRadius,
+        maxActionsPerWindow: body.maxActionsPerWindow, windowSeconds: body.windowSeconds,
+      });
+      return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0] }, { headers: NO_STORE });
+    } catch {
+      return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    }
+  }, deps);
+}
+
+/** Delete a rule: turned off and marked deleted, kept as history (deletePolicy). */
+export function guardedPolicyDelete(surface: DataSurface, deps: GuardDeps = {}) {
+  return guarded({ action: "policies:delete", capability: surface.capability, recordAttempt: true }, async ({ client, tenantRef, principalId, request }) => {
+    const id = new URL(request.url).pathname.split("/").at(-2) ?? "";
+    if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+    try {
+      const policy = await deletePolicy(client, { tenantRef, policyId: id, deletedBy: principalId });
+      return Response.json({ deleted: { id: String(policy.id), name: policy.name } }, { headers: NO_STORE });
+    } catch {
+      return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
     }
   }, deps);
 }

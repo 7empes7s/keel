@@ -43,9 +43,11 @@ test("sendEach goes on after a failure and names it, and retries a busy answer",
 test("the not-saved message counts what was saved and names what was not", () => {
   assert.equal(
     notSavedMessage(775, ["Group1 (user)", "Wies Jeff (user)", "ac_l.staar (user)", "x", "y"]),
-    "Saved 770 of 775 changes. 5 changes could not be saved and are still chosen: Group1 (user), Wies Jeff (user), ac_l.staar (user) and 2 more. Try again to save them.",
+    "770 of 775 changes went through. 5 changes could not be saved and are still chosen: Group1 (user), Wies Jeff (user), ac_l.staar (user) and 2 more. Try again to save them.",
   );
-  assert.equal(notSavedMessage(3, ["A", "B"]), "Saved 1 of 3 changes. 2 changes could not be saved and are still chosen: A and B. Try again to save them.");
+  assert.equal(notSavedMessage(3, ["A", "B"]), "1 of 3 changes went through. 2 changes could not be saved and are still chosen: A and B. Try again to save them.");
   assert.equal(notSavedMessage(2, ["A", "B"]), "2 changes could not be saved and are still chosen: A and B. Try again to save them.");
-  assert.equal(notSavedMessage(4, ["A"]), "Saved 3 of 4 changes. 1 change could not be saved and is still chosen: A. Try again to save it.");
+  assert.equal(notSavedMessage(4, ["A"]), "3 of 4 changes went through. 1 change could not be saved and is still chosen: A. Try again to save it.");
+  // Refused with a reason: sending it again would not help, so it does not say to.
+  assert.equal(notSavedMessage(4, ["A"], false), "3 of 4 changes went through. 1 change could not be saved and is still chosen: A. See why below, then change or leave out what Keel refused.");
 });

@@ -325,7 +325,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/api/actions/dispose")) {
     // A test makes one change fail: Keel stays busy for the Windows baseline.
     const body = JSON.parse(String(init?.body ?? "{}")) as { driftId?: string; reason?: string };
-    if (body.reason === "Busy for Windows" && body.driftId === "dr5") return json({ error: "unavailable" }, 503);
+    if (body.reason === "Busy for Windows" && body.driftId === "dr5") return json({ error: "busy" }, 503);
     return json({ disposition: { id: "d" } });
   }
   // Alerts: the action answers the state it asked for, so a test sees rows change.

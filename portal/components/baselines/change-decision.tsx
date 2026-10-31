@@ -23,13 +23,16 @@ interface UndoPreview {
 // A change whose setting holds the same values as the approved setup: the server says
 // so (409 no_change), and that sentence is shown instead of a generic failure.
 class NoChangeError extends Error {}
+// No answer, or a failure after Keel may have saved it: never sent again on its own,
+// since a second send could make a second approval request.
+class UnsureError extends Error {}
 
 async function post(path: string, body: Record<string, unknown>): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   } catch {
-    throw new BusyError("Keel could not be reached");
+    throw new UnsureError("Keel did not answer");
   }
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
@@ -38,8 +41,10 @@ async function post(path: string, body: Record<string, unknown>): Promise<unknow
     }
     // A refused ignore end date says why (for example, more than 90 days away).
     if (response.status === 400 && payload?.message) throw new NoChangeError(`${payload.message[0].toUpperCase()}${payload.message.slice(1)}.`);
-    // 503: Keel was busy (for example every database connection in use). Worth a retry.
-    if (response.status === 503) throw new BusyError("Keel was busy");
+    // Turned away before any work because every database connection was in use: safe
+    // to send again. Any other 503 may come after a write, so it is not retried.
+    if (response.status === 503 && payload?.error === "busy") throw new BusyError("Keel was busy");
+    if (response.status >= 500) throw new UnsureError("Keel did not finish");
     throw new Error(`Action request failed (${response.status})`);
   }
   return response.json();
@@ -49,18 +54,24 @@ async function post(path: string, body: Record<string, unknown>): Promise<unknow
 export function whyNotSaved(error: unknown): string {
   if (error instanceof NoChangeError) return error.message.replace(/\.$/, "");
   if (error instanceof BusyError) return "Keel was busy";
+  if (error instanceof UnsureError) return "Keel did not answer, so it may already be saved. Reload the page to check before trying again";
   return "Keel refused it";
 }
 
-/** "Saved 760 of 775 changes. 15 could not be saved and are still chosen: A, B and 13 more. Try again to save them." */
-export function notSavedMessage(total: number, failedNames: string[]): string {
+/** Whether sending the change again can help: not when Keel said why it refused. */
+export const worthRetrying = (error: unknown) => error instanceof BusyError || error instanceof UnsureError;
+
+/** "760 of 775 changes went through. 15 could not be saved and are still chosen: A, B and 13 more. Try again to save them." */
+export function notSavedMessage(total: number, failedNames: string[], retry = true): string {
   const failed = failedNames.length;
   const saved = total - failed;
   const shown = failedNames.slice(0, 3);
   const names = failed > shown.length ? `${shown.join(", ")} and ${failed - shown.length} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown[0];
-  const lead = saved ? `Saved ${saved} of ${total} changes. ` : "";
+  // "Went through": some may have gone to a second person rather than being saved.
+  const lead = saved ? `${saved} of ${total} changes went through. ` : "";
   const what = failed === 1 ? "1 change could not be saved and is still chosen" : `${failed} changes could not be saved and are still chosen`;
-  return `${lead}${what}: ${names}. Try again to save ${failed === 1 ? "it" : "them"}.`;
+  const next = retry ? `Try again to save ${failed === 1 ? "it" : "them"}.` : "See why below, then change or leave out what Keel refused.";
+  return `${lead}${what}: ${names}. ${next}`;
 }
 
 const failure = (error: unknown, fallback: string) => (error instanceof NoChangeError ? error.message : fallback);
@@ -90,6 +101,7 @@ export function ChangeDecision({
   today,
   onDone,
   onCancel,
+  onBusy,
 }: {
   decision: Decision;
   items: DriftRecord[];
@@ -99,6 +111,8 @@ export function ChangeDecision({
   // be saved: the panel stays open on just those, with the reason shown.
   onDone: (settled: string[], message: string, kept?: string[]) => void;
   onCancel: () => void;
+  // Told while a decision is being sent, so the panel is not closed half way.
+  onBusy?: (busy: boolean) => void;
 }) {
   const [reason, setReason] = useState("");
   const [until, setUntil] = useState<DayRange | null>(null);
@@ -152,6 +166,7 @@ export function ChangeDecision({
       expiresAt = new Date(`${until.from}T23:59:59Z`).toISOString();
     }
     setSubmitting(true);
+    onBusy?.(true);
     setError(null);
     setNotSaved([]);
     setProgress({ done: 0, total: items.length });
@@ -165,6 +180,7 @@ export function ChangeDecision({
       return { id: item.id, sent: Boolean(result?.approvalRequest) };
     }, { onProgress: (done, total) => setProgress({ done, total }) });
     setSubmitting(false);
+    onBusy?.(false);
     setProgress(null);
     const saved = results.flatMap((result) => (result.ok ? [result.value] : []));
     const failed = results.flatMap((result) => (result.ok ? [] : [{ item: result.item, error: result.error }]));
@@ -178,7 +194,7 @@ export function ChangeDecision({
       return;
     }
     setNotSaved(failed.map(({ item, error }) => ({ name: changeLabel(item), why: whyNotSaved(error) })));
-    setError(notSavedMessage(items.length, failed.map(({ item }) => changeLabel(item))));
+    setError(notSavedMessage(items.length, failed.map(({ item }) => changeLabel(item)), failed.every(({ error }) => worthRetrying(error))));
     if (saved.length) onDone(settled, decisionMessage(action, saved), failed.map(({ item }) => item.id));
   }
 

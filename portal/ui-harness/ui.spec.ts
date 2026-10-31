@@ -1030,7 +1030,7 @@ test("a change that could not be accepted stays chosen and is named, the rest ar
   await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
   await expect(page.locator(".toast", { hasText: "Accepted 1 change" })).toBeVisible();
   sheet = page.getByRole("dialog", { name: "Accept 1 change into the approved setup" });
-  await expect(sheet.getByRole("alert")).toHaveText(/^Saved 1 of 2 changes\. 1 change could not be saved and is still chosen: Windows baseline/);
+  await expect(sheet.getByRole("alert")).toHaveText(/^1 of 2 changes went through\. 1 change could not be saved and is still chosen: Windows baseline/);
   await sheet.locator(".bl-not-saved summary").click();
   await expect(sheet.locator(".bl-not-saved")).toContainText("Keel was busy");
   await expect(page.locator(".bl-row-link", { hasText: /^Old project team$/ })).toHaveCount(0);

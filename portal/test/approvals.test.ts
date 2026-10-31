@@ -478,6 +478,8 @@ test("approval controls submit each listed request id and its rejection reason",
     assert.deepEqual(approved, { ok: true, status: 202, payload: { job: { id: "job-1" } } });
     const rejected = await decideRequest("00000000-0000-4000-8000-000000000202", "reject", "outside the approved change window");
     assert.equal(rejected.ok, true);
+    // Solo approval mode: approving your own request sends the reason you wrote.
+    await decideRequest("00000000-0000-4000-8000-000000000303", "approve", "Restore the policy deleted by mistake");
 
     assert.deepEqual(requests, [
       {
@@ -491,6 +493,12 @@ test("approval controls submit each listed request id and its rejection reason",
         method: "POST",
         contentType: "application/json",
         body: { reason: "outside the approved change window" },
+      },
+      {
+        url: "/api/approvals/00000000-0000-4000-8000-000000000303/approve",
+        method: "POST",
+        contentType: "application/json",
+        body: { reason: "Restore the policy deleted by mistake" },
       },
     ]);
   } finally {

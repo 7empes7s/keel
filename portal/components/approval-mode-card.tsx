@@ -19,7 +19,7 @@ import { toast } from "@/lib/toast";
 
 const MODES: { mode: ApprovalMode; name: string; icon: IconName; line: string }[] = [
   { mode: "two-person", name: "Two people", icon: "person", line: "Someone other than the person who asked approves restores, undos, accepted changes and emergency changes." },
-  { mode: "solo", name: "Solo", icon: "check-circle", line: "The person who asked may approve it themselves. For a business with one admin. Each one is marked “Self-approved”." },
+  { mode: "solo", name: "Solo", icon: "check-circle", line: "The person who asked may approve any of them themselves, with a reason. For a business with one admin. Each one is marked “Self-approved”." },
 ];
 
 export function ApprovalModeCard({ setting, canChange, now }: { setting: ApprovalModeView | null; canChange: boolean; now: string }) {
@@ -91,10 +91,10 @@ export function ApprovalModeCard({ setting, canChange, now }: { setting: Approva
                         <p className="ra-risk-lead"><Badge tone="urgent" icon="alert">Less checking</Badge> Use this only when one admin runs Keel.</p>
                         <p>With Solo approval:</p>
                         <ul>
-                          <li>The person who asks for a restore, an undo or an emergency change can approve it straight away.</li>
+                          <li>The person who asks for a restore, an undo, an accepted change or an emergency change can approve it straight away, with a reason.</li>
                           <li>A mistake or a stolen account is not caught by a second person.</li>
                         </ul>
-                        <p>Each self-approval is marked “Self-approved” on Approvals and in Activity. Lockout checks still run, and a rule that needs two approvers for a kind of change still needs two. The switch and your confirmation are written to the audit record. You can switch back at any time.</p>
+                        <p>Each self-approval is marked “Self-approved” on Approvals and in Activity. Solo has no exceptions: it also covers kinds of change set to need two approvers. Each self-approval needs a reason that says why. Lockout checks still run. The switch and your confirmation are written to the audit record. You can switch back at any time.</p>
                       </div>
                     )}
                     disabled={busy}

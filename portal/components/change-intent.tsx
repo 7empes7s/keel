@@ -224,7 +224,7 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
       });
       if (!response.ok) {
         const { error } = (await response.json().catch(() => ({}))) as { error?: string };
-        const detail = error === "owner-is-approver" ? "The person who made the change cannot approve it while approvals need two people." : error === "approver-not-authorized" ? "You cannot approve changes." : "The approval was not recorded. Check the fields and try again.";
+        const detail = error === "owner-is-approver" ? "The person who made the change cannot approve it while approvals need two people." : error === "reason-required" ? "Approving your own emergency change needs a reason that says why, in a few words." : error === "approver-not-authorized" ? "You cannot approve changes." : "The approval was not recorded. Check the fields and try again.";
         toast({ tone: "warning", title: "Not approved", detail });
         return;
       }

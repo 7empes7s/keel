@@ -12,8 +12,10 @@
 // The mode applies the same way at every decision point: restore and undo requests,
 // content restores, accepting or ignoring a change, content-effect approvals, emergency
 // changes and using an older approved setup again (all approval requests go through
-// approvals.mjs#approveRequest). It never lifts anything else: a two-person rule set for
-// an action (approvalPolicy.mjs) still needs two people other than the requester, a
+// approvals.mjs#approveRequest). In solo there are no exceptions: a self-approval decides
+// the request even where a two-person rule (approvalPolicy.mjs) is set for the action,
+// because a business with one admin has no second person to ask. What solo never lifts:
+// a self-approval needs a written reason that says why (selfApprovalReasonProblem), a
 // standing policy never self-approves, and every technical safety check stays.
 //
 // The gates that run an approved change later re-read the mode: a self-approved
@@ -26,6 +28,30 @@ export const DEFAULT_APPROVAL_MODE = 'two-person';
 export const APPROVAL_MODE_EVIDENCE_KIND = 'approval-mode';
 
 export class ApprovalModeError extends Error {}
+
+// A self-approval has no second person to question it, so its reason must say something:
+// at least this many characters and two words, not a placeholder such as "ok" or "test".
+export const SELF_APPROVAL_REASON_MIN_LENGTH = 10;
+const PLACEHOLDER_REASONS = new Set([
+  'n/a', 'na', 'none', 'test', 'testing', 'ok', 'okay', 'fine', 'yes', 'approve', 'approved',
+  'because', 'reason', 'no reason', 'asdf', 'xxx', 'tbd', 'todo', 'self', 'self approved', 'self-approved',
+]);
+
+/**
+ * Why `text` is not good enough as the reason for a self-approval, or null when it is.
+ * The words are shown to the person, so they say what to write.
+ */
+export function selfApprovalReasonProblem(text) {
+  const reason = typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : '';
+  if (reason.length === 0) return 'a self-approval needs a reason: say why you are approving your own request';
+  const words = reason.split(' ').filter((word) => /\p{L}/u.test(word));
+  const placeholder = PLACEHOLDER_REASONS.has(reason.toLowerCase().replace(/[.!]+$/, ''))
+    || /^(.)\1*$/u.test(reason.replace(/\s/g, ''));
+  if (placeholder || reason.length < SELF_APPROVAL_REASON_MIN_LENGTH || words.length < 2) {
+    return 'a self-approval needs a reason that says why, in a few words (for example "Restore the policy deleted by mistake this morning")';
+  }
+  return null;
+}
 
 /** The tenant's approval mode: { mode, updatedBy, updatedAt }. Two-person unless set. */
 export async function getApprovalMode(client, { tenantRef }) {

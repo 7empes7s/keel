@@ -191,9 +191,17 @@ test("Approvals · approval mode switches to Solo only with the risk confirmed, 
   await expect(page.locator(".verdict").first()).toContainText("Approval mode is Solo, so you can approve your own requests");
   await page.locator(".ap-row-link").first().click();
   const request = page.locator("article.ap-card");
-  await expect(request.locator(".ap-help")).toContainText("Approval mode is solo, so you can approve it yourself");
+  await expect(request.locator(".ap-help")).toContainText("Approval mode is Solo, so you can approve it yourself: say why");
   await expect(request.getByText("You can self-approve")).toBeVisible();
-  await expect(request.getByRole("button", { name: "Approve myself" })).toBeEnabled();
+  // A self-approval needs a reason that says why: the button waits for one.
+  const approveMyself = request.getByRole("button", { name: "Approve myself" });
+  await expect(approveMyself).toBeDisabled();
+  await request.getByLabel("Why are you approving this yourself?").fill("Restore the policy deleted by mistake");
+  await expect(approveMyself).toBeEnabled();
+  await approveMyself.click();
+  const decisions = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url.endsWith("/approve"));
+  expect(decisions.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ reason: "Restore the policy deleted by mistake" }]);
   await page.getByRole("radio", { name: /Decided/ }).click();
   await expect(page.locator(".ap-history-row").first().getByText("Self-approved")).toBeVisible();
   await page.locator(".am-card").getByRole("button", { name: "Switch to two people" }).click();

@@ -36,7 +36,7 @@
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
-import { selfApprovalAllowed } from '../govern/approvalMode.mjs';
+import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { changedFields } from '../identity/attribution.mjs';
 import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalDigest } from '../restore/dryRunArtifact.mjs';
@@ -299,6 +299,10 @@ export async function createChangeIntent(client, {
   const selfApproved = String(owner.id) === String(approver.id);
   if (selfApproved && !(await selfApprovalAllowed(client, { tenantRef }))) {
     throw new ChangeIntentError('owner-is-approver', 'the owner of an emergency change cannot approve it while approvals need two people');
+  }
+  if (selfApproved) {
+    const problem = selfApprovalReasonProblem(reason);
+    if (problem) throw new ChangeIntentError('reason-required', problem);
   }
 
   let key = naturalKey;

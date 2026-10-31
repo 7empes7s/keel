@@ -237,6 +237,10 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
 
 type Busy = { id: string; decision: "approve" | "reject" } | null;
 
+// The server checks a self-approval's reason (engine/govern/approvalMode.mjs); the button
+// waits for at least this many characters so a click never sends an empty one.
+const SELF_REASON_MIN_LENGTH = 10;
+
 export function ApprovalInbox({
   pending,
   awaitingContentEffects = [],
@@ -275,6 +279,8 @@ export function ApprovalInbox({
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [bulk, setBulk] = useState<string[] | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Solo approval mode: the reason typed for approving your own request, by request id.
+  const [selfReasons, setSelfReasons] = useState<Record<string, string>>({});
 
   // Two requests in one list never share a title: same-reading ones get the moment
   // they were asked. Waiting and decided are separate lists, so each is checked alone.
@@ -422,6 +428,7 @@ export function ApprovalInbox({
     // Two-person mode: the viewer never decides their own request. Solo: they may.
     const blockedAsRequester = mine && approvalMode !== "solo";
     const selfApproval = mine && approvalMode === "solo";
+    const selfReason = selfReasons[request.id] ?? "";
     const title = titleOf(request);
     const left = hoursLeft(request, now);
     const expiryTone = left !== null && left <= 4 ? "urgent" : "neutral";
@@ -456,10 +463,8 @@ export function ApprovalInbox({
     const who = personLabel(asked);
     const help = blockedAsRequester
       ? "You asked for this, so someone else must decide it. Approvals need two people."
-      : selfApproval && required > 1
-        ? `You asked for this. This kind of change needs ${required} approvers other than you, even in solo approval mode.`
       : selfApproval && !awaitingEffects
-        ? `You asked for this. Approval mode is solo, so you can approve it yourself; it is recorded as self-approved. Keel runs ${words.verb} right after.`
+        ? `You asked for this. Approval mode is Solo, so you can approve it yourself: say why, and it is recorded as self-approved with your reason. Keel runs ${words.verb} right after.`
       : awaitingEffects
         ? "The restore is approved. It runs once its content changes are approved too."
         : required > 1 && signed + 1 >= required
@@ -479,7 +484,7 @@ export function ApprovalInbox({
           </div>
           <div className="ap-card-badges">
             {impact ? <Badge icon={impact.icon} tone={impact.tone}>{impact.label}</Badge> : null}
-            {selfApproval && required === 1 && !awaitingEffects ? <Badge icon="person" tone="soon">You can self-approve</Badge> : null}
+            {selfApproval && !awaitingEffects ? <Badge icon="person" tone="soon">You can self-approve</Badge> : null}
             {awaitingEffects ? <Badge tone="soon" icon="page">Waiting on content changes</Badge> : <Badge icon="clock" tone={expiryTone === "urgent" ? "urgent" : "neutral"} title={`Expires ${formatTimestamp(request.expiresAt)}`}>Expires {timeLeft(request, now).replace(" left", "").replace(/^(\d+ (?:min|h|days?))$/, "in $1")}</Badge>}
           </div>
           <button aria-expanded className="icon-button ap-collapse" onClick={closeRequest} title="Collapse" type="button"><Icon name="up" /><span className="visually-hidden">Collapse</span></button>
@@ -502,7 +507,19 @@ export function ApprovalInbox({
         {!awaitingEffects ? (
           <footer className="ap-card-foot">
             <p className="ap-help">{help}</p>
-            {!blockedAsRequester && !(selfApproval && required > 1) ? (
+            {selfApproval ? (
+              <label className="ap-self-reason">
+                <span>Why are you approving this yourself?</span>
+                <input
+                  disabled={isBusy}
+                  maxLength={500}
+                  onChange={(event) => { const value = event.target.value; setSelfReasons((current) => ({ ...current, [request.id]: value })); }}
+                  placeholder="For example: restore the policy deleted by mistake this morning"
+                  value={selfReason}
+                />
+              </label>
+            ) : null}
+            {!blockedAsRequester ? (
               <span className="ap-decide">
                 <button
                   aria-busy={(isBusy && busy?.decision === "reject") || undefined}
@@ -517,8 +534,9 @@ export function ApprovalInbox({
                 <button
                   aria-busy={(isBusy && busy?.decision === "approve") || undefined}
                   className="btn btn-primary"
-                  disabled={isBusy}
-                  onClick={() => void decide(request, "approve")}
+                  disabled={isBusy || (selfApproval && selfReason.trim().length < SELF_REASON_MIN_LENGTH)}
+                  onClick={() => void decide(request, "approve", selfApproval ? selfReason.trim() : "")}
+                  title={selfApproval && selfReason.trim().length < SELF_REASON_MIN_LENGTH ? "Write why you are approving it yourself first" : undefined}
                   type="button"
                 >
                   <Icon name="check" />{selfApproval ? "Approve myself" : "Approve"}

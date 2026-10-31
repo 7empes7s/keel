@@ -182,10 +182,11 @@ export function approvalsStatus(counts: ApprovalCounts): { tone: RiskTone; label
 
 /** Why a decision was refused, in words next to the button. */
 export function decisionError(status: number, payload: { error?: string; handoff?: string } | null): string {
-  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it: approvals need two people, or this kind of change needs a second approver.";
+  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it: approvals need two people.";
   if (status === 409 && payload?.error === "no_change") return "Nothing to roll back: the setting already holds the same values as the approved setup. Reject this request.";
   if (status === 409) return "Someone else decided it first, or it expired. The list will refresh.";
   if (status === 404) return "This request no longer exists. The list will refresh.";
+  if (status === 400 && payload?.error === "reason_required") return "Approving your own request needs a reason that says why, in a few words.";
   if (status === 400) return "Write a reason to reject.";
   return "Keel could not record the decision. Try again in a moment.";
 }

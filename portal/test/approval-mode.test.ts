@@ -3,6 +3,11 @@ import { test } from "node:test";
 
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
+import { grantRole } from "../../engine/authz/administration.mjs";
+import { requestApproval } from "../../engine/govern/approvals.mjs";
+import { setApprovalMode } from "../../engine/govern/approvalMode.mjs";
+import { setApprovalPolicy } from "../../engine/govern/approvalPolicy.mjs";
+import { guardedApprovalDecision } from "@/lib/action";
 import { isSelfApproved, kindOfRecord } from "@/lib/activity-view";
 import { guardedApprovalModeRead, guardedApprovalModeUpdate } from "@/lib/approval-mode";
 import { contentEffectVerdict, type ContentEffectReviewView } from "@/lib/content-effect-review";
@@ -84,4 +89,39 @@ test("the content-change review lets the person who asked approve only in solo m
   } as unknown as ContentEffectReviewView;
   assert.match(contentEffectVerdict(review), /someone else must approve/);
   assert.match(contentEffectVerdict({ ...review, selfApprovalAllowed: true }), /Approval mode is Solo/);
+});
+
+test("in Solo, approving your own request needs a reason that says why, even under a two-person rule", async () => {
+  const db = await createIsolatedTestDatabase(import.meta.url);
+  const client = await db.connect();
+  try {
+    await client.query(schemaSql());
+    await client.query("INSERT INTO principal(id, email, display_name) VALUES ($1, 'ada@test.example', 'Ada Admin')", [ADMIN]);
+    for (const role of ["admin", "approver"]) await grantRole(client, { principalId: ADMIN, role, grantedBy: ADMIN });
+    await setApprovalMode(client, { tenantRef: "tenant-a", mode: "solo", actor: ADMIN, riskAcknowledged: true });
+    await setApprovalPolicy(client, { tenantRef: "tenant-a", actionClass: "delete", twoPerson: true, actor: ADMIN });
+    const asked = (await requestApproval(client, {
+      tenantRef: "tenant-a", action: "baseline-activate", params: { baselineId: "00000000-0000-4000-8000-00000000b001" }, requestedBy: ADMIN, policyActions: ["delete"],
+    })) as { id: string; required_approvals: number };
+    assert.equal(asked.required_approvals, 2);
+    const approve = guardedApprovalDecision("approve", { connect: () => db.connect(), databaseUrl: () => db.url, tenantRef: () => "tenant-a" });
+    const call = (body?: object) => approve(new Request(`http://localhost/api/approvals/${asked.id}/approve`, {
+      method: "POST",
+      headers: { [PRINCIPAL_ID_HEADER]: ADMIN, [CAPABILITIES_HEADER]: "approve", ...(body ? { "content-type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    }));
+
+    const bare = await call();
+    assert.equal(bare.status, 400);
+    assert.equal((await bare.json()).error, "reason_required");
+    assert.equal((await call({ reason: "ok" })).status, 400, "a placeholder is not a reason");
+
+    const done = await call({ reason: "Turn the approved setup back on after the test" });
+    assert.equal(done.status, 202, await done.clone().text());
+    const { rows: [row] } = await client.query("SELECT status, self_approved, reason FROM approval_request WHERE id = $1", [asked.id]);
+    assert.deepEqual(row, { status: "approved", self_approved: true, reason: "Turn the approved setup back on after the test" });
+  } finally {
+    await client.end();
+    await db.cleanup();
+  }
 });

@@ -3,6 +3,7 @@
 // approval requests, audit-record entries — built from their own fields and the
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
+import type { UnnamedReference } from "@/lib/app-names";
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
 import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
@@ -39,6 +40,8 @@ export interface ChangeRef extends EngineRef {
   resourceType?: string;
   changeType?: string;
   blastRadius?: string;
+  // What it points to that no backup names, each with a lookup link (filled in by the page).
+  unnamedRefs?: UnnamedReference[];
 }
 
 export interface SnapshotRef extends EngineRef {

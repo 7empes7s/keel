@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ChangeComparison } from "@/components/change-comparison";
-import { RecordCompare, RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, UnnamedRefFields } from "@/components/technical-details";
 import { changeLabel, fieldWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import type { DriftRecord } from "@/lib/types";
@@ -53,9 +53,7 @@ export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactN
       />
       <TechnicalDetails>
         <RecordField label="Natural key" value={item.naturalKey} />
-        {(item.unnamedRefs ?? []).map((ref) => (
-          <RecordField key={ref.id} label={`${ref.what} (no name in any backup)`} usage={<a href={ref.lookup} rel="noreferrer" target="_blank">Look it up in Microsoft Graph Explorer</a>} value={ref.id} />
-        ))}
+        <UnnamedRefFields refs={item.unnamedRefs} />
         {item.serviceRead ? null : <RecordField label="Drift ID" value={item.id} usage={<>The <code>driftId</code> for <code>POST /api/actions/dispose</code></>} />}
         <RecordField copy={false} label="Change type" value={item.changeType} />
         <RecordField copy={false} label="Blast radius" value={item.blastRadius} />

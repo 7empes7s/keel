@@ -1,7 +1,7 @@
 // Names, not ids, on a job's page. The server looks up the saved name of each key
 // (lib/saved-names.ts); these helpers turn a key into words with that name and never
 // return text that holds an object id. Keys and ids stay in Technical details.
-import { edgeKeyType } from "@/lib/app-names";
+import { edgeKeyType, type UnnamedReference } from "@/lib/app-names";
 import { workloadLabel } from "@/lib/compare-view";
 import { plainError } from "@/lib/error-words";
 import { holdsObjectId } from "@/lib/object-ids";
@@ -11,7 +11,8 @@ export { holdsObjectId };
 
 // templateFamily: the settings catalog template family the saved copy carries, when it
 // has one; an endpoint security policy made in Intune is listed under Defender.
-export type NamedKeys = Record<string, { name: string | null; resourceType: string; templateFamily?: string | null }>;
+// unnamedRefs: what the setting points to that no backup names, each with a lookup link.
+export type NamedKeys = Record<string, { name: string | null; resourceType: string; templateFamily?: string | null; unnamedRefs?: UnnamedReference[] }>;
 
 const FAMILY_WORDS: Record<string, string> = { member: "member", owner: "owner" };
 

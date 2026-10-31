@@ -11,7 +11,7 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { byTime } from "@/lib/paging";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, UnnamedRefFields, type RecordValue } from "@/components/technical-details";
 import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
@@ -24,6 +24,7 @@ import {
   approvalCounts,
   approvalKind,
   approvalTitle,
+  approvalUnnamedRefs,
   distinctTitles,
   approvalsVerdict,
   approveOutcome,
@@ -117,6 +118,7 @@ function RequestRecordFields({ request }: { request: ApprovalRequestRecord }) {
       {request.decidedAt ? <RecordField copy={false} label="Decided" value={request.decidedAt} /> : null}
       <RecordField label="Params" value={(request.params ?? {}) as RecordValue} />
       <ReferenceFields references={request.references} skipPeople={["requested_by", "decided_by"]} />
+      <UnnamedRefFields refs={approvalUnnamedRefs(request)} />
     </RecordGroup>
   );
 }

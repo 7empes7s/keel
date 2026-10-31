@@ -23,6 +23,7 @@ import {
   rowMatches,
 } from "@/lib/activity-view";
 import { normalizeJob } from "@/lib/action";
+import { changesQuery } from "@/lib/changed-values";
 import { EMPTY_REFERENCES, type EngineRef, evidenceSentence } from "@/lib/sentences";
 import { renderActivityAt } from "./render-activity";
 
@@ -223,4 +224,25 @@ test("a backup that ended partly done is a warning everywhere on Activity, never
   assert.doesNotMatch(verdict.text, /none failed\./);
   // Only whole runs read as fine.
   assert.deepEqual(activityStatus(activityCounts([whole], NOW)), { tone: "fine", label: "All finished" });
+});
+
+test("a rule edit or delete reads as who changed which rule, under policy, and opens the rule", () => {
+  const edit = { seq: "41", occurred_at: "2026-10-02T09:00:00Z", kind: "policy-change", actor: AMARA.id, subject: {
+    change: "edited", policyId: "5a000000-0000-4000-8000-000000000001", name: "Undo low risk", action: "auto_remediate",
+    fields: [
+      { field: "name", before: "Undo", after: "Undo low risk" },
+      { field: "maxActionsPerWindow", before: 50, after: 10 }, { field: "windowSeconds", before: 3600, after: 3600 },
+      { field: "enabled", before: true, after: false },
+    ],
+  } };
+  const removal = { ...edit, seq: "42", subject: { ...edit.subject, change: "deleted", fields: [] } };
+  const [editRow, deleteRow] = activityRows([], [edit, removal], PEOPLE, {}, NOW).sort((a, b) => a.id.localeCompare(b.id));
+  assert.equal(kindOfRecord("policy-change"), "policy");
+  assert.equal(editRow.title, "Amara Okafor edited the automatic rule “Undo low risk”: 3 settings changed; it stays off until it is previewed again");
+  assert.equal(deleteRow.title, "Amara Okafor deleted the automatic rule “Undo low risk”");
+  assert.equal(editRow.line, "Audit record · Automatic rule change");
+  assert.equal(rowHref(editRow), "/policies/5a000000-0000-4000-8000-000000000001");
+  assert.equal(rowHref(deleteRow), "/policies", "a deleted rule has no page; the link shows the rules");
+  assert.equal(changesQuery(editRow), "record=41");
+  assert.equal(changesQuery({ entry: { kind: "policy-change", seq: "1; drop", subject: {} } }), null);
 });

@@ -467,10 +467,10 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page).toHaveURL(/outcome=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
-  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 18 entries loaded");
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 20 entries loaded");
   await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page).not.toHaveURL(/outcome=/);
-  await expect(page.locator(".sel-row")).toHaveCount(18);
+  await expect(page.locator(".sel-row")).toHaveCount(20);
 
   // Who: one person's jobs and audit entries, no one else's.
   await page.getByRole("button", { name: /^Who:/ }).click();
@@ -485,6 +485,43 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Failed");
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 });
+
+// A rule edit or delete is an audit row whose panel shows who changed which rule
+// setting, old and new; a delete shows the rule as it was.
+for (const [viewport, theme] of [[{ width: 390, height: 844 }, "light"], [{ width: 1440, height: 1000 }, "dark"]] as const) {
+  test(`Activity · a rule edit and delete show each setting before and after at ${viewport.width} px ${theme}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/activity?open=record:18179", theme);
+    const panel = page.getByRole("dialog");
+    await expect(panel).toContainText("edited the automatic rule “KEEL-RT Undo low-risk group changes”: 4 settings changed; it stays off until it is previewed again");
+    const changes = panel.locator(".ac-changes");
+    await expect(changes.locator("h3")).toHaveText("What changed (1)");
+    const rule = changes.locator(".cv-object");
+    await expect(rule.locator(".cv-chip")).toHaveText("Changed");
+    await expect(rule.locator(".cv-object-kind")).toHaveText("automatic rule");
+    const state = rule.locator(".cc-row", { hasText: "On or off" });
+    await expect(state.locator('[data-side="before"]')).toContainText("On");
+    await expect(state.locator('[data-side="after"]')).toContainText("Off");
+    const limit = rule.locator(".cc-row", { hasText: "Limit" });
+    await expect(limit.locator('[data-side="before"]')).toContainText("No limit");
+    await expect(limit.locator('[data-side="after"]')).toContainText("10 an hour");
+    await expect(rule.locator(".cc-row", { hasText: "Kind of thing" }).locator('[data-side="after"]')).toContainText("Group");
+    await expect(panel.getByRole("link", { name: "Open the rule" })).toHaveAttribute("href", /\/policies\/5a000000-0000-4000-8000-000000000001/);
+    await page.screenshot({ path: `test-results/rule-edit-${viewport.width}-${theme}.png`, fullPage: false });
+
+    await open(page, "/activity?open=record:18180", theme);
+    const deleted = page.getByRole("dialog");
+    await expect(deleted).toContainText("deleted the automatic rule “KEEL-RT Alert on lockout risk”");
+    const gone = deleted.locator(".ac-changes .cv-object");
+    await expect(gone.locator(".cv-chip")).toHaveText("Removed");
+    await gone.getByRole("button", { name: /Show its \d+ settings/ }).click();
+    await expect(gone.locator(".cc-whole-list")).toContainText("Could lock out admins");
+    await expect(deleted.getByRole("link", { name: "Show the automatic rules" })).toHaveAttribute("href", /\/policies$/);
+    // Ids stay in Technical details: the sentence and the settings never show one.
+    expect(await deleted.locator(".ac-changes").evaluate((element) => element.textContent ?? "")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    await page.screenshot({ path: `test-results/rule-delete-${viewport.width}-${theme}.png`, fullPage: false });
+  });
+}
 
 // A row's panel says what it changed: each object, each setting, its value before and
 // after, ids read as names, and nested values one line per setting.
@@ -645,8 +682,8 @@ for (const theme of ["dark", "light"] as const) {
           await rows.nth(3).click({ modifiers: ["Shift"] });
           await expect(page.locator(".sel-bar-count")).toContainText("4 entries");
           await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 4 entries");
-          await page.getByRole("button", { name: /Select all 18 entries/ }).click();
-          await expect(page.locator(".sel-bar-count")).toContainText("18 entries");
+          await page.getByRole("button", { name: /Select all 20 entries/ }).click();
+          await expect(page.locator(".sel-bar-count")).toContainText("20 entries");
         }
       });
     }

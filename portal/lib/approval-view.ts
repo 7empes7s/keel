@@ -3,6 +3,7 @@
 // tested without a browser. Ids never appear in anything these return.
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
+import type { UnnamedReference } from "@/lib/app-names";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import type { RiskTone } from "@/lib/menu-status";
 import { formatTimestamp } from "@/lib/presentation";
@@ -63,6 +64,17 @@ export function distinctTitles(requests: Pick<ApprovalRequestRecord, "id" | "act
     }
   }
   return titles;
+}
+
+/**
+ * What a request's changes point to that no backup names (a role, who holds it, where),
+ * once each, so Technical details lists every ID with a link that looks it up.
+ */
+export function approvalUnnamedRefs(request: Pick<ApprovalRequestRecord, "references" | "preview">): UnnamedReference[] {
+  const out = new Map<string, UnnamedReference>();
+  const lists = [...(request.references?.changes ?? []).map((change) => change?.unnamedRefs), ...(request.preview?.changes ?? []).map((change) => change.unnamedRefs)];
+  for (const refs of lists) for (const ref of refs ?? []) if (!out.has(ref.id)) out.set(ref.id, ref);
+  return [...out.values()];
 }
 
 const HOUR = 3_600_000;

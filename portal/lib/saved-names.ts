@@ -1,7 +1,7 @@
 // The name each saved setting carries, read from the tenant's most recent backup that
 // holds one. The job page uses it so follow-ups and undo items never show a bare id.
 import { objectNameSql } from "../../engine/cir/objectName.mjs";
-import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, type IdNames, NO_ID_NAMES, referencedIds } from "@/lib/app-names";
+import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, type IdNames, NO_ID_NAMES, referencedIds, unnamedReferences } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
 import type { ChangeRef } from "@/lib/sentences";
 
@@ -61,8 +61,11 @@ export async function savedNames(client: QueryClient, tenantRef: string, keys: (
   if (unnamed.length === 0) return names;
   const refs = unnamed.map((entry) => referencedIds(entry.type, entry.key, entry.payload));
   const lookup = await idNames(client, tenantRef, refs.flatMap((ref) => ref.ids), refs.flatMap((ref) => ref.roles));
+  const known = new Set(Object.keys(lookup.ids));
   for (const entry of unnamed) {
-    names[entry.key] = { name: derivedName(entry.type, entry.key, entry.payload, lookup), resourceType: entry.type };
+    // What it points to that no backup names, with a lookup link, for Technical details.
+    const unnamedRefs = unnamedReferences(entry.type, entry.key, entry.payload, known);
+    names[entry.key] = { name: derivedName(entry.type, entry.key, entry.payload, lookup), resourceType: entry.type, ...(unnamedRefs.length ? { unnamedRefs } : {}) };
   }
   return names;
 }

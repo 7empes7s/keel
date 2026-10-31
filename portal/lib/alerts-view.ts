@@ -1,5 +1,6 @@
 // Roadmap task-83: the alerts inbox's types and words. Client-safe: no engine or
 // server imports, so the inbox component and the UI harness can use it.
+import type { UnnamedReference } from "@/lib/app-names";
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { itemService, typeService } from "@/lib/baselines-view";
@@ -55,6 +56,9 @@ export interface AlertItem {
   // The settings catalog template family the newest backup holds for the resource, when
   // it has one: an endpoint security policy made in Intune is a Defender setting.
   templateFamily?: string | null;
+  // What the resource points to that no backup names (a role, who holds it, where), each
+  // with a Microsoft Graph lookup link, for Technical details. Absent when all named.
+  unnamedRefs?: UnnamedReference[];
   lastEventId: string;
   history: AlertHistoryEntry[];
 }

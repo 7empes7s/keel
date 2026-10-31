@@ -223,6 +223,19 @@ test("an operator can accept a selected deviation", async () => {
     actor: "principal-operator",
     reason: "Reviewed against the approved change record",
   }]);
+
+  // Sent again (a second click, or a retry after a busy answer): saved once, said plainly.
+  const again = await disposeRoute(
+    post("/api/actions/dispose", {
+      principalId: "principal-operator",
+      capabilities: ["dispose-accept"],
+      body: { driftId: drift.id, action: "accept", reason: "sent twice" },
+    }),
+  );
+  assert.equal(again.status, 200);
+  assert.deepEqual(await again.json(), { disposition: { alreadyAccepted: true } });
+  const { rows: after } = await client.query(`SELECT reason FROM disposition WHERE drift_id = $1`, [drift.id]);
+  assert.deepEqual(after, [{ reason: "Reviewed against the approved change record" }]);
 });
 
 // Security audit run 2, finding 3: a change to sign-in (here a Conditional Access policy)
@@ -258,6 +271,18 @@ test("accepting or ignoring a sign-in change goes to a second person", async () 
   const decided = async () => (await client.query(`SELECT count(*)::int AS count FROM disposition WHERE drift_id = $1`, [drift.id])).rows[0].count;
   assert.equal(await decided(), 0, "nothing is decided before a second person approves");
   assert.equal(await jobCount(), jobsBefore);
+
+  // The same accept sent again gets the request already waiting, not a second one.
+  const again = await disposeRoute(post("/api/actions/dispose", {
+    ...operator, body: { driftId: drift.id, action: "accept", reason: "sent twice" },
+  }));
+  assert.equal(again.status, 202);
+  assert.equal((await again.json()).approvalRequest.id, approvalRequest.id);
+  const { rows: [{ count: waiting }] } = await client.query(
+    `SELECT count(*)::int AS count FROM approval_request WHERE action = 'dispose' AND params->'driftIds' = jsonb_build_array($1::text)`,
+    [drift.id],
+  );
+  assert.equal(waiting, 1);
 
   const self = await approveRoute(post(`/api/approvals/${approvalRequest.id}/approve`, {
     principalId: RESTORER, capabilities: ["approve", "dispose-accept"], body: {},

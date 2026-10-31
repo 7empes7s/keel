@@ -59,7 +59,12 @@ export function menuStatuses(data: Pick<DashboardData, "headline" | "coverage" |
   const recovery = (data.waiting?.openIncidents ?? 0) + (data.waiting?.restoreFollowUps ?? 0);
   if (recovery > 0) statuses.Restore = { tone: "soon", count: recovery, note: `${plural(recovery, "incident or restore step needs", "incidents or restore steps need")} someone` };
 
-  if (data.evidence && !data.evidence.ok) statuses["Audit log"] = { tone: "urgent", note: "The audit record failed its integrity check" };
+  // Not checked (no off-site copy) is amber; only a failed check is Urgent.
+  if (data.evidence && !data.evidence.ok) {
+    statuses["Audit log"] = data.evidence.status === "unanchored"
+      ? { tone: "soon", note: "The audit record is not checked: no off-site copy" }
+      : { tone: "urgent", note: "The audit record failed its integrity check" };
+  }
 
   const inbox = (pendingApprovals ?? 0) + (data.waiting?.openAlerts ?? 0);
   if (inbox > 0) statuses.Inbox = { tone: "soon", count: inbox, note: inboxNote(pendingApprovals ?? 0, data.waiting?.openAlerts ?? 0) };

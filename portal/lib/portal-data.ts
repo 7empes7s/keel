@@ -1333,10 +1333,11 @@ export function buildAlerts({
   lastCollection,
   coverage,
   evidence,
+  offsite,
 }: Pick<
   DashboardData,
   "activeBaseline" | "lastCollection" | "coverage" | "evidence"
->): DashboardAlert[] {
+> & Partial<Pick<DashboardData, "offsite">>): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
   const kinds = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -1411,7 +1412,29 @@ export function buildAlerts({
     });
   }
 
-  if (!evidence.ok) {
+  // No off-site copy: one Check soon item, linked to Resilience. It also explains an audit
+  // record that cannot be checked, since that check needs the same off-site copy.
+  const unchecked = !evidence.ok && evidence.status === "unanchored";
+  if (offsite && !offsite.measured) {
+    alerts.push({
+      key: "no-offsite",
+      severity: "warning",
+      title: "No safe copy outside this server",
+      detail: `If this server is lost, its backups are lost with it. Fix the daily off-site copy.${unchecked ? " Until then the audit record cannot be checked either." : ""}`,
+      href: "/resilience",
+    });
+  }
+
+  // Failing the check and not being checked are different: only a failed check is urgent.
+  if (unchecked && !(offsite && !offsite.measured)) {
+    alerts.push({
+      key: "audit-unchecked",
+      severity: "warning",
+      title: "The audit record is not checked: no off-site copy",
+      detail: "Keel checks the record against an off-site copy, and none exists yet. Nothing is known to be wrong.",
+      href: "/activity?show=records",
+    });
+  } else if (!evidence.ok && !unchecked) {
     alerts.push({
       key: "audit",
       severity: "critical",
@@ -1474,7 +1497,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     const evidenceRaw = (await getEvidenceIntegrity(client, {
       tenantRef: ref,
       chainCache: evidenceChainCache,
-    })) as { ok: boolean; chainLength: number };
+    })) as { ok: boolean; chainLength: number; status?: string };
     const generatedAt = new Date();
     // Open changes in every service: the approved-setup changes (Entra ID and Intune)
     // and the service setting changes the Changes page lists beside them, counted
@@ -1519,7 +1542,15 @@ export async function getDashboardData(): Promise<DashboardData> {
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
+        ...(typeof evidenceRaw.status === "string" ? { status: evidenceRaw.status } : {}),
       },
+      // The same recoverable point the Resilience page shows; a failed read shows no item.
+      offsite: await loadRecoveryMetrics(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
+        .then((metrics) => ({ measured: (metrics as RecoveryMetrics).recoverablePoint.state === "measured" && Boolean((metrics as RecoveryMetrics).recoverablePoint.point) }))
+        .catch((error: unknown) => {
+          console.error("[keel-portal] overview off-site copy state unavailable", error);
+          return undefined;
+        }),
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),

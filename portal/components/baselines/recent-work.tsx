@@ -53,7 +53,7 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
       ) : <p className="bl-help">Nothing yet. Creating an approved setup shows here while it runs.</p>}
       {jobs.length ? (
         <TechnicalDetails summary="Technical details: recent work">
-          {jobs.map((job) => <RecordGroup key={job.id} note={`${job.kind} · ${job.status}`} title={jobName(job)}><JobRecordFields job={job} /></RecordGroup>)}
+          {jobs.map((job) => <RecordGroup key={job.id} note={`${job.kind} · ${jobDisplayStatus(job)}`} title={jobName(job)}><JobRecordFields job={job} /></RecordGroup>)}
         </TechnicalDetails>
       ) : null}
     </section>

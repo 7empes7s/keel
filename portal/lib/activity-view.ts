@@ -319,13 +319,14 @@ export type IntegrityState = "intact" | "unchecked" | "broken" | "unknown";
 
 /** The audit record's integrity as a word, a sentence and a tone. */
 export function integrityWords(integrity: ChainIntegrity | null): { state: IntegrityState; label: string; sentence: string; tone: BadgeTone } {
-  if (integrity === null) return { state: "unknown", label: "Not checked", sentence: "The audit record's integrity could not be checked right now.", tone: "neutral" };
+  if (integrity === null) return { state: "unknown", label: "Could not check", sentence: "The audit record's integrity could not be read right now.", tone: "neutral" };
   if (integrity.ok) {
     const pending = integrity.unanchoredRecords ?? 0;
     return { state: "intact", label: "Intact", tone: "fine", sentence: `Verified against the off-site copy${pending ? `. ${pending} newer ${pending === 1 ? "entry waits" : "entries wait"} for the next copy` : ""}.` };
   }
-  if (integrity.status === "unanchored") return { state: "unchecked", label: "Not copied yet", tone: "soon", sentence: "No off-site copy exists yet, so the record cannot be verified." };
-  return { state: "broken", label: "Check failed", tone: "urgent", sentence: "The record failed its integrity check. Investigate before trusting who did what." };
+  // Same words as the Overview: not checked is amber, only a failed check is red.
+  if (integrity.status === "unanchored") return { state: "unchecked", label: "Not checked: no off-site copy", tone: "soon", sentence: "Keel checks the record against an off-site copy, and none exists yet. Nothing is known to be wrong." };
+  return { state: "broken", label: "Failed the check", tone: "urgent", sentence: "The record failed its integrity check. Investigate before trusting who did what." };
 }
 
 export function activityStatus(counts: ActivityCounts): { tone: RiskTone; label: string } {

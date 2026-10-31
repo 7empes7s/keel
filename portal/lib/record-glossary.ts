@@ -56,6 +56,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   // Shared everywhere.
   "Status": fact("Status", "Where this stands now."),
   "State": fact("Status", "Where this stands now."),
+  "Stored status (API)": support("Stored status", "The status code the API returns. A partly done backup is stored as succeeded."),
   "Reason": fact("Why", "Keel's reason for this result."),
   "Reasons": fact("Why", "Keel's reasons for this result."),
   "Kind": fact("Kind", "What sort of item this is."),

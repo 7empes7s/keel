@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { JobTable } from "@/components/job-table";
+import { AlertRow } from "@/components/ui/alert-list";
 import { PageHeader } from "@/components/page-header";
 import { RestoreFollowUps } from "@/components/restore-follow-ups";
 import { RestoreSelection } from "@/components/restore-selection";
@@ -16,7 +17,10 @@ import {
   getRestoreResources,
   type RestoreResourcesData,
 } from "@/lib/portal-data";
+import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } from "@/lib/failed-restores";
 import {
+  getFailedRestoreCounts,
+  getFailedRestoreJobs,
   getRecentJobs,
   getRestoreSnapshotOptions,
   type JobRecord,
@@ -39,7 +43,7 @@ const DESCRIPTION = "Put settings back as they were in a backup. Pick the day, c
 export default async function RestorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ snapshot?: string; incident?: string }>;
+  searchParams: Promise<{ snapshot?: string; incident?: string; jobs?: string }>;
 }) {
   await connection();
   await requireReadAccess(DATA_SURFACES.restorePage);
@@ -47,7 +51,8 @@ export default async function RestorePage({
     .split(" ")
     .filter((capability) => capability.length > 0);
   const canRestore = capabilities.includes("restore");
-  const { snapshot: requestedSnapshot, incident: requestedIncident } = await searchParams;
+  const { snapshot: requestedSnapshot, incident: requestedIncident, jobs: jobFilter } = await searchParams;
+  const onlyFailed = jobFilter === "failed";
 
   let snapshots: SnapshotOption[];
   let jobs: JobRecord[];
@@ -109,6 +114,17 @@ export default async function RestorePage({
     followUps = await getRestoreFollowUps();
   } catch {
     followUps = null;
+  }
+
+  // Failed restores (audit metric 7): the engine's one count, the same number
+  // Resilience and the value report show; "?jobs=failed" lists exactly those jobs.
+  let failedRestores: FailedRestoreCounts | null;
+  let failedJobs: JobRecord[] | null = null;
+  try {
+    failedRestores = await getFailedRestoreCounts();
+    if (onlyFailed) failedJobs = await getFailedRestoreJobs();
+  } catch {
+    failedRestores = null;
   }
 
   const jobsActive = jobs.some(
@@ -175,13 +191,40 @@ export default async function RestorePage({
         {followUps === null
           ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
           : <RestoreFollowUps followUps={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
-        <JobTable
-          headingId="restore-jobs-heading"
-          jobs={jobs}
-         
-          now={now}
-          title="Restores and checks"
-        />
+        {failedRestores && failedRestores.total && !onlyFailed ? (
+          <AlertRow
+            as="div"
+            item={{
+              key: "restore-failed",
+              tone: "soon",
+              icon: "restore",
+              title: `${failedRestoresTitle(failedRestores)} · ${failedRestoresRecent(failedRestores)}`,
+              todo: "Open each one, see what did not go back, and try again.",
+              action: { label: "See failed restores", href: failedRestores.href },
+            }}
+          />
+        ) : null}
+        {onlyFailed && !failedJobs ? (
+          <p className="action-error">KEEL could not read the failed restores. Reload in a minute; the list below shows every recent restore and check.</p>
+        ) : null}
+        {onlyFailed && failedJobs ? (
+          <JobTable
+            empty="No restore has failed."
+            headingId="restore-jobs-heading"
+            jobs={failedJobs}
+            link={{ label: "All restores and checks", href: "/restore#restore-jobs-heading" }}
+            now={now}
+            title="Failed restores"
+            total={failedRestores?.total}
+          />
+        ) : (
+          <JobTable
+            headingId="restore-jobs-heading"
+            jobs={jobs}
+            now={now}
+            title="Restores and checks"
+          />
+        )}
       </div>
       <JobRefresher active={jobsActive} />
     </>

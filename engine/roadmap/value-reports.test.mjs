@@ -20,6 +20,7 @@ import {
   classifyRestoreOutcome, estimateHours, loadValueReport, readEstimate, reportPeriod, summarizeOutcomes,
   valueReportCsv,
 } from '../reports/value.mjs';
+import { countFailedRestores } from '../restore/failedRestores.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
@@ -452,6 +453,11 @@ test('totals, percentages and periods stay consistent, and every export carries 
   for (const family of ['restore', 'remediation']) assertConsistent(current.outcomes.byFamily[family]);
   assert.equal(current.outcomes.byFamily.restore.total + current.outcomes.byFamily.remediation.total, current.outcomes.total);
   assert.equal(current.outcomes.byFamily.restore.attempts + current.outcomes.byFamily.remediation.attempts, current.outcomes.attempts);
+
+  // Failed restores: the engine's one count (as Resilience and Restore show it), plus this period's.
+  assert.deepEqual(current.recovery.failedRestores, await countFailedRestores(client, { tenantRef, now: NOW, from: FROM, to: NOW }));
+  assert.equal(current.recovery.failedRestores.total, 1, 'the July failure counts in all');
+  assert.equal(current.recovery.failedRestores.period.count, 0, 'but not in this period');
 
   // Adjacent periods: each verified outcome counts in exactly one of them.
   const previous = await loadValueReport(client, { tenantRef, from: new Date('2026-08-04T12:00:00Z'), to: FROM, now: NOW, requiredTypes: ['group'] });

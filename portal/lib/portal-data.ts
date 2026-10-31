@@ -17,12 +17,14 @@ import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionSteps, listOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
 import {
   getActiveBaseline,
   listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "@/lib/db";
 import { evidenceChainCache } from "@/lib/evidence-chain-cache";
+import type { FailedRestoreCounts } from "@/lib/failed-restores";
 import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
@@ -1565,7 +1567,8 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
-    return { generatedAt: now.toISOString(), metrics, incidents, storage };
+    const failedRestores = (await countFailedRestores(client, { tenantRef: ref, now })) as FailedRestoreCounts;
+    return { generatedAt: now.toISOString(), metrics, failedRestores, incidents, storage };
   });
 }
 

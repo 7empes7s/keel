@@ -61,6 +61,11 @@ import { canonicalJson, jobCorrelationId } from '../telemetry/events.mjs';
 export const VALUE_REPORT_VERSION = 1;
 /** Rows serialized per table; totals always count every row. */
 export const MAX_REPORT_ROWS = 50;
+/**
+ * Requests serialized: every one the page pages through and the downloads list. Far
+ * above any real period's count; past it the page says the list is capped.
+ */
+export const MAX_OUTCOME_ROWS = 2000;
 /** Longest period one report may cover. */
 export const MAX_PERIOD_DAYS = 366;
 /** Source rows read per family; beyond this the report says it is incomplete. */
@@ -914,7 +919,7 @@ export async function loadValueReport(client, {
     [tenantRef],
   );
 
-  const table = capped(outcomes.map(outcomeRow));
+  const table = capped(outcomes.map(outcomeRow), MAX_OUTCOME_ROWS);
   const report = {
     version: VALUE_REPORT_VERSION,
     tenantRef,

@@ -325,12 +325,12 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
               label="Requests"
               matches={(item, text) => `${outcomeName(item)} ${outcomeMeta(item, today)} ${OUTCOME_STATE_LABELS[item.state]}`.toLowerCase().includes(text)}
               noun={{ one: "request", many: "requests" }}
+              partial={outcomes.rowsShown < outcomes.total ? `Only the first ${outcomes.rowsShown.toLocaleString("en-GB")} of ${outcomes.total.toLocaleString("en-GB")} requests are listed. The tiles count every request.` : null}
               renderRow={renderRow}
               rowName={(item) => outcomeName(item)}
               toneOf={(item) => OUTCOME_WORDS[item.state].tone}
             />
           )}
-          {outcomes.rowsShown < outcomes.total ? <p className="vr-muted">Showing {outcomes.rowsShown} of {outcomes.total}. The tiles and the downloads count every request.</p> : null}
         </section>
 
         <section aria-labelledby="vr-checks-heading" className="vr-section" id="vr-checks">

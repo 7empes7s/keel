@@ -7437,6 +7437,26 @@ section.wizard-panel {
   font-size: 0.8125rem;
 }
 
+/* A list that holds only part of what exists says so beside Select all. */
+.sel-partial {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid color-mix(in oklab, var(--check-soon) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--check-soon-bg);
+  color: var(--text);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.sel-partial svg {
+  flex: none;
+  color: var(--check-soon);
+}
+
 .sel-groups {
   display: grid;
   gap: var(--space-sm);

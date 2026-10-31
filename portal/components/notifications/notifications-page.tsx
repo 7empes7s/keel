@@ -101,12 +101,14 @@ const STATUS_TILES: FilterTile<Delivery>[] = STATUS_CHIPS.map((chip) => ({
   test: (delivery: Delivery) => (chip.value === "retrying" ? !["delivered", "failed", "cancelled"].includes(delivery.status) : delivery.status === chip.value),
 }));
 
-export function NotificationsPage({ canConfiguration, channels, subscriptions, escalationRules = [], deliveries, people = [], now = new Date().toISOString() }: {
+export function NotificationsPage({ canConfiguration, channels, subscriptions, escalationRules = [], deliveries, deliveryLimit, people = [], now = new Date().toISOString() }: {
   canConfiguration: boolean;
   channels: Channel[];
   subscriptions: Subscription[];
   escalationRules?: EscalationRule[];
   deliveries: Delivery[];
+  // How many sends the server read; a full read means older ones were left out.
+  deliveryLimit?: number;
   people?: PersonChoice[];
   now?: string;
 }) {
@@ -487,6 +489,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
                 label="Sent"
                 matches={(item, text) => { const channel = channelById.get(item.channel_id); return `${deliveryTitle(item)} ${channel ? channelName(channel) : channelKindLabel(item.channel_kind)} ${deliveryBadge(item).label}`.toLowerCase().includes(text); }}
                 noun={{ one: "send", many: "sends" }}
+                partial={deliveryLimit && deliveries.length >= deliveryLimit ? `Only the newest ${deliveryLimit} sends are loaded. Older ones are left out.` : null}
                 renderRow={renderDelivery}
                 rowName={(item) => `${deliveryTitle(item)} at ${clockWords(deliveryTime(item))}`}
                 sorts={SENT_SORTS}

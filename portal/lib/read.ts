@@ -39,6 +39,8 @@ export const DATA_SURFACES = {
   policyApi: { capability: "policies", source: "api/policies/[id]/route.ts" },
   policyEnabledApi: { capability: "policies", source: "api/policies/[id]/enabled/route.ts" },
   policyClearPauseApi: { capability: "policies", source: "api/policies/[id]/clear-pause/route.ts" },
+  policyEditApi: { capability: "policies", source: "api/policies/[id]/edit/route.ts" },
+  policyDeleteApi: { capability: "policies", source: "api/policies/[id]/delete/route.ts" },
   policyActivationPreviewApi: { capability: "policies", source: "api/policies/[id]/activation-preview/route.ts" },
   policyActivateApi: { capability: "policies", source: "api/policies/[id]/activate/route.ts" },
   policiesPage: { capability: "policies", source: "policies/page.tsx" },

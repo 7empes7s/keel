@@ -83,6 +83,9 @@ export async function assertExecutableAutomationPolicy(client, policy) {
   if (policy.action !== 'auto_remediate') {
     throw new Error(`automation policy ${policy.id} is no longer auto_remediate — refusing automatic remediation`);
   }
+  if (policy.deleted_at) {
+    throw new Error(`automation policy ${policy.id} is deleted — refusing automatic remediation`);
+  }
   if (!policy.enabled) {
     throw new Error(`automation policy ${policy.id} is disabled — refusing automatic remediation`);
   }
@@ -192,7 +195,7 @@ export async function executeAutoRemediation(client, {
   const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
   const policy = rows[0];
   if (!policy) throw new Error(`policy not found: ${policyId}`);
-  if (!policy.enabled) return refuse('policy-disabled');
+  if (!policy.enabled || policy.deleted_at) return refuse('policy-disabled');
   if (policy.paused_at) return refuse('policy-paused');
   if (policy.run_as_repair_required || !policy.run_as_principal_id) {
     return refuse('run-as-repair-required');

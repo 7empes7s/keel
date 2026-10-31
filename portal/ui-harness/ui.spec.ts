@@ -3210,7 +3210,8 @@ test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page
   await sheet.getByRole("button", { name: /^Account/ }).click();
   await page.locator(".option-panel [role='option']", { hasText: "Marouane Defili" }).click();
   await sheet.getByLabel("Name", { exact: true }).fill("Undo changes to admin groups");
-  await expect(sheet.locator(".po-check")).toContainText("Undoes changes to anything.");
+  // The hourly limit starts at a real 50, so the check sentence says so.
+  await expect(sheet.locator(".po-check")).toContainText("Undoes changes to anything, up to 50 an hour.");
   await sheet.getByRole("button", { name: "Create rule" }).click();
   const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/policies");
   expect(created.length).toBe(1);
@@ -3253,6 +3254,53 @@ test("Policies · a rule's page: the sentence once, actions open their jobs, Res
   type Call = { url: string; method: string };
   const posts = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls.filter((call) => call.method === "POST").map((call) => call.url));
   expect(posts).toContain("/api/policies/7a1d0f3e-0000-4000-8000-000000000005/clear-pause");
+});
+
+test("Policies · a rule is edited in its sheet and deleted after a confirm; a new rule starts at 50 an hour", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  type Call = { url: string; method: string; body?: string };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  // Edit: the sheet opens filled in with the rule; what it does is fixed; an undo rule that is on is turned off by saving.
+  await open(page, "/policies/p1");
+  await page.getByRole("button", { name: "Edit" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit Undo low-risk changes" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByLabel("Name", { exact: true })).toHaveValue("Undo low-risk changes");
+  await expect(sheet.getByLabel("Actions an hour")).toHaveValue("50");
+  await expect(sheet.getByRole("radio", { name: "Undo automatically" })).toHaveCount(0);
+  await expect(sheet).toContainText("Saving turns it off.");
+  await sheet.getByLabel("Actions an hour").fill("");
+  await expect(sheet).toContainText("No limit: it acts on every matching change.");
+  await sheet.getByLabel("Actions an hour").fill("10");
+  await sheet.getByLabel("Name", { exact: true }).fill("Undo low-risk changes (capped)");
+  await sheet.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.locator(".toast", { hasText: "Undo low-risk changes (capped) saved" })).toBeVisible();
+  await expect(sheet).toBeHidden();
+  const edits = (await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/edit"));
+  expect(edits.map((call) => call.url)).toEqual(["/api/policies/7a1d0f3e-0000-4000-8000-000000000001/edit"]);
+  expect(JSON.parse(edits[0].body ?? "{}")).toMatchObject({ name: "Undo low-risk changes (capped)", maxActionsPerWindow: 10, windowSeconds: 3600, maxBlastRadius: "cosmetic" });
+
+  // Delete: a red confirm behind a tick box, then back to the list.
+  await page.getByRole("button", { name: "Delete" }).click();
+  const dialog = page.locator("dialog[open]");
+  await expect(dialog).toContainText("What it already did stays in Activity");
+  const confirm = dialog.getByRole("button", { name: "Delete rule" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await confirm.click();
+  await expect(page.locator(".toast", { hasText: "Undo low-risk changes deleted" })).toBeVisible();
+  expect((await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/delete")).map((call) => call.url)).toEqual(["/api/policies/7a1d0f3e-0000-4000-8000-000000000001/delete"]);
+  await expect(page).toHaveURL(/#\/policies$/);
+
+  // New rule: the hourly limit is a real 50, so the saved body says 50.
+  await page.getByRole("link", { name: "New rule" }).click();
+  const fresh = page.getByRole("dialog", { name: "New rule" });
+  await expect(fresh.getByLabel("Actions an hour")).toHaveValue("50");
+  await fresh.getByLabel("Name", { exact: true }).fill("Alert on anything");
+  await fresh.getByRole("button", { name: "Create rule" }).click();
+  const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/policies");
+  expect(JSON.parse(created[0].body ?? "{}")).toMatchObject({ maxActionsPerWindow: 50, windowSeconds: 3600 });
+
 });
 
 test("Policies · a viewer sees the rules and no controls", async ({ page }) => {

@@ -218,6 +218,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/activation-preview")) return json({ preview: { ...ACTIVATION_PREVIEW, id: "9a0c0000-0000-4000-8000-000000000093" } }, 201);
   // Policies: turning a rule off or on and resuming it succeed; a new rule lands on p2's page.
   if (/\/api\/policies\/[^/]+\/(enabled|clear-pause)$/.test(url)) return json({ policy: {} });
+  if (/\/api\/policies\/[^/]+\/edit$/.test(url)) return json({ policy: {} });
+  if (/\/api\/policies\/[^/]+\/delete$/.test(url)) return json({ deleted: {} });
   if (url.endsWith("/api/policies") && init?.method === "POST") return json({ policy: { id: "p2" } }, 201);
   if (url.endsWith("/activate")) return json({ error: "preview-stale", changed: ["grant"] }, 409);
   // Task-93: approving your own emergency change is refused; a revoke succeeds.

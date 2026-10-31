@@ -3,6 +3,7 @@ import {
 } from "../../../../../engine/safety/breakGlassReadiness.mjs";
 
 import { guarded, readActionParams } from "@/lib/action";
+import { requireOptionalReason, refuseWeakReason } from "@/lib/written-reason";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,14 +37,14 @@ const OPERATIONS: Record<string, (client: Client, tenantRef: string, actor: stri
     return { account: { accountId: account.account_id } };
   },
   retire: async (client, tenantRef, actor, { accountId, reason }) => {
-    const account = await retireBreakGlassAccount(client, { tenantRef, actor, accountId: accountId as string, reason: reason as string });
+    const account = await retireBreakGlassAccount(client, { tenantRef, actor, accountId: accountId as string, reason: refuseWeakReason(reason) as string });
     return { account: { accountId: account.account_id } };
   },
   record: async (client, tenantRef, actor, { accountId, kind, occurredAt, note, methods }) => {
     const event = await recordBreakGlassLifecycle(client, {
       tenantRef, actor, accountId: accountId as string, kind: kind as string,
       occurredAt: (occurredAt ?? new Date().toISOString()) as never,
-      note: (typeof note === "string" && note.trim() ? note.trim() : null) as never,
+      note: requireOptionalReason(note, "note") as never,
       methods: (methods ?? null) as never,
     });
     return { event: { kind: event.kind, occurredAt: new Date(event.occurred_at).toISOString() } };

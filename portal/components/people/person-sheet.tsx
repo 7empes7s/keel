@@ -30,6 +30,8 @@ import {
 } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { toast } from "@/lib/toast";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // One person's panel: what they can do grouped by the work, their roles (now, starting
 // later, ended) with who gave each, a short form to add a role now or for a while, and
@@ -87,6 +89,8 @@ export function PersonSheet({ person, people, now, canRoles, canUsers, onClose }
     const activeFrom = fromStartOf(from, today);
     const activeUntil = untilEndOf(until);
     if (activeUntil && activeUntil <= (activeFrom ?? now)) { setError("The end date must come after the start."); return; }
+    const weak = optionalReasonMessage(why);
+    if (weak) { setError(weak); return; }
     const done = await run({ kind: "grant", role, activeFrom, activeUntil, reason: why.trim() || null }, `${ROLES[role].label} added for ${name}`);
     if (done) { setFrom(""); setUntil(""); setWhy(""); }
   }
@@ -171,7 +175,7 @@ export function PersonSheet({ person, people, now, canRoles, canUsers, onClose }
                 <label className="filter-field"><span>From (optional)</span><input min={today} name="from" onChange={(event) => setFrom(event.target.value)} type="date" value={from} /></label>
                 <label className="filter-field"><span>Until (optional)</span><input min={today} name="until" onChange={(event) => setUntil(event.target.value)} type="date" value={until} /></label>
               </div>
-              <label className="filter-field"><span>Why (optional)</span><input autoComplete="off" maxLength={500} name="why" onChange={(event) => setWhy(event.target.value)} placeholder="Covers approvals while Sam is away" value={why} /></label>
+              <label className="filter-field"><span>Why (optional)</span><input autoComplete="off" maxLength={500} name="why" onChange={(event) => setWhy(event.target.value)} placeholder="Covers approvals while Sam is away" value={why} /><ReasonHint value={why} /></label>
             </fieldset>
           </form>
         ) : null}

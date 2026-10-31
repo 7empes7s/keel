@@ -48,6 +48,7 @@ import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
 import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { reasonProblem, writtenProblemMessage } from "@/lib/written-reason";
 
 // Approvals (portal audit, pick B): one card per request, opened in place. Four tiles
 // filter the list (`soon=`, `effects=`, `show=decided&week=`), the open request sits
@@ -204,7 +205,8 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
 }) {
   const [reason, setReason] = useState("");
   const [touched, setTouched] = useState(false);
-  const missing = reason.trim().length === 0;
+  const problem = reasonProblem(reason);
+  const missing = problem !== null;
   return (
     <div aria-label="Why reject" className="ap-reject" role="group">
       <b>Why reject {count === 1 ? `this ${noun}` : `these ${count} requests`}?</b>
@@ -219,7 +221,7 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
           rows={2}
           value={reason}
         />
-        {touched && missing ? <span className="ap-field-error" id="ap-reject-error" role="alert"><Icon name="alert" />Write a reason to reject.</span> : null}
+        {touched && missing ? <span className="ap-field-error" id="ap-reject-error" role="alert"><Icon name="alert" />{problem === "empty" ? "Write a reason to reject." : writtenProblemMessage(problem!)}</span> : null}
       </label>
       <div className="ap-reject-actions">
         <button className="btn" disabled={busy} onClick={onCancel} type="button">Keep {count === 1 ? "it" : "them"} waiting</button>

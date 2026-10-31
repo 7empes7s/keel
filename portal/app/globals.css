@@ -12042,3 +12042,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .ra-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .ra-row > .btn { grid-column: 2 / -1; justify-self: start; }
 }
+
+/* UI audit C1: a reason that is too weak to keep says so under its field. */
+.reason-hint { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.25rem; color: var(--urgent); font-size: 0.8125rem; }
+.reason-hint .icon { width: 0.875rem; height: 0.875rem; flex: none; }

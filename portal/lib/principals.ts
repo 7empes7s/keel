@@ -2,6 +2,7 @@ import { listPrincipals } from "../../engine/authz/principals.mjs";
 import { grantRole, revokeRole, disablePrincipal, enablePrincipal, createPrincipal, SelfLockoutError, PrincipalNotFoundError, InvalidRoleGrantError, PrincipalExistsError } from "../../engine/authz/administration.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import type { DataSurface } from "@/lib/read";
+import { requireOptionalReason } from "@/lib/written-reason";
 
 const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,6 +27,7 @@ export function guardedPrincipalCreate(deps: GuardDeps = {}) {
   return guarded({ action: "principals:create", capability: "users", alsoRequires: ["roles"], recordAttempt: true }, async ({ client, principalId: actor, request }) => {
     const body = await readActionParams(request);
     if (typeof body.email !== "string" || typeof body.role !== "string" || !optionalText(body.displayName) || !optionalText(body.activeUntil) || !optionalText(body.reason)) throw new InvalidActionRequest();
+    requireOptionalReason(body.reason);
     try {
       const { principal } = await createPrincipal(client, { email: body.email, displayName: (body.displayName as string | null | undefined) ?? null, role: body.role, grantedBy: actor, activeUntil: (body.activeUntil as string | null | undefined) || null, reason: (body.reason as string | null | undefined) ?? null });
       const view = (await listPrincipals(client)).find((entry: PrincipalView) => entry.id === principal.id);
@@ -48,6 +50,7 @@ export function guardedPrincipalWrite(operation: "grant" | "revoke" | "disable" 
       || (body.activeUntil != null && typeof body.activeUntil !== "string")
       || (body.entityCode != null && typeof body.entityCode !== "string")
       || !optionalText(body.reason))) throw new InvalidActionRequest();
+    if (operation === "grant") requireOptionalReason(body.reason);
     if (operation === "revoke" && (typeof body.grantId !== "string" || !UUID.test(body.grantId))) throw new InvalidActionRequest();
     try {
       const result = operation === "grant"

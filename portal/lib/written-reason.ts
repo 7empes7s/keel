@@ -9,10 +9,10 @@ export const REASON_MAX_LENGTH = 1000;
 // Words that carry no meaning on their own. A reason made only of these (plus short
 // words and numbers) is a placeholder, however long it is.
 const PLACEHOLDER_WORDS = new Set([
-  "abc", "asd", "asdf", "asdfg", "asdfgh", "bar", "baz", "because", "blah", "dummy", "fine", "foo", "idk",
+  "asd", "asdf", "asdfg", "asdfgh", "bar", "baz", "because", "blah", "dummy", "fine", "foo", "idk",
   "ipsum", "lol", "lorem", "nah", "none", "nope", "nothing", "okay", "placeholder", "qwe", "qwerty", "reason",
   "sample", "stuff", "tbc", "tbd", "temp", "test", "tested", "testing", "tests", "thing", "things", "todo",
-  "whatever", "why", "xxx", "xyz", "yes", "yep", "yup",
+  "whatever", "why", "xxx", "yes", "yep", "yup",
 ]);
 
 const EMPTY = "Write why. It is kept with the record.";
@@ -31,23 +31,24 @@ export function writtenProblemMessage(problem: WrittenProblem): string {
 }
 
 function words(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  return text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
 }
 
 /** A word: three or more letters, not one letter repeated ("xxx", "aaaa"). */
 function meaningful(word: string): boolean {
-  const letters = word.replace(/\p{N}/gu, "");
-  return letters.length >= 3 && !/^(.)\1+$/u.test(letters);
+  // Vowel signs (Hindi, Thai, Arabic) are part of the word but are not letters on their own.
+  const letters = word.replace(/[\p{N}\p{M}]/gu, "");
+  return letters.length >= 2 && word.replace(/\p{N}/gu, "").length >= 3 && !/^(.)\1+$/u.test(letters);
 }
 
 const placeholderWord = (word: string) => PLACEHOLDER_WORDS.has(word) || PLACEHOLDER_WORDS.has(word.replace(/\p{N}/gu, ""));
 
-/** A link to where the proof is held: http(s) with a dotted host. */
+/** A link to where the proof is held: http(s) with a real host (intranet names too). */
 export function isEvidenceLink(text: string): boolean {
   if (!/^https?:\/\//i.test(text) || /\s/.test(text)) return false;
   try {
     const url = new URL(text);
-    return /^[^.]+\.[^.]+/.test(url.hostname) && !/^(example|test|localhost)\b/i.test(url.hostname);
+    return url.hostname.length >= 3 && !/^(localhost|test|example)(\.(com|org|net|local))?$/i.test(url.hostname) && !/(^|\.)example\.(com|org|net)$/i.test(url.hostname);
   } catch {
     return false;
   }
@@ -60,7 +61,7 @@ export function reasonProblem(value: unknown): WrittenProblem | null {
   if (text.length > REASON_MAX_LENGTH) return "too_long";
   const all = words(text);
   // Scripts written without spaces count by character: four or more is a phrase.
-  const ideographs = text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)?.length ?? 0;
+  const ideographs = text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/gu)?.length ?? 0;
   if (ideographs >= 4) return null;
   // Two different words, at least one of them not a placeholder: "quarterly test"
   // is kept, "test test" and "TEST-UX-001" are not.
@@ -87,8 +88,9 @@ export function optionalReasonMessage(value: unknown): string | null {
   return reasonMessage(value);
 }
 
-// Ticket numbers such as CHG-5120, INC0012345 or SR#4471: letters, then digits.
-const TICKET = /^[\p{L}]{2,}[-_#/ ]?\d{3,}[\p{L}\p{N}\-_/#.]*$/u;
+// Ticket numbers such as CHG-5120, OPS-42, AB1-123, INC0012345, SR#4471, #4471 or 12345,
+// optionally after the system's name ("Jira OPS-123").
+const TICKET = /^(?:[\p{L}]+ )?(?:#?\d{3,}|[\p{L}][\p{L}\p{N}]*[-_#/ ]?\d+[\p{L}\p{N}\-_/#.]*)$/u;
 
 const EVIDENCE_EMPTY = "Say where the proof is kept: a ticket number or a link.";
 const EVIDENCE_TICKET = "Use the ticket number from your ticket system, such as CHG-5120, or a link to it.";
@@ -104,16 +106,18 @@ export function evidenceMessage(type: unknown, reference: unknown): string | nul
   if (typeof reference !== "string" || reference.trim().length === 0) return EVIDENCE_EMPTY;
   const text = reference.trim();
   if (text.length > 500) return "Keep the reference under 500 characters.";
-  const placeholder = words(text).some(placeholderWord);
+  // Only the words of a ticket or log reference are checked: a link's path may say "test".
+  const named = words(text).filter((word) => /\p{L}/u.test(word));
+  const placeholder = (named.length > 0 && named.every(placeholderWord)) || named.some((word) => ["test", "tbd", "todo"].includes(word.replace(/\p{N}/gu, "")));
   switch (type) {
     case "ticket":
       if (isEvidenceLink(text)) return null;
       return TICKET.test(text) && !placeholder ? null : EVIDENCE_TICKET;
     case "link":
-      return isEvidenceLink(text) && !placeholder ? null : EVIDENCE_LINK;
+      return isEvidenceLink(text) ? null : EVIDENCE_LINK;
     case "log-reference":
       if (isEvidenceLink(text)) return null;
-      return text.length >= 6 && /\d/.test(text) && /\p{L}/u.test(text) && !placeholder ? null : EVIDENCE_LOG;
+      return text.length >= 6 && /\p{L}/u.test(text) && !placeholder && (/\d/.test(text) || reasonProblem(text) === null) ? null : EVIDENCE_LOG;
     case "attestation":
       return reasonMessage(text);
     default:

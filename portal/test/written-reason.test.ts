@@ -29,6 +29,9 @@ test("short real reasons are kept", () => {
     "Accepted: matches the new security baseline",
     "Fehlalarm, geplante Änderung",
     "計画された変更です",
+    "सुरक्षा जांच पूरी हुई",
+    "ซ่อมแซมระบบแล้ว",
+    "تم التحقق من الإعدادات",
   ]) {
     assert.equal(reasonProblem(text), null, `"${text}" should be kept`);
   }
@@ -67,4 +70,9 @@ test("evidence must fit its type", () => {
   assert.equal(evidenceMessage("log-reference", "sentinel query 7f3a91"), null);
   assert.notEqual(evidenceMessage("attestation", "yes"), null);
   assert.equal(evidenceMessage("attestation", "I checked the mailbox with the user"), null);
+  for (const ticket of ["OPS-42", "SEC-7", "12345", "#4471", "AB1-123", "Jira OPS-123", "ABC-123"]) assert.equal(evidenceMessage("ticket", ticket), null, ticket);
+  for (const link of ["https://contoso.sharepoint.com/sites/IT/Restore%20test%20evidence.pdf", "https://github.com/contoso/runbooks/blob/main/temp/notes.md", "http://servicenow/change/123", "https://test-env.contoso.com/x"]) assert.equal(evidenceMessage("link", link), null, link);
+  assert.notEqual(evidenceMessage("link", "https://example.com/proof"), null);
+  assert.equal(evidenceMessage("log-reference", "Audit log entry for app consent"), null);
+  assert.equal(evidenceMessage("log-reference", "SigninLogs | where CorrelationId == 'a1b2c3'"), null);
 });

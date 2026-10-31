@@ -14239,7 +14239,7 @@ item that needs it stays untouched.
 - **Expected:** steps N and restores M from step 2 appear unchanged on all three pages in step 3.
 - **Report:** steps 1–3 with the numbers. Nothing to fix on the server; any mismatch goes back to the thread as a code bug.
 
-### Q304: After PR #885 deploys, time the slow pages' reads again (read-only, no tenant), about 15 minutes
+### Q305: After PR #885 deploys, time the slow pages' reads again (read-only, no tenant), about 15 minutes
 - Drafted by the "Speed up slow portal pages" thread (2026-10-31). PR #885 (merged as of master ab328ffa) adds indexes for name lookups
   (schema fragment 91), turns JIT off on portal connections, trims the compliance read, and logs portal statements of 1 s or more.
   This item gets the after-numbers for Q303. **Same read-only rules as Q303.**

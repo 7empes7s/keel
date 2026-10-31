@@ -74,5 +74,7 @@ test("evidence must fit its type", () => {
   for (const link of ["https://contoso.sharepoint.com/sites/IT/Restore%20test%20evidence.pdf", "https://github.com/contoso/runbooks/blob/main/temp/notes.md", "http://servicenow/change/123", "https://test-env.contoso.com/x"]) assert.equal(evidenceMessage("link", link), null, link);
   assert.notEqual(evidenceMessage("link", "https://example.com/proof"), null);
   assert.equal(evidenceMessage("log-reference", "Audit log entry for app consent"), null);
+  // A pasted key is left for the server's own secret refusal, never a format hint.
+  assert.equal(evidenceMessage("ticket", "-----BEGIN PRIVATE KEY----- secret"), null);
   assert.equal(evidenceMessage("log-reference", "SigninLogs | where CorrelationId == 'a1b2c3'"), null);
 });

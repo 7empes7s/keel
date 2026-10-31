@@ -1,5 +1,5 @@
 import {
-  CompletionAuthorizationError, CompletionEvidenceError, CompletionItemNotFoundError, completeItem, reopenItem,
+  CompletionAuthorizationError, CompletionEvidenceError, CompletionItemNotFoundError, completeItem, reopenItem, secretShaped,
 } from "../../../../../../engine/restore/completion.mjs";
 
 import { guarded, readActionParams } from "@/lib/action";
@@ -23,8 +23,11 @@ export const POST = guarded(
       return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
     }
     // UI audit C1: "TEST-UX-001" or a blank reference proves nothing.
+    // A pasted secret is the engine's to refuse, with its own warning, before any format hint.
+    const reference = (evidence as { reference?: unknown } | null)?.reference;
+    const pastedSecret = typeof reference === "string" && secretShaped(reference);
     const weak = action === "complete"
-      ? evidenceMessage((evidence as { type?: unknown } | null)?.type, (evidence as { reference?: unknown } | null)?.reference)
+      ? pastedSecret ? null : evidenceMessage((evidence as { type?: unknown } | null)?.type, (evidence as { reference?: unknown } | null)?.reference)
       : optionalReasonMessage(reason);
     if (weak) return Response.json({ error: action === "complete" ? "weak_evidence" : "weak_reason", message: weak }, { status: 400, headers: NO_STORE });
     try {

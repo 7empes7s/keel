@@ -92,6 +92,12 @@ export function optionalReasonMessage(value: unknown): string | null {
 // optionally after the system's name ("Jira OPS-123").
 const TICKET = /^(?:[\p{L}]+ )?(?:#?\d{3,}|[\p{L}][\p{L}\p{N}]*[-_#/ ]?\d+[\p{L}\p{N}\-_/#.]*)$/u;
 
+// The same shapes the engine refuses (engine/restore/completion.mjs secretShaped),
+// loosely: a PEM block, an Entra client secret, a JWT, or "password: ...".
+function looksLikeSecret(text: string): boolean {
+  return /-----BEGIN [A-Z ]*-----|[A-Za-z0-9_~.-]{3}\dQ~[A-Za-z0-9_~.-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.|\b(password|passwd|secret|token|api[_-]?key)\s*[:=]/i.test(text);
+}
+
 const EVIDENCE_EMPTY = "Say where the proof is kept: a ticket number or a link.";
 const EVIDENCE_TICKET = "Use the ticket number from your ticket system, such as CHG-5120, or a link to it.";
 const EVIDENCE_LINK = "Paste the full link to the proof, starting with https://.";
@@ -105,6 +111,9 @@ const EVIDENCE_LOG = "Name the log query or record that shows it, such as a sear
 export function evidenceMessage(type: unknown, reference: unknown): string | null {
   if (typeof reference !== "string" || reference.trim().length === 0) return EVIDENCE_EMPTY;
   const text = reference.trim();
+  // Text that looks like a key or secret goes to the server, which refuses it with
+  // its own warning ("never the credential itself"); a format hint would hide that.
+  if (looksLikeSecret(text)) return null;
   if (text.length > 500) return "Keep the reference under 500 characters.";
   // Only the words of a ticket or log reference are checked: a link's path may say "test".
   const named = words(text).filter((word) => /\p{L}/u.test(word));

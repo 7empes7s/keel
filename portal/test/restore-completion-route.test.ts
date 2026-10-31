@@ -55,6 +55,12 @@ test("a placeholder or blank evidence reference is refused before anything is wr
   assert.equal(((await reopen.json()) as { error?: string }).error, "weak_reason");
 });
 
+test("a pasted secret gets the engine's secret refusal, not a format hint", async () => {
+  const response = await completionRoute(post({ itemId: crypto.randomUUID(), action: "complete", evidence: { type: "ticket", reference: "-----BEGIN PRIVATE KEY----- secret" } }));
+  assert.equal(response.status, 400);
+  assert.equal(((await response.json()) as { error?: string }).error, "invalid_evidence");
+});
+
 test("a real ticket number reaches the completion check", async () => {
   // The item does not exist, so the engine answers; the reference itself was accepted.
   const response = await completionRoute(post({ itemId: crypto.randomUUID(), action: "complete", evidence: { type: "ticket", reference: "CHG-5120" } }));

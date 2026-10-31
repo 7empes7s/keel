@@ -12,6 +12,7 @@ import { DATA_SURFACES, readAccess } from "@/lib/read";
 import { AppShell } from "@/components/shell/app-shell";
 import { Toaster } from "@/components/toaster";
 import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
+import { getApprovalModeView } from "@/lib/approval-mode";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, principalDisplayName } from "@/lib/principal";
 import { accessInFull, accessSummary } from "@/lib/presentation";
@@ -52,15 +53,21 @@ export default async function RootLayout({
   // Only approvers see the count, and the menu shows the person's name, never their
   // email as a name. Both reads run at once; a failed read hides only its own piece.
   const principalId = requestHeaders.get(PRINCIPAL_ID_HEADER);
-  const { pendingApprovals, displayName } = await loadShellLookups(
-    { approverScope: approvalInboxScope(requestHeaders), principalId },
-    { pendingApprovalCount: getPendingApprovalCount, displayName: principalDisplayName },
-  );
+  // The approval mode runs alongside: every page that says who approves follows it.
+  // An unread mode reads as two people, Keel's default.
+  const [{ pendingApprovals, displayName }, approvalMode] = await Promise.all([
+    loadShellLookups(
+      { approverScope: approvalInboxScope(requestHeaders), principalId },
+      { pendingApprovalCount: getPendingApprovalCount, displayName: principalDisplayName },
+    ),
+    getApprovalModeView(),
+  ]);
 
   return (
     <html data-theme={theme === "system" ? undefined : theme} lang="en">
       <body>
         <AppShell
+          approvalMode={approvalMode?.mode ?? null}
           capabilities={{ canApprove, canBackup, canConfigure, canPolicies, canRead, canUsers }}
           initialPrefs={menuPrefs}
           pendingApprovals={pendingApprovals}

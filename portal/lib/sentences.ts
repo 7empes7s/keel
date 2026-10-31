@@ -187,7 +187,7 @@ function serviceChangePhrase(params: Record<string, unknown>): string {
   return service ? `a ${verb} ${service} setting` : "a service setting change";
 }
 
-// Audit run 2, finding 3: an accept or ignore a second person approves, as what it does:
+// Audit run 2, finding 3: an accept or ignore that needs approval, as what it does:
 // "Accept into the approved setup: 1 change, including …".
 function decisionPhrase(params: Record<string, unknown>, refs: RowReferences): string {
   const what = typeof params.serviceChangeId === "string" ? serviceChangePhrase(params) : changesPhrase(refs.changes);
@@ -379,7 +379,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       }
       const service = typeof subject.service === "string" ? serviceFor(subject.service).name : "a service";
       return subject.approvalRequired === false
-        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for a second person`
+        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for approval`
         : `${actorName} turned on restore approvals for ${service}`;
     }
     case "scuba-config-list": {

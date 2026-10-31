@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { ApprovalModeProvider } from "@/components/approval-mode-context";
 import { CommandPalette, SearchTrigger } from "@/components/command-palette";
 import { KeelMark } from "@/components/keel-mark";
 import { SectionTabs, type NavCapabilities } from "@/components/nav-links";
 import { Icon } from "@/components/shell/icons";
 import { Bell, Menu, TabBar, type Person } from "@/components/shell/menu";
 import { ShellStateProvider, useShellState } from "@/components/shell/shell-state";
+import type { ApprovalModeName } from "@/lib/approval-words";
 import type { MenuPrefs } from "@/lib/menu-prefs";
 import { loadMenuData, menuDataOf, menuRetryDelay, saveMenuData, type MenuData } from "@/lib/menu-data";
 import { menuStatuses, settingsStatus, type MenuStatuses } from "@/lib/menu-status";
@@ -18,6 +20,8 @@ import type { DashboardData } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
 interface ShellProps {
+  // The tenant's approval mode; null when it could not be read (two people).
+  approvalMode?: ApprovalModeName | null;
   capabilities: NavCapabilities;
   pendingApprovals: number | null;
   person: Person;
@@ -32,9 +36,11 @@ interface ShellProps {
 // phone tab still says when something needs someone.
 export function AppShell(props: ShellProps) {
   return (
-    <ShellStateProvider initial={props.initialPrefs}>
-      <Frame {...props} />
-    </ShellStateProvider>
+    <ApprovalModeProvider mode={props.approvalMode ?? null}>
+      <ShellStateProvider initial={props.initialPrefs}>
+        <Frame {...props} />
+      </ShellStateProvider>
+    </ApprovalModeProvider>
   );
 }
 

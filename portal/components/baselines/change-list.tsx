@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
@@ -110,7 +111,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
  * setting changes (`serviceRead`) sit in the same list, so its filters and grouping
  * cover every service. Each service has its own approved setup: accepting adds the
  * change to it, and undo (one change at a time, where Keel can write the setting back)
- * runs the service restore: a check, then someone else's approval. They have no ignore;
+ * runs the service restore: a check, then an approval that follows the approval mode. They have no ignore;
  * acknowledging marks them seen. */
 /** What the change list knows about an opened change beyond its comparison, added to the
  *  comparison's own Technical details so the sheet has one record. */
@@ -159,6 +160,7 @@ export function ChangeList({
   const params = useLiveSearchParams();
   const router = useRouter();
   const [settled, setSettled] = useState<string[]>([]);
+  const approvalWords = useApprovalWords();
   // Service changes acknowledged here, shown as seen until the server read says so too.
   const [seen, setSeen] = useState<string[]>([]);
   // The service setting change being undone through its service restore.
@@ -274,7 +276,7 @@ export function ChangeList({
     : canRemediate
       ? {
         label: (count: number) => decisionWords("undo", count).title,
-        detail: (_count: number, ids: string[]) => `Puts the approved values back once someone else approves.${allService(ids) && ids.length === 1 ? "" : skipped(ids)}`,
+        detail: (_count: number, ids: string[]) => `Puts the approved values back once ${approvalWords.approves}.${allService(ids) && ids.length === 1 ? "" : skipped(ids)}`,
         run: (ids: string[]) => decide("undo", ids),
       }
       : {
@@ -376,7 +378,7 @@ export function ChangeList({
         {serviceReads.length ? (
           <p className="bl-note">
             <Icon name="info" />
-            <span>{`${listWords(serviceReads)} ${serviceReads.length === 1 ? "is" : "are"} measured against ${serviceReads.length === 1 ? "its" : "their"} own approved setup, taken from Keel's first read. Accept keeps a change; undo puts the approved value back once someone else approves.`}</span>
+            <span>{`${listWords(serviceReads)} ${serviceReads.length === 1 ? "is" : "are"} measured against ${serviceReads.length === 1 ? "its" : "their"} own approved setup, taken from Keel's first read. Accept keeps a change; undo puts the approved value back once ${approvalWords.approves}.`}</span>
           </p>
         ) : null}
         {notes.map((note) => <p className="bl-note" key={note}><Icon name="info" /><span>{note}</span></p>)}
@@ -447,7 +449,7 @@ export function ChangeList({
               {canDispose && isWaiting(opened) ? <button className="btn" onClick={() => acknowledge([opened.id])} type="button">Acknowledge</button> : null}
               {opened.serviceRead.alertId ? <Link className="btn" href={`/alerts?open=${encodeURIComponent(opened.serviceRead.alertId)}`}>Open its alert</Link> : null}
               {opened.serviceRead.undo.possible ? (
-                <p className="bl-help">Accepting adds it to the approved setup for {workloadLabel(opened.serviceRead.workload)} and changes nothing in Microsoft 365. Undo first checks what it would put back, then needs someone else&apos;s approval.</p>
+                <p className="bl-help">Accepting adds it to the approved setup for {workloadLabel(opened.serviceRead.workload)} and changes nothing in Microsoft 365. Undo first checks what it would put back, then needs {approvalWords.approval}.</p>
               ) : (
                 <p className="bl-cannot" role="note"><RiskChip tone="soon">Keel cannot undo this</RiskChip><span>{opened.serviceRead.undo.reason}</span></p>
               )}
@@ -457,7 +459,7 @@ export function ChangeList({
               {canDispose ? <button className="btn btn-primary" onClick={() => decide("accept", [opened.id])} type="button">Accept this change</button> : null}
               {canRemediate ? <button className="btn" onClick={() => decide("undo", [opened.id])} type="button">Undo this change</button> : null}
               {canDispose ? <button className="btn" onClick={() => decide("ignore", [opened.id])} type="button">Ignore for now</button> : null}
-              <p className="bl-help">Accepting adds it to the approved setup and changes nothing in Microsoft 365. Undo first shows what it can put back, then needs someone else&apos;s approval.</p>
+              <p className="bl-help">Accepting adds it to the approved setup and changes nothing in Microsoft 365. Undo first shows what it can put back, then needs {approvalWords.approval}.</p>
             </>
           ) : undefined}
           kicker={<><RiskChip tone={toneOf(opened)}>{impactWords(opened.blastRadius)}</RiskChip><span>{kindLine(opened)}</span></>}
@@ -489,7 +491,7 @@ export function ChangeList({
           title="Undo this change"
           wide
         >
-          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.undoFrom.approved ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.undoFrom.readAt)}. It checks what would change first and writes nothing until someone else approves. The next read then matches and settles this change.</p>
+          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.undoFrom.approved ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.undoFrom.readAt)}. It checks what would change first and writes nothing until {approvalWords.approves}. The next read then matches and settles this change.</p>
           <WorkloadRestore
             canApprove={canApprove}
             canRestore={canRestore}

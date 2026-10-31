@@ -5576,3 +5576,21 @@ for (const { name, hash, box } of [
     await expect(page).not.toHaveURL(/q=/);
   });
 }
+
+// Approval mode, part 3: in Solo mode the Changes page never promises that someone else
+// approves an undo; it says the person who asked may approve. Two people keeps "someone else".
+for (const width of [390, 1440]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`Changes · undo wording follows the approval mode · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
+      await open(page, "/drift/solo", theme);
+      const main = page.locator("main");
+      await expect(main).toContainText("undo puts the approved value back once it is approved (in Solo mode you can approve it yourself)");
+      await expect(main).not.toContainText("someone else approves");
+      await main.getByText("in Solo mode you can approve it yourself").first().scrollIntoViewIfNeeded();
+      if (process.env.KEEL_SHOTS) await page.screenshot({ path: `${process.env.KEEL_SHOTS}/solo-changes-${width}-${theme}.png` });
+      await open(page, "/drift/services", theme);
+      await expect(page.locator("main")).toContainText("undo puts the approved value back once someone else approves");
+    });
+  }
+}

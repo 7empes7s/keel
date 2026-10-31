@@ -125,7 +125,7 @@ export function KitPage({ many = false }: { many?: boolean }) {
       <SelectableList
         action={{
           label: (count) => `Restore ${count} ${count === 1 ? "setting" : "settings"}`,
-          detail: (count) => `Puts ${count === 1 ? "it" : "them"} back as in the chosen backup. Nothing changes until someone else approves.`,
+          detail: (count) => `Puts ${count === 1 ? "it" : "them"} back as in the chosen backup. Nothing changes until it is approved.`,
           run: (ids) => toast({ title: `Restore of ${ids.length} settings sent for approval`, detail: "Someone other than you has to approve it." }),
         }}
         getId={(item) => item.id}

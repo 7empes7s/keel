@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
@@ -82,6 +83,7 @@ export function contentEffectsLink(request: ApprovalRequestRecord): { href: stri
 }
 
 export function ContentEffectsNote({ request, primary = false }: { request: ApprovalRequestRecord; primary?: boolean }) {
+  const approvalWords = useApprovalWords();
   const link = contentEffectsLink(request);
   if (!link) return null;
   return (
@@ -91,7 +93,7 @@ export function ContentEffectsNote({ request, primary = false }: { request: Appr
         {link.count === 1
           ? "1 change in this restore affects kept or shared content. It needs its own approval"
           : `${link.count} changes in this restore affect kept or shared content. They need their own approval`}
-        {" "}by someone other than the person who asked, or the restore is refused.
+        {" "}by {approvalWords.approver}, or the restore is refused.
         {" "}<Link className={primary ? "btn btn-primary btn-sm" : "ap-inline-link"} href={link.href}>{link.label}</Link>
       </p>
     </div>

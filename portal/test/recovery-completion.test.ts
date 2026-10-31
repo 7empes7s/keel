@@ -92,7 +92,7 @@ test("task-152: the pending steps list shows only when the restore left a policy
   }));
   assert.match(html, /Still to do after this restore/);
   assert.match(html, /report-only mode and protects no one/);
-  assert.match(html, /second person approves/);
+  assert.match(html, /someone other than the person who asked approves/);
 });
 
 test("issue #546: a dry run shows each step left for a person on its object, one step or a list", () => {

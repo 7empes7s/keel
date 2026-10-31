@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -432,6 +433,7 @@ export function RestoreSelection({
   workloads?: RestoreWorkload[] | null;
 }) {
   const router = useRouter();
+  const approvalWords = useApprovalWords();
   const query = useViewState().get("q");
   const [openWorkload, setOpenWorkload] = useState<string | null>(null);
   const [preview, setPreview] = useState<SelectionPreview | null>(null);
@@ -635,7 +637,7 @@ export function RestoreSelection({
         className={`btn btn-sm restore-undo${primary ? " btn-primary" : ""}`}
         disabled={!canRestore || planning || submitting}
         onClick={() => void plan(keys)}
-        title={canRestore ? "Checks what would change first. Nothing changes until someone else approves." : "You can look, but restoring needs the restore role."}
+        title={canRestore ? `Checks what would change first. ${approvalWords.untilApproved}` : "You can look, but restoring needs the restore role."}
         type="button"
       >
         <Icon name="restore" />
@@ -705,7 +707,7 @@ export function RestoreSelection({
               <SelectableList
                 action={{
                   label: (count) => `Put back ${plural(count, "setting")}`,
-                  detail: () => "KEEL checks what would change first. Nothing changes until someone else approves.",
+                  detail: () => `KEEL checks what would change first. ${approvalWords.untilApproved}`,
                   run: (ids) => void plan(ids),
                 }}
                 getId={(item) => item.naturalKey}
@@ -846,7 +848,7 @@ export function RestoreSelection({
             ) : (
               <>
                 <li className="track-done">Approval requested</li>
-                <li className="track-current">Another person reviews this same plan</li>
+                <li className="track-current">{approvalWords.reviewStep}</li>
               </>
             )}
             <li className={sentStarted ? "track-current" : undefined}>KEEL checks the tenant again, then restores; the job appears below</li>
@@ -1052,7 +1054,7 @@ export function RestoreSelection({
                 </button>
               </div>
               <p className="selection-scope">
-                This goes to approvers next. Someone other than you approves exactly this plan, and KEEL
+                This goes to approvers next. {approvalWords.planApprover} approves exactly this plan, and KEEL
                 checks the tenant again before it writes.
               </p>
             </div>

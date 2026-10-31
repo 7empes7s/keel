@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -174,6 +175,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
   start?: { collectionId: string; targets: string[] };
 }) {
   const [choices, setChoices] = useState<WorkloadChoices | null>(null);
+  const approvalWords = useApprovalWords();
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<Step>("select");
@@ -500,7 +502,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
                 </button>
                 <button className="secondary-action" disabled={busy} onClick={discard} type="button">Discard</button>
               </div>
-              <p className="selection-scope">This goes to approvers next. Someone other than you approves exactly this plan, and KEEL reads the tenant again before it writes.</p>
+              <p className="selection-scope">This goes to approvers next. {approvalWords.planApprover} approves exactly this plan, and KEEL reads the tenant again before it writes.</p>
             </div>
           ) : (
             <div className="drift-action-buttons">
@@ -519,7 +521,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
             ) : (
               <>
                 <li className="track-done">Approval requested</li>
-                <li className="track-current">Another person reviews this same plan</li>
+                <li className="track-current">{approvalWords.reviewStep}</li>
               </>
             )}
             <li className={allStarted ? "track-current" : undefined}>KEEL reads the tenant again, writes, then reads it back</li>

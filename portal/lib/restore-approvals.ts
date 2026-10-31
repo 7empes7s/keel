@@ -14,7 +14,7 @@ import type { EngineRef } from "@/lib/sentences";
 
 // Restore approvals as a customer setting. Per service, whether a high-impact restore
 // change (shorter retention, a released hold, wider sharing, a destroying action, a
-// script run on devices, a shorter group lifetime) waits for a second person. On for
+// script run on devices, a shorter group lifetime) waits for approval. On for
 // every service until someone with `policies` turns it off; each change is written to
 // the audit record. Anyone who can read sees how it is set. Some kinds of restore
 // (content restores, turning a Conditional Access policy on, compliance fixes,

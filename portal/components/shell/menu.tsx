@@ -80,7 +80,7 @@ export function Bell({ canApprove, canRead, approvals, alerts, placement }: { ca
             <li>
               <Link className="bell-item" href="/approvals" onClick={close} prefetch={false}>
                 <Icon name="inbox" />
-                <span><b>Approvals</b><small>Restores and changes waiting for a second person</small></span>
+                <span><b>Approvals</b><small>Restores and changes waiting for approval</small></span>
                 <span className="bell-item-count" data-zero={!approvals || undefined}>{approvals ?? "–"}</span>
               </Link>
             </li>

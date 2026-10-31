@@ -54,7 +54,7 @@ import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
 import { loadServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
-import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
+import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
@@ -1562,7 +1562,9 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
-    return { generatedAt: now.toISOString(), metrics, incidents, storage };
+    // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
+    const kinds = resilienceKinds((await coverageFor(client, ref)).types);
+    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage };
   });
 }
 

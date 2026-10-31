@@ -81,7 +81,7 @@ import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
-import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
+import { pageVerdict, resilienceAlerts, resilienceKinds, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
@@ -1749,8 +1749,11 @@ const INBOX_ALERTS: AlertItem[] = [
 // good group backup, so the older copy still sets the point; a failed restore is
 // listed but is not a recovery time sample. RESILIENCE_EMPTY is a tenant with nothing
 // measured yet.
+// The Entra ID and Intune kinds are What's protected's own fixture (workloads have a "-").
+const ENTRA_INTUNE_TYPES = COVERAGE_TYPES.filter((item) => !item.type.includes("-"));
 const RESILIENCE: ResilienceData = {
   generatedAt: now,
+  kinds: resilienceKinds(ENTRA_INTUNE_TYPES),
   metrics: {
     version: 1, tenantRef: "sha256:5e7a0b0b0b0b0b0b", generatedAt: now,
     freshness: {
@@ -1810,6 +1813,11 @@ const RESILIENCE: ResilienceData = {
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,
+  // Conditional Access never read; Group's only read failed.
+  kinds: resilienceKinds([
+    ct("conditionalAccessPolicy", "protected", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null, detail: null, observation: null }),
+    ct("group", "failed", { outcome: "failed", itemCount: 0 }),
+  ]),
   metrics: {
     ...RESILIENCE.metrics,
     freshness: { state: "unmeasured", achievedRpoMs: null, required: 2, oldestDependency: null, latestFailures: [], gaps: [

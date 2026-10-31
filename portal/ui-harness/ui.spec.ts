@@ -1454,6 +1454,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(page.locator('.ui-tile[data-tile="services"] .ui-tile-value')).toHaveText("4 of 8");
   await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
+  // Entra ID and Intune count kinds as What's protected does (same fixture): 2 failed, 2 out of date or never.
+  await expect(page.locator('.rs-table tr[data-row="entra-intune"]')).toContainText("2 failed");
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("2 Entra ID and Intune kinds failed their last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("2 Entra ID and Intune kinds are out of date or never backed up");
   const groups = await page.locator(".rs-group").allTextContents();
   expect(groups).toEqual(["Entra ID and Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
   // The measurements stay, last.
@@ -1473,7 +1477,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
     await expect(page.locator(`.resilience-${card} .badge:not([data-layer="record"] .badge)`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
-  await expect(page.locator('.ui-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
+  // Counted with What's protected's buckets: one failed, one never read.
+  await expect(page.locator('.ui-alert[data-alert="kinds-failed"]')).toContainText("Group failed its last backup");
+  await expect(page.locator('.ui-alert[data-alert="kinds-late"]')).toContainText("Conditional Access policy is out of date or never backed up");
+  await expect(page.locator(".rs-page")).not.toContainText(/\d+ (setting types )?never backed up/);
 });
 
 // Task-100 and the Value report redesign (pick A): the tiles and chart add up, each

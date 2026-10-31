@@ -550,6 +550,8 @@ export interface SemanticChange {
   total: number;
   shown: number;
   cosmetic: number;
+  // Differences that are only empty against missing or the order of a list; never listed.
+  ignored?: number;
   groups: { behaviour: number; fixed: number; "unknown-before": number };
 }
 
@@ -595,6 +597,8 @@ export interface SemanticSummary {
   behaviouralSettings: number;
   fixedSettings: number;
   cosmeticOnly: number;
+  // Changes where only empty values or the order of a list differ.
+  emptyOrOrderOnly?: number;
   unknownBefore: number;
   mismatched: number;
 }

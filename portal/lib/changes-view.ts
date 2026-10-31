@@ -3,10 +3,15 @@
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
 import { NAME_FIELDS, objectName } from "../../engine/cir/objectName.mjs";
+import { HIDDEN } from "../../engine/safety/diffHygiene.mjs";
 import { plainKind } from "@/lib/baselines-view";
 import { holdsObjectId, isObjectId, objectIdsIn, replaceObjectIds } from "@/lib/object-ids";
 import { ago, resourceLabel, words } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
+
+/** A credential value (a password hint and the like) as a diff carries it, and how it reads. */
+export const HIDDEN_VALUE: string = HIDDEN;
+export const HIDDEN_WORDS = "hidden (part of a password or secret)";
 
 /** "Block legacy auth" from "conditionalAccessPolicy:Block legacy auth". */
 export function resourceName(naturalKey: string): string {
@@ -204,6 +209,7 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
   if (typeof value === "number") return value.toLocaleString("en-GB");
   if (typeof value === "string") {
     if (value === "") return "empty";
+    if (value === HIDDEN_VALUE) return HIDDEN_WORDS;
     if (names) {
       if (isObjectId(value)) return names[value.toLowerCase()] ?? "an object Keel has no name for";
       if (holdsObjectId(value)) return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "(unnamed object)");

@@ -12,6 +12,7 @@ import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import { recordsNoChange } from "../../engine/store/openDrift.mjs";
 import { templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
+import { DRIFT_TEMPLATE_FAMILY_SQL } from "../../engine/insights/templateAreas.mjs";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
@@ -191,7 +192,8 @@ function servicesOf(items: { resourceType: string; templateFamily?: string | nul
 
 /** A drift row as a listed setting: its type and the template family either copy carries. */
 function driftItem(row: UnknownRecord): { resourceType: string; templateFamily: string | null } {
-  return { resourceType: String(row.resource_type), templateFamily: templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload) };
+  const read = typeof row.template_family === "string" && row.template_family ? row.template_family : null;
+  return { resourceType: String(row.resource_type), templateFamily: read ?? templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload) };
 }
 
 // A roll back puts each changed setting back as the approved setup holds it: "now" is
@@ -200,8 +202,8 @@ async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<
   if (driftIds.length === 0) return null;
   const { rows } = await client.query(
     `SELECT id::text AS id, natural_key, resource_type, change_type, before_payload, after_payload,
-            before_hash, after_hash, same_content
-       FROM drift WHERE tenant_ref = $1 AND id::text = ANY($2::text[])`,
+            before_hash, after_hash, same_content, ${DRIFT_TEMPLATE_FAMILY_SQL} AS template_family
+       FROM drift d WHERE tenant_ref = $1 AND id::text = ANY($2::text[])`,
     [tenantRef(), driftIds],
   );
   const ordered = driftIds.map((id) => rows.find((row) => row.id === id)).filter((row): row is UnknownRecord => Boolean(row));

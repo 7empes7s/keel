@@ -39,6 +39,7 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
 import { templateFamilyOf } from '../insights/taxonomy.mjs';
+import { INTENT_TYPE, loadTemplateAreas, templateFamilySql } from '../insights/templateAreas.mjs';
 
 export const COMPARE_VERSION = 1;
 export const COMPARE_SECTIONS = Object.freeze(['settings', 'workloads', 'content']);
@@ -89,10 +90,12 @@ const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest
 const iso = (value) => (value == null ? null : new Date(value).toISOString());
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nameOf = (payload, resourceType) => objectName(payload, resourceType);
-// The settings catalog template family (an Intune antivirus policy is a Defender
-// endpoint security policy), so lists can file the item where it belongs.
-const familyOf = (...payloads) => {
-  const family = payloads.map(templateFamilyOf).find(Boolean);
+// The template family (an Intune antivirus policy is a Defender endpoint security
+// policy), so lists can file the item where it belongs. A row read from the store
+// carries it (template_family, which also covers older endpoint security policies);
+// a row built in memory falls back to its payload.
+const familyOf = (...rows) => {
+  const family = rows.map((row) => row.template_family || templateFamilyOf(row.payload)).find(Boolean);
   return family ? { templateFamily: family } : {};
 };
 
@@ -219,13 +222,13 @@ export function compareSettings(left, right, { portable = false } = {}) {
       if (was && !now) {
         group.removed += 1;
         const payload = portable ? portablePayload(was.payload, was.references) : was.payload;
-        group.items.push({ naturalKey, name: nameOf(was.payload, resourceType), ...familyOf(was.payload), changeType: 'removed', blastRadius: changeBlastRadius(resourceType, was.payload, null, was.blast_radius ?? null), ...presenceFields(resourceType, payload, 'removed') });
+        group.items.push({ naturalKey, name: nameOf(was.payload, resourceType), ...familyOf(was), changeType: 'removed', blastRadius: changeBlastRadius(resourceType, was.payload, null, was.blast_radius ?? null), ...presenceFields(resourceType, payload, 'removed') });
         continue;
       }
       if (!was && now) {
         group.added += 1;
         const payload = portable ? portablePayload(now.payload, now.references) : now.payload;
-        group.items.push({ naturalKey, name: nameOf(now.payload, resourceType), ...familyOf(now.payload), changeType: 'added', blastRadius: changeBlastRadius(resourceType, null, now.payload, now.blast_radius ?? null), ...presenceFields(resourceType, payload, 'added') });
+        group.items.push({ naturalKey, name: nameOf(now.payload, resourceType), ...familyOf(now), changeType: 'added', blastRadius: changeBlastRadius(resourceType, null, now.payload, now.blast_radius ?? null), ...presenceFields(resourceType, payload, 'added') });
         continue;
       }
       if (settingsFingerprint(was, { portable }) === settingsFingerprint(now, { portable })) {
@@ -236,7 +239,7 @@ export function compareSettings(left, right, { portable = false } = {}) {
       const differences = portable
         ? fieldDifferences(resourceType, portablePayload(was.payload, was.references), portablePayload(now.payload, now.references))
         : fieldDifferences(resourceType, was.payload, now.payload);
-      group.items.push({ naturalKey, name: nameOf(now.payload, resourceType) ?? nameOf(was.payload, resourceType), ...familyOf(now.payload, was.payload), changeType: 'changed', blastRadius: changeBlastRadius(resourceType, was.payload, now.payload, now.blast_radius ?? null), ...differences });
+      group.items.push({ naturalKey, name: nameOf(now.payload, resourceType) ?? nameOf(was.payload, resourceType), ...familyOf(now, was), changeType: 'changed', blastRadius: changeBlastRadius(resourceType, was.payload, now.payload, now.blast_radius ?? null), ...differences });
     }
     if (unkeyed.left || unkeyed.right) unmatched.push({ resourceType, service, ...unkeyed });
     for (const key of ['added', 'removed', 'changed', 'unchanged']) totals[key] += group[key];
@@ -509,10 +512,14 @@ async function loadSnapshot(client, snapshotId) {
   return snapshot;
 }
 
+const ROW_FAMILY_SQL = templateFamilySql({ typeExpr: 'rv.resource_type', payloads: ['rv.payload'], tenantExpr: 's.tenant_ref' });
+
 async function loadSnapshotRows(client, snapshotId, { references }) {
   const { rows } = await client.query(
-    `SELECT id, natural_key, resource_type, payload, payload_hash, hash_version, blast_radius
-       FROM resource_version WHERE snapshot_id = $1`,
+    `SELECT rv.id, rv.natural_key, rv.resource_type, rv.payload, rv.payload_hash, rv.hash_version, rv.blast_radius,
+            ${ROW_FAMILY_SQL} AS template_family
+       FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
+      WHERE rv.snapshot_id = $1`,
     [snapshotId],
   );
   if (references && rows.length) {
@@ -638,6 +645,13 @@ export async function compareWithLive(client, {
   }
   const leftRows = wanted.has('settings') ? await loadSnapshotRows(client, snapshot.id, { references: false }) : [];
   const live = wanted.has('settings') ? await collectLive(client, { reader, tenantId, tenantRef }) : { rows: [], coverage: null };
+  // A live older endpoint security policy takes its area from the stored templates too.
+  if (live.rows.some((row) => row.resource_type === INTENT_TYPE)) {
+    const areas = await loadTemplateAreas(client, tenantRef);
+    for (const row of live.rows) {
+      if (row.resource_type === INTENT_TYPE && areas.has(row.payload?.templateId)) row.template_family = areas.get(row.payload.templateId);
+    }
+  }
   const left = describeSnapshot(snapshot);
   const right = { kind: 'live', tenantRef, snapshotId: null, at: iso(now), latestStored: ['workloads', 'content'].filter((s) => wanted.has(s)) };
   return assemble(client, {

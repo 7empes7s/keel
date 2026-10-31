@@ -20,6 +20,7 @@ import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { scopePredicate } from '../authz/entityScope.mjs';
 import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
 import { storedTypeOf, subkindFamilies, typeInfo } from '../insights/taxonomy.mjs';
+import { DRIFT_TEMPLATE_FAMILY_SQL, INTENT_TYPE, templateFamilySql } from '../insights/templateAreas.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { RECORDED_CHANGE_PREDICATE } from '../store/openDrift.mjs';
 import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
@@ -79,10 +80,10 @@ export async function knownEntities(client, { tenantRef }) {
 // A change is placed in time by the collection that saw it (its completion), falling
 // back to when it was recorded. Comparisons, coverage and the window all use this time.
 const SEEN_AT = 'COALESCE(os.completed_at, d.detected_at)';
-// The template family a settings catalog policy's copy carries (templateReference); read
-// for those rows alone, so the other rows' payloads stay out of the sort.
-const TEMPLATE_FAMILY_SQL = `CASE WHEN d.resource_type = 'configurationPolicy'
-  THEN COALESCE(d.after_payload->'templateReference'->>'templateFamily', d.before_payload->'templateReference'->>'templateFamily') END`;
+// The template family of a settings catalog policy (templateReference) or of an older
+// endpoint security policy (its template's subtype, insights/templateAreas.mjs); read for
+// those rows alone, so the other rows' payloads stay out of the sort.
+const TEMPLATE_FAMILY_SQL = `CASE WHEN d.resource_type IN ('configurationPolicy', '${INTENT_TYPE}') THEN ${DRIFT_TEMPLATE_FAMILY_SQL} END`;
 
 // A kind can be a part of a stored type that lists file under another service: Intune
 // settings catalog policies made from an endpoint security template are Defender's
@@ -90,7 +91,6 @@ const TEMPLATE_FAMILY_SQL = `CASE WHEN d.resource_type = 'configurationPolicy'
 // read, and each row's kind comes from its template family. The map is the taxonomy's,
 // never a question's, and travels as a bind parameter.
 const SUBKIND_FAMILIES = JSON.stringify(subkindFamilies());
-const familyOf = (payload) => `(${payload}->'templateReference'->>'templateFamily')`;
 /** The kind one stored row files under, from its stored type and payloads. */
 const kindSql = (typeExpr, familyExpr, param) => `COALESCE($${param}::jsonb->${typeExpr}->>${familyExpr}, ${typeExpr})`;
 
@@ -125,7 +125,7 @@ const TEMPLATES = Object.freeze({
     // the rows that file under them ($8), so "Defender" holds the endpoint security
     // policies and "settings catalog" the rest.
     const read = readKinds(params);
-    const kind = kindSql('d.resource_type', `COALESCE(${familyOf('d.after_payload')}, ${familyOf('d.before_payload')})`, 9);
+    const kind = kindSql('d.resource_type', DRIFT_TEMPLATE_FAMILY_SQL, 9);
     const single = read.stored?.length === 1 && !params.resourceTypes;
     const base = [tenantRef, params.from, params.to, single ? read.stored[0] : null, params.changeType,
       read.stored && !single ? read.stored : null, name, read.kinds, SUBKIND_FAMILIES];
@@ -145,8 +145,8 @@ const TEMPLATES = Object.freeze({
        SELECT DISTINCT ON (d.resource_type, d.natural_key)
               d.id, d.tenant_ref, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
               d.detected_at, d.observed_snapshot, ${SEEN_AT} AS seen_at,
-              -- An endpoint security policy made in Intune is listed under Defender
-              -- (taxonomy settingKind); only settings catalog policies carry one.
+              -- An endpoint security policy made in Intune, in either format, is listed
+              -- under Defender (taxonomy settingKind).
               ${TEMPLATE_FAMILY_SQL} AS template_family
          FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref
@@ -266,7 +266,7 @@ const TEMPLATES = Object.freeze({
       // the rest of the settings catalog.
       const kindParam = 3 + where.values.length;
       const { rows } = await client.query(
-        `SELECT ${kindSql('rv.resource_type', familyOf('rv.payload'), kindParam)} AS kind, count(*)::int AS count
+        `SELECT ${kindSql('rv.resource_type', templateFamilySql({ typeExpr: 'rv.resource_type', payloads: ['rv.payload'], tenantExpr: 's.tenant_ref' }), kindParam)} AS kind, count(*)::int AS count
            FROM resource_version rv
            JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
           WHERE rv.snapshot_id = $2::uuid AND ${where.sql}

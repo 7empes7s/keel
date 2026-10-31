@@ -14220,3 +14220,21 @@ item that needs it stays untouched.
   }
   process.exit(0);
   ```
+
+### Q304: Restore follow-ups show one number on Overview, Restore and Resilience after #858 deploys (read-only, no tenant), about 5 minutes
+- Drafted by the "Match restore follow-up counts" thread (2026-10-31, metric 2 of the audit's data-consistency table). Before:
+  Overview 273 steps, Restore 233 (it added up only the 50 restores it lists), Resilience "25 restores need follow-up".
+  PR #858 (merged) adds one engine count, `countOpenCompletionWork` in `engine/restore/completion.mjs`, that all three read.
+- Needs: nothing. **Quick.** Take it once `/opt/keel-live` is at or after the merge of #858.
+- Status: todo
+- Result:
+- Do, on Mulinux, read-only (`BEGIN READ ONLY`), no tenant calls, no writes:
+  1. The deployed build (`/opt/keel-live` commit) and whether it contains #858 (`git merge-base --is-ancestor`, or grep
+     `countOpenCompletionWork` in `/opt/keel-live/engine/restore/completion.mjs`).
+  2. From `/opt/keel-live/engine`, with the live DB env, print `countOpenCompletionWork(client, { tenantRef })` and the number of
+     cards `listOpenCompletionWork(client, { tenantRef })` returns (default limit 50).
+  3. The rendered pages from the local portal (`curl` on the portal's local port, as for earlier live checks): on `/` the
+     "N restore steps are still open" row; on `/restore` the "N steps on M restores" count and, if M > 50, the line
+     "Showing the newest 50 of M restores"; on `/resilience` the alert "M restores have N follow-up steps open".
+- **Expected:** steps N and restores M from step 2 appear unchanged on all three pages in step 3.
+- **Report:** steps 1–3 with the numbers. Nothing to fix on the server; any mismatch goes back to the thread as a code bug.

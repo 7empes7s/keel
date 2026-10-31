@@ -13810,3 +13810,22 @@ item that needs it stays untouched.
      and report each keyCredential's `displayName` and `endDateTime` only (no `key`, no thumbprint).
 - **Report:** one table: app, host file end date, stored end date, Entra end date(s). Say which app ends 29 Oct 2027, if any, and
   whether any stored date differs from its host file.
+
+### Q298: Confirm the 14:06–14:07 pool-full storm on 31 Oct was the 775-change bulk accept (read-only, no tenant), about 5 minutes
+- Drafted by the "Find the 14:06 database pool overload" thread (2026-10-31). Q296 found 553 `database pool full` lines, all at
+  14:06–14:07 UTC (up to 244 waiting). The likely cause: on Baselines > Changes, 775 Entra ID changes were accepted at once, and the
+  old panel sent all 775 `POST /api/actions/dispose` together (`Promise.all`; PR #834 sends 4 at a time, not yet merged). This item checks
+  the database and journal for that burst. **Read-only: no tenant calls, no database writes, no restarts, no config changes.**
+  Never print the database URL, a password, a token, a tenant id or a person's address (say "the operator" or "user A").
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Do, on Mulinux:
+  1. `SELECT date_trunc('minute', decided_at) AS m, action, count(*) FROM disposition WHERE decided_at >= '2026-10-31 13:50Z' AND decided_at < '2026-10-31 14:20Z' GROUP BY 1,2 ORDER BY 1,2;`
+     and the same with `count(DISTINCT actor)` per minute (counts only, no actor names).
+  2. `SELECT date_trunc('minute', created_at) AS m, action, count(*) FROM approval_request WHERE created_at >= '2026-10-31 13:50Z' AND created_at < '2026-10-31 14:20Z' GROUP BY 1,2 ORDER BY 1,2;`
+  3. `journalctl -u keel-portal --since "2026-10-31 14:00" --until "2026-10-31 14:10" --no-pager`: per minute, count of `database pool full`,
+     `DatabaseBusyError`, and any other `Error` line. Quote the first `DatabaseBusyError` stack (up to 15 lines, ids redacted) so we see which
+     route or file threw it (expect `lib/action.ts` / dispose, or `proxy.ts`).
+  4. Any other job or timer active 14:05–14:08 (`journalctl --since "2026-10-31 14:04" --until "2026-10-31 14:09" -u 'keel-*' --no-pager | grep -viE 'pool full|DatabaseBusy' | head -40`).
+- **Report:** the three tables (minute × count), the quoted stack, and any other job in that window. Say plainly whether ~775 decisions
+  (saved plus failed) fit the burst, or whether something else ran.

@@ -13957,7 +13957,21 @@ item that needs it stays untouched.
 - **Read-only: GETs with the Collector credential and SELECTs only. No writes to the tenant or the database, no grants, no restarts.**
   Never print the token, a tenant id or a person's address.
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
+- Status: done
+- Result: done, a Microsoft fault (2026-10-31 21:40 UTC, keel-operator). Build **14422832** (#873). GETs with Collector `/etc/keel/tenant.json` and SELECTs only. Nothing written; global admin not used.
+  - **Step 1, `fb28196f…` (20:26):** job `backup` tier3 **succeeded**, `partial` true, `incompleteTypes` `[{todoSettings, failed, 500}]`; snapshot `eea054c7…` complete, **687** items. Stored todoSettings entry: outcome `failed`, httpStatus **500**, graphCode **`UnknownError`**, endpoint `/admin/todo` (beta), 3 requests, 0 throttles, no request id stored. Message: "Microsoft service error: Microsoft 365 answered HTTP 500 UnknownError on all 3 tries. This is a fault on Microsoft's side, not a missing permission. The next backup tries again."
+  - **Step 1, `885f3c5b…` (20:27):** the same. Job succeeded, partial, same incompleteTypes; snapshot `5bdc3259…` complete, **687** items; same todoSettings entry and wording (3 requests, 500 `UnknownError`).
+  - **Step 2, verbatim:**
+    ```
+    2026-10-31T21:38:00.497Z /beta/admin/forms 200 request-id=b3d7bcac-139e-4f11-8439-cf47fc8685f7 keys=@odata.context,settings settings=isExternalSendFormEnabled,isExternalShareCollaborationEnabled,isExternalShareResultEnabled,isExternalShareTemplateEnabled,isRecordIdentityByDefaultEnabled,isBingImageSearchEnabled,isInOrgFormsPhishingScanEnabled
+    2026-10-31T21:38:07.320Z /beta/admin/todo 500 request-id=df497c08-8f9b-4950-9a7a-e3fdde7457d5 {"code":"UnknownError","message":""}
+    2026-10-31T21:38:14.984Z /beta/admin/todo?$select=settings 500 request-id=965fbbd0-0f48-4b94-8d30-1f0407312efe {"code":"UnknownError","message":""}
+    2026-10-31T21:38:20.186Z /beta/admin/todo/settings 500 request-id=ad90c348-cc9b-45a4-b848-4f66132f49d4 {"code":"UnknownError","message":""}
+    2026-10-31T21:38:25.217Z /v1.0/admin/todo 400 request-id=01492615-e657-45f1-8883-4e914473e552 {"code":"BadRequest","message":"Resource not found for the segment 'todo'."}
+    2026-10-31T21:38:30.246Z /beta/admin 200 request-id=ccb0fd2d-9f56-4d69-9563-e6dc1c56b6a3 keys=cloudLicensing@navigationLink,edge@navigationLink,exchange@navigationLink,sharepoint@navigationLink,teams@navigationLink,microsoft365Apps@navigationLink,serviceAnnouncement@navigationLink,entra@navigationLink,reportSettings@navigationLink,appsAndServices@navigationLink,dynamics@navigationLink,forms@navigationLink,todo@navigationLink,people@navigationLink,windows@navigationLink,configurationManagement@navigationLink
+    ```
+  - **Step 3:** `OrgSettings-Todo.Read.All` held: **yes**.
+  - **Verdict:** every beta To Do form answers 500 `UnknownError` with an empty message. v1.0 has no `todo` segment (400). `/beta/admin` still lists `todo@navigationLink`, and Forms answers 200 in the same session with the role held. No variant gives Keel another way to read it: it is a Microsoft fault, and the thread can file it as a known Microsoft limit. The request ids above can go in a Microsoft support case.
 - Do, from `/opt/keel-live`:
   1. For each of the two backups above: the todoSettings coverage entry as stored (outcome, HTTP status, Graph code, message,
      request id if stored, the "Microsoft service error" wording if present), and the job's status and item count.

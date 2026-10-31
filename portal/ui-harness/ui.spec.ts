@@ -426,7 +426,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(amber).toHaveCount(1);
   await expect(amber).toHaveText("Run the Tier 1 backup again");
   const tiles = page.locator(".ac-tile");
-  await expect(tiles).toHaveCount(4);
+  await expect(tiles).toHaveCount(5);
   const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
   for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/activity/);
@@ -605,7 +605,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
 
 test("Activity · a viewer sees the timeline and no way to run anything", async ({ page }) => {
   await open(page, "/activity/viewer");
-  await expect(page.locator(".ac-tile")).toHaveCount(4);
+  await expect(page.locator(".ac-tile")).toHaveCount(5);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run again" })).toHaveCount(0);
   await expect(page.locator(".sel-row").first()).toBeVisible();
@@ -4517,7 +4517,7 @@ test("Schedules · tiles, groups, panel, editor refusal, suggested timetable, Ru
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator('[data-layer="verdict"] a.btn-primary')).toHaveAttribute("href", /jobs\/a4$/);
   const tiles = page.locator(".sc-tile");
-  await expect(tiles).toHaveCount(4);
+  await expect(tiles).toHaveCount(5);
   for (const tile of await tiles.all()) await expect(tile).toHaveAttribute("href", /.+/);
   await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Backups", "Settings and content backups", "Checks", "Upkeep"]);
   const rows = page.locator(".sel-row");
@@ -4590,7 +4590,7 @@ test("Schedules · tiles, groups, panel, editor refusal, suggested timetable, Ru
 
 test("Schedules · a viewer sees every schedule, no amber action other than the failed run, and no controls", async ({ page }) => {
   await open(page, "/schedules/viewer");
-  await expect(page.locator(".sc-tile")).toHaveCount(4);
+  await expect(page.locator(".sc-tile")).toHaveCount(5);
   await expect(page.locator(".sel-check")).toHaveCount(0);
   await page.locator(".sc-row-link", { hasText: "Backup of Tier 1" }).click();
   const sheet = page.getByRole("dialog", { name: "Backup of Tier 1" });
@@ -4612,7 +4612,7 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".sc-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-        expect(tiles.length).toBe(4);
+        expect(tiles.length).toBe(5);
         expect(new Set(tiles).size).toBe(1);
         const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .sc-tile, .sc-row-link")]
           .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))

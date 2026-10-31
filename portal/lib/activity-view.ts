@@ -7,7 +7,7 @@ import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { type Day, type DayRange, normalise, rangeFromParam } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
-import { jobErrorLine, type NamedKeys } from "@/lib/job-names";
+import { jobDisplayStatus, jobErrorLine, type NamedKeys } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { displayEnum } from "@/lib/presentation";
@@ -56,10 +56,14 @@ export function actorsOf(value: string | null | undefined): string[] {
 }
 
 /** How a row ended: the picker's choices under "Outcome", and the chip on each row. */
-export type Outcome = "failed" | "refused" | "running" | "waiting" | "finished" | "recorded" | "cancelled";
+export type Outcome = "failed" | "partial" | "refused" | "running" | "waiting" | "finished" | "recorded" | "cancelled";
 
 export const OUTCOMES: Record<Outcome, { label: string; plural: string; tone: BadgeTone; icon: IconName; jobStatuses: string[] }> = {
   failed: { label: "Failed", plural: "Failed", tone: "urgent", icon: "x-circle", jobStatuses: ["failed"] },
+  // A finished backup that could not read some types in full: a warning, never "Finished".
+  // The engine stores it as succeeded, so the server reads succeeded jobs and the row's
+  // own outcome tells the two apart.
+  partial: { label: "Partly done", plural: "Partly done", tone: "soon", icon: "alert", jobStatuses: ["succeeded"] },
   refused: { label: "Refused", plural: "Refused", tone: "soon", icon: "alert", jobStatuses: [] },
   running: { label: "Running", plural: "Running", tone: "low", icon: "play", jobStatuses: ["running"] },
   waiting: { label: "Waiting", plural: "Waiting to start", tone: "low", icon: "clock", jobStatuses: ["queued"] },
@@ -67,7 +71,7 @@ export const OUTCOMES: Record<Outcome, { label: string; plural: string; tone: Ba
   recorded: { label: "Recorded", plural: "Recorded", tone: "neutral", icon: "audit", jobStatuses: [] },
   cancelled: { label: "Cancelled", plural: "Cancelled", tone: "neutral", icon: "pause", jobStatuses: ["cancelled"] },
 };
-export const OUTCOME_ORDER: Outcome[] = ["failed", "refused", "running", "waiting", "finished", "recorded", "cancelled"];
+export const OUTCOME_ORDER: Outcome[] = ["failed", "partial", "refused", "running", "waiting", "finished", "recorded", "cancelled"];
 
 export function outcomeOf(value: string | null | undefined): Outcome | null {
   return value && value in OUTCOMES ? (value as Outcome) : null;
@@ -79,8 +83,10 @@ export function outcomesOf(value: string | null | undefined): Outcome[] {
   return OUTCOME_ORDER.filter((key) => picked.includes(key));
 }
 
+/** A job's outcome from the status a person reads (`jobDisplayStatus`): "partial" is its own. */
 export function jobOutcome(status: string): Outcome {
-  return OUTCOME_ORDER.find((key) => OUTCOMES[key].jobStatuses.includes(status)) ?? "recorded";
+  if (status === "partial") return "partial";
+  return OUTCOME_ORDER.find((key) => key !== "partial" && OUTCOMES[key].jobStatuses.includes(status)) ?? "recorded";
 }
 
 /** An audit-record entry's outcome: a refusal, a failed check or drill, else "recorded". */
@@ -137,7 +143,7 @@ export function actorName(actor: string, people: ActivityPeople): string {
 export function jobRow(job: JobRecord, now: string): ActivityRow {
   const at = job.finishedAt ?? job.startedAt ?? job.createdAt ?? null;
   const kind = kindOfJob(job.kind);
-  const outcome = jobOutcome(job.status);
+  const outcome = jobOutcome(jobDisplayStatus(job));
   const person = job.references?.people.requested_by ?? null;
   const went = job.status === "failed" && job.error ? jobErrorLine(job.error) : capital(jobStatusSentence(job, now));
   return {
@@ -245,10 +251,13 @@ export interface ActivityCounts {
   jobsDay: number;
   failedDay: number;
   failedWeek: number;
+  // Finished, but some types were not read in full: counted apart, never as fine.
+  partialDay: number;
+  partialWeek: number;
   running: number;
   waiting: number;
-  // Seven days, oldest first: all jobs that day and how many failed.
-  days: { day: Day; jobs: number; failed: number }[];
+  // Seven days, oldest first: all jobs that day, how many failed and how many were partly done.
+  days: { day: Day; jobs: number; failed: number; partial: number }[];
   newestFailed: JobRecord | null;
 }
 
@@ -278,6 +287,8 @@ export function clockWords(value: string | null): string {
   return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(date);
 }
 
+const isPartial = (job: JobRecord) => jobDisplayStatus(job) === "partial";
+
 /** Counts by `createdAt`, the same window the verdict uses, so the numbers agree. */
 export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
   const end = new Date(now).valueOf();
@@ -288,13 +299,15 @@ export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
   const days = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(end - (6 - index) * DAY).toISOString().slice(0, 10);
     const own = jobs.filter((job) => dayKey(job.createdAt) === day);
-    return { day, jobs: own.length, failed: own.filter((job) => job.status === "failed").length };
+    return { day, jobs: own.length, failed: own.filter((job) => job.status === "failed").length, partial: own.filter(isPartial).length };
   });
   const failed = [...jobs].filter((job) => job.status === "failed").sort((a, b) => String(b.finishedAt ?? b.createdAt ?? "").localeCompare(String(a.finishedAt ?? a.createdAt ?? "")));
   return {
     jobsDay: recent.length,
     failedDay: recent.filter((job) => job.status === "failed").length,
     failedWeek: week.filter((job) => job.status === "failed").length,
+    partialDay: recent.filter(isPartial).length,
+    partialWeek: week.filter(isPartial).length,
     running: jobs.filter((job) => job.status === "running").length,
     waiting: jobs.filter((job) => job.status === "queued").length,
     days,
@@ -317,6 +330,7 @@ export function integrityWords(integrity: ChainIntegrity | null): { state: Integ
 
 export function activityStatus(counts: ActivityCounts): { tone: RiskTone; label: string } {
   if (counts.failedDay) return { tone: "urgent", label: `${counts.failedDay} failed today` };
+  if (counts.partialDay) return { tone: "soon", label: `${counts.partialDay} partly done today` };
   const active = counts.running + counts.waiting;
   if (active) return { tone: "low", label: counts.running ? `${counts.running} running` : `${counts.waiting} waiting` };
   if (counts.jobsDay) return { tone: "fine", label: "All finished" };
@@ -362,6 +376,14 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
     return { text: `Keel ran no jobs in the last day${counts.running || counts.waiting ? `; ${plural(counts.running + counts.waiting, "job is", "jobs are")} running or waiting` : ""}.`, tone: "fine", retry: null };
   }
   const active = counts.running + counts.waiting;
+  if (counts.partialDay) {
+    return {
+      text: `Keel ran ${plural(counts.jobsDay, "job")} in the last day; none failed, but ${counts.partialDay} ${counts.partialDay === 1 ? "was" : "were"} only partly done${active ? `; ${plural(active, "is", "are")} still running or waiting` : ""}.`,
+      detail: "Some types were not backed up. Open a partly done run to see which.",
+      tone: "soon",
+      retry: null,
+    };
+  }
   return {
     text: `Keel ran ${plural(counts.jobsDay, "job")} in the last day, none failed${active ? `; ${plural(active, "is", "are")} still running or waiting` : ""}.`,
     tone: active ? "low" : "fine",

@@ -206,18 +206,19 @@ export function previewNextRun(cadence: Schedule["cadence"], now: Date): Date | 
 
 // ---- The page: counts, filter, pill, verdict --------------------------------------------
 
-export type ScheduleFilter = "on" | "off" | "failed" | "warning";
-export const SCHEDULE_FILTERS: ScheduleFilter[] = ["on", "off", "failed", "warning"];
+export type ScheduleFilter = "on" | "off" | "failed" | "partial" | "warning";
+export const SCHEDULE_FILTERS: ScheduleFilter[] = ["on", "off", "failed", "partial", "warning"];
 
 export function parseScheduleFilter(status: string | null | undefined, load: string | null | undefined): ScheduleFilter | null {
   if (load === "warning") return "warning";
-  return status === "on" || status === "off" || status === "failed" ? status : null;
+  return status === "on" || status === "off" || status === "failed" || status === "partial" ? status : null;
 }
 
 export const FILTER_WORDS: Record<ScheduleFilter, string> = {
   on: "schedules that are on",
   off: "schedules that are off",
   failed: "schedules whose last run failed",
+  partial: "schedules whose last run was only partly done",
   warning: "schedules with a load warning",
 };
 
@@ -226,10 +227,12 @@ export function scheduleMatches(schedule: Schedule, forecast: ScheduleForecast |
   if (filter === "on") return schedule.enabled;
   if (filter === "off") return !schedule.enabled;
   if (filter === "failed") return schedule.last_status === "failed";
+  if (filter === "partial") return schedule.last_status === "partial";
   return schedule.enabled && openWarnings(forecast).length > 0;
 }
 
-export interface ScheduleCounts { total: number; on: number; failed: number; warnings: number; next: Schedule | null }
+// A partly done last run is a warning: never failed, never "on time".
+export interface ScheduleCounts { total: number; on: number; failed: number; partial: number; warnings: number; next: Schedule | null }
 
 export function scheduleCounts(schedules: Schedule[], forecasts: ScheduleForecast[] | undefined): ScheduleCounts {
   const on = schedules.filter((schedule) => schedule.enabled);
@@ -237,6 +240,7 @@ export function scheduleCounts(schedules: Schedule[], forecasts: ScheduleForecas
     total: schedules.length,
     on: on.length,
     failed: schedules.filter((schedule) => schedule.last_status === "failed").length,
+    partial: schedules.filter((schedule) => schedule.last_status === "partial").length,
     warnings: on.filter((schedule) => openWarnings(forecastFor(forecasts, schedule)).length > 0).length,
     next: on.length ? on.reduce((soonest, schedule) => (schedule.next_due_at < soonest.next_due_at ? schedule : soonest)) : null,
   };
@@ -244,6 +248,7 @@ export function scheduleCounts(schedules: Schedule[], forecasts: ScheduleForecas
 
 export function schedulesStatus(counts: ScheduleCounts): { tone: RiskTone; label: string } {
   if (counts.failed) return { tone: "urgent", label: `${counts.failed} failed` };
+  if (counts.partial) return { tone: "soon", label: `${counts.partial} partly done` };
   if (counts.warnings) return { tone: "soon", label: counts.warnings === 1 ? "Load warning" : `${counts.warnings} load warnings` };
   if (counts.total === 0) return { tone: "soon", label: "Nothing scheduled" };
   if (counts.on === 0) return { tone: "soon", label: "All off" };
@@ -256,6 +261,9 @@ export function schedulesVerdict(schedules: Schedule[], now: string, forecasts?:
   const failed = schedules.filter((schedule) => schedule.last_status === "failed");
   if (failed.length === 1) return { text: `${scheduleName(failed[0])} failed on its last run.`, tone: "attention" };
   if (failed.length) return { text: `${failed.length} schedules failed on their last run.`, tone: "attention" };
+  const partial = schedules.filter((schedule) => schedule.last_status === "partial");
+  if (partial.length === 1) return { text: `${scheduleName(partial[0])} was only partly done on its last run: some types were not backed up.`, tone: "attention" };
+  if (partial.length) return { text: `${partial.length} schedules were only partly done on their last run: some types were not backed up.`, tone: "attention" };
   const load = loadVerdict(schedules, forecasts);
   if (load) return { text: load, tone: "attention" };
   const { on, next } = scheduleCounts(schedules, forecasts);

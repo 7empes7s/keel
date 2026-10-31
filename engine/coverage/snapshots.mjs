@@ -10,7 +10,7 @@
  * atomic tenant-wide image.
  */
 import { OBSERVATION_CONTRACT_VERSION, readObservation } from '../contracts/observation.mjs';
-import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
+import { redactSecrets, supportIds } from '../../tools/tenant-probe/graph.mjs';
 
 export const OUTCOME_STATES = Object.freeze(['complete', 'complete-empty', 'partial', 'failed', 'not-requested', 'unavailable']);
 
@@ -97,7 +97,10 @@ export function readOutcomeDetail(entry) {
     startedAt: asIso(entry.startedAt),
     completedAt: asIso(entry.completedAt),
   };
-  return Object.values(detail).some((value) => value !== null) ? detail : null;
+  if (!Object.values(detail).some((value) => value !== null)) return null;
+  // The ids a Microsoft support case cites, only on a failure that recorded them.
+  const ids = supportIds(entry);
+  return Object.keys(ids).length ? { ...detail, ...ids } : detail;
 }
 
 /**

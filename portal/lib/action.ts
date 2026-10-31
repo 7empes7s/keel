@@ -12,6 +12,7 @@ import {
   rejectRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
+import { supportIds } from "@/lib/support-ids";
 import { applyDisposition, dispositionNeedsReview } from "../../engine/govern/disposition.mjs";
 import {
   DISPOSE_APPROVAL_ACTION, IgnoreExpiryError, driftAlreadyAccepted, ignoreExpiry, pendingDisposeRequest,
@@ -178,6 +179,10 @@ export interface TypeProgress {
   httpStatus?: number | null;
   error?: string | null;
   throttles?: number;
+  // A failed Microsoft call: the ids a Microsoft support case cites, and when it answered.
+  requestId?: string;
+  clientRequestId?: string;
+  requestAt?: string;
   // Content backups: each item not read in full (at most 50) and how many there were.
   reasons?: string[];
   reasonCount?: number;
@@ -206,6 +211,7 @@ function jobProgress(value: unknown): JobProgress | null {
       httpStatus: Number.isSafeInteger(entry.httpStatus) ? entry.httpStatus : null,
       error: typeof entry.error === "string" ? entry.error : null,
       ...(Number.isSafeInteger(entry.throttles) ? { throttles: entry.throttles } : {}),
+      ...supportIds(entry),
       ...listedReasons(entry.reasons, entry.reasonCount),
     }])),
     updatedAt: typeof updatedAt === "string" ? updatedAt : null,

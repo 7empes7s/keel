@@ -15,6 +15,7 @@ import {
   tierLabel,
 } from "@/lib/protect-view";
 import type { CoverageData, CoverageType, TypeExpansion, TypeQualification } from "@/lib/types";
+import { supportTime } from "@/lib/support-ids";
 
 // Coverage plan v3: the coverage state of a type and the parts a restore cannot
 // bring back (engine/coverage/completeness.mjs, through qualificationFor). Older
@@ -116,6 +117,9 @@ export function TypeRecordFields({ item }: { item: CoverageType }) {
       {detail && (detail.httpStatus !== null || detail.graphCode || detail.message) ? (
         <RecordField label="Last read error" value={[detail.httpStatus, detail.graphCode, detail.message].filter((part) => part !== null && part !== "").join(" · ")} copy={false} />
       ) : null}
+      {detail?.requestId ? <RecordField label="Microsoft request ID" value={detail.requestId} /> : null}
+      {detail?.clientRequestId ? <RecordField label="Client request ID" value={detail.clientRequestId} /> : null}
+      {detail?.requestAt && (detail.requestId || detail.clientRequestId) ? <RecordField label="Failed call at" value={supportTime(detail.requestAt)} copy={false} /> : null}
       <RecordField
         label="Prerequisite diagnosis"
         value={item.diagnosis ? `${item.diagnosis.diagnosis}${item.diagnosis.reason ? ` · ${item.diagnosis.reason}` : ""}` : "not diagnosed"}

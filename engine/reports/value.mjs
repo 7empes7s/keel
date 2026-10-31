@@ -53,6 +53,7 @@ import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
 import { loadRecoveryMetrics } from '../coverage/recoveryMetrics.mjs';
+import { countFailedRestores } from '../restore/failedRestores.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalJson, jobCorrelationId } from '../telemetry/events.mjs';
@@ -889,6 +890,9 @@ export async function loadValueReport(client, {
     findings = { withheld: false, ...summarizeFindings(inPeriod), rows: table.rows, rowsShown: table.shown };
     const metrics = await loadRecoveryMetrics(client, { tenantRef, requiredTypes, now: period.to });
     recovery = recoverySection(metrics, period);
+    // Failed restores: the same count Resilience and Restore show (all time, last 30 days),
+    // plus the ones that finished in this period.
+    recovery.failedRestores = await countFailedRestores(client, { tenantRef, now: generatedAt, from: period.from, to: period.to });
     backups = await loadBackupSection(client, { tenantRef, from: period.from, to: period.to });
   }
 

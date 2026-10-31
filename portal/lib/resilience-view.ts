@@ -1,5 +1,6 @@
 import type { IconName } from "@/components/shell/icons";
 import type { VerdictTone } from "@/components/verdict";
+import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } from "@/lib/failed-restores";
 import { ago, formatTimestamp, resourceTypeLabel, words } from "@/lib/presentation";
 import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { StorageResidency } from "@/lib/types";
@@ -115,6 +116,8 @@ export interface IncidentPointSummary {
 export interface ResilienceData {
   generatedAt: string;
   metrics: RecoveryMetrics;
+  /** Failed restores, counted once by the engine; the same number Restore and the value report show. */
+  failedRestores: FailedRestoreCounts;
   incidents: IncidentPointSummary[];
   storage: StorageResidency;
 }
@@ -622,16 +625,18 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     });
   }
 
-  const failedRestores = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && !attempt.counts && attempt.reason !== "awaiting-verification");
+  const failed = data.failedRestores;
   const openChecks = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "awaiting-verification");
-  if (failedRestores.length) {
-    const newest = failedRestores.at(-1)!;
+  if (failed.total) {
+    const recentFailures = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "restore-failed");
     alerts.push({
       key: "restore-failed", tone: "soon", icon: "restore",
-      title: failedRestores.length === 1 ? "A restore failed" : `${failedRestores.length} restores failed`,
+      title: `${failedRestoresTitle(failed)} · ${failedRestoresRecent(failed)}`,
       todo: "Open it, see what did not go back, try again.",
-      more: failedRestores.slice(-5).reverse().map((attempt) => `Restore ${ago(attempt.at, now)}: ${attemptReason(attempt)}`),
-      action: newest.ref ? { label: "View restore", href: `/jobs/${newest.ref}` } : null,
+      more: recentFailures.slice(-5).reverse().map((attempt) => `Restore ${ago(attempt.at, now)}: ${attemptReason(attempt)}`),
+      action: failed.total === 1 && failed.newest
+        ? { label: "View restore", href: `/jobs/${failed.newest.jobId}` }
+        : { label: "See failed restores", href: failed.href },
     });
   }
   if (recoveryTime.state !== "measured") {

@@ -1794,6 +1794,8 @@ const RESILIENCE: ResilienceData = {
       objectives: null,
     },
   },
+  // More failed restores than the recovery attempts list: the alert takes the engine's count.
+  failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
   incidents: [{ incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", status: "open", openedAt: "2026-10-01T08:10:00Z" }, recommended: { snapshotId: "5a2be911-0000-4000-8000-000000000002", collectedAt: "2026-09-30T05:55:00Z" }, pins: 1 }],
   storage: { configured: true, provider: "local-disk", region: "on-prem datacenter A", boundary: null, immutability: "unsupported", generatedAt: "2026-10-01T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
 };
@@ -1810,6 +1812,7 @@ const RESILIENCE_EMPTY: ResilienceData = {
     recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
     readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
   },
+  failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: "/restore?jobs=failed#restore-jobs-heading" },
   incidents: [],
   storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null },
 };
@@ -1950,6 +1953,7 @@ const VALUE_REPORT: ValueReport = {
     recoveryTime: { state: "measured", samples: 2, medianMs: 14 * 60_000, worstMs: 20 * 60_000, notCounted: 1, drills: 1, restores: 1 },
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
+    failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: { from: "2026-09-01T00:00:00.000Z", to: now, count: 2 }, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
   },
   // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
   backups: {

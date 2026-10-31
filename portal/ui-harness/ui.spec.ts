@@ -1442,7 +1442,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(mail.locator(".ui-alert-more li")).toBeHidden();
   await mail.getByText("Show details").click();
   await expect(mail.locator(".ui-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
-  await expect(page.locator('.ui-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
+  // Failed restores: the engine's one count with its window, linking to the Restore list.
+  const failedRestores = page.locator('.ui-alert[data-alert="restore-failed"]');
+  await expect(failedRestores).toContainText("47 restores failed · 3 in the last 30 days");
+  await expect(failedRestores.getByRole("link", { name: "See failed restores" })).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
   await expect(page.locator('.ui-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
   // Tiles and the service table.
   await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
@@ -1488,6 +1491,11 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   expect(Number((await tile.locator(".vr-tile-count").innerText()).split(" ")[0]) + still).toBe(total);
   const heights = await page.locator(".vr-tile").evaluateAll((tiles) => tiles.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
+  // Failed restores: the same count and words as Resilience, linked to the same list.
+  const failedLine = page.locator('[data-line="failed-restores"]');
+  await expect(failedLine).toContainText("2 failed in this period");
+  await expect(failedLine).toContainText("47 restores failed · 3 in the last 30 days");
+  await expect(failedLine.getByRole("link")).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
 
   // Every request opens its job; every check shows a title, never a code.
   const links = page.locator(".vr-row-link");

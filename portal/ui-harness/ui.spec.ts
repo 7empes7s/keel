@@ -988,7 +988,8 @@ test("the undo preview speaks in words and states a refusal as a sentence", asyn
   await page.locator(".sel-bar").getByRole("button", { name: "More actions" }).click();
   await page.getByRole("button", { name: "Undo these changes…" }).click();
   const sheet = page.getByRole("dialog", { name: "Undo 2 changes" });
-  await expect(sheet).toContainText("Applies only to: Block legacy auth (sign-in rule), Finance (group).");
+  await expect(sheet.locator(".pick-title")).toHaveText("Applies only to these 2 changes");
+  await expect(sheet.locator(".pick-table .pick-name")).toHaveText(["Block legacy auth", "Finance"]);
   await sheet.getByRole("button", { name: "Check what undoing would do" }).click();
   const preview = sheet.locator(".remediation-preview");
   await expect(preview).toContainText("Put the approved settings back");
@@ -1159,6 +1160,47 @@ test("changes · Shift+click range, select a service, select all, filter by risk
   await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
   await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(7);
+});
+
+// A confirm panel summarises what it applies to (counts by risk, service and kind) and
+// keeps every pick in a folded table, never one long paragraph of names.
+test("changes · the accept panel counts the picks and folds them into a table", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift");
+  await page.getByRole("button", { name: "Select all 7 changes" }).click();
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 7 changes" }).click();
+  const sheet = page.getByRole("dialog", { name: "Accept 7 changes into the approved setup" });
+  const summary = sheet.getByRole("region", { name: "What this applies to: 7 changes" });
+  await expect(summary.locator(".pick-title")).toHaveText("Applies only to these 7 changes");
+  const risk = summary.locator(".pick-counts > div", { hasText: "Risk" }).locator(".bl-chip");
+  await expect(risk.first()).toHaveText(/^Could lock out admins · 2$/);
+  await expect(risk.first()).toHaveAttribute("data-tone", "urgent");
+  await expect(summary.locator(".pick-counts > div", { hasText: "Service" }).locator(".pick-chip", { hasText: "Intune" }).locator("b")).toHaveText("1");
+  // Seven is too many to read at a glance, so the table starts folded.
+  const details = summary.locator(".pick-details");
+  await expect(details).not.toHaveAttribute("open", "");
+  await expect(summary.locator(".pick-row").first()).toBeHidden();
+  await details.locator("summary").click();
+  await expect(summary.locator(".pick-row")).toHaveCount(7);
+  await summary.getByPlaceholder("Find changes").fill("finance");
+  await expect(summary.locator(".pick-row")).toHaveCount(1);
+  await expect(summary.locator(".pick-row .pick-name")).toHaveText("Finance");
+  // No paragraph of names is left behind.
+  await expect(sheet.locator(".bl-decision-scope")).toHaveCount(0);
+});
+
+test("compliance · an exception on several controls counts them and lists them in a table", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/benchmarks?grant=e7a10000-0000-4000-8000-0000000000e1,e7a10000-0000-4000-8000-0000000000e2,e7a10000-0000-4000-8000-0000000000e4");
+  const sheet = page.getByRole("dialog", { name: "Grant an exception to 3 controls" });
+  const summary = sheet.getByRole("region", { name: "What this applies to: 3 controls" });
+  await expect(summary.locator(".pick-counts > div", { hasText: "Risk" }).locator(".bl-chip")).toHaveText(["High · 2", "Medium · 1"]);
+  await expect(summary.locator(".pick-counts dt")).toHaveText(["Risk", "Service", "Standard"]);
+  // Three fit at a glance, so the table is open.
+  await expect(summary.locator(".pick-details")).toHaveAttribute("open", "");
+  await expect(summary.locator(".pick-row")).toHaveCount(3);
+  // The names are in the table, not in a paragraph above it.
+  await expect(sheet.locator(".cp-form > p.cp-muted")).toHaveCount(0);
 });
 
 test("changes · phone: hold a change, then drag over others to select them", async ({ browser }) => {
@@ -2014,7 +2056,8 @@ test("Changes · picks stay picked across filters and services, in a tray", asyn
   await expect(bar).not.toContainText("left out");
   await bar.getByRole("button", { name: "Accept 2 changes" }).click();
   const sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
-  await expect(sheet).toContainText("Finance (group)");
+  await expect(sheet.locator(".pick-row .pick-name")).toHaveText(["Finance", "Forward finance mail"]);
+  await expect(sheet.locator(".pick-counts")).toContainText("Exchange Online");
   await sheet.getByRole("button", { name: "Cancel" }).click();
 
   // Clearing the filters shows the pick again, still picked; remove and Clear work.

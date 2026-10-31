@@ -1018,6 +1018,29 @@ test("accepting chosen changes says what it does, asks why, and clears them from
   await expect(page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count")).toHaveText("5");
 });
 
+// Accepting many changes goes on past one that fails: the others are saved, and the
+// panel stays open on the one that was not, saying which and why.
+test("a change that could not be accepted stays chosen and is named, the rest are saved", async ({ page }) => {
+  await open(page, "/drift");
+  await page.getByLabel("Select Old project team (group)").check();
+  await page.getByRole("checkbox", { name: /^Select Windows baseline/ }).check();
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 2 changes" }).click();
+  let sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
+  await sheet.getByPlaceholder("Why is this decision right?").fill("Busy for Windows");
+  await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
+  await expect(page.locator(".toast", { hasText: "Accepted 1 change" })).toBeVisible();
+  sheet = page.getByRole("dialog", { name: "Accept 1 change into the approved setup" });
+  await expect(sheet.getByRole("alert")).toHaveText(/^1 of 2 changes went through\. 1 change could not be saved and is still chosen: Windows baseline/);
+  await sheet.locator(".bl-not-saved summary").click();
+  await expect(sheet.locator(".bl-not-saved")).toContainText("Keel was busy");
+  await expect(page.locator(".bl-row-link", { hasText: /^Old project team$/ })).toHaveCount(0);
+  // Trying again with another reason saves it.
+  await sheet.getByPlaceholder("Why is this decision right?").fill("Planned baseline update");
+  await sheet.getByRole("button", { name: "Accept 1 change" }).click();
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count")).toHaveText("5");
+});
+
 // Task-91: who made a change, in words, with its evidence kept in the record; a missing
 // audit log is said plainly, and a cross-entity undo is handed to a central approver.
 test("a change says who made it from the audit log and where an undo goes", async ({ page }) => {

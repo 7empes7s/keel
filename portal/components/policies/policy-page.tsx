@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { NewRuleSheet } from "@/components/policies/new-rule-sheet";
 import { RuleRecord } from "@/components/policies/rule-record";
 import { PolicyActivation } from "@/components/policy-preview";
 import { Icon } from "@/components/shell/icons";
@@ -12,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
-import { changeRule, type RuleChange } from "@/lib/policy-change";
+import { changeRule, deleteRule, type RuleChange } from "@/lib/policy-change";
 import {
   RULE_KINDS,
   RULE_STATES,
@@ -50,7 +51,8 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
   initialPreview?: ActivationPreview | null;
 }) {
   const router = useRouter();
-  const [busy, setBusy] = useState<RuleChange | null>(null);
+  const [busy, setBusy] = useState<RuleChange | "delete" | null>(null);
+  const [editing, setEditing] = useState(false);
   const kind = ruleKind(policy);
   const state = ruleState(policy);
   const words = RULE_STATES[state];
@@ -64,6 +66,19 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
       const result = await changeRule(policy.id, change);
       if (!result.ok) { toast({ tone: "warning", title: "Not changed", detail: result.reason }); return; }
       toast({ title: change === "resume" ? `${policy.name} resumed` : change === "turn-off" ? `${policy.name} turned off` : `${policy.name} turned on` });
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove() {
+    setBusy("delete");
+    try {
+      const result = await deleteRule(policy.id);
+      if (!result.ok) { toast({ tone: "warning", title: "Not deleted", detail: result.reason }); return; }
+      toast({ title: `${policy.name} deleted`, detail: "It no longer acts. Its past actions stay in Activity." });
+      router.push("/policies");
       router.refresh();
     } finally {
       setBusy(null);
@@ -160,9 +175,22 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
                 <Icon name="pause" />Turn off
               </ConfirmButton>
             ) : null}
+            <button className="btn" disabled={busy !== null} onClick={() => setEditing(true)} type="button"><Icon name="edit" />Edit</button>
             <Link className="btn" href={`/activity?what=policy`}>Open its history</Link>
+            <ConfirmButton
+              acknowledge={<>I understand {policy.name} stops acting and cannot be brought back.</>}
+              confirmLabel="Delete rule"
+              description={<p>{policy.name} is turned off and removed from the list. What it already did stays in Activity, and its jobs stay open. To use it again, create a new rule.</p>}
+              disabled={busy !== null}
+              onConfirm={remove}
+              title={`Delete ${policy.name}?`}
+              tone="danger"
+            >
+              <Icon name="trash" />Delete
+            </ConfirmButton>
           </div>
         ) : null}
+        {editing && canEdit ? <NewRuleSheet onClose={() => setEditing(false)} policy={policy} /> : null}
 
         <TechnicalDetails>
           <RuleRecord actions={actions} policy={policy} />

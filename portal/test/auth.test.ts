@@ -305,6 +305,27 @@ test("a full database pool during the sign-in check shows a busy page for a page
   assert.match(html, /Try again/);
 });
 
+test("every busy answer is logged with its method, path and Cloudflare ray id, so the 503 can be traced", async (t) => {
+  const busyMiddleware = middlewareResolvingWith(async () => {
+    throw new DatabaseBusyError(new Error("timeout exceeded when trying to connect"));
+  });
+  const logged: string[] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => { logged.push(args.map(String).join(" ")); });
+
+  const api = await busyMiddleware(request("/api/dashboard?x=1", await accessToken(), "GET", { "cf-ray": "8d1f2a3b4c5d6e7f-FRA" }));
+  const page = await busyMiddleware(request("/changes", await accessToken()));
+
+  assert.equal(api.status, 503);
+  assert.equal(page.status, 503);
+  assert.equal(logged.length, 2);
+  assert.match(logged[0], /^\[keel-portal\] 503 busy: GET \/api\/dashboard \(/);
+  assert.match(logged[0], /cf-ray 8d1f2a3b4c5d6e7f-FRA/);
+  // Only the path is logged, never the query string.
+  assert.doesNotMatch(logged[0], /x=1/);
+  assert.match(logged[1], /^\[keel-portal\] 503 busy: GET \/changes \(/);
+  assert.doesNotMatch(logged[1], /cf-ray/);
+});
+
 test("any other sign-in check failure is still a plain 403", async () => {
   const brokenMiddleware = middlewareResolvingWith(async () => {
     throw new Error("relation \"principals\" does not exist");

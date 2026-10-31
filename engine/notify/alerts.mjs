@@ -11,7 +11,10 @@
 //    prior occurrence kept in the append-only transition history. Reopening clears the
 //    prior occurrence's acknowledgement and resolution.
 //  - Acknowledging records who and when; it never resolves the condition. Only a
-//    resolved observation resolves an alert.
+//    resolved observation resolves an alert. Whoever acknowledges an occurrence owns
+//    it from then on (owner_source 'acknowledged'); reopening hands it back to the rule.
+//  - Each acknowledge, resolve, mute and unmute by a person is also written to the
+//    audit record (kind 'alert-action'), with its note or reason, so Activity shows it.
 //  - Every event carries an id. A retried or duplicated id is recognised from its
 //    receipt and changes nothing (the receipt and the change commit together).
 //  - Ordering is by observation time, never by arrival. An event observed before the
@@ -28,6 +31,7 @@
 //    in now.
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
+import { appendEvidence } from '../govern/evidence.mjs';
 import { planDeadline } from './escalation.mjs';
 import { dispatchAlert } from './notifications.mjs';
 
@@ -91,6 +95,30 @@ async function transaction(client, work) {
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
+  }
+}
+
+export const ALERT_ACTION_EVIDENCE_KIND = 'alert-action';
+
+// The audit record of a person's action on an alert, written after the alert's own
+// transaction commits (appendEvidence runs its own). The note or reason goes with it.
+// A failed audit write is logged, never turned into a failed action: the alert change
+// is already committed, and a retry would only meet a conflict.
+async function recordAlertAction(client, alert, { action, actor, note = null }) {
+  const text = typeof note === 'string' && note.trim() ? note.trim() : null;
+  try {
+    await appendEvidence(client, {
+      tenantRef: alert.tenant_ref,
+      kind: ALERT_ACTION_EVIDENCE_KIND,
+      subject: {
+        action, alertId: String(alert.id), naturalKey: alert.resource_key, control: alert.control,
+        condition: alert.condition, severity: alert.severity, occurrence: alert.occurrence, state: alert.state,
+        ...(text ? { note: text } : {}),
+      },
+      actor,
+    });
+  } catch (error) {
+    console.error('[keel] alert action audit record failed', error);
   }
 }
 
@@ -320,22 +348,27 @@ async function loadForUpdate(client, { tenantRef, alertId }) {
 export async function acknowledgeAlert(client, { tenantRef, alertId, actor, at = new Date(), note = null }) {
   const when = requireInstant(at, 'at');
   await authorize(client, { tenantRef, actor, capability: ALERT_ACKNOWLEDGE_CAPABILITY, at: new Date() });
-  return transaction(client, async () => {
+  const text = typeof note === 'string' && note.trim() ? note.trim() : null;
+  const acknowledged = await transaction(client, async () => {
     const alert = await loadForUpdate(client, { tenantRef, alertId });
     if (!['open', 'reopened'].includes(alert.state)) {
       throw new AlertStateError(`an ${alert.state} alert cannot be acknowledged`);
     }
+    // The person who acknowledges it owns it now.
     const { rows: [updated] } = await client.query(
-      `UPDATE alert SET state = 'acknowledged', acknowledged_by = $2, acknowledged_at = $3, updated_at = now()
+      `UPDATE alert SET state = 'acknowledged', acknowledged_by = $2, acknowledged_at = $3,
+              owner_principal_id = $4::uuid, owner_source = 'acknowledged', updated_at = now()
         WHERE id = $1 RETURNING *`,
-      [alert.id, actor, when],
+      [alert.id, actor, when, actor],
     );
     await recordTransition(client, updated, {
       fromState: alert.state, toState: 'acknowledged', reason: 'acknowledged', actor, occurredAt: when,
-      evidence: note ? { note: String(note) } : {},
+      evidence: text ? { note: text } : {},
     });
     return updated;
   });
+  await recordAlertAction(client, acknowledged, { action: 'acknowledged', actor, note: text });
+  return acknowledged;
 }
 
 /**
@@ -347,7 +380,7 @@ export async function resolveAlert(client, { tenantRef, alertId, actor, reason, 
   const when = requireInstant(at, 'at');
   requireString(reason, 'reason');
   await authorize(client, { tenantRef, actor, capability: ALERT_ACKNOWLEDGE_CAPABILITY, at: new Date() });
-  return transaction(client, async () => {
+  const changed = await transaction(client, async () => {
     const alert = await loadForUpdate(client, { tenantRef, alertId });
     if (!ACTIVE_STATES.includes(alert.state)) throw new AlertStateError(`an ${alert.state} alert cannot be resolved`);
     const { rows: [updated] } = await client.query(
@@ -362,6 +395,8 @@ export async function resolveAlert(client, { tenantRef, alertId, actor, reason, 
     });
     return updated;
   });
+  await recordAlertAction(client, changed, { action: 'resolved', actor, note: reason });
+  return changed;
 }
 
 /** Suppression stops notification only; the alert and its condition stay recorded. */
@@ -369,7 +404,7 @@ export async function suppressAlert(client, { tenantRef, alertId, actor, reason,
   const when = requireInstant(at, 'at');
   requireString(reason, 'reason');
   await authorize(client, { tenantRef, actor, capability: ALERT_SUPPRESS_CAPABILITY, at: new Date() });
-  return transaction(client, async () => {
+  const changed = await transaction(client, async () => {
     const alert = await loadForUpdate(client, { tenantRef, alertId });
     if (alert.state === 'suppressed') throw new AlertStateError('alert is already suppressed');
     const { rows: [updated] } = await client.query(
@@ -382,13 +417,15 @@ export async function suppressAlert(client, { tenantRef, alertId, actor, reason,
     });
     return updated;
   });
+  await recordAlertAction(client, changed, { action: 'muted', actor, note: reason });
+  return changed;
 }
 
 /** Lifting suppression returns the alert to what its condition is now. */
 export async function unsuppressAlert(client, { tenantRef, alertId, actor, at = new Date() }) {
   const when = requireInstant(at, 'at');
   await authorize(client, { tenantRef, actor, capability: ALERT_SUPPRESS_CAPABILITY, at: new Date() });
-  return transaction(client, async () => {
+  const changed = await transaction(client, async () => {
     const alert = await loadForUpdate(client, { tenantRef, alertId });
     if (alert.state !== 'suppressed') throw new AlertStateError('alert is not suppressed');
     const toState = alert.condition_active ? (alert.acknowledged_at ? 'acknowledged' : 'open') : 'resolved';
@@ -403,6 +440,8 @@ export async function unsuppressAlert(client, { tenantRef, alertId, actor, at = 
     });
     return updated;
   });
+  await recordAlertAction(client, changed, { action: 'unmuted', actor, note: null });
+  return changed;
 }
 
 /**

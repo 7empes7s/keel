@@ -112,6 +112,15 @@ async function latestCompletedSnapshot(client, tenantRef) {
   return row ?? null;
 }
 
+// The tenant's first finished backup: the Setup "First backup" tile says when it ran,
+// so it must not move each time a newer backup finishes.
+async function firstCompletedSnapshot(client, tenantRef) {
+  const { rows: [row] } = await client.query(`SELECT id, completed_at, coverage_digest FROM snapshot
+    WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
+    ORDER BY completed_at ASC, started_at ASC, id ASC LIMIT 1`, [tenantRef]);
+  return row ?? null;
+}
+
 /**
  * Task-76 acceptance: the first collection starts only when the read grants
  * are confirmed. Confirmed means either a collection has already completed
@@ -216,6 +225,6 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
     scopes,
     permissions: await permissionsView(readers),
     collect: await firstCollectReadiness(client, { tenantRef }),
-    firstCollection: firstCollection(await latestCompletedSnapshot(client, tenantRef)),
+    firstCollection: firstCollection(await firstCompletedSnapshot(client, tenantRef)),
   };
 }

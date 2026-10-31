@@ -12,6 +12,7 @@ export function semanticSummarySentence(change: SemanticChange, changeType: Drif
   }
   if (change.state === "unknown-after") return "Keel did not keep the current copy of this, so the new values are not known.";
   if (change.total === 0) {
+    if (change.ignored) return "Only empty values or the order of a list differ. Nothing that changes behaviour was changed.";
     return change.cosmetic > 0
       ? "Only settings Microsoft manages itself differ. Nothing that changes behaviour was changed."
       : changeType === "modified" ? "No setting Keel compares differs from the approved setup." : "Nothing to compare.";

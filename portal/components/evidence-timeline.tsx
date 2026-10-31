@@ -2,8 +2,8 @@ import Link from "next/link";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
 
 export function ChainIndicator({ integrity }: { integrity: ChainIntegrity | null }) {
-  return <section role="status" className={`evidence-integrity ${integrity === null ? "" : integrity.ok ? "evidence-intact" : "evidence-broken"}`}>
-    <h2>{integrity === null ? "Chain integrity unavailable" : integrity.ok ? "Evidence checkpoint verified" : integrity.status === "unanchored" ? "Evidence chain unanchored" : "Chain integrity failed"}</h2>
+  return <section role="status" className={`evidence-integrity ${integrity === null ? "" : integrity.ok ? "evidence-intact" : integrity.status === "unanchored" ? "evidence-unchecked" : "evidence-broken"}`}>
+    <h2>{integrity === null ? "Chain integrity unavailable" : integrity.ok ? "Evidence checkpoint verified" : integrity.status === "unanchored" ? "Not checked: no off-site copy" : "Failed the check"}</h2>
     <p>Verification checks tenant evidence against an independently trusted checkpoint, regardless of timeline filters.</p>
     {integrity?.ok ? <p>Anchored through sequence {integrity.anchoredThroughSeq}. Later records without an external checkpoint: {integrity.unanchoredRecords}.</p> : null}
     {integrity && !integrity.ok ? <pre className="job-payload">{JSON.stringify(integrity, null, 2)}</pre> : null}

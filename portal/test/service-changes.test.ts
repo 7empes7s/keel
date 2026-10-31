@@ -6,8 +6,8 @@ import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { typeService, plainKind } from "@/lib/baselines-view";
-import { changesScopeDetail, changesVerdict } from "@/lib/changes-view";
-import { loadServiceChanges, loadServiceReadTotals } from "@/lib/service-changes";
+import { changesScopeDetail, changesVerdict, openChangeCount, serviceListNote } from "@/lib/changes-view";
+import { countOpenServiceChanges, loadOpenServiceChanges, loadServiceChanges, loadServiceReadTotals } from "@/lib/service-changes";
 import { serviceChangeFrom, serviceChangeName, serviceUndo, undoSource } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
 
@@ -116,6 +116,15 @@ test("the loader lists the newest open change per resource in every service, wit
     await setState("resolved");
     assert.deepEqual((await loadServiceChanges(client, { tenantRef: TENANT, now })).map((item) => item.name), ["KEEL-RT-rule", "Archive"]);
     assert.equal((await loadServiceChanges(client, { tenantRef: TENANT, now, limit: 1 })).length, 1);
+
+    // The count follows the same rule as the list (window, newest per resource, still
+    // open) but never stops at the list's row limit, so pages count every open change.
+    assert.deepEqual(await countOpenServiceChanges(client, { tenantRef: TENANT, now }), { total: 2, byBlastRadius: { "access-affecting": 2 } });
+    const capped = await loadOpenServiceChanges(client, { tenantRef: TENANT, now, limit: 1 });
+    assert.deepEqual([capped.items.length, capped.total], [1, 2]);
+    assert.equal(serviceListNote(capped.items.length, capped.total), "Showing the newest 1 of 2 open service setting changes. Acknowledge or resolve some to see the rest.");
+    assert.equal(serviceListNote(2, 2), null);
+    assert.equal((await countOpenServiceChanges(client, { tenantRef: "other-tenant", now })).total, 1);
   } finally {
     await client.end();
     await database.cleanup();
@@ -296,11 +305,27 @@ test("the Changes verdict counts service setting changes apart from approved-set
 test("a filtered Changes verdict names its filter and every service's totals", () => {
   const services: DriftRecord[] = Array.from({ length: 112 }, (_, index) => serviceRow({ id: `id-${index}` }));
   const setup = Array.from({ length: 1159 }, (_, index) => ({ ...serviceRow({ id: `setup-${index}` }), serviceRead: undefined, blastRadius: "access-affecting" })) as DriftRecord[];
-  assert.equal(changesScopeDetail(["In Entra ID"], [...setup, ...services]), "Counts follow your filter: In Entra ID. Across all services: 1,159 changes, and 112 service setting changes wait for review.");
+  assert.equal(changesScopeDetail(["In Entra ID"], [...setup, ...services]), "Counts follow your filter: In Entra ID. Across all services: 1,271 open changes: 1,159 changes since the approved setup, and 112 service setting changes wait for review.");
   assert.equal(changesScopeDetail(["In Teams", "Find: “x”"], services.slice(0, 1)), "Counts follow your filters: In Teams, Find: “x”. Across all services: 1 service setting change waits for review.");
   assert.equal(changesScopeDetail(["In Teams"], []), "Counts follow your filter: In Teams. Across all services: nothing to review.");
   // The Entra-only verdict says nothing of the service setting changes it does not count.
   assert.equal(changesVerdict(setup, "2026-10-01T00:00:00.000Z", NOW).text, "1,159 changes since the approved setup of 14 days ago; 1,159 affect access.");
+});
+
+// Audit 31 Oct 2026: the Overview said 703 open changes and the Changes page 591.
+// Every page now leads with the same open-changes count (openChangeCount).
+test("the Changes verdict leads with the open-changes total the Overview shows", () => {
+  const services: DriftRecord[] = Array.from({ length: 112 }, (_, index) => serviceRow({ id: `id-${index}` }));
+  const setup = Array.from({ length: 591 }, (_, index) => ({ ...serviceRow({ id: `setup-${index}` }), serviceRead: undefined, blastRadius: "cosmetic" })) as DriftRecord[];
+  assert.equal(openChangeCount(setup.length, services.length), 703);
+  const verdict = changesVerdict([...setup, ...services], "2026-10-01T00:00:00.000Z", NOW);
+  assert.equal(verdict.text, "703 open changes: 591 since the approved setup of 14 days ago, and 112 service setting changes wait for review; none affects access.");
+  assert.ok(verdict.text.split(/\s+/).length <= 25);
+  // More open than the list holds: the verdict counts all of them, not the listed rows.
+  assert.match(changesVerdict([...setup, ...services], "2026-10-01T00:00:00.000Z", NOW, 412).text, /^1,003 open changes: 591 since .*, and 412 service setting changes are still open;/);
+  // Seen but not resolved still counts as open.
+  const seen = services.map((item, index) => (index < 12 ? { ...item, serviceRead: { ...item.serviceRead!, alertState: "acknowledged" } } : item));
+  assert.match(changesVerdict([...setup, ...seen], "2026-10-01T00:00:00.000Z", NOW).text, /^703 open changes: .*112 service setting changes are still open;/);
 });
 
 test("the read totals give each service its newest read's settings and every open change", async () => {

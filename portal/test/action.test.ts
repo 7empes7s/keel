@@ -551,7 +551,14 @@ test("baseline activation requires approval — it creates a request, never a jo
   );
 });
 
+// A tier's backup already queued by an earlier test would be reused (UI audit B1), so
+// tests about idempotency keys start with no backup waiting.
+async function settleActiveJobs() {
+  await client.query(`UPDATE job SET status = 'succeeded', finished_at = now() WHERE status IN ('queued', 'running')`);
+}
+
 test("a replayed request with the same idempotency key does not enqueue twice", async () => {
+  await settleActiveJobs();
   const replay = {
     principalId: OPERATOR,
     capabilities: ["backup"],
@@ -580,6 +587,7 @@ test("a caller's idempotency key cannot claim a scheduler or install-run job key
     "schedule:1b2a4a00-0000-4000-8000-00000000b001:2026-10-28T02:00:00.000Z",
     "install-run:sha256:tenant:tier1:2026-10-28",
   ]) {
+    await settleActiveJobs();
     const response = await backupRoute(postAction("/api/actions/backup", {
       principalId: OPERATOR, capabilities: ["backup"], idempotencyKey: rawKey, body: { tier: "tier1" },
     }));
@@ -587,6 +595,40 @@ test("a caller's idempotency key cannot claim a scheduler or install-run job key
     const { rows } = await client.query(`SELECT id FROM job WHERE idempotency_key = $1`, [rawKey]);
     assert.equal(rows.length, 0, `no caller job may hold ${rawKey.split(":")[0]}: keys`);
   }
+});
+
+test("a tier's backup pressed again while it is queued or running returns that job (UI audit B1)", async () => {
+  await settleActiveJobs();
+  const press = (key: string, body: Record<string, unknown> = { tier: "tier3" }) =>
+    backupRoute(postAction("/api/actions/backup", { principalId: OPERATOR, capabilities: ["backup"], idempotencyKey: key, body }));
+
+  const first = await press("tier3-drawer");
+  assert.equal(first.status, 202);
+  const firstBody = await first.json();
+  assert.equal(firstBody.alreadyActive, undefined);
+
+  // The card's button, with its own key: the same job comes back, marked already active.
+  const second = await press("tier3-card");
+  assert.equal(second.status, 200);
+  const secondBody = await second.json();
+  assert.equal(secondBody.alreadyActive, true);
+  assert.equal(secondBody.job.id, firstBody.job.id);
+
+  // Running still counts; another tier is its own job.
+  await client.query(`UPDATE job SET status = 'running', started_at = now() WHERE id = $1`, [firstBody.job.id]);
+  assert.equal((await (await press("tier3-again")).json()).job.id, firstBody.job.id);
+  const other = await press("tier1-now", { tier: "tier1" });
+  assert.equal(other.status, 202);
+  assert.notEqual((await other.json()).job.id, firstBody.job.id);
+
+  const { rows } = await client.query(`SELECT id FROM job WHERE kind = 'backup' AND params->>'tier' = 'tier3' AND status IN ('queued', 'running')`);
+  assert.equal(rows.length, 1, "pressing Back up twice must not queue a second Tier 3 run");
+
+  // Once it finishes, a new press starts a new run.
+  await settleActiveJobs();
+  const fresh = await press("tier3-later");
+  assert.equal(fresh.status, 202);
+  assert.notEqual((await fresh.json()).job.id, firstBody.job.id);
 });
 
 test("an over-long idempotency key is refused before anything is queued", async () => {

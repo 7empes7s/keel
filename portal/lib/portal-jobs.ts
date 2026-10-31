@@ -67,6 +67,15 @@ export async function getRecentJobs(
   });
 }
 
+// Every tier backup (on demand or scheduled) that is queued or running now, however many
+// other jobs ran since. The tier cards and buttons show these as "Queued" / "Running".
+export async function getActiveTierJobs(): Promise<JobRecord[]> {
+  return withClient(async (client) => {
+    const rows = (await listJobs(client, { limit: 50, kinds: ["backup", "collect"], statuses: ["queued", "running"] })) as UnknownRecord[];
+    return rows.map(normalizeJob);
+  });
+}
+
 // The API job-history loaders intentionally open their own client only after the
 // route-level read guard has admitted the caller.
 export async function getJobsData(): Promise<JobsData> {

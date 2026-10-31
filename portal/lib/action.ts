@@ -494,6 +494,10 @@ export interface ActionSpec {
   // The only body fields the route passes on as job params. Any other field is refused,
   // so a caller cannot steer the job at a server file through `config` (issue #411).
   allowedParams?: readonly string[];
+  // While a job of one of these kinds with the same values for these params is queued or
+  // running, a new request returns that job (`alreadyActive: true`, status 200) instead of
+  // adding another. A tier's backup pressed twice, from two places, runs once.
+  reuseActive?: { kinds: readonly string[]; params: readonly string[] };
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
@@ -537,6 +541,7 @@ export function guardedAction(
           throw new InvalidActionRequest(`this action takes only: ${allowed.join(", ")}`);
         }
       }
+      const reuse = spec.reuseActive;
       const job = (await enqueue(client, {
         kind: spec.jobKind,
         params: spec.acceptsParams === false ? {} : params,
@@ -544,7 +549,16 @@ export function guardedAction(
         idempotencyKey: callerIdempotencyKey(request, principalId, spec.action),
         notBefore: undefined,
         maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
+        reuseActive: reuse
+          ? { kinds: [...reuse.kinds], params: Object.fromEntries(reuse.params.map((key) => [key, params[key] ?? null])) }
+          : null,
       })) as Record<string, unknown>;
+      if (job.reused === true) {
+        return Response.json(
+          { job: normalizeJob(job), alreadyActive: true },
+          { status: 200, headers: NO_STORE },
+        );
+      }
       return Response.json(
         { job: normalizeJob(job) },
         { status: 202, headers: NO_STORE },

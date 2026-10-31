@@ -247,6 +247,43 @@ export function nextRunSentence(schedule: Pick<Schedule, "enabled" | "next_due_a
   return due === "already passed" ? "Next run is due now." : `Next run ${due}.`;
 }
 
+/** A tier's backup that is waiting for a worker or running now, on demand or scheduled. */
+export interface ActiveTierRun {
+  jobId: string;
+  status: "queued" | "running";
+  since: string | null;
+}
+
+export type ActiveTierRuns = Record<string, ActiveTierRun>;
+
+/** Each tier's queued or running backup, from recent jobs. A running job wins over a
+ *  queued one; otherwise the oldest, which is the one the server hands back to a second
+ *  press. */
+export function activeTierRuns(jobs: { id: string; kind: string; status: string; params: unknown; createdAt: string | null; startedAt: string | null }[]): ActiveTierRuns {
+  const runs: ActiveTierRuns = {};
+  const ordered = [...jobs].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  for (const job of ordered) {
+    if (job.kind !== "backup" && job.kind !== "collect") continue;
+    if (job.status !== "queued" && job.status !== "running") continue;
+    const tier = (job.params as { tier?: unknown } | null)?.tier;
+    if (typeof tier !== "string") continue;
+    const current = runs[tier];
+    if (current && (current.status === "running" || job.status === "queued")) continue;
+    runs[tier] = { jobId: job.id, status: job.status, since: job.status === "running" ? job.startedAt ?? job.createdAt : job.createdAt };
+  }
+  return runs;
+}
+
+/** The card's line for a run in progress. */
+export function activeRunSentence(run: ActiveTierRun, now: string): string {
+  // A run queued after the page was read is "just now", never "in the future".
+  const at = run.since && new Date(run.since).valueOf() > new Date(now).valueOf() ? now : run.since;
+  if (!at) return run.status === "running" ? "Running now." : "Queued; it starts when a worker is free.";
+  return run.status === "running"
+    ? `Running now, started ${ago(at, now)}.`
+    : `Queued ${ago(at, now)}; it starts when a worker is free.`;
+}
+
 export interface TierSummary {
   id: string;
   label: string;
@@ -255,17 +292,23 @@ export interface TierSummary {
   next: string;
   last: string;
   failed: boolean;
+  // A backup of this tier that is queued or running right now.
+  active?: ActiveTierRun | null;
 }
 
-/** One card per tier: when it runs next and how its last run ended. */
-export function tierSummaries(schedules: Schedule[], now: string): TierSummary[] {
+/** One card per tier: when it runs next, how its last run ended, and any run in progress. */
+export function tierSummaries(schedules: Schedule[], now: string, active: ActiveTierRuns = {}): TierSummary[] {
   return TIERS.map((tier) => {
     const schedule = schedules.find((entry) => (entry.job_kind === "collect" || entry.job_kind === "backup") && entry.tier === tier.id) ?? null;
+    const run = active[tier.id] ?? null;
+    // While a run is in progress the schedule's own "Running now" line would repeat it.
+    const scheduleRunning = schedule?.last_status === "running" || schedule?.last_status === "queued";
     return {
       id: tier.id, label: tier.label, description: tier.description, schedule,
       next: schedule ? nextRunSentence(schedule, now) : "No schedule; back it up on demand.",
-      last: schedule ? lastRunSentence(schedule, now) : "",
+      last: schedule && !(run && scheduleRunning) ? lastRunSentence(schedule, now) : "",
       failed: schedule?.last_status === "failed",
+      active: run,
     };
   });
 }

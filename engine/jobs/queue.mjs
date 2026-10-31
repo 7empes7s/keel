@@ -40,10 +40,16 @@ export const APPROVED_JOB_PRIORITY = 1;
 /**
  * @param {any} client
  * @param {{ kind: string, params?: any, requestedBy: string, idempotencyKey?: string | null,
- *   notBefore?: any, priority?: number, maxQueuedForRequester?: number | null }} job
+ *   notBefore?: any, priority?: number, maxQueuedForRequester?: number | null,
+ *   reuseActive?: { kinds: string[], params: Record<string, unknown> } | null }} job
+ *
+ * reuseActive: when a job of one of these kinds whose params contain these params is
+ * still queued or running, that job is returned (marked `reused: true`) and no new job
+ * is added. "Back up Tier 3" pressed twice, from two places or by two people, runs once.
  */
 export async function enqueue(client, {
   kind, params, requestedBy, idempotencyKey, notBefore, priority = 0, maxQueuedForRequester = null,
+  reuseActive = null,
 }) {
   // Offsite has no portal route: enforce admission here as well as at execution.
   if (kind === 'offsite') {
@@ -54,6 +60,20 @@ export async function enqueue(client, {
     }
   }
   const insert = async () => {
+    if (reuseActive) {
+      // Held to the end of the transaction, so two parallel requests cannot both miss
+      // each other's job.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-active:' || $1, 0))",
+        [JSON.stringify([[...reuseActive.kinds].sort(), reuseActive.params])]);
+      const { rows: active } = await client.query(
+        `SELECT *, started_at::text AS event_started_at FROM job
+          WHERE kind = ANY($1::text[]) AND status IN ('queued', 'running') AND params @> $2::jsonb
+          ORDER BY created_at LIMIT 1`,
+        [reuseActive.kinds, reuseActive.params],
+      );
+      // A replay of the request that queued it is not a second press.
+      if (active[0]) return active[0].idempotency_key === idempotencyKey ? active[0] : { ...active[0], reused: true };
+    }
     const { rows } = await client.query(
       `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before, priority)
        SELECT $1, $2, $3, $4, COALESCE($5, now()), $6
@@ -75,13 +95,16 @@ export async function enqueue(client, {
     if (!existing[0] && maxQueuedForRequester !== null) throw new QueueFullError(maxQueuedForRequester);
     return existing[0];
   };
-  if (maxQueuedForRequester === null) return insert();
+  if (maxQueuedForRequester === null && !reuseActive) return insert();
   // A capped enqueue runs in its own transaction holding a per-person lock, so parallel
   // requests from one person count each other and cannot pass the cap together. Callers
-  // must not already be inside a transaction (the portal routes never are).
+  // must not already be inside a transaction (the portal routes never are). The person
+  // lock is always taken before the reuseActive lock, so the two never deadlock.
   await client.query('BEGIN');
   try {
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-queue-cap:' || $1, 0))", [requestedBy]);
+    if (maxQueuedForRequester !== null) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-queue-cap:' || $1, 0))", [requestedBy]);
+    }
     const job = await insert();
     await client.query('COMMIT');
     return job;

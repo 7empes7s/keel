@@ -653,7 +653,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -675,6 +675,10 @@ export interface DashboardData {
   // Whether a checked off-site copy holds every backed-up type (the Resilience page's
   // recoverable point). Undefined when it could not be read.
   offsite?: { measured: boolean };
+  // Whether the backups can be deleted where they are kept, as the Resilience page's
+  // storage alert reads it: "deletable" (the storage cannot lock them), "unknown" (no
+  // storage details set), "other" (locked, or locking not proven yet). Absent when unread.
+  backupStorage?: "deletable" | "unknown" | "other";
   alerts: DashboardAlert[];
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).

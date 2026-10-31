@@ -13,6 +13,7 @@ export type DimensionStatus = "pass" | "fail" | "due" | "unknown";
 export type ReadinessOverall = "ready" | "not-ready" | "unknown" | "not-configured";
 export type DimensionName =
   | "cloudOnlyIdentity"
+  | "dedicatedAccount"
   | "phishingResistantCredential"
   | "policyExclusions"
   | "privilegedAccessPath"
@@ -40,6 +41,11 @@ export interface Dimension {
     dueAt?: string | null;
     dueSince?: string | null;
     intervalDays?: number;
+    keelPerson?: { displayName: string | null } | null;
+    profileFields?: string[];
+    signInDays?: number | null;
+    lastSignInAt?: string | null;
+    lookbackDays?: number;
   };
 }
 
@@ -115,6 +121,7 @@ export interface ReadinessData {
 
 export const DIMENSION_ORDER: DimensionName[] = [
   "cloudOnlyIdentity",
+  "dedicatedAccount",
   "phishingResistantCredential",
   "policyExclusions",
   "privilegedAccessPath",
@@ -122,7 +129,8 @@ export const DIMENSION_ORDER: DimensionName[] = [
 ];
 
 export const DIMENSION_LABELS: Record<DimensionName, string> = {
-  cloudOnlyIdentity: "Cloud-only account",
+  cloudOnlyIdentity: "Cloud-only account on the onmicrosoft.com domain",
+  dedicatedAccount: "Kept for emergencies only",
   phishingResistantCredential: "Phishing-resistant sign-in",
   policyExclusions: "Left out of sign-in rules",
   privilegedAccessPath: "Admin role without an activation step",
@@ -167,6 +175,15 @@ export const SURFACE_STATUS: Record<ReadinessSurface["status"], { label: string;
   unsupported: { label: "Check by hand", tone: "neutral", icon: "info" },
 };
 
+// Profile fields that describe a person's job, in words.
+export const PROFILE_FIELD_WORDS: Record<string, string> = {
+  jobTitle: "a job title",
+  department: "a department",
+  officeLocation: "an office",
+  mobilePhone: "a mobile number",
+  employeeId: "an employee number",
+};
+
 export const METHOD_WORDS: Record<string, string> = {
   password: "a password",
   microsoftAuthenticator: "the Authenticator app",
@@ -199,7 +216,16 @@ function plural(count: number, one: string, many: string): string {
 export function dimensionSentence(name: DimensionName, dimension: Dimension, now: string): string {
   const { reason, evidence } = dimension;
   switch (reason) {
-    case "cloud-only-member-account": return "A cloud-only, switched-on member account on a Microsoft-managed domain.";
+    case "cloud-only-member-account": return "A cloud-only, switched-on member account on the tenant's onmicrosoft.com domain, which Microsoft runs.";
+    case "custom-domain": return `It signs in on your own domain${evidence.domain ? ` (${evidence.domain})` : ""}. Microsoft advises the tenant's onmicrosoft.com domain for emergency accounts, because it does not depend on how your own domain is set up.`;
+    case "keel-person-signs-in-with-it": return `${evidence.keelPerson?.displayName ?? "A KEEL user"} signs in to KEEL with this account, so it is used day to day, not kept for emergencies.`;
+    case "signs-in-day-to-day": return `It signed in on ${plural(evidence.signInDays ?? 0, "day", "separate days")} in the last ${evidence.lookbackDays ?? 30} days (last ${ago(evidence.lastSignInAt ?? null, now)}), with no test recorded for them. An emergency account should sign in only for tests and emergencies.`;
+    case "personal-profile": {
+      const fields = (evidence.profileFields ?? []).map((field) => PROFILE_FIELD_WORDS[field] ?? "work details");
+      return `Its profile has ${list(fields.length ? fields : ["work details"])}, so it looks like a person's own account. Use a separate account kept only for emergencies.`;
+    }
+    case "sign-in-log-not-read": return "KEEL is not reading the sign-in log, so it cannot tell whether this account is used day to day.";
+    case "emergency-only": return "No sign of day-to-day use: no KEEL user signs in with it, its profile names no job, and the sign-in log shows no regular sign-ins.";
     case "account-not-in-inventory": return "The latest backup of accounts has no account with this identity.";
     case "synchronized-from-on-premises": return "It is synchronized from on-premises Active Directory, so an outage there can block it.";
     case "account-disabled": return "The account is switched off.";
@@ -361,7 +387,7 @@ export function alertAccountName(alert: ReadinessAlert, accounts: ReadinessAccou
 
 const STATUS_RANK: Record<DimensionStatus, number> = { fail: 0, due: 1, unknown: 2, pass: 3 };
 
-/** The five checks, problems first; ties keep the usual order. */
+/** The checks, problems first; ties keep the usual order. */
 export function orderedChecks(account: ReadinessAccount): DimensionName[] {
   return [...DIMENSION_ORDER].sort((a, b) => STATUS_RANK[account.dimensions[a].status] - STATUS_RANK[account.dimensions[b].status]
     || DIMENSION_ORDER.indexOf(a) - DIMENSION_ORDER.indexOf(b));

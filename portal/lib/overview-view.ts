@@ -137,12 +137,32 @@ function repeatsVerdict(alert: DashboardAlert, headline: ProtectionHeadline): bo
 }
 
 /**
+ * Alerts that reach nobody: no enabled channel, or no rule that sends alerts to one.
+ * Urgent, because every alert, Critical ones too, then goes unseen until someone opens
+ * the portal. Null while there is a route, or when the count could not be read.
+ */
+export function notifyNobodyRow(notify: DashboardData["notify"], openAlerts: number): AttentionRow | null {
+  if (!notify || notify.routed > 0) return null;
+  const open = openAlerts > 0 ? `${plural(openAlerts, "open alert reaches", "open alerts reach")} nobody. ` : "";
+  return {
+    key: "no-notify-channel", tone: "urgent", icon: "bell",
+    title: notify.channels === 0 ? "No notification channel" : "No rule sends alerts to a channel",
+    detail: notify.channels === 0
+      ? `${open}Add an email or webhook channel so alerts reach someone.`
+      : `${open}Add a rule that sends alerts to one of your channels.`,
+    href: "/notifications",
+  };
+}
+
+/**
  * "Needs attention": the computed problems that the verdict does not already state, the
  * changes that could lock out admins, and the work that waits on a person. Urgent first.
  * Each row opens the list behind it. pendingApprovals is null for viewers who cannot approve.
  */
-export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | "openDriftByBlastRadius" | "waiting">, pendingApprovals: number | null): AttentionRow[] {
+export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | "openDriftByBlastRadius" | "waiting"> & Partial<Pick<DashboardData, "notify">>, pendingApprovals: number | null): AttentionRow[] {
   const rows: AttentionRow[] = [];
+  const unrouted = notifyNobodyRow(data.notify, data.waiting?.openAlerts ?? 0);
+  if (unrouted) rows.push(unrouted);
   for (const alert of data.alerts) {
     if (repeatsVerdict(alert, data.headline)) continue;
     rows.push({

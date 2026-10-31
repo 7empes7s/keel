@@ -75,6 +75,7 @@ import type {
   DashboardAlert,
   DashboardData,
   DashboardWaiting,
+  NotifyRoutes,
   DeclaredEndpoint,
   DiagnosisState,
   LiveRecordStatus,
@@ -1437,6 +1438,18 @@ export async function waitingFor(client: KeelClient, ref: string): Promise<Dashb
   };
 }
 
+// Enabled channels, and those with at least one rule sending alerts to them: the same
+// join the engine uses to pick where an alert goes (engine/notify/notifications.mjs).
+export async function notifyRoutesFor(client: KeelClient): Promise<NotifyRoutes> {
+  const { rows: [row] } = await client.query(
+    `SELECT count(*)::int AS channels,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM subscription s WHERE s.channel_id = c.id))::int AS routed
+       FROM channel c
+      WHERE c.enabled = true`,
+  );
+  return { channels: Number(row?.channels ?? 0), routed: Number(row?.routed ?? 0) };
+}
+
 // Restores that still have follow-up steps open, with the job page each is finished on.
 export async function getRestoreFollowUps(): Promise<RestoreFollowUp[]> {
   const ref = tenantRef();
@@ -1508,6 +1521,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),
+      notify: await notifyRoutesFor(client).catch((error: unknown) => {
+        console.error("[keel-portal] overview notification channels unavailable", error);
+        return undefined;
+      }),
       compliance: await complianceFindings(client, { tenantRef: ref, now: generatedAt })
         .then(({ summary }: { summary: ComplianceSummary }) => summary)
         .catch((error: unknown) => {

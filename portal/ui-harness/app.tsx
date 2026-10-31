@@ -176,7 +176,15 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
   // The menu's section statuses read the Overview's data; answer at once so every
   // screenshot shows them.
-  if (url.endsWith("/api/dashboard")) return json(dashboard(0));
+  // A test sets __harnessDashboardFailures to make that many reads answer as a busy server.
+  if (url.endsWith("/api/dashboard")) {
+    const harness = window as unknown as { __harnessDashboardFailures?: number };
+    if ((harness.__harnessDashboardFailures ?? 0) > 0) {
+      harness.__harnessDashboardFailures! -= 1;
+      return new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "content-type": "application/json", "retry-after": "1" } });
+    }
+    return json(dashboard(0));
+  }
   // Settings' menu badge and the search's people and kinds of settings.
   // People: adding someone answers the new person; every change to a person succeeds.
   // Compliance: an exception is saved; the evidence export answers two records.
@@ -718,6 +726,16 @@ const INTENT_CHANGES: IntentCandidate[] = [{
   transitions: [
     { field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } },
     { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
+  ],
+}, {
+  // A change with many settings and long values: switching to it must not move the
+  // fields under the settings list.
+  driftId: "d9300000-0000-4000-8000-000000000004", naturalKey: "application:Sales CRM", resourceType: "application", detectedAt: "2026-10-02T09:10:00Z",
+  transitions: [
+    { field: "displayName", before: { present: true, value: "Sales CRM" }, after: { present: true, value: "Sales CRM (migration)" } },
+    { field: "signInAudience", before: { present: true, value: "AzureADMyOrg" }, after: { present: true, value: "AzureADMultipleOrgs" } },
+    { field: "web.redirectUris", before: { present: true, value: ["https://crm.contoso.com/signin-oidc"] }, after: { present: true, value: ["https://crm.contoso.com/signin-oidc", "https://crm-migration.contoso.com/signin-oidc", "https://localhost:44321/signin-oidc"] } },
+    { field: "notes", before: { present: false, value: null }, after: { present: true, value: "Opened to the partner tenant for the weekend migration; close again once the data copy has finished and the partner has signed off." } },
   ],
 }];
 const CHANNELS = [
@@ -1834,6 +1852,7 @@ const BG1_ACCOUNT: ReadinessAccount = {
   overall: "ready",
   dimensions: {
     cloudOnlyIdentity: pass("cloud-only-member-account", { naturalKey: "user:bg1@contoso.onmicrosoft.com", domain: "contoso.onmicrosoft.com" }),
+    dedicatedAccount: pass("emergency-only", { keelPerson: null, profileFields: [], signInDays: 0, lastSignInAt: null, lookbackDays: 30 }),
     phishingResistantCredential: pass("phishing-resistant-method", { basis: "observed", recordedAt: "2026-10-01T09:00:00Z", methods: ["fido2", "password"] }),
     policyExclusions: pass("excluded-from-every-enforced-policy", { policies: bgPolicies(false) }),
     privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG1}@/` }),
@@ -1849,6 +1868,7 @@ const BG2_ACCOUNT: ReadinessAccount = {
   rotationIntervalDays: null, lastValidatedAt: "2026-06-20T10:00:00Z", lastRotatedAt: null, methodEvidence: null, overall: "not-ready",
   dimensions: {
     ...BG1_ACCOUNT.dimensions,
+    dedicatedAccount: { status: "fail", reason: "signs-in-day-to-day", evidence: { keelPerson: null, profileFields: [], signInDays: 12, lastSignInAt: "2026-10-02T07:40:00Z", lookbackDays: 30 } },
     phishingResistantCredential: { status: "unknown", reason: "no-method-evidence", evidence: {} },
     policyExclusions: { status: "fail", reason: "enforced-policy-applies", evidence: { policies: bgPolicies(true) } },
     privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG2}@/` }),
@@ -2572,7 +2592,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity/anonymous": {
       const all = activityJobs(jobs).map(hidePeople);
       return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}

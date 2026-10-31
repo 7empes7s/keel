@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -1583,14 +1583,15 @@ test("the value report fits 390 and 1440 in both themes, and every tile, chart a
   expect(await page.locator(".vr-tile").first().evaluate((item) => getComputedStyle(item).boxShadow)).not.toBe("none");
 });
 
-// Task-94: each emergency account shows its five checks separately; "Not known" is its
+// Task-94: each emergency account shows its six checks separately; "Not known" is its
 // own state, checks KEEL cannot make stay listed, and a use leads the verdict.
 test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
   await open(page, "/readiness");
   await expect(page.locator(".page-header .status-pill")).toHaveText("Account used");
   await expect(page.locator(".verdict-sentence")).toHaveText("An emergency account was used: check that the use was planned, then acknowledge the alert.");
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "Review the sign-in" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-000000000094/);
-  await expect(page.locator("#ea-account-0 .ea-check")).toHaveCount(5);
+  await expect(page.locator("#ea-account-0 .ea-check")).toHaveCount(6);
+  await expect(page.locator("#ea-account-0 .ea-check", { hasText: "Kept for emergencies only" })).toHaveAttribute("data-status", "pass");
   const second = page.locator("#ea-account-1");
   await expect(second.locator("h3")).toHaveText("Emergency admin 2");
   await expect(second.locator(".ea-who small")).toHaveText("bg2@contoso.onmicrosoft.com");
@@ -1598,7 +1599,9 @@ test("emergency access shows each check, keeps unknown and unchecked visible, an
   // Problems first: the rule that reaches it, then the overdue test, then what is not known.
   await expect(second.locator(".ea-check").first()).toHaveAttribute("data-status", "fail");
   await expect(second.locator('.ea-check[data-status="unknown"]')).toContainText("Not known");
-  await expect(second.locator('.ea-check[data-status="fail"]')).toContainText("Block legacy auth");
+  await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Block legacy auth" })).toHaveCount(1);
+  // A day-to-day account is not kept for emergencies.
+  await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Kept for emergencies only" })).toContainText("signed in on 12 separate days");
   await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /drift\?q=Block%20legacy%20auth/);
   await expect(second.locator('.ea-check[data-status="due"]')).toContainText("a new test has been due since");
   await expect(page.locator(".ea-alerts")).toContainText("Emergency admin 2 was used 1 hour ago, and made 2 changes after it.");
@@ -4163,6 +4166,31 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   await expect(page.locator(".pg-empty")).toContainText("No open change to approve");
 });
 
+// Audit B3: picking a change or a setting must not move a field under the pointer.
+// The settings list follows every typed field and the summary keeps its lines.
+for (const width of [1278, 390]) {
+  test(`emergency change form keeps its fields still at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/emergency-changes", "light");
+    const form = page.locator("form.change-intent-form");
+    const top = (locator: Locator) => locator.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
+    const fields = [form.getByLabel("Who made the change"), form.getByLabel("Change ticket (optional)"), form.getByLabel("Reason")];
+    const submit = form.getByRole("button", { name: "Approve emergency change" });
+    const before = await Promise.all(fields.map(top));
+    // The first select is the change picker; its label text includes the chosen option.
+    await form.locator("select").first().selectOption({ label: "Sales CRM (app registration), detected 2 Oct 2026, 09:10 UTC" });
+    await expect(form.locator(".pg-pick")).toHaveCount(4);
+    expect(await Promise.all(fields.map(top))).toEqual(before);
+    const button = await top(submit);
+    for (const name of ["Web.redirect Uris", "Notes"]) {
+      await form.getByLabel(name).check();
+      await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back");
+      expect(await Promise.all(fields.map(top))).toEqual(before);
+      expect(await top(submit)).toBe(button);
+    }
+  });
+}
+
 // Integrations: held-back updates lead as red alerts with the raw error behind Show
 // details; ServiceNow and each destination carry a coloured state and counts.
 test("integrations put held-back entries first and keep raw errors behind a click", async ({ page }) => {
@@ -4596,7 +4624,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks"];
+  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks", "notifications"];
   for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
     expect(await link.evaluate((item) => item.tagName)).toBe("A");
     const href = (await link.getAttribute("href")) ?? "";
@@ -4606,6 +4634,12 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('.ov-legend-link[href*="health=failed"]')).toContainText("4");
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
+  // With no notification channel, alerts reach nobody: an Urgent row, first, opens Notifications.
+  const nobody = page.locator(".ov-row").first();
+  await expect(nobody).toContainText("No notification channel");
+  await expect(nobody).toContainText("3 open alerts reach nobody.");
+  await expect(nobody).toContainText("Urgent");
+  await expect(nobody).toHaveAttribute("href", /\/notifications$/);
   await expect(page.locator(".ov-side-card", { hasText: "Approved setup" })).toContainText("by Marouane Defili");
   // The compliance score opens Compliance on what fails.
   const compliance = page.locator(".ov-score-card");
@@ -5155,3 +5189,37 @@ test("every change: an empty period says so, with no dead end", async ({ page })
   await expect(page.getByRole("heading", { name: "No changes in the last 7 days" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open changes" })).toBeVisible();
 });
+
+// In the portal the address catches up a moment after each key (Next.js applies a
+// history change in a transition), so a Find box bound straight to the address was
+// redrawn with the old text and dropped keys: "emergency" left "y". The harness shim
+// updates at once, so these checks hold each address change back a little to match.
+for (const { name, hash, box } of [
+  { name: "Alerts", hash: "/alerts", box: (page: Page) => page.locator(".sel-find input[type=search]") },
+  { name: "Sites", hash: "/sites", box: (page: Page) => page.getByPlaceholder("Find a site, address or owner") },
+  { name: "Setup permissions", hash: "/setup", box: (page: Page) => page.getByPlaceholder("Find permissions") },
+]) {
+  test(`Find · ${name}: fast typing keeps every key, then the search goes into the address`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const dispatch = window.dispatchEvent.bind(window);
+      window.dispatchEvent = (event: Event) => {
+        if (event.type !== "hashchange") return dispatch(event);
+        setTimeout(() => dispatch(event), 40);
+        return true;
+      };
+    });
+    await open(page, hash);
+    const input = box(page);
+    await input.click();
+    await page.keyboard.type("emergency");
+    await expect(input).toHaveValue("emergency");
+    await expect(page).toHaveURL(/q=emergency/);
+    // Typing on after the search landed keeps going from there.
+    await page.keyboard.type(" sign-in");
+    await expect(input).toHaveValue("emergency sign-in");
+    await expect(page).toHaveURL(/q=emergency(\+|%20)sign-in/);
+    // Emptying the box takes the search out of the address straight away.
+    await input.fill("");
+    await expect(page).not.toHaveURL(/q=/);
+  });
+}

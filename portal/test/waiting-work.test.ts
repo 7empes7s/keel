@@ -11,7 +11,7 @@ import { enqueue } from "../../engine/jobs/queue.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { RestoreFollowUps } from "@/components/restore-follow-ups";
-import { getRestoreFollowUps, waitingFor } from "@/lib/portal-data";
+import { getRestoreFollowUps, notifyRoutesFor, waitingFor } from "@/lib/portal-data";
 import { tenantRef } from "@/lib/runtime-config";
 import type { DashboardData } from "@/lib/types";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -116,4 +116,28 @@ test("the Overview shows a row for each kind of open work, linked to where it is
   const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));
   assert.match(approver, /data-tile="waiting"[^>]*href="\/approvals"[\s\S]*?<b class="ov-tile-count">0<\/b>/, "an approver always sees the tile");
   assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { followUps: [], now: DASHBOARD.generatedAt })), "");
+});
+
+test("with no channel, or no rule that sends alerts to one, the Overview says first and Urgent that alerts reach nobody", async () => {
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 0, routed: 0 });
+  const nobody = renderToStaticMarkup(createElement(DashboardView, {
+    data: { ...DASHBOARD, notify: await notifyRoutesFor(client), waiting: { openAlerts: 196, openIncidents: 1, restoreFollowUps: 0 } }, pendingApprovals: null,
+  }));
+  assert.match(nobody, /<ul class="ov-rows"><li><a class="ov-row" data-tone="urgent" href="\/notifications">[\s\S]*?<b>No notification channel<\/b><small>196 open alerts reach nobody\. Add an email or webhook channel so alerts reach someone\.<\/small>[\s\S]*?Urgent/, "it is the first row and opens Notifications");
+
+  const { rows: [disabled] } = await client.query("INSERT INTO channel (kind, config, enabled) VALUES ('email', '{}', false) RETURNING id");
+  await client.query("INSERT INTO subscription (channel_id, event_glob, min_severity) VALUES ($1, '*', 'notice')", [disabled.id]);
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 0, routed: 0 }, "a turned-off channel sends nothing");
+
+  const { rows: [channel] } = await client.query("INSERT INTO channel (kind, config, enabled) VALUES ('webhook', '{}', true) RETURNING id");
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 1, routed: 0 });
+  const noRule = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, notify: await notifyRoutesFor(client) }, pendingApprovals: null }));
+  assert.match(noRule, /href="\/notifications"[\s\S]*?<b>No rule sends alerts to a channel<\/b><small>Add a rule that sends alerts to one of your channels\.<\/small>/);
+
+  await client.query("INSERT INTO subscription (channel_id, event_glob, min_severity) VALUES ($1, '*', 'warning')", [channel.id]);
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 1, routed: 1 });
+  const routed = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, notify: await notifyRoutesFor(client) }, pendingApprovals: null }));
+  assert.doesNotMatch(routed, /href="\/notifications"/, "once alerts reach someone, the row goes");
+  const unknown = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: null }));
+  assert.doesNotMatch(unknown, /href="\/notifications"/, "when the count could not be read, no row is guessed");
 });

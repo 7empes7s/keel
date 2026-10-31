@@ -676,6 +676,15 @@ export interface DashboardData {
   // The Compliance summary, for the score card. Null when it could not be read; absent
   // in fixtures that predate it.
   compliance?: ComplianceSummary | null;
+  // Where alerts can go: enabled channels, and how many of them have a rule that sends
+  // alerts to them. With no rule on an enabled channel, every alert reaches nobody.
+  // Absent in fixtures that predate it.
+  notify?: NotifyRoutes;
+}
+
+export interface NotifyRoutes {
+  channels: number;
+  routed: number;
 }
 
 export interface RestoreFollowUp {

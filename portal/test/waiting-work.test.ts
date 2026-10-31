@@ -11,7 +11,8 @@ import { enqueue } from "../../engine/jobs/queue.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { RestoreFollowUps } from "@/components/restore-follow-ups";
-import { getRestoreFollowUps, notifyRoutesFor, waitingFor } from "@/lib/portal-data";
+import { getResilienceData, getRestoreFollowUps, notifyRoutesFor, waitingFor } from "@/lib/portal-data";
+import { resilienceAlerts, resilienceKinds } from "@/lib/resilience-view";
 import { tenantRef } from "@/lib/runtime-config";
 import type { DashboardData } from "@/lib/types";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -92,10 +93,11 @@ test("open alerts, open incidents and open restore follow-up steps are counted; 
 
   assert.deepEqual(await waitingFor(client, ref), { openAlerts: 2, openIncidents: 1, restoreFollowUps: items.length });
 
-  const followUps = await getRestoreFollowUps();
-  assert.equal(followUps.length, 1);
-  assert.equal(followUps[0].jobId, job.id);
-  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { followUps, now: DASHBOARD.generatedAt }));
+  const work = await getRestoreFollowUps();
+  assert.equal(work.cards.length, 1);
+  assert.equal(work.cards[0].jobId, job.id);
+  assert.deepEqual([work.steps, work.restores], [items.length, 1]);
+  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now: DASHBOARD.generatedAt }));
   assert.match(html, new RegExp(`href="/jobs/${job.id}"`), "each restore links to the page where its steps are closed");
   assert.match(html, /id="follow-up"/);
 });
@@ -121,7 +123,46 @@ test("the Overview shows a row for each kind of open work, linked to where it is
 
   const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));
   assert.match(approver, /data-tile="waiting"[^>]*href="\/approvals"[\s\S]*?<b class="ov-tile-count">0<\/b>/, "an approver always sees the tile");
-  assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { followUps: [], now: DASHBOARD.generatedAt })), "");
+  assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { work: { steps: 0, restores: 0, href: "/restore#follow-up", cards: [] }, now: DASHBOARD.generatedAt })), "");
+});
+
+// Audit 2026-10-31: Overview said 273 steps, Restore 233 (it added up only the 50 cards it
+// lists) and Resilience "25 restores". With more restores than the list holds, all three
+// now read the one engine count.
+test("Overview, Restore and Resilience show the same follow-up totals past the card limit", async () => {
+  const ref = tenantRef();
+  await client.query("DELETE FROM recovery_completion_item WHERE tenant_ref = $1", [ref]);
+  let steps = 0;
+  for (let n = 1; n <= 52; n++) {
+    const restoreRef = `75000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    steps += ((await emitCompletionItems(client, {
+      tenantRef: ref, restoreRef, owner: null, applied: [{ naturalKey: `group:KEEL-RT-${n}`, resourceType: "group", mechanism: "recreate" }],
+    })) as unknown[]).length;
+  }
+
+  const overview = (await waitingFor(client, ref)).restoreFollowUps;
+  const work = await getRestoreFollowUps();
+  const resilienceData = await getResilienceData();
+  const resilience = resilienceData.followUps;
+  assert.equal(overview, steps);
+  assert.deepEqual([work.steps, work.restores, work.cards.length], [steps, 52, 50], "the page lists 50 and counts all 52");
+  assert.ok(work.cards.reduce((sum, card) => sum + card.pending, 0) < steps, "adding up the cards would under-count");
+  assert.deepEqual(resilience, { steps, restores: 52, href: "/restore#follow-up" });
+
+  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now: DASHBOARD.generatedAt }));
+  assert.match(html, new RegExp(`${steps} steps on 52 restores`));
+  assert.match(html, /Showing the newest 50 of 52 restores/);
+  const dashboard = renderToStaticMarkup(createElement(DashboardView, {
+    data: { ...DASHBOARD, waiting: { openAlerts: 0, openIncidents: 0, restoreFollowUps: overview } }, pendingApprovals: null,
+  }));
+  assert.match(dashboard, new RegExp(`<b>${steps} restore steps are still open</b>`));
+  const alert = resilienceAlerts({
+    generatedAt: DASHBOARD.generatedAt, incidents: [], followUps: resilience, failedRestores: resilienceData.failedRestores, kinds: resilienceKinds([]),
+    storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    metrics: { freshness: { state: "measured", gaps: [], latestFailures: [], notUsed: [] }, recoverablePoint: { state: "measured", point: DASHBOARD.generatedAt, copies: [] },
+      recoveryTime: { state: "measured", attempts: [] }, readiness: { state: "measured" }, services: { settings: [], content: [] } },
+  } as never).find((entry) => entry.key === "restore-checks-open");
+  assert.equal(alert?.title, `52 restores have ${steps} follow-up steps open`);
 });
 
 test("with no channel, or no rule that sends alerts to one, the Overview says first and Urgent that alerts reach nobody", async () => {

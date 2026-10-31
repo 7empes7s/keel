@@ -133,6 +133,7 @@ test("a service backup failure is reported once, by its service, never against E
     kinds: resilienceKinds([kind("user"), kind("group")]),
     incidents: [],
     storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    followUps: null,
   } as ResilienceData;
   const alerts = resilienceAlerts(data);
   assert.equal(alerts.some((alert) => alert.key === "kinds-failed" || alert.key === "kinds-late"), false);
@@ -175,7 +176,7 @@ test("the failed-restores alert shows the engine's one count, not the recovery a
   // The attempts list holds one failed and one cancelled restore; the engine counted 47 failed in all.
   const base = metrics({ restores: [job("r1", "failed", "2026-10-02T10:00:00.000Z"), job("r2", "cancelled", "2026-10-02T11:00:00.000Z")] });
   const counts: FailedRestoreCounts = { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "r1", at: "2026-10-02T10:00:00.000Z" }, href: FAILED_HREF };
-  const data = { generatedAt: NOW, metrics: base, failedRestores: counts, kinds: resilienceKinds([kind("user")]), incidents: [], storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null } } as ResilienceData;
+  const data = { generatedAt: NOW, metrics: base, failedRestores: counts, followUps: null, kinds: resilienceKinds([kind("user")]), incidents: [], storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null } } as ResilienceData;
   const alert = resilienceAlerts(data).find((entry) => entry.key === "restore-failed")!;
   assert.equal(alert.title, "47 restores failed · 3 in the last 30 days");
   assert.equal(alert.title, failedRestoresLine(counts));
@@ -188,6 +189,35 @@ test("the failed-restores alert shows the engine's one count, not the recovery a
   assert.deepEqual(one.action, { label: "View restore", href: "/jobs/r1" });
 
   assert.equal(resilienceAlerts({ ...data, failedRestores: NO_FAILED_RESTORES }).some((entry) => entry.key === "restore-failed"), false);
+});
+
+// Audit 2026-10-31: Resilience said "25 restores need follow-up" while Overview said 273
+// steps. The alert now shows the shared follow-up totals, never a count of restore attempts.
+test("the follow-up alert shows the shared step and restore totals and links to the full list", () => {
+  const unverified = (id: string, finishedAt: string) => ({
+    job: { id, status: "succeeded", params: { artifactId: id, mode: "enforce" }, created_at: finishedAt, started_at: finishedAt, finished_at: finishedAt },
+    items: [{ restore_ref: id, state: "pending", closed_at: null }],
+  });
+  const base: ResilienceData = {
+    generatedAt: NOW,
+    // Two attempts still wait on checks, but the shared count says 3 restores with 7 steps.
+    metrics: metrics({ restores: [unverified("r1", "2026-10-02T09:00:00.000Z"), unverified("r2", "2026-10-02T10:00:00.000Z")] }),
+    kinds: resilienceKinds([kind("user")]),
+    incidents: [],
+    storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    followUps: { steps: 7, restores: 3, href: "/restore#follow-up" },
+    failedRestores: NO_FAILED_RESTORES,
+  } as ResilienceData;
+  const open = resilienceAlerts(base).find((alert) => alert.key === "restore-checks-open");
+  assert.equal(open?.title, "3 restores have 7 follow-up steps open");
+  assert.deepEqual(open?.action, { label: "See follow-ups", href: "/restore#follow-up" });
+
+  const one = resilienceAlerts({ ...base, followUps: { steps: 1, restores: 1, href: "/restore#follow-up" } }).find((alert) => alert.key === "restore-checks-open");
+  assert.equal(one?.title, "A restore has 1 follow-up step open");
+
+  assert.equal(resilienceAlerts({ ...base, followUps: { steps: 0, restores: 0, href: "/restore#follow-up" } }).some((alert) => alert.key === "restore-checks-open"), false,
+    "nothing open, no alert, even while attempts still wait on replaced steps");
+  assert.equal(resilienceAlerts({ ...base, followUps: null }).some((alert) => alert.key === "restore-checks-open"), false, "unreadable is not invented");
 });
 
 // Audit 31 Oct 2026: Resilience said "N never backed up" from recovery freshness (no good

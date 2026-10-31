@@ -4089,7 +4089,10 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
   const card = page.locator(".cp-by-service .cp-service");
   await expect(card).toHaveCount(1);
   await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
-  await expect(card.locator(".cp-ctile")).toHaveCount(5);
+  // Only the controls that need something done get a tile; the rest are counted, with a link to the list.
+  await expect(card.locator(".cp-ctile")).toHaveCount(3);
+  await expect(card.locator(".cp-service-rest")).toContainText("See all 5 controls");
+  await expect(card.locator(".cp-service-rest a")).toHaveAttribute("href", "#cp-controls");
   await expect(card.locator(".cp-service-head .score-ring")).toHaveAttribute("aria-label", /^Entra ID: 25% pass/);
   // The service list in the score is the cards' job on a phone.
   await expect(page.locator('.cp-score-list[data-kind="service"]')).toBeHidden();
@@ -4110,7 +4113,8 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : 5);
+        // The own-check page holds a CISA check to do by hand, so it has that sixth tile.
+        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : hash.startsWith("/benchmarks/own") ? 6 : 5);
         expect(new Set(tiles).size).toBe(1);
         if (width === 390 && hash !== "/benchmarks/empty") {
           // Tiles are equal within each service's scorecard (each service is its own grid).
@@ -5358,20 +5362,24 @@ test("Compliance · measure against a known standard, write your own check, remo
   const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
 
   // Known standards: SCuBA first, every ScubaGear v2.0.0 rule checked by CISA's own rule,
-  // worst first, 25 to a page.
+  // worst first, 25 to a page. Only policies with a result count as checked, and CISA's
+  // checks to do by hand are counted apart from those that could not be checked.
   const known = page.locator(".cp-known");
   const rows = known.locator(".cp-known-table tbody tr");
   await expect(known.locator("h2")).toHaveText("Measure against a known standard");
-  await expect(known).toContainText("Keel checks 109 of 109 CISA SCuBA policies: 1 passes, 1 does not, 107 could not be checked.");
+  await expect(known).toContainText("Keel checks 2 of 109 CISA SCuBA policies: 1 passes, 1 does not. 107 are not checked: 1 is a check to do by hand, 106 could not be checked.");
   await expect(known).toContainText("ScubaGear v2.0.0");
   await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
+  // The policy table is folded: the result chips summarise it, and it opens on request.
+  await expect(known.locator(".cp-known-table")).toHaveCount(0);
+  await expect(known.getByRole("group", { name: "Show results" })).toContainText("Checks to do by hand");
+  await known.getByRole("button", { name: "Show each policy (109)" }).click();
   await expect(known.locator(".cp-known-table thead")).not.toContainText("How much");
   await expect(rows).toHaveCount(25);
   await expect(rows.first()).toContainText("MS.AAD.1.1v1");
   await expect(rows.first()).toContainText("Fails");
   await expect(rows.nth(1)).toContainText("MS.AAD.2.1v1");
   await expect(rows.nth(1)).toContainText("It runs after the next backup.");
-  await expect(rows.filter({ hasText: "MS.AAD.2.2v1" })).toContainText("CISA lists this as a check to do by hand.");
   await expect(known.locator(".list-pager").getByRole("status")).toHaveText("Showing 1–25 of 109 policies");
   // The result chips add up: Fails and Passes together show both.
   const chips = known.getByRole("group", { name: "Show results" });
@@ -5383,10 +5391,12 @@ test("Compliance · measure against a known standard, write your own check, remo
   await chips.getByRole("button", { name: /Passes/ }).click();
   await known.getByRole("button", { name: "NIST SP 800-53" }).click();
   await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await known.getByRole("button", { name: /^Show each policy/ }).click();
   await expect(known.locator(".cp-known-table tbody tr", { hasText: "AC-6" })).toContainText("Checks part of this");
   await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
   // A policy's check opens that control's panel.
   await known.getByRole("button", { name: "CISA SCuBA" }).click();
+  await known.getByRole("button", { name: /^Show each policy/ }).click();
   await known.locator(".cp-known-table").getByRole("link", { name: "Legacy authentication SHALL be blocked." }).click();
   await expect(page.locator(".bl-sheet h2")).toContainText("Legacy authentication SHALL be blocked.");
   await page.keyboard.press("Escape");
@@ -5396,7 +5406,21 @@ test("Compliance · measure against a known standard, write your own check, remo
   await open(page, "/benchmarks/own?std-result=excepted");
   await expect(known.locator(".cp-known-table")).toHaveCount(0);
   await expect(known).toContainText("No policy has these results.");
+  // CISA's checks to do by hand come after those that could not be checked, and say so.
+  await open(page, "/benchmarks/own?std-result=by-hand");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("MS.AAD.2.2v1");
+  await expect(rows.first()).toContainText("CISA lists this as a check to do by hand.");
   await open(page, "/benchmarks/own");
+
+  // CISA's check to do by hand has its own tile and links to CISA's steps, never "Run a backup".
+  await expect(page.locator(".cp-tile", { hasText: "Check by hand" }).locator(".cp-tile-count")).toHaveText("1");
+  const byHand = page.locator(".sel-row", { hasText: "A notification SHOULD be sent" });
+  await expect(byHand.getByRole("link", { name: "How to check it" })).toHaveAttribute("href", "https://github.com/cisagov/ScubaGear/blob/v2.0.0/PowerShell/ScubaGear/baselines/aad.md#msaad22v1");
+  await expect(byHand.getByRole("link", { name: "Run a backup" })).toHaveCount(0);
+  // Keel's legacy sign-in check tests what CISA MS.AAD.1.1v1 tests: one row, with Keel's result on it.
+  await expect(page.locator(".sel-row", { hasText: "Legacy authentication SHALL be blocked." })).toContainText("Keel's own check tests the same: not set up yet");
+  await expect(page.locator(".sel-row .cp-row-link", { hasText: "Old sign-in methods are blocked" })).toHaveCount(0);
 
   // The tenant's own check sits beside Keel's, filed under its own standard.
   await expect(page.locator(".cp-score-list", { hasText: "By standard" })).toContainText("Contoso hardening");

@@ -4,7 +4,7 @@ import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } f
 import { ago, formatTimestamp, resourceTypeLabel, words } from "@/lib/presentation";
 import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import { backupHealth, coverageSummary, typeName, type BackupHealth } from "@/lib/protect-view";
-import type { CoverageSummary, CoverageType, StorageResidency } from "@/lib/types";
+import type { CoverageSummary, CoverageType, OpenFollowUpTotals, StorageResidency } from "@/lib/types";
 
 // Roadmap task-73: the Resilience page in words. The numbers come from
 // engine/coverage/recoveryMetrics.mjs; this file only turns them into sentences.
@@ -138,6 +138,9 @@ export interface ResilienceData {
   kinds: ResilienceKinds;
   incidents: IncidentPointSummary[];
   storage: StorageResidency;
+  // Open follow-up work across every restore: the same totals Overview and Restore
+  // show. Null when it could not be read.
+  followUps: OpenFollowUpTotals | null;
 }
 
 /** A duration in words: "8 minutes", "2 hours 5 minutes", "3 days". */
@@ -641,7 +644,6 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
   }
 
   const failedRestores = data.failedRestores;
-  const openChecks = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "awaiting-verification");
   if (failedRestores.total) {
     const recentFailures = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "restore-failed");
     alerts.push({
@@ -663,14 +665,17 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       action: { label: "Plan a restore", href: "/restore" },
     });
   }
-  if (openChecks.length) {
-    const newest = openChecks.at(-1)!;
+  // The shared follow-up count (the same steps Overview and Restore show), not a count
+  // of restore attempts: a step a later restore replaced is not open work.
+  const followUps = data.followUps;
+  if (followUps && followUps.steps > 0) {
+    const steps = `${followUps.steps} follow-up ${followUps.steps === 1 ? "step" : "steps"}`;
     alerts.push({
       key: "restore-checks-open", tone: "low", icon: "check-circle",
-      title: openChecks.length === 1 ? "A restore needs its follow-up checks" : `${openChecks.length} restores need follow-up checks`,
-      todo: "Finish the checks so they count.",
+      title: followUps.restores === 1 ? `A restore has ${steps} open` : `${followUps.restores} restores have ${steps} open`,
+      todo: "Finish the steps so the restores count.",
       more: [],
-      action: newest.ref ? { label: "Open newest", href: `/jobs/${newest.ref}` } : null,
+      action: { label: "See follow-ups", href: followUps.href },
     });
   }
 

@@ -14,6 +14,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
 import { fixFor, listFixCandidates } from '../benchmarks/fix.mjs';
+import { BY_HAND_REASON, foldTwins } from '../benchmarks/standards.mjs';
 import { OWN_PREFIX, controlFromRow, ownCheckRows, shapeOwnCheck } from '../benchmarks/ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
@@ -394,9 +395,15 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
     || (ownRows.has(evaluation.control_id) && !ownRows.get(evaluation.control_id).removed_at));
   if (evaluations.length === 0) return { findings: [], summary: summarize([]) };
 
-  const workloads = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
-    .map((window) => window.resourceType)
-    .filter((type) => WORKLOAD_FACT_TYPES.has(type))))];
+  const windowTypes = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
+    .map((window) => window?.resourceType)
+    .filter((type) => typeof type === 'string')))];
+  const workloads = windowTypes.filter((type) => WORKLOAD_FACT_TYPES.has(type));
+  // Only the kinds some evaluation was checked on can match its evidence, so each
+  // backup's coverage is read for those kinds alone, and a backup that read none of
+  // them is not read at all. Reading every kind of every backup ever taken grew with
+  // each hourly backup and was most of this read's time.
+  const snapshotTypes = windowTypes.filter((type) => !WORKLOAD_FACT_TYPES.has(type));
   const [{ rows: exceptions }, { rows: snapshotRows }, { rows: driftRows }, { rows: planRows }, { rows: collections }] = await Promise.all([
     client.query(
       `SELECT * FROM benchmark_exception
@@ -404,11 +411,17 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
        ORDER BY granted_at DESC, id DESC`,
       [tenantRef, evaluations.map((evaluation) => evaluation.id)],
     ),
-    client.query(
-      `SELECT id, tenant_ref, started_at, completed_at, coverage_digest
-       FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL`,
-      [tenantRef],
-    ),
+    snapshotTypes.length
+      ? client.query(
+        `SELECT id, tenant_ref, started_at, completed_at,
+                CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN
+                  (SELECT jsonb_object_agg(entry.key, entry.value) FROM jsonb_each(coverage_digest) AS entry
+                    WHERE entry.key = ANY($2::text[]))
+                END AS coverage_digest
+         FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL AND coverage_digest ?| $2::text[]`,
+        [tenantRef, snapshotTypes],
+      )
+      : { rows: [] },
     client.query(
       // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
       `WITH latest AS (
@@ -539,7 +552,9 @@ function fixDescriptor(controlId) {
   return { resourceType: fix.resourceType, field: fix.field, to: fix.to };
 }
 
-function summarize(findings) {
+// Counted once per setting: a Keel check and its CISA twin are one result (standards.mjs).
+function summarize(all) {
+  const findings = foldTwins(all);
   return {
     controls: findings.length,
     exposed: findings.filter((finding) => finding.exposed).length,
@@ -550,6 +565,8 @@ function summarize(findings) {
     notConfigured: findings.filter((finding) => finding.exposed && finding.reason === 'not-configured').length,
     passing: findings.filter((finding) => finding.verdict === 'pass').length,
     unknown: findings.filter((finding) => finding.verdict === 'unknown').length,
+    // Of the unknowns, the rules CISA marks as checks to do by hand: no backup answers them.
+    byHand: findings.filter((finding) => finding.verdict === 'unknown' && finding.reason === BY_HAND_REASON).length,
     notApplicable: findings.filter((finding) => finding.verdict === 'not-applicable').length,
   };
 }

@@ -38,7 +38,7 @@ import {
   grantLabel,
   immutabilitySentence,
   lastChecked,
-  neededList,
+  foldedFindings,
   orderFindings,
   ownStandards,
   ownerPerson,
@@ -51,6 +51,8 @@ import {
   standardName,
   storageSentence,
   scoreTone,
+  twinLine,
+  unknownAction,
   type ControlResult,
   type ScoreGroup,
 } from "@/lib/compliance-view";
@@ -74,7 +76,8 @@ import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 const TILES: { key: ControlResult; small: string; always: boolean }[] = [
   { key: "failing", small: "Set, but not the way the control needs", always: true },
   { key: "not-set-up", small: "The setting does not exist yet", always: true },
-  { key: "unknown", small: "The backup it needs is missing or too old", always: false },
+  { key: "unknown", small: "Keel had nothing to judge them on yet", always: false },
+  { key: "by-hand", small: "CISA has no automatic rule: a person checks these", always: false },
   { key: "passing", small: "Met on the last check", always: true },
   { key: "excepted", small: "Not met, accepted until a date", always: true },
 ];
@@ -100,7 +103,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const [granted, setGranted] = useState<Record<string, Granted>>({});
 
   // An exception just saved shows at once, before the page's next read brings it back.
-  const findings = useMemo(() => orderFindings(data.findings.map((finding) => {
+  const all = useMemo(() => orderFindings(data.findings.map((finding) => {
     const fresh = granted[finding.id];
     if (!fresh) return finding;
     return {
@@ -116,6 +119,9 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
       },
     };
   })), [data.findings, granted, now]);
+  // One row per setting: a Keel check and the CISA rule that tests the same thing show
+  // once. The known-standard table and the panels still see every check.
+  const findings = useMemo(() => foldedFindings(all), [all]);
   const counts = useMemo(() => complianceCounts(findings), [findings]);
   const verdict = complianceVerdict({ ...data, findings });
   // The result tiles add up: `result=failing,unknown` shows controls in either.
@@ -124,14 +130,14 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const shown = useMemo(() => applyFilters(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []), [findings, filterKey]);
   const tileTotals = useMemo(() => new Map(tileCounts(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [findings, filterKey]);
   const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: RESULTS[key].plural, clear: { result: withoutTile(filter, key) } }));
-  const opened = findings.find((finding) => finding.id === view.get("open")) ?? null;
+  const opened = all.find((finding) => finding.id === view.get("open")) ?? null;
   // Previous and next in the panel follow the list as shown: its filter, find, grouping and sort.
   const [order, setOrder] = useState<string[]>([]);
   const step = useMemo(() => sheetStep(order, opened?.id), [order, opened?.id]);
   const writing = canConfigure && view.get("own") === "new";
   const editingLists = canConfigure && scubaLists !== null && view.get("lists") === "edit";
   const grantIds = view.get("grant").split(",").filter(Boolean);
-  const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
+  const granting = canConfigure ? all.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
   const failing = findings.filter((finding) => resultOf(finding) === "failing");
   const baseline = data.activeBaseline;
   const { storage } = data;
@@ -176,6 +182,8 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
     const words = RESULTS[result];
     const service = controlService(finding);
     const owner = ownerPerson(finding);
+    const next = unknownAction(finding);
+    const twin = twinLine(finding);
     return (
       <div className="cp-row" data-result={result}>
         <span aria-hidden="true" className="cp-kind" data-tone={words.tone ?? undefined}><Icon name={service.icon} /></span>
@@ -188,12 +196,14 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
           <small>{resultLine(finding, now)}</small>
           {fixableSentence(finding) ? <small className="cp-fixable"><Icon name="check-circle" />{fixableSentence(finding)}</small> : null}
           {owner ? <small className="cp-owner">Owner <Person person={owner} /></small> : null}
+          {twin ? <small className="cp-twin"><Icon name="link" />{twin}</small> : null}
         </span>
         <span className="cp-row-acts">
           {canFixOn(finding, canRestore) ? <Link className="btn btn-sm" href={openHref(finding.id)} onClick={(event) => follow(event, openHref(finding.id))}><Icon name="check-circle" />Make it pass</Link> : null}
           {(result === "failing" || result === "not-set-up") && canGrantOn(finding, canConfigure) ? <Link className="btn btn-sm" href={grantHref([finding.id])}>{finding.exception ? "Renew exception" : "Grant exception"}</Link> : null}
-          {result === "unknown" && neededList(finding) ? (canConfigure && scubaLists ? <Link className="btn btn-sm" href={href({ lists: "edit", open: null, grant: null })}><Icon name="settings" />Set the list</Link> : null)
-            : result === "unknown" ? <Link className="btn btn-sm" href="/protect"><Icon name="backup" />Run a backup</Link> : null}
+          {next.kind === "list" && canConfigure && scubaLists ? <Link className="btn btn-sm" href={href({ lists: "edit", open: null, grant: null })}><Icon name="settings" />Set the list</Link> : null}
+          {next.kind === "how-to" && next.href ? <a className="btn btn-sm" href={next.href} rel="noreferrer" target="_blank"><Icon name="page" />How to check it</a> : null}
+          {next.kind === "backup" && next.href ? <Link className="btn btn-sm" href={next.href}><Icon name="backup" />Run a backup</Link> : null}
         </span>
       </div>
     );
@@ -230,7 +240,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
           </section>
         ) : null}
 
-        {data.standards?.length ? <KnownStandards findings={findings} follow={follow} openHref={openHref} standards={data.standards} /> : null}
+        {data.standards?.length ? <KnownStandards findings={all} follow={follow} openHref={openHref} standards={data.standards} /> : null}
 
         {scubaLists ? <ScubaListsCard editHref={canConfigure ? href({ lists: "edit", open: null, grant: null }) : null} now={now} view={scubaLists} /> : null}
 
@@ -262,8 +272,8 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
                   <span><b>{group.label}</b><small>{controlsWord(group.items.length)} · {group.items.filter((item) => resultOf(item) === "passing").length} passing</small></span>
                   <ScoreRing label={group.label} score={complianceScore(group.items)} size="sm" />
                 </div>
-                <div className="cp-ctiles">
-                  {group.items.map((finding) => {
+                {needsAction(group.items).length ? <div className="cp-ctiles">
+                  {needsAction(group.items).slice(0, PHONE_TILES).map((finding) => {
                     const words = RESULTS[resultOf(finding)];
                     return (
                       <Link className="cp-ctile" data-tone={words.tone ?? undefined} href={openHref(finding.id)} key={finding.id} onClick={(event) => follow(event, openHref(finding.id))}>
@@ -273,13 +283,14 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
                       </Link>
                     );
                   })}
-                </div>
+                </div> : null}
+                <ServiceRest items={group.items} />
               </div>
             ))}
           </section>
         ) : null}
 
-        <section aria-labelledby="cp-controls-heading" className="cp-section">
+        <section aria-labelledby="cp-controls-heading" className="cp-section" id="cp-controls">
           <h2 className="visually-hidden" id="cp-controls-heading">Controls</h2>
           <ActiveFilters extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} shown={shown.length} total={findings.length} />
           {findings.length === 0 ? (
@@ -383,11 +394,14 @@ function useCheckNow(onDone: () => void): CheckNow {
         toast({ tone: "warning", title: "The check did not run", detail: response.status === 403 ? "You need the permission that runs backups." : "Try again in a moment." });
         return;
       }
-      const body = (await response.json()) as { checked: number; pass: number; fail: number; unknown: number; notConfigured?: number };
+      const body = (await response.json()) as { checked: number; pass: number; fail: number; unknown: number; byHand?: number; notConfigured?: number };
       // The engine's fails include the controls whose setting does not exist yet; the page shows those apart.
       const notSetUp = body.notConfigured ?? 0;
       const failing = body.fail - notSetUp;
-      const parts = [failing ? `${failing} failing` : null, notSetUp ? `${notSetUp} not set up yet` : null, body.unknown ? `${body.unknown} could not be checked` : null, body.pass ? `${body.pass} passing` : null].filter(Boolean);
+      // CISA's checks to do by hand are said apart: no backup could answer them.
+      const byHand = body.byHand ?? 0;
+      const unknown = body.unknown - byHand;
+      const parts = [failing ? `${failing} failing` : null, notSetUp ? `${notSetUp} not set up yet` : null, unknown ? `${unknown} could not be checked` : null, body.pass ? `${body.pass} passing` : null, byHand ? `${byHand} to check by hand` : null].filter(Boolean);
       toast({ tone: body.fail ? "warning" : undefined, title: `${controlsWord(body.checked)} checked`, detail: parts.join(", ") || undefined });
       onDone();
     } catch {
@@ -454,6 +468,36 @@ function ScoreList({ groups, title, kind }: { groups: ScoreGroup[]; title: strin
         ))}
       </ul>
     </div>
+  );
+}
+
+// A phone card names at most four controls that need something done; the rest are counted.
+const PHONE_TILES = 4;
+
+function needsAction(items: ComplianceFinding[]): ComplianceFinding[] {
+  return items.filter((item) => RESULTS[resultOf(item)].rank <= RESULTS.unknown.rank);
+}
+
+// The result in a few words after a count: "12 pass", "3 to check by hand".
+const REST_WORDS: Record<ControlResult, string> = {
+  failing: "fail", "not-set-up": "not set up yet", unknown: "could not be checked", "by-hand": "to check by hand",
+  excepted: "accepted", passing: "pass", "not-relevant": "not relevant here",
+};
+
+/** Under a service's phone tiles: what the tiles leave out, counted by result, with a
+ * link to the full list. Nothing when every control is shown. */
+function ServiceRest({ items }: { items: ComplianceFinding[] }) {
+  const shown = new Set(needsAction(items).slice(0, PHONE_TILES));
+  const rest = items.filter((item) => !shown.has(item));
+  if (!rest.length) return null;
+  const byResult = (Object.keys(RESULTS) as ControlResult[])
+    .map((key) => ({ key, count: rest.filter((item) => resultOf(item) === key).length }))
+    .filter((entry) => entry.count > 0);
+  return (
+    <p className="cp-service-rest">
+      {byResult.map((entry) => <Badge icon={RESULTS[entry.key].icon} key={entry.key} tone={RESULTS[entry.key].badge}>{entry.count} {REST_WORDS[entry.key]}</Badge>)}
+      <a className="cp-inline-link" href="#cp-controls">See all {controlsWord(items.length)}</a>
+    </p>
   );
 }
 

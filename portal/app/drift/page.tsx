@@ -12,11 +12,11 @@ import { getAnonymitySetting } from "@/lib/anonymity";
 import { setupStatus } from "@/lib/baselines-view";
 import { getChangeFeed } from "@/lib/change-feed";
 import { FEED_PERIODS, type FeedPeriod } from "@/lib/change-feed-view";
-import { changesVerdict } from "@/lib/changes-view";
+import { changesVerdict, openChangeCount } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { displayItems, getDriftData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import { getServiceChanges } from "@/lib/service-changes";
+import { getServiceChanges, NO_SERVICE_CHANGES, type OpenServiceChanges } from "@/lib/service-changes";
 import type { DriftData, DriftRecord } from "@/lib/types";
 
 const DESCRIPTION = "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.";
@@ -61,11 +61,11 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
   let data: DriftData;
   // Service settings (Exchange, SharePoint, Teams, Purview, Power Platform) are
   // tenant-wide, so only a central administrator sees their changes.
-  let serviceChanges: DriftRecord[];
+  let serviceChanges: OpenServiceChanges;
   try {
     [data, serviceChanges] = await Promise.all([
       getDriftData(access.scope),
-      access.scope.central ? getServiceChanges() : Promise.resolve([]),
+      access.scope.central ? getServiceChanges() : Promise.resolve(NO_SERVICE_CHANGES),
     ]);
   } catch {
     return (
@@ -77,22 +77,25 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
   }
 
   // One list for every service: approved-setup changes and service setting changes.
-  const items = [...displayItems(data.items), ...serviceChanges];
+  const items: DriftRecord[] = [...displayItems(data.items), ...serviceChanges.items];
+  // The header counts what the Overview and the menu count (openChangeCount).
+  const total = openChangeCount(data.items.length, serviceChanges.total);
   const anonymity = await getAnonymitySetting();
   // With a list, the list draws the verdict, so it counts the same filtered changes as the tiles.
   const notice = <AnonymityNote setting={anonymity} />;
-  const verdict = changesVerdict(items, data.baseline?.setAt ?? null, data.generatedAt);
+  const verdict = changesVerdict(items, data.baseline?.setAt ?? null, data.generatedAt, serviceChanges.total);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={data.baseline ? setupStatus(data.baseline, data.items) : undefined} title="Changes" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={data.baseline ? setupStatus(data.baseline, items, total) : undefined} title="Changes" />
       {access.scope.central ? <ChangesViews current="open" /> : null}
-      {data.baseline || serviceChanges.length ? (
+      {data.baseline || serviceChanges.total ? (
         <ChangeList
           baseline={data.baseline}
           capabilities={capabilities}
           items={items}
           notice={notice}
           now={data.generatedAt}
+          serviceTotal={serviceChanges.total}
           scopeNote={data.scope ? `You see changes to resources owned by ${data.scope.entities.join(" and ")} only. A central administrator reviews the rest of this tenant.` : null}
           summary={data.summary}
         />

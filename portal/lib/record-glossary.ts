@@ -56,6 +56,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   // Shared everywhere.
   "Status": fact("Status", "Where this stands now."),
   "State": fact("Status", "Where this stands now."),
+  "Stored status (API)": support("Stored status", "The status code the API returns. A partly done backup is stored as succeeded."),
   "Reason": fact("Why", "Keel's reason for this result."),
   "Reasons": fact("Why", "Keel's reasons for this result."),
   "Kind": fact("Kind", "What sort of item this is."),
@@ -457,18 +458,22 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Checked": fact("What was checked", "What this summary is based on."),
   "Not checked": fact("Not checked", "What this summary does not cover."),
   "Backed up": count("Backed up", "Types with a good backup."),
-  "Restorable": count("Can be restored", "Types Keel can put back."),
+  "Restorable": count("Can be restored", "Backed-up types Keel can put back."),
   "Failing": count("Failing", "Types whose backups keep failing.", { zeroIsGood: true }),
   "Failed": count("Failed", "Types whose last backup failed.", { zeroIsGood: true }),
   "Never collected": count("Never backed up", "Types with no backup yet.", { zeroIsGood: true }),
   "Never backed up": count("Never backed up", "Items with no backup yet.", { zeroIsGood: true }),
-  "Last fidelity drill": fact("Last test restore", "When a test restore last proved backups can be put back.", { missing: "No test restore has run yet." }),
+  "Last proven restore": fact("Last proven restore", "When a live test restore on this tenant last worked.", { missing: "No live test restore has worked yet." }),
+  "Restore proven": count("Restore proven", "Kinds a live test restore on this tenant brought back."),
+  "Restore tested only": count("Tested only", "Kinds whose restore passes Keel's tests but has not run live yet.", { zeroIsGood: true }),
+  "Can be put back": count("Can be put back", "Every kind Keel can restore, whatever its last backup."),
   "Latest snapshot status": fact("Last backup", "How the last backup ended."),
   "Latest snapshot completed": fact("Last backup finished", "When the last backup finished."),
   "Last completed snapshot": fact("Last finished backup", "When the last backup that finished ended."),
   "Open changes": count("Changes to review", "Changes waiting for a decision.", { zeroIsGood: true }),
   "Covered": count("Covered", "Types Keel backs up."),
   "Not covered": count("Not covered", "Types Keel does not back up yet.", { zeroIsGood: true }),
+  Unavailable: count("Not on this tenant", "Types Microsoft refused for a missing licence or tenant feature.", { zeroIsGood: true }),
   "Total types": count("All types", "Every type of setting Keel knows."),
 
   // Decision workbook.
@@ -688,6 +693,9 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Bytes held · bytes on disk": fact("Size, and size on disk", "How much space the backup takes."),
   "Last run": fact("Last run", "How the last run ended, and when."),
 
+  // What a setting points to that no backup names ("Who holds the role (no name in any backup)").
+  "No name in any backup": support("Not named by any backup", "The Microsoft 365 ID of something this setting points to that no backup names. The link looks it up."),
+
   // Dashboard risk counts ("Reach: Could lock out admins").
   "Reach:": count("Changes at risk level", "Open changes at this risk level."),
 };
@@ -718,6 +726,7 @@ const PATTERNS: readonly { pattern: RegExp; key: string; label?: (match: RegExpM
   { pattern: /^(.+): system account$/, key: "System account", label: (m) => `${m[1]}: built-in account` },
   { pattern: /^(.+): disabled at$/, key: "Disabled at", label: (m) => `${m[1]}: turned off` },
   { pattern: /^(.+): grant ID \((.+)\)$/, key: "Grant ID", label: (m) => `${m[1]}: role reference (${m[2]})` },
+  { pattern: /^(.+) \(no name in any backup\)$/, key: "No name in any backup", label: (m) => `${m[1]}: not named by any backup` },
   { pattern: /^(.+) \(account ID\)$/, key: "Requested by (account ID)", label: (m) => m[1] },
 ];
 

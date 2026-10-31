@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -32,7 +32,7 @@ import {
 } from "@/lib/schedules-view";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 // Schedules (portal audit, one design): a verdict, four tiles that set `status=` or
 // `load=` in the address (Next run opens that schedule), then every schedule in a
@@ -54,7 +54,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/schedules";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const openId = view.get("open");
   const step = (["off"] as const).find((value) => value === view.get("do")) ?? null;
   const picked = readList(view.get("pick"));
@@ -169,7 +169,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
 
   const tiles: { key: ScheduleFilter | "next"; label: string; icon: IconName; value: string; small: string; to: string; tone?: "urgent" | "soon" }[] = [
     { key: "on", label: "On", icon: "play", value: `${counts.on} of ${counts.total}`, small: counts.on === counts.total ? "Every schedule runs" : `${counts.total - counts.on} turned off`, to: href(pickTile("on")) },
-    { key: "failed", label: "Failed last run", icon: "x-circle", value: String(counts.failed), small: counts.failed ? "Open one to see why" : "No last run failed", to: href(pickTile("failed")), tone: counts.failed ? "urgent" : undefined },
+    { key: "failed", label: "Failed last run", icon: "x-circle", value: String(counts.failed), small: counts.failed ? "Open one to see why" : counts.partial ? `None failed; ${counts.partial} partly done` : "No last run failed", to: href(pickTile("failed")), tone: counts.failed ? "urgent" : undefined },
     { key: "partial", label: "Partly done last run", icon: "alert", value: String(counts.partial), small: counts.partial ? "Some types were not backed up" : "Every last run read everything", to: href(pickTile("partial")), tone: counts.partial ? "soon" : undefined },
     { key: "warning", label: "Load warnings", icon: "clock", value: String(counts.warnings), small: counts.warnings ? "A slower timetable is suggested" : "Microsoft keeps up", to: href(pickTile("warning")), tone: counts.warnings ? "soon" : undefined },
     { key: "next", label: "Next run", icon: "calendar", value: counts.next ? nextRunWords(counts.next, now).replace(/^Next run /, "").replace(/^in /, "In ") : "None", small: counts.next ? scheduleName(counts.next) : "Everything is off", to: counts.next ? openHref(counts.next.id) : href({}) },

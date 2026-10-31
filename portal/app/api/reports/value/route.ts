@@ -20,7 +20,8 @@ export const GET = guardedRead(DATA_SURFACES.valueReportApi, async (request, acc
   let report: ValueReport;
   try {
     report = await getValueReport({ scope: access.scope, period, entities });
-  } catch {
+  } catch (error) {
+    console.error("[keel-portal] 503 value report failed", error);
     return Response.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   }
   const name = `keel-value-report-${report.period.from.slice(0, 10)}-${report.period.to.slice(0, 10)}`;

@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 
 import { DatePicker } from "@/components/pickers/date-picker";
@@ -10,6 +9,7 @@ import { Icon } from "@/components/shell/icons";
 import type { Day } from "@/lib/date-range";
 import type { SnapshotOption } from "@/lib/portal-jobs";
 import { backupAge, backupDays, backupForDay, backupsOn, dayWords, plural, takenAt, timeWords } from "@/lib/restore-view";
+import { useLiveSearchParams } from "@/lib/use-view-state";
 
 /** The point in time a restore goes back to: always visible with its age, picked on a
  * calendar that marks the days with a backup, with the time when a day has several. */
@@ -29,7 +29,7 @@ export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick,
   const at = takenAt(chosen);
   const day: Day | null = at ? at.slice(0, 10) : null;
   // The day asked for rides in the URL, so the note survives loading the backup.
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const asked = urlDay ? params?.get("day") ?? null : null;
   const notice = asked && asked !== day ? `No backup on ${dayWords(`${asked}T00:00:00Z`)}, so this is the one before it.` : null;
   const sameDay = day ? backupsOn(snapshots, day) : [];

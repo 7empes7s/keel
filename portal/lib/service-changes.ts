@@ -61,6 +61,58 @@ export async function loadServiceChanges(
   return rows.map((row) => serviceChangeFrom({ ...row, approved_differences: againstApproved(row) }, choices.get(String(row.id)) ?? null));
 }
 
+/** How many service setting changes are open, by the same rule as loadServiceChanges
+ * (the newest change per resource within `days`, its alert open, reopened or
+ * acknowledged, or none raised) but with no row limit, so a page never counts the
+ * capped list. By blast radius, for the Overview risk meter. */
+export async function countOpenServiceChanges(
+  client: KeelClient,
+  { tenantRef: tenant, now = new Date(), days = 30 }: { tenantRef: string; now?: Date; days?: number },
+): Promise<{ total: number; byBlastRadius: Record<string, number> }> {
+  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const { rows } = await client.query(
+    `SELECT blast_radius, count(*)::int AS count FROM (
+       SELECT DISTINCT ON (d.workload, d.resource_key) d.blast_radius, a.state AS alert_state
+         FROM workload_drift d
+         JOIN workload_collection c ON c.id = d.collection_id
+         LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
+                          AND a.control = 'baseline' AND a.condition = 'drift'
+        WHERE d.tenant_ref = $1 AND c.observed_to >= $2
+        ORDER BY d.workload, d.resource_key, c.observed_to DESC, d.detected_at DESC
+     ) newest
+     WHERE alert_state IS NULL OR alert_state = ANY($3::text[])
+     GROUP BY blast_radius`,
+    [tenant, since, LISTED],
+  );
+  const byBlastRadius = Object.fromEntries(rows.map((row) => [String(row.blast_radius), Number(row.count ?? 0)]));
+  return { total: Object.values(byBlastRadius).reduce((sum, count) => sum + count, 0), byBlastRadius };
+}
+
+/** The open service setting changes a page lists (the newest `limit`), with the count of
+ * all of them: a page shows `total`, and "Showing N of M" when the list holds fewer. */
+export interface OpenServiceChanges {
+  items: DriftRecord[];
+  total: number;
+  byBlastRadius: Record<string, number>;
+}
+
+export async function loadOpenServiceChanges(
+  client: KeelClient,
+  { tenantRef: tenant, now = new Date(), limit }: { tenantRef: string; now?: Date; limit?: number },
+): Promise<OpenServiceChanges> {
+  const items = await loadServiceChanges(client, { tenantRef: tenant, now, limit });
+  const counted = await countOpenServiceChanges(client, { tenantRef: tenant, now });
+  // A change can land between the two reads; the count is never below what is listed.
+  return counted.total >= items.length ? { items, ...counted } : { items, total: items.length, byBlastRadius: tally(items) };
+}
+
+const tally = (items: DriftRecord[]) => items.reduce<Record<string, number>>((counts, item) => {
+  counts[item.blastRadius] = (counts[item.blastRadius] ?? 0) + 1;
+  return counts;
+}, {});
+
+export const NO_SERVICE_CHANGES: OpenServiceChanges = { items: [], total: 0, byBlastRadius: {} };
+
 /** A changed setting compared with the active approved setup now, rather than with the
  * value stored when the change was found: after a new baseline repointed the approved
  * setup, this is what an undo puts back. Null when there is no approved value to compare
@@ -164,10 +216,10 @@ export async function getServiceReadTotals(): Promise<ServiceReadTotals> {
   }
 }
 
-export async function getServiceChanges(now: Date = new Date()): Promise<DriftRecord[]> {
+export async function getServiceChanges(now: Date = new Date()): Promise<OpenServiceChanges> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
-    return await loadServiceChanges(client, { tenantRef: tenantRef(), now });
+    return await loadOpenServiceChanges(client, { tenantRef: tenantRef(), now });
   } finally {
     await client.end();
   }

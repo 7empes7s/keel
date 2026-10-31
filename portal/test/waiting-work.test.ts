@@ -57,7 +57,7 @@ const DASHBOARD: DashboardData = {
   alerts: [],
   headline: {
     state: "collection", tone: "attention", headline: "Not protected yet", sentence: "Nothing backed up.", action: null,
-    counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, lastProvenRestoreAt: null, failingSince: null,
+    counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, proof: { restorable: 0, proven: 0, tested: 0, untested: 0, lastProvenAt: null, href: "/protect?health=proven" }, lastProvenRestoreAt: null, failingSince: null,
   } as DashboardData["headline"],
 };
 
@@ -111,7 +111,13 @@ test("the Overview shows a row for each kind of open work, linked to where it is
   assert.match(waiting, /class="ov-row"[^>]*href="\/alerts"[\s\S]*?<b>3 alerts are not acknowledged<\/b>/);
   assert.match(waiting, /class="ov-row"[^>]*href="\/incidents"[\s\S]*?<b>1 incident is open<\/b>/);
   assert.match(waiting, /class="ov-row"[^>]*href="\/restore#follow-up"[\s\S]*?<b>2 restore steps are still open<\/b>/);
-  assert.match(waiting, /data-tile="waiting"[^>]*href="\/alerts"[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile adds them up and opens the first");
+  // Unlike kinds of work are never added into one number: each has its own count and link.
+  assert.doesNotMatch(waiting, /data-tile="waiting"[^>]*>[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile never adds alerts, incidents and restore steps together");
+  assert.match(waiting, /data-tile="waiting"[\s\S]*?data-part="openAlerts" href="\/alerts"><b>3<\/b> alerts[\s\S]*?data-part="openIncidents" href="\/incidents"><b>1<\/b> incident[\s\S]*?data-part="restoreFollowUps" href="\/restore#follow-up"><b>2<\/b> restore steps/);
+  const mixed = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, waiting: { openAlerts: 5, openIncidents: 0, restoreFollowUps: 0 } }, pendingApprovals: 2 }));
+  assert.match(mixed, /data-part="approvals" href="\/approvals"><b>2<\/b> approvals[\s\S]*?data-part="openAlerts" href="\/alerts"><b>5<\/b> alerts/, "approvals and alerts each link to their own list");
+  const single = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, waiting: { openAlerts: 4, openIncidents: 0, restoreFollowUps: 0 } }, pendingApprovals: null }));
+  assert.match(single, /data-tile="waiting"[^>]*href="\/alerts"[\s\S]*?<b class="ov-tile-count">4<\/b><small>Alerts to deal with<\/small>/, "one kind keeps the plain tile, linked to its list");
 
   const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));
   assert.match(approver, /data-tile="waiting"[^>]*href="\/approvals"[\s\S]*?<b class="ov-tile-count">0<\/b>/, "an approver always sees the tile");

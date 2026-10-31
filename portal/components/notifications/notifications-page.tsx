@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -61,7 +61,7 @@ import { displayEnum, formatTimestamp } from "@/lib/presentation";
 import { orderGroups } from "@/lib/selection";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { useViewState } from "@/lib/use-view-state";
+import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // Notifications (portal audit, pick A): three tabs. "Where alerts go" lists the channels
@@ -113,7 +113,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/notifications";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const tab: Tab = !canConfiguration ? "sent" : view.get("tab") === "rules" ? "rules" : view.get("tab") === "sent" ? "sent" : "channels";
   const opened = view.get("open");
   const adding = view.get("add");

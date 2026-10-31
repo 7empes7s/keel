@@ -184,7 +184,7 @@ function withRunAs(row) {
 export async function listPolicies(client, { tenantRef, enabled } = {}) {
   const { rows } = await client.query(
     `${POLICY_VIEW}
-      WHERE p.tenant_ref = $1 AND ($2::boolean IS NULL OR p.enabled = $2)
+      WHERE p.tenant_ref = $1 AND p.deleted_at IS NULL AND ($2::boolean IS NULL OR p.enabled = $2)
       ORDER BY p.created_at, p.id`,
     [tenantRef, enabled ?? null],
   );
@@ -211,14 +211,14 @@ export async function listPolicyActions(client, { tenantRef, policyId, limit = 2
 }
 
 export async function getPolicy(client, { tenantRef, id }) {
-  const { rows } = await client.query(`${POLICY_VIEW} WHERE p.id::text = $1 AND p.tenant_ref = $2`, [id, tenantRef]);
+  const { rows } = await client.query(`${POLICY_VIEW} WHERE p.id::text = $1 AND p.tenant_ref = $2 AND p.deleted_at IS NULL`, [id, tenantRef]);
   return rows[0] ? withRunAs(rows[0]) : null;
 }
 
 // Clearing a pause must not restore automation under a revoked identity. This does
 // not enable a disabled policy; setPolicyEnabled remains the only enable path.
 export async function clearPolicyPause(client, { policyId }) {
-  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
+  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1 AND deleted_at IS NULL', [policyId]);
   const policy = rows[0];
   if (!policy) throw new Error(`policy not found: ${policyId}`);
   if (policy.action === 'auto_remediate') {
@@ -226,9 +226,10 @@ export async function clearPolicyPause(client, { policyId }) {
   }
   const { rows: updated } = await client.query(
     `UPDATE policy SET paused_at = NULL, run_as_repair_required = false
-      WHERE id = $1 RETURNING *`,
+      WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
     [policyId],
   );
+  if (!updated[0]) throw new Error(`policy not found: ${policyId}`);
   return updated[0];
 }
 
@@ -259,7 +260,7 @@ export async function createPolicy(client, {
 // disabled until an operator repairs its identity, and a revoked, disabled, or expired
 // identity cannot be used to turn automation back on.
 export async function setPolicyEnabled(client, { policyId, enabled }) {
-  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
+  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1 AND deleted_at IS NULL', [policyId]);
   const policy = rows[0];
   if (!policy) throw new Error(`policy not found: ${policyId}`);
   if (enabled && policy.action === 'auto_remediate') {
@@ -276,11 +277,62 @@ export async function setPolicyEnabled(client, { policyId, enabled }) {
               WHEN $2 AND action = 'auto_remediate' AND run_as_repair_required THEN NULL
               ELSE paused_at
             END
-      WHERE id = $1
+      WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
     [policyId, enabled],
   );
+  // A delete that commits after the read above leaves the rule deleted and off.
+  if (!updated[0]) throw new Error(`policy not found: ${policyId}`);
   return updated[0];
+}
+
+const BLAST_RADII = Object.keys(BLAST_RADIUS_RANK);
+const CHANGE_TYPES = ['added', 'modified', 'removed'];
+
+/** Edits what a rule watches, its limits and its name. What it does (action) and the
+ * account an undo rule acts as stay as they are: a different action is a different
+ * rule. Editing an undo rule that is on turns it off, because its activation preview
+ * was computed for the old scope and limits; it is turned on again only from a fresh
+ * preview. Every field is required, so a caller sends the whole edited rule and a
+ * cleared limit is an explicit null. Tenant-scoped; a deleted rule reads as not found. */
+export async function updatePolicy(client, {
+  tenantRef, policyId, name, resourceType, blastRadius, naturalKeyGlob, changeType,
+  maxBlastRadius, maxActionsPerWindow, windowSeconds,
+}) {
+  if (typeof name !== 'string' || !name.trim()) throw new Error('policy name is required');
+  if (blastRadius != null && !BLAST_RADII.includes(blastRadius)) throw new Error(`invalid blast radius: ${blastRadius}`);
+  if (!BLAST_RADII.includes(maxBlastRadius)) throw new Error(`invalid max blast radius: ${maxBlastRadius}`);
+  if (changeType != null && !CHANGE_TYPES.includes(changeType)) throw new Error(`invalid change type: ${changeType}`);
+  if ((maxActionsPerWindow == null) !== (windowSeconds == null)) throw new Error('a rate limit needs both a count and a window');
+  const { rows } = await client.query(
+    `UPDATE policy
+        SET name = $3, resource_type = $4, blast_radius = $5, natural_key_glob = $6, change_type = $7,
+            max_blast_radius = $8, max_actions_per_window = $9, window_seconds = $10,
+            enabled = CASE WHEN action = 'auto_remediate' THEN false ELSE enabled END
+      WHERE id::text = $1 AND tenant_ref = $2 AND deleted_at IS NULL
+      RETURNING *`,
+    [
+      String(policyId), tenantRef, name.trim(), resourceType ?? null, blastRadius ?? null, naturalKeyGlob ?? null,
+      changeType ?? null, maxBlastRadius, maxActionsPerWindow ?? null, windowSeconds ?? null,
+    ],
+  );
+  if (!rows[0]) throw new Error(`policy not found: ${policyId}`);
+  return rows[0];
+}
+
+/** Deletes a rule: it is turned off and marked deleted, never removed, so the
+ * evaluations, automatic actions and previews that reference it stay readable as
+ * history. A deleted rule is skipped by every reader of current rules and by
+ * evaluation; deleting twice reads as not found. */
+export async function deletePolicy(client, { tenantRef, policyId, deletedBy }) {
+  const { rows } = await client.query(
+    `UPDATE policy SET enabled = false, deleted_at = now(), deleted_by = $3
+      WHERE id::text = $1 AND tenant_ref = $2 AND deleted_at IS NULL
+      RETURNING *`,
+    [String(policyId), tenantRef, deletedBy],
+  );
+  if (!rows[0]) throw new Error(`policy not found: ${policyId}`);
+  return rows[0];
 }
 
 /** Evaluates one newly detected drift row against every enabled policy for its
@@ -290,7 +342,7 @@ export async function setPolicyEnabled(client, { policyId, enabled }) {
  * re-deriving it. */
 export async function evaluateDrift(client, { tenantRef, drift, actor = 'policy-evaluator' }) {
   const { rows: policies } = await client.query(
-    `SELECT * FROM policy WHERE tenant_ref = $1 AND enabled = true ORDER BY created_at, id`,
+    `SELECT * FROM policy WHERE tenant_ref = $1 AND enabled = true AND deleted_at IS NULL ORDER BY created_at, id`,
     [tenantRef],
   );
 

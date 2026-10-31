@@ -85,7 +85,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Last read error": error("Last read error", "What Microsoft answered when the last read failed."),
   "Microsoft request ID": support("Microsoft request ID", "The ID Microsoft gave the call that failed. Quote it in a Microsoft support case."),
   "Client request ID": support("Client request ID", "The ID Keel sent with the call that failed. Microsoft support may ask for it too."),
-  "Microsoft answered at": support("Microsoft answered at", "When Microsoft answered the call that failed, in UTC. Quote it with the request ID."),
+  "Failed call at": support("Failed call at", "When the call failed, in UTC (Microsoft's time when it sent one). Quote it with the request ID."),
   "Escalation error": error("Escalation error", "Why the alert could not be passed on."),
   "Estimate problem": error("Problem with the estimate", "Why the time-saved estimate could not be used."),
   "Workload": fact("Service", "The Microsoft 365 service this belongs to."),

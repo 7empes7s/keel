@@ -21,13 +21,18 @@ export function supportIds(entry: { requestId?: unknown; clientRequestId?: unkno
   return ids;
 }
 
+/** "2026-10-31 21:38:07 UTC": the time of a failed call, as Microsoft support writes it. */
+export function supportTime(iso: string): string {
+  return `${iso.replace("T", " ").replace(/\.\d+Z$|Z$/, "")} UTC`;
+}
+
 /** Plain lines for a Microsoft support case: the request ids and when Microsoft answered. */
 export function supportLines(ids: SupportIds | null | undefined): string[] {
   if (!ids?.requestId && !ids?.clientRequestId) return [];
   return [
     ids.requestId ? `Microsoft request ID: ${ids.requestId}` : null,
     ids.clientRequestId ? `Client request ID: ${ids.clientRequestId}` : null,
-    ids.requestAt ? `Microsoft answered at: ${ids.requestAt.replace("T", " ").replace(/\.\d+Z$|Z$/, "")} UTC` : null,
+    ids.requestAt ? `Failed call at: ${supportTime(ids.requestAt)}` : null,
     "Quote these in a Microsoft support case.",
   ].filter((line): line is string => line !== null);
 }

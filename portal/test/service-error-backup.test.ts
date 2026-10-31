@@ -64,7 +64,7 @@ test("a failed kind shows Microsoft's request ids and time behind Show details",
   assert.deepEqual(row.support, [
     "Microsoft request ID: df497c08-8f9b-4950-9a7a-e3fdde7457d5",
     "Client request ID: 965fbbd0-0f48-4b94-8d30-1f0407312efe",
-    "Microsoft answered at: 2026-10-31 21:38:07 UTC",
+    "Failed call at: 2026-10-31 21:38:07 UTC",
     "Quote these in a Microsoft support case.",
   ]);
   const junk = jobTypeRows(job({ todoSettings: { ...read("failed", 500, serviceText), requestId: "Bearer abc", requestAt: ids.requestAt } }), now)[0];

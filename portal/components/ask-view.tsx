@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { AskRecords } from "@/components/ask-records";
+import { FormOptionPicker } from "@/components/pickers/form-option-picker";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { AlertList } from "@/components/ui/alert-list";
 import { Badge } from "@/components/ui/badge";
@@ -199,20 +200,16 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
                   {ASK_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
                 </select>
               </label>
-              <label className="filter-field">
-                <span>Owned by</span>
-                <select defaultValue="" name="entity">
-                  <option value="">{data.scope.central ? "Any owner" : "Any entity you can see"}</option>
-                  {data.entities.map((entity) => <option key={entity} value={entity}>{entity}</option>)}
-                </select>
-              </label>
-              <label className="filter-field">
-                <span>Kind of resource</span>
-                <select defaultValue="" name="type">
-                  <option value="">Any kind</option>
-                  {typeOptions.map(([type, label]) => <option key={type} value={type}>{label[0].toUpperCase() + label.slice(1)}</option>)}
-                </select>
-              </label>
+              <FormOptionPicker
+                label="Owned by"
+                name="entity"
+                options={[{ value: "", label: data.scope.central ? "Any owner" : "Any entity you can see" }, ...data.entities.map((entity) => ({ value: entity, label: entity }))]}
+              />
+              <FormOptionPicker
+                label="Kind of resource"
+                name="type"
+                options={[{ value: "", label: "Any kind" }, ...typeOptions.map(([type, label]) => ({ value: type, label: label[0].toUpperCase() + label.slice(1) }))]}
+              />
               <button className="btn" type="submit">Answer</button>
             </div>
           </form>

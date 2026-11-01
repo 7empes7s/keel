@@ -11795,6 +11795,13 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 
 .change-intent-sentence { font-weight: 600; }
 .pg-table .change-intent-sentence { font-weight: 400; }
+/* Audit C7: who made the change, from the audit log, with a coloured edge by how sure. */
+.change-intent-madeby { display: flex; align-items: start; gap: var(--space-xs); margin: 0; padding: var(--space-xs) var(--space-sm); border-left: 3px solid var(--tone, var(--line)); border-radius: var(--radius-md); background: var(--tone-bg, var(--surface-muted, transparent)); color: var(--text); font-size: 0.8125rem; line-height: 1.4; }
+.change-intent-madeby .icon { flex: none; width: 1rem; height: 1rem; margin-top: 0.0625rem; color: var(--tone, var(--text-soft)); }
+.change-intent-madeby[data-tone="fine"] { --tone: var(--fine); --tone-bg: var(--fine-bg); }
+.change-intent-madeby[data-tone="low"] { --tone: var(--low-risk); --tone-bg: var(--low-risk-bg); }
+.change-intent-pick { display: grid; gap: var(--space-2xs); min-width: 0; }
+.change-intent-pick .field-help { margin: 0; }
 .change-intent-revoke { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 
 @media (max-width: 46rem) {

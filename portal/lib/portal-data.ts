@@ -975,7 +975,7 @@ async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[
   try {
     const { rows } = await client.query(
       // Each wanted id is looked up on its own in the id, app id and role template id
-      // indexes (store/schema.d/91), limited to the backups that saw these changes. The
+      // indexes (store/schema.d/93), limited to the backups that saw these changes. The
       // old form let the planner read every version in those backups and unpack each
       // payload three times: 3 to 4 s on live (operator queue Q305).
       `WITH seen AS MATERIALIZED (

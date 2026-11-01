@@ -202,7 +202,8 @@ test('describeObject never shows an id as a name', () => {
 
 // Backlog B11: a lookup by object id or app id read the payload of every saved version
 // (more than 9 minutes on live, operator queue Q303). It now reads the expression
-// indexes in store/schema.d/91 and still finds an app by its app id, in any case.
+// indexes in store/schema.d/91 (or the ones with the backup, 93) and still finds an
+// app by its app id, in any case.
 test('an app is found by its app id, and a bare id is looked up through the indexes', async () => {
   const APP_ID = 'a9900000-0000-4000-8000-0000000000aa';
   const SP_ID = 'a9900000-0000-4000-8000-0000000000bb';
@@ -225,7 +226,7 @@ test('an app is found by its app id, and a bare id is looked up through the inde
     },
   };
   await lookupNames(explaining, { tenantRef: TENANT, ids: [SP_ID] });
-  assert.match(plans[0], /resource_version_object_id_snapshot_idx/);
-  assert.match(plans[0], /resource_version_app_id_snapshot_idx/);
+  assert.match(plans[0], /resource_version_object_id(_snapshot)?_idx/);
+  assert.match(plans[0], /resource_version_app_id(_snapshot)?_idx/);
   assert.doesNotMatch(plans[0], /Seq Scan on resource_version/);
 });

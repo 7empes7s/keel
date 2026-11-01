@@ -101,7 +101,9 @@ async function countedRead() {
   const original = proto.query;
   let queries = 0;
   proto.query = function counted(this: unknown, ...args: unknown[]) {
-    queries += 1;
+    // A connection the pool opens anew runs "SET jit = off" first; that is not a read.
+    const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string } | undefined)?.text ?? "";
+    if (!/^\s*SET\b/i.test(text)) queries += 1;
     return original.apply(this, args);
   };
   try {

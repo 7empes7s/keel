@@ -256,14 +256,16 @@ test('an object kept in many backups is named from its newest backup, not by rea
   const ids = [id, 'group:Kept', appId.toUpperCase(), 'group:Never', 'dead0000-0000-4000-8000-0000000000dd'];
 
   // On live the tables are large, so the planner reads indexes; here they are small, so
-  // seq scans are switched off to read the same plan. The table's read counters (rows
-  // fetched through an index plus rows read by a scan) count the saved versions read;
+  // seq scans are switched off to read the same plan. The read counters (rows read by a
+  // scan or a bitmap read on the table, rows fetched through each of its indexes) count
+  // the saved versions read;
   // they are flushed before each reading so earlier statements cannot leak in.
   const versionsRead = async () => {
     await client.query('SELECT pg_stat_force_next_flush()');
     await client.query('SELECT pg_stat_clear_snapshot()');
     const { rows: [counts] } = await client.query(
-      "SELECT pg_stat_get_tuples_fetched('resource_version'::regclass) + pg_stat_get_tuples_returned('resource_version'::regclass) AS n");
+      `SELECT pg_stat_get_tuples_fetched('resource_version'::regclass) + pg_stat_get_tuples_returned('resource_version'::regclass)
+              + (SELECT coalesce(sum(pg_stat_get_tuples_fetched(indexrelid)), 0) FROM pg_index WHERE indrelid = 'resource_version'::regclass) AS n`);
     return Number(counts.n);
   };
   await client.query('ANALYZE resource_version, snapshot');
@@ -279,7 +281,7 @@ test('an object kept in many backups is named from its newest backup, not by rea
     await client.query('RESET enable_seqscan');
     await client.query('RESET stats_fetch_consistency');
   }
-  // The old read touched every version of every found id: more than 120 here.
+  // The old read touched every version of every found id: 250 here; this one reads 12.
   assert.ok(read <= 4 * ids.length, `read ${read} saved versions for ${ids.length} ids kept in ${BACKUPS} backups`);
 
   for (const key of [id, 'group:Kept']) {

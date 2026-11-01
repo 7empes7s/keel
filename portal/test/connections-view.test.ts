@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { KEEL_PERMISSIONS } from "../../engine/bootstrap/permissionCatalog.mjs";
 import {
-  connectionAlerts, connectionGroups, connectionStatus, grantRows, grantsFromEarlierCheck, grantSummary,
+  GRANT_LABELS, GRANT_TONES, connectionAlerts, connectionGroups, connectionStatus, grantRows, grantsFromEarlierCheck, grantSummary,
   type Connection,
 } from "../lib/connections-view";
 import type { PermissionEntry } from "../lib/setup-view";
@@ -93,6 +93,11 @@ test("wanted next to granted: missing first, a grant Keel never uses last, roles
   ]);
   assert.equal(rows[0].words, "Read sign-in rules and other policies");
   assert.equal(grantSummary(rows), "2 of 4 granted");
+  // Backlog C4: held but never used is excess privilege, amber, with why and how to remove it.
+  const extra = rows.at(-1)!;
+  assert.equal(GRANT_TONES.extra, "soon");
+  assert.equal(GRANT_LABELS.extra, "Extra access");
+  assert.match(extra.usedFor ?? "", /Nothing in Keel uses this\..*sign-in.*Remove it from the app in Entra ID\./);
 });
 
 test("without a tenant read nothing is called missing or granted", () => {

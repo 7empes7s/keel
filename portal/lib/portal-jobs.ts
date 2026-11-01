@@ -70,6 +70,15 @@ export async function getRecentJobs(
   });
 }
 
+// Every tier backup (on demand or scheduled) that is queued or running now, however many
+// other jobs ran since. The tier cards and buttons show these as "Queued" / "Running".
+export async function getActiveTierJobs(): Promise<JobRecord[]> {
+  return withClient(async (client) => {
+    const rows = (await listJobs(client, { limit: 50, kinds: ["backup", "collect"], statuses: ["queued", "running"] })) as UnknownRecord[];
+    return rows.map(normalizeJob);
+  });
+}
+
 /** Failed restores: the count every page shows (engine/restore/failedRestores.mjs). */
 export async function getFailedRestoreCounts(now = new Date()): Promise<FailedRestoreCounts> {
   return withClient(async (client) => (await countFailedRestores(client, { tenantRef: tenantRef(), now })) as FailedRestoreCounts);

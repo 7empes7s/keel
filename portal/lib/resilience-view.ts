@@ -3,6 +3,7 @@ import type { VerdictTone } from "@/components/verdict";
 import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } from "@/lib/failed-restores";
 import { ago, formatTimestamp, resourceTypeLabel, words } from "@/lib/presentation";
 import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
+import { askServerAdmin, type Contacts } from "@/lib/who-to-ask";
 import { backupHealth, coverageSummary, typeName, type BackupHealth } from "@/lib/protect-view";
 import type { CoverageSummary, CoverageType, OpenFollowUpTotals, StorageResidency } from "@/lib/types";
 
@@ -117,17 +118,18 @@ export interface IncidentPointSummary {
 /**
  * The Entra ID and Intune kinds in the shared coverage buckets (lib/protect-view.ts
  * coverageBuckets), so the row and its alerts count what What's protected and the
- * Overview count. `failed` and `late` name the kinds behind those counts.
+ * Overview count. `failed`, `partial` and `late` name the kinds behind those counts.
  */
 export interface ResilienceKinds {
   summary: CoverageSummary;
   failed: string[];
+  partial: string[];
   late: string[];
 }
 
 export function resilienceKinds(types: readonly CoverageType[]): ResilienceKinds {
   const named = (health: BackupHealth[]) => types.filter((item) => health.includes(backupHealth(item))).map((item) => typeName(item.type)).sort();
-  return { summary: coverageSummary(types), failed: named(["failed"]), late: named(["stale", "never"]) };
+  return { summary: coverageSummary(types), failed: named(["failed"]), partial: named(["partial"]), late: named(["stale", "never"]) };
 }
 
 export interface ResilienceData {
@@ -141,6 +143,9 @@ export interface ResilienceData {
   // Open follow-up work across every restore: the same totals Overview and Restore
   // show. Null when it could not be read.
   followUps: OpenFollowUpTotals | null;
+  // Keel admins by name, for the alerts that need work on the Keel server. Null or
+  // missing when they could not be read: the alerts then name the role.
+  contacts?: Contacts | null;
 }
 
 /** A duration in words: "8 minutes", "2 hours 5 minutes", "3 days". */
@@ -369,7 +374,9 @@ export function serviceBackupSentence(entry: ServiceBackup, now: string): string
   if (!entry.lastGood) {
     return entry.latest ? `Never backed up successfully; the latest try ${entry.latest.outcome === "partial" ? "stopped part way" : "failed"}.${holds}${scope}` : `No backup run recorded yet.${holds}${scope}`;
   }
-  const failedSince = entry.latest && entry.latest.id !== entry.lastGood.id ? " The latest try failed." : "";
+  const failedSince = entry.latest && entry.latest.id !== entry.lastGood.id
+    ? (entry.latest.outcome === "partial" ? " The latest try was only partly done." : " The latest try failed.")
+    : "";
   return `Last good backup ${ago(entry.lastGood.at, now)}.${failedSince}${holds}${scope}`;
 }
 
@@ -462,9 +469,11 @@ function age(at: string | null | undefined, now: string): number {
 export function serviceState(entry: ServiceBackup, now: string): { tone: ResilienceTone; status: string } {
   // A run recorded as "disabled" means the workload's live check switched it off.
   if (!entry.switchedOn || entry.latest?.outcome === "disabled") return { tone: "neutral", status: "Switched off" };
+  // Only ever partly done: amber, never "Never worked" (decision 31 Oct 2026).
+  if (!entry.lastGood && entry.latest?.outcome === "partial") return { tone: "soon", status: "Last try partly done" };
   if (!entry.lastGood) return entry.latest ? { tone: "urgent", status: "Never worked" } : { tone: "soon", status: "Not run yet" };
   if (entry.latest && entry.latest.id !== entry.lastGood.id) {
-    return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try incomplete" : "Last try failed" };
+    return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try partly done" : "Last try failed" };
   }
   if (age(entry.lastGood.at, now) > STALE_MS) return { tone: "soon", status: "Out of date" };
   return { tone: "fine", status: "Backed up" };
@@ -492,7 +501,8 @@ function entraRow(metrics: RecoveryMetrics, kinds: ResilienceKinds, now: string)
   const base = { key: "entra-intune", name: "Users, groups, sign-in rules, devices and apps", what: "Settings" as const, holds: "" };
   const { summary } = kinds;
   const late = summary.stale + summary.neverCollected;
-  if (summary.failed) return { ...base, tone: "urgent", status: `${summary.failed} failed`, last };
+  if (summary.failed) return { ...base, tone: "urgent", status: `${summary.failed} failed${summary.partial ? `, ${summary.partial} partly done` : ""}`, last };
+  if (summary.partial) return { ...base, tone: "soon", status: `${summary.partial} partly done`, last };
   if (late) return { ...base, tone: "soon", status: `${late} out of date or never`, last };
   if (summary.covered) return { ...base, tone: "fine", status: "Backed up", last };
   return { ...base, tone: "soon", status: "Not run yet", last };
@@ -567,7 +577,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
 
   // Entra ID and Intune kinds, counted with the same buckets as What's protected and the
   // Overview. Service settings and content get their alerts from `services` below.
-  const { summary, failed, late } = data.kinds;
+  const { summary, failed, partial, late } = data.kinds;
   if (summary.failed) {
     alerts.push({
       key: "kinds-failed", tone: "urgent", icon: "x-circle",
@@ -575,6 +585,16 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       todo: "Run the backup again. Older copies are kept where there is one.",
       more: failed,
       action: { label: "See failures", href: "/protect?health=failed" },
+    });
+  }
+  // Partly done is its own amber alert, never inside "failed" (decision 31 Oct 2026).
+  if (summary.partial) {
+    alerts.push({
+      key: "kinds-partial", tone: "soon", icon: "alert",
+      title: summary.partial === 1 ? `${partial[0] ?? "1 kind of setting"} was only partly backed up` : `${summary.partial} setting types were only partly backed up`,
+      todo: "Open each one to see what was missed, then run the backup again.",
+      more: partial,
+      action: { label: "See them", href: "/protect?health=partial" },
     });
   }
   const lateCount = summary.stale + summary.neverCollected;
@@ -597,18 +617,31 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       key: "service-never-worked", tone: "urgent", icon: "x-circle",
       title: broken.length === 1 ? `${broken[0].name}: never backed up` : `${broken.length} service backups never worked`,
       todo: "No copy to restore yet. Open the failed runs.",
-      more: broken.map((entry) => `${entry.name}: last try ${entry.latest?.outcome === "partial" ? "stopped part way" : "failed"} ${ago(entry.latest?.at ?? null, now)}`),
+      more: broken.map((entry) => `${entry.name}: last try failed ${ago(entry.latest?.at ?? null, now)}`),
       action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
     });
   }
-  const failedLast = pick(["Last try failed", "Last try incomplete"]);
+  const failedLast = pick(["Last try failed"]);
   if (failedLast.length) {
     alerts.push({
       key: "service-failed-last", tone: "soon", icon: "alert",
       title: failedLast.length === 1 ? `${failedLast[0].name}: last backup failed` : `${failedLast.length} service backups failed last time`,
       todo: "Older copies are kept. Tonight's run tries again.",
-      more: failedLast.map((entry) => `${entry.name}: ${entry.latest?.outcome === "partial" ? "stopped part way" : "failed"} ${ago(entry.latest?.at ?? null, now)}`),
+      more: failedLast.map((entry) => `${entry.name}: failed ${ago(entry.latest?.at ?? null, now)}`),
       action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
+    });
+  }
+  const partialLast = pick(["Last try partly done"]);
+  if (partialLast.length) {
+    alerts.push({
+      key: "service-partial-last", tone: "soon", icon: "alert",
+      title: partialLast.length === 1 ? `${partialLast[0].name}: last backup only partly done` : `${partialLast.length} service backups were only partly done last time`,
+      // Claim older complete copies only when every one of them has one.
+      todo: partialLast.every((entry) => entry.lastGood)
+        ? "Older complete copies are kept. Tonight's run tries again."
+        : `${partialLast.length === 1 ? "There is no complete copy yet" : "Not every one has a complete copy yet"}. Tonight's run tries again.`,
+      more: partialLast.map((entry) => `${entry.name}: partly done ${ago(entry.latest?.at ?? null, now)}${entry.lastGood ? "" : ", no complete copy yet"}`),
+      action: { label: "See them", href: "/activity?what=backup&outcome=partial" },
     });
   }
   const stale = pick(["Out of date"]);
@@ -637,7 +670,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "no-offsite", tone: "soon", icon: "cloud",
       title: "No safe copy outside this server",
-      todo: "Ask your KEEL server admin to fix the daily off-site copy.",
+      todo: askServerAdmin(data.contacts, "fix the daily off-site copy on the Keel server"),
       more: newest ? recoverablePoint.copies.slice(-3).reverse().filter((copy) => !copy.counts).map((copy) => `Copy sent ${ago(copy.shippedAt, now)} does not count: ${offsiteReason(copy)}`) : [],
       action: { label: "Off-site copies", href: "/activity?what=copy" },
     });
@@ -683,7 +716,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "no-drill", tone: "soon", icon: "play",
       title: "No recovery drill yet",
-      todo: "Ask your KEEL server admin to run one. It uses test objects only.",
+      todo: `${askServerAdmin(data.contacts, "run one from the Keel server")} It uses test objects only.`,
       more: [],
       action: null,
     });
@@ -695,7 +728,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "storage", tone: unknown || unsupported ? "soon" : "low", icon: "backup",
       title: unknown ? "Backup storage unknown" : unsupported ? "Backups can be deleted" : "Locked storage not proven",
-      todo: unknown ? "Set the storage details on the KEEL server." : unsupported ? "Move backups to storage that blocks deletion." : "Run the locked-storage check here.",
+      todo: askServerAdmin(data.contacts, unknown ? "record where backups are stored on the Keel server" : unsupported ? "move backups to storage that blocks deletion" : "run the locked-storage check on the Keel server"),
       more: [],
       action: null,
     });

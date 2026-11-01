@@ -12,7 +12,7 @@ export { holdsObjectId };
 // templateFamily: the settings catalog template family the saved copy carries, when it
 // has one; an endpoint security policy made in Intune is listed under Defender.
 // unnamedRefs: what the setting points to that no backup names, each with a lookup link.
-export type NamedKeys = Record<string, { name: string | null; resourceType: string; templateFamily?: string | null; unnamedRefs?: UnnamedReference[] }>;
+export type NamedKeys = Record<string, { name: string | null; resourceType: string; templateFamily?: string | null; builtIn?: boolean | null; unnamedRefs?: UnnamedReference[] }>;
 
 const FAMILY_WORDS: Record<string, string> = { member: "member", owner: "owner" };
 

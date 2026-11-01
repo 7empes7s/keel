@@ -14,7 +14,7 @@ export function DataUnavailable({ surface, service }: { surface: string; service
         <p>
           {service
             ? `Keel could not reach ${service.name} just now. Your other pages still work. If this keeps failing, check the ${service.name} connection.`
-            : "Keel could not read its own records just now. Try again in a minute; if it keeps failing, ask whoever runs Keel to check that it is up."}
+            : "Keel could not read its own records just now. Try again in a minute; if it keeps failing, ask a Keel admin to check that its server is up."}
         </p>
         <div className="form-actions">
           <RetryButton />

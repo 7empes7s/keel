@@ -18,7 +18,8 @@ const worstRank = (group) => {
 /** The group one row falls in, for one grouping. Pure. */
 export function feedGroupOf(entry, by) {
   switch (by) {
-    case 'type': return { key: entry.kind ?? entry.type, label: entry.typeName };
+    // The kind's name, never one row's ("Admin role", not "Built-in admin role").
+    case 'type': return { key: entry.kind ?? entry.type, label: entry.kindName ?? entry.typeName };
     case 'service': return entry.service ? { key: entry.service, label: entry.service } : { key: 'other', label: 'Other' };
     case 'priority': return { key: entry.priority, label: PRIORITY_LABELS[entry.priority] ?? 'Normal' };
     case 'person': {

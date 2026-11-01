@@ -21,7 +21,7 @@ import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
 import { incidentAction } from "@/lib/incident-calls";
 import {
-  ALLOW_EFFECT, CLOSE_EFFECT, HISTORY_HREF, KEPT_HELP, READ_ONLY_LINE, STATES, WINDOW_HELP,
+  ALLOW_EFFECT, CLOSE_EFFECT, HISTORY_HREF, KEPT_HELP, STATES, WINDOW_HELP,
   backupAge, backupName, backupsWord, checkLine, incidentServiceGroups, serviceBackupLine, serviceBackupStatus, serviceGroupWords, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
   personOf, restoreHref, stateChip, stateOf, type BackupState, type StateFilter,
 } from "@/lib/incidents-view";
@@ -33,6 +33,7 @@ import { serviceFor } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { investigatorLine, type Contacts } from "@/lib/who-to-ask";
 
 // Incidents (portal audit, pick B: incident picker at the top). During a breach the
 // newest backup is the one most likely to hold the attacker's changes, so the page
@@ -57,11 +58,17 @@ const TILE_SMALL: Record<StateFilter, string> = {
   kept: "Safe from routine clean-up",
 };
 
-export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
+export function IncidentsPage({ incidents, selected, canInvestigate, now, contacts = null, grantHref = null, investigatorsHref = null }: {
   incidents: IncidentSummary[];
   selected: IncidentDetail | null;
   canInvestigate: boolean;
   now: string;
+  // Who to ask when the reader is not an investigator (null: could not be read).
+  contacts?: Contacts | null;
+  // The reader's own People panel, where they can add the Investigator role (admins only).
+  grantHref?: string | null;
+  // People filtered to investigators, for readers who can open People.
+  investigatorsHref?: string | null;
 }) {
   const router = useRouter();
   const view = useViewState();
@@ -226,7 +233,18 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
             {canInvestigate ? <Link className="btn" href={href({ new: "1" })} onClick={(event) => follow(event, href({ new: "1" }))}><Icon name="plus" />New incident</Link> : null}
           </section>
         )}
-        {!canInvestigate ? <p className="ir-muted">{READ_ONLY_LINE}</p> : null}
+        {!canInvestigate ? (
+          <div className="ir-who" data-who-to-ask="investigator">
+            <Icon name="info" />
+            <p>{investigatorLine(contacts, Boolean(grantHref))}</p>
+            {grantHref || investigatorsHref ? (
+              <span className="ir-who-acts">
+                {grantHref ? <Link className="btn btn-sm" href={grantHref}><Icon name="plus" />Give yourself the Investigator role</Link> : null}
+                {investigatorsHref ? <Link className="btn btn-sm" href={investigatorsHref}>See investigators<Icon name="chevron" /></Link> : null}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {selected && incident ? <>
           <section aria-label="Backups at a glance" className="ir-tiles">

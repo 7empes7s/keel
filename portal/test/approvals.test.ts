@@ -13,6 +13,7 @@ import {
   approveRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
+import { setApprovalMode } from "../../engine/govern/approvalMode.mjs";
 import { verifyChain } from "../../engine/govern/evidence.mjs";
 import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { contentEffectsDigest } from "../../engine/safety/contentEffects.mjs";
@@ -394,12 +395,39 @@ test("a self-authored request is visible but cannot be approved", async () => {
   const listed = await inboxRoute(get("/api/approvals", selfApprover));
   const inbox = await listed.json();
   assert.ok(inbox.pending.some((candidate: { id: string }) => candidate.id === id));
+  // Listed, but not counted as waiting for them: the menu's count and the page's
+  // "Waiting for you" leave out every request the viewer asked for.
+  type Waiting = { requestedBy: string; signoffs: { id: string }[] };
+  const theirs = [...inbox.pending, ...inbox.awaitingContentEffects] as Waiting[];
+  const decidable = theirs.filter((candidate) => candidate.requestedBy !== RESTORER && !candidate.signoffs.some((person) => person.id === RESTORER));
+  assert.ok(decidable.length < theirs.length);
+  assert.equal(inbox.waitingForYou, decidable.length);
+  assert.equal(await getPendingApprovalCount({ central: true, entities: [] }, RESTORER), decidable.length, "the menu badge agrees with the page");
 
   const decision = await approveRoute(
     post(`/api/approvals/${id}/approve`, selfApprover),
   );
   assert.equal(decision.status, 403);
   assert.equal(await jobCount(), jobsBefore, "self approval cannot mint a job");
+});
+
+test("in Solo mode your own request counts as waiting for you, on the page and in the menu", async () => {
+  const id = await createRestoreRequest();
+  const self = { principalId: RESTORER, capabilities: ["restore", "approve"] };
+  await setApprovalMode(client, { tenantRef: tenantRef(), mode: "solo", actor: RESTORER, riskAcknowledged: true });
+  try {
+    const inbox = await (await inboxRoute(get("/api/approvals", self))).json();
+    assert.equal(inbox.approvalMode, "solo");
+    type Waiting = { id: string; requestedBy: string; signoffs: { id: string }[] };
+    const theirs = [...inbox.pending, ...inbox.awaitingContentEffects] as Waiting[];
+    assert.ok(theirs.some((candidate) => candidate.id === id && candidate.requestedBy === RESTORER));
+    // Only requests they already signed wait on someone else in Solo.
+    const decidable = theirs.filter((candidate) => !candidate.signoffs.some((person) => person.id === RESTORER));
+    assert.equal(inbox.waitingForYou, decidable.length);
+    assert.equal(await getPendingApprovalCount({ central: true, entities: [] }, RESTORER), decidable.length, "the menu badge agrees with the page");
+  } finally {
+    await setApprovalMode(client, { tenantRef: tenantRef(), mode: "two-person", actor: RESTORER });
+  }
 });
 
 test("an expired inbox row is history and cannot mint a job", async () => {

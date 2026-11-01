@@ -152,7 +152,7 @@ export function deliveryProblem(delivery: Pick<Delivery, "status" | "last_error"
     return { sentence: "Keel does not send to private or internal addresses.", whatToDo: "Use a public web address, add it as a new channel, then turn this one off." };
   }
   if (/not configured|setting .* is not set|is unset|missing/.test(raw)) {
-    return { sentence: "The server setting that holds its address is not set.", whatToDo: "Ask whoever runs the Keel server to add the setting, then send a test." };
+    return { sentence: "The server setting that holds its address is not set.", whatToDo: "Ask a Keel admin to add the setting on the Keel server, then send a test." };
   }
   // Anything else: a plain sentence only. The provider's own words stay behind "Show details".
   return { sentence: `${who} refused the message.`, whatToDo: retrying ? "Keel tries again on its own." : "Check the address, then send a test." };

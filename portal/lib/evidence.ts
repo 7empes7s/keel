@@ -16,6 +16,18 @@ export interface EvidenceData {
   nextBefore: string | null;
   generatedAt: string;
 }
+/** A stretch of the chain a Keel bug broke, named by an explanation record (engine CHAIN_BREAK_EXPLAINED). */
+export type KnownBreak = {
+  explainedBySeq: string;
+  explainedAt: string;
+  fromSeq: string;
+  throughSeq: string;
+  breakCount: number;
+  cause?: string;
+  fixRef?: string;
+  firstBreakAt?: string;
+  lastBreakAt?: string;
+};
 export type ChainIntegrity = {
   ok: boolean;
   status: "verified" | "broken-at-sequence" | "truncated" | "unanchored";
@@ -26,6 +38,8 @@ export type ChainIntegrity = {
   // Only when there is no usable off-site checkpoint: the record's own chain checked
   // instead, so a broken chain is never shown as merely "not checked".
   ownChain?: "intact" | "broken";
+  // Known, explained breaks the check passed: shown in amber, never as intact.
+  knownBreaks?: KnownBreak[];
 };
 
 /**
@@ -39,8 +53,8 @@ export async function checkAuditRecord(client: unknown, { tenantRef, anchor = {}
 }): Promise<ChainIntegrity> {
   const result = await verifyAnchoredChain(client, { ...anchor, tenantRef, chainCache: cache, authorize: async () => true }) as ChainIntegrity;
   if (result.status !== "unanchored") return result;
-  const own = await getEvidenceIntegrity(client, { tenantRef, chainCache: cache }) as { ok: boolean };
-  return { ...result, ownChain: own.ok ? "intact" : "broken" };
+  const own = await getEvidenceIntegrity(client, { tenantRef, chainCache: cache }) as { ok: boolean; knownBreaks?: KnownBreak[] };
+  return { ...result, ownChain: own.ok ? "intact" : "broken", ...(own.ok && own.knownBreaks?.length ? { knownBreaks: own.knownBreaks } : {}) };
 }
 
 export function guardedEvidenceList(deps: GuardDeps = {}) {

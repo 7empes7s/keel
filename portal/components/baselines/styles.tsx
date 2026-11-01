@@ -241,6 +241,8 @@ const CSS = `
 /* Compare */
 .bl-compare-form { display: grid; gap: var(--space-md); padding: var(--space-lg); }
 .bl-compare-form h2 { margin: 0; font-size: 1.125rem; font-weight: 650; }
+.bl-compare-now { justify-self: start; }
+.bl-compare-now .icon { width: 0.875rem; height: 0.875rem; }
 .bl-quick { display: grid; margin: 0; padding: 0; list-style: none; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
 .bl-quick-link { display: grid; gap: var(--space-2xs); height: 100%; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); }
 .bl-quick-link small { color: var(--text-soft); font-size: 0.8125rem; }

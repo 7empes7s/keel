@@ -163,7 +163,9 @@ test("Nothing checked yet: every empty state names the next step with a button",
   assert.doesNotMatch(operator, /does not run these checks/);
   // Storage not known: tinted, says what to do, and links to the storage section.
   assert.match(operator, /class="cp-storage" data-tone="soon"/);
-  assert.match(operator, /Ask whoever runs the Keel server to record where backups are stored\./);
+  assert.match(operator, /Ask a Keel admin to record where backups are stored on the Keel server\./);
+  const named = await renderComplianceAt("", { data: empty, canConfigure: false, canCheck: true, now: NOW, contacts: { admins: ["Ana Admin"], investigators: [] } });
+  assert.match(named, /Ask Ana Admin \(Keel admin\) to record where backups are stored/);
   assert.match(operator, /href="\/resilience#storage"[^>]*>.*See backup storage<\/a>/);
 
   // A viewer cannot run a check: a link to when backups run, never a dead end.

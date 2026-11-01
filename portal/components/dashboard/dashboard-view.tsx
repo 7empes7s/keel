@@ -142,8 +142,9 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="State" value={data.headline.state} />
           <RecordField copy={false} label="Backed up" value={data.headline.counts.backedUp} />
           <RecordField copy={false} label="Restorable" value={data.headline.counts.restorable} />
-          <RecordField copy={false} label="Failing" usage="failed + stale + never collected" value={data.headline.counts.failing} />
+          <RecordField copy={false} label="Failing" usage="failed + partly done + stale + never collected" value={data.headline.counts.failing} />
           <RecordField copy={false} label="Failed" value={data.headline.counts.failed} />
+          <RecordField copy={false} label="Partly done" value={data.headline.counts.partial} />
           <RecordField copy={false} label="Stale" value={data.headline.counts.stale} />
           <RecordField copy={false} label="Never collected" value={data.headline.counts.neverCollected} />
           <RecordField copy={false} label="Restore proven" usage={data.headline.proof.href} value={data.headline.proof.proven} />
@@ -172,11 +173,12 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
         <RecordGroup title="Coverage">
           <RecordField copy={false} label="Covered" value={data.coverage.covered} />
           <RecordField copy={false} label="Failed" value={data.coverage.failed} />
+          <RecordField copy={false} label="Partly done" value={data.coverage.partial} />
           <RecordField copy={false} label="Stale" value={data.coverage.stale} />
           <RecordField copy={false} label="Not covered" value={data.coverage.notCovered} />
           <RecordField copy={false} label="Never collected" value={data.coverage.neverCollected} />
           <RecordField copy={false} label="Unavailable" value={data.coverage.unavailable} />
-          <RecordField copy={false} label="Total types" usage="sum of the six buckets above" value={data.coverage.total} />
+          <RecordField copy={false} label="Total types" usage="sum of the seven buckets above" value={data.coverage.total} />
         </RecordGroup>
         <RecordGroup title="Audit record">
           <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : "FAILED"} />

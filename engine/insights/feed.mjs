@@ -23,7 +23,7 @@ import { objectNameSql } from '../cir/objectName.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/openDrift.mjs';
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
-import { settingKind, typeInfo } from './taxonomy.mjs';
+import { builtInOf, objectTypeName, settingKind, typeInfo } from './taxonomy.mjs';
 
 export { FEED_GROUPINGS, feedGroupOf, groupChangeFeed } from './feedGroups.mjs';
 
@@ -84,7 +84,9 @@ function priorityOf(info, blastRadius) {
 
 // `kind` is the kind a list files the object under when it differs from its stored type
 // (an Intune antivirus policy is a Defender endpoint security policy, taxonomy settingKind).
-function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null }) {
+// `builtIn` is the object's isBuiltIn flag when its kind holds both built-in and custom
+// objects (an Entra admin role), so the row says which one it is.
+function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null }) {
   const info = typeInfo(kind, service);
   const at = iso(occurredAt);
   return {
@@ -95,7 +97,9 @@ function row({ id, source, occurredAt, type, kind = type, service = null, blastR
     type,
     // The kind the row is listed as; differs from `type` only for a subkind.
     kind,
-    typeName: info.name,
+    // What this object is ("Built-in admin role"); kindName names its kind ("Admin role").
+    typeName: objectTypeName(kind, builtIn, service),
+    kindName: info.name,
     service: info.service ?? service ?? null,
     ...priorityOf(info, blastRadius),
     object,
@@ -122,7 +126,8 @@ const OBJECT_IDS_SQL = `(ARRAY(SELECT lower(m[1]) FROM regexp_matches(CASE WHEN 
 const DRIFT_SQL = `
   SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at,
          ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors,
-         coalesce(r.after_payload->'templateReference'->>'templateFamily', r.before_payload->'templateReference'->>'templateFamily') AS template_family
+         coalesce(r.after_payload->'templateReference'->>'templateFamily', r.before_payload->'templateReference'->>'templateFamily') AS template_family,
+         coalesce(r.after_payload->'isBuiltIn', r.before_payload->'isBuiltIn') AS is_built_in
     FROM drift r
     JOIN snapshot s ON s.id = r.observed_snapshot
     LEFT JOIN LATERAL (
@@ -240,6 +245,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       occurredAt: entry.detected_at,
       type: String(entry.resource_type),
       kind: settingKind(String(entry.resource_type), entry.template_family ?? null),
+      builtIn: builtInOf({ isBuiltIn: entry.is_built_in }),
       blastRadius: entry.blast_radius,
       object: shown(String(entry.resource_type), entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' }),
       change: String(entry.change_type),

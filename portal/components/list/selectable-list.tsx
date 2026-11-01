@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { FindInput } from "@/components/list/find-input";
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { SavedFilters } from "@/components/list/saved-filters";
+import { useBarSpace } from "@/components/list/use-bar-space";
 import { Segmented } from "@/components/pickers/segmented";
 import { StatusBadge } from "@/components/shell/menu";
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -315,6 +316,8 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   // A partial list says its rows are only the loaded ones: "Select all 50 loaded requests".
   const allWords = partial ? `${allIds.length} loaded ${allIds.length === 1 ? noun.one : noun.many}` : plural(allIds.length, noun);
   const tray = keepPicks && pool && count ? picksTray(pool, getId, keepPicks.groupOf, selection.ids) : null;
+  const barRef = useRef<HTMLDivElement>(null);
+  useBarSpace(barRef, Boolean(count && action), selection.anchor);
 
   return (
     <div className="sel-list" data-touch-mode={touchMode || undefined}>
@@ -451,7 +454,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
       </div>
       <ListPager label={label} noun={noun} paging={paging} total={openRows} />
       {count && action ? (
-        <div aria-label="Selection" className="sel-bar" data-tray={tray ? true : undefined} role="region">
+        <div aria-label="Selection" className="sel-bar" ref={barRef} data-tray={tray ? true : undefined} role="region">
           <span className="sel-bar-count"><b>{plural(count, noun)}</b> selected</span>
           {tray ? (
             <span className="sel-tray-sum">

@@ -9,6 +9,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
 import { Segmented } from "@/components/pickers/segmented";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { MissingOpened } from "@/components/list/missing-opened";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
@@ -218,6 +219,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
     <div className="sc-page">
       <Verdict action={verdictAction} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
+        {openId && !opened ? <MissingOpened noun="schedule" onDismiss={() => view.set({ open: null, do: null })} /> : null}
         <section aria-label="Schedules at a glance" className="sc-tiles">
           {tiles.map((tile) => {
             const active = filter.includes(tile.key);

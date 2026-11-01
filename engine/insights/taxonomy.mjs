@@ -22,15 +22,16 @@ import defender from './taxonomy.d/defender.mjs';
 import entra from './taxonomy.d/entra.mjs';
 import exchange from './taxonomy.d/exchange.mjs';
 import intune from './taxonomy.d/intune.mjs';
+import microsoft365Apps from './taxonomy.d/microsoft-365-apps.mjs';
 import powerPlatform from './taxonomy.d/power-platform.mjs';
 import purview from './taxonomy.d/purview.mjs';
 import sharepoint from './taxonomy.d/sharepoint.mjs';
 import teams from './taxonomy.d/teams.mjs';
 
-export const SERVICE_FILES = Object.freeze([defender, entra, exchange, intune, powerPlatform, purview, sharepoint, teams]);
+export const SERVICE_FILES = Object.freeze([defender, entra, exchange, intune, microsoft365Apps, powerPlatform, purview, sharepoint, teams]);
 
 export const SERVICES = Object.freeze([
-  'Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender',
+  'Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender', 'Microsoft 365 apps',
 ]);
 
 /** Most urgent first; sort by index. */
@@ -76,6 +77,10 @@ function build(field) {
         service,
         priority: entry.priority ?? fallback?.priority ?? null,
         priorityReason: entry.reason ?? fallback?.reason ?? null,
+        // A kind that holds both Microsoft's built-in objects and the tenant's own names each
+        // object by its isBuiltIn flag (objectTypeName).
+        ...(entry.builtInName ? { builtInName: entry.builtInName } : {}),
+        ...(entry.customName ? { customName: entry.customName } : {}),
         ...(placed.get(type) ?? { category: OTHER_CATEGORY.key, categoryName: OTHER_CATEGORY.name, categoryRank: OTHER_CATEGORY.rank, typeRank: 0 }),
       });
     }
@@ -141,6 +146,28 @@ export function settingArea(type, templateFamily) {
 export function templateFamilyOf(payload) {
   const family = payload && typeof payload === 'object' ? payload.templateReference?.templateFamily : null;
   return typeof family === 'string' && family ? family : null;
+}
+
+/** An object's isBuiltIn flag (true for a role Microsoft provides), or null when it has none. */
+export function builtInOf(payload) {
+  const flag = payload && typeof payload === 'object' ? payload.isBuiltIn : null;
+  if (typeof flag === 'boolean') return flag;
+  if (flag === 'true' || flag === 'false') return flag === 'true';
+  return null;
+}
+
+/**
+ * What one object is: "Built-in admin role" or "Custom admin role" for an Entra role
+ * definition, by its isBuiltIn flag (`builtIn`, from builtInOf); the kind's name for every
+ * other kind, and when the flag is not known. Lists, filters and groups name the kind
+ * (typeInfo); a row naming one object uses this.
+ * @param {string} type @param {boolean | null | undefined} [builtIn] @param {string | null} [service]
+ */
+export function objectTypeName(type, builtIn = null, service = null) {
+  const info = typeInfo(type, service);
+  if (builtIn === true && info.builtInName) return info.builtInName;
+  if (builtIn === false && info.customName) return info.customName;
+  return info.name;
 }
 
 const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim();

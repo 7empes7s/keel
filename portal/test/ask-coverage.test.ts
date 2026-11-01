@@ -73,17 +73,18 @@ test("failed, partly read, out of date and never backed up kinds land in the sha
     kind("mobileApp", { reportStatus: "never-collected", lastCollectedAt: null, outcome: null, itemCount: null }),
   ];
   const shared = withSharedCoverage(answer(), report(types), NOW);
-  assert.deepEqual(shared.coverage, { covered: 1, failed: 1, stale: 1, neverCollected: 1, notCovered: 0, unavailable: 0, total: 4 });
-  assert.equal(askVerdict(shared).text, "4 types: 1 backed up, 1 failed and 2 out of date or never.");
+  assert.deepEqual(shared.coverage, { covered: 1, failed: 0, partial: 1, stale: 1, neverCollected: 1, notCovered: 0, unavailable: 0, total: 4 });
+  // Partly done is its own count, never inside failed (decision 31 Oct 2026).
+  assert.equal(askVerdict(shared).text, "4 types: 1 backed up, 1 partly done and 2 out of date or never.");
   assert.equal(askVerdict(shared).tone, "attention");
 
   const byType = new Map(shared.records.map((record) => [record.kind === "coverage" ? record.resourceType : "", record]));
-  assert.deepEqual(recordBadges(byType.get("deviceConfiguration")!), [{ label: "Failed", tone: "urgent" }]);
+  assert.deepEqual(recordBadges(byType.get("deviceConfiguration")!), [{ label: "Partly done", tone: "soon" }]);
   assert.match(recordNote(byType.get("deviceConfiguration")!), /read only part of this type \(7 settings seen\)/);
   assert.deepEqual(recordBadges(byType.get("mobileApp")!), [{ label: "Never backed up", tone: "soon" }]);
 
   const summary = coverageAnswerSummary(shared)!;
-  assert.deepEqual(summary.states.map((row) => [row.label, row.count]), [["Failed", 1], ["Out of date or never", 2], ["Backed up", 1]]);
+  assert.deepEqual(summary.states.map((row) => [row.label, row.count]), [["Partly done", 1], ["Out of date or never", 2], ["Backed up", 1]]);
   assert.deepEqual(summary.services.map((row) => [row.label, row.count]), [["Intune", 4]]);
   assert.equal(askTiles(shared).find((tile) => tile.key === "period")?.value, "Latest reads");
 });
@@ -101,7 +102,7 @@ test("service settings take the shared state and keep their settings count; cont
 
   assert.equal(shared.coverage?.total, types.length + workloads.length, "every kind, as What's protected counts them");
   const mailFlow = shared.records.find((record) => record.kind === "coverage" && record.resourceType === "exchange-mail-flow") as CoverageRecord;
-  assert.equal(mailFlow.health, "failed");
+  assert.equal(mailFlow.health, "partial");
   assert.equal(mailFlow.count, 12);
   const teams = shared.records.find((record) => record.kind === "coverage" && record.resourceType === "teams-org-policies") as CoverageRecord;
   assert.equal(teams.health, "not-collected", "a workload with no run yet still gets its row");

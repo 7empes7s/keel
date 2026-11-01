@@ -264,8 +264,8 @@ export function actionName(action: Pick<PolicyAction, "name" | "resource_type">)
 }
 
 /** "Trusted location · Entra ID · changed" */
-export function actionKindLine(action: Pick<PolicyAction, "resource_type" | "change_type"> & Partial<Pick<PolicyAction, "name" | "template_family">>): string {
-  const item = action.resource_type ? { resourceType: action.resource_type, name: action.name ?? null, templateFamily: action.template_family ?? null } : null;
+export function actionKindLine(action: Pick<PolicyAction, "resource_type" | "change_type"> & Partial<Pick<PolicyAction, "name" | "template_family" | "built_in">>): string {
+  const item = action.resource_type ? { resourceType: action.resource_type, name: action.name ?? null, templateFamily: action.template_family ?? null, builtIn: action.built_in ?? null } : null;
   const parts = item ? [itemKindName(item), itemService(item).name] : ["Setting"];
   if (action.change_type) parts.push((CHANGE_WORDS[action.change_type] ?? "Changed").toLowerCase());
   return parts.join(" · ");

@@ -18,6 +18,7 @@ export const SERVICE_WORDS = Object.freeze([
   [/\b(?:microsoft )?purview\b|\bcompliance (?:center|centre|portal)\b|\bsecurity (?:&|and) compliance\b/i, 'Purview'],
   [/\bpower platform\b|\bpower ?apps\b|\bpower automate\b|\bpower ?bi\b|\bfabric\b|\bdataverse\b|\bpower pages\b|\bcopilot studio\b/i, 'Power Platform'],
   [/\b(?:microsoft )?defender(?: xdr)?\b|\bmicrosoft 365 defender\b|\bsecurity center\b|\bmdi\b|\bmdca\b|\bmcas\b/i, 'Defender'],
+  [/\b(?:microsoft|m) ?365 apps? (?:settings?|installation)\b|\boffice apps\b|\bmicrosoft to-?do (?:settings?|app)\b|\btodo settings?\b|\bmicrosoft forms\b/i, 'Microsoft 365 apps'],
 ]);
 
 /**

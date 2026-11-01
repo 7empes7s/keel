@@ -3,7 +3,7 @@
 // Pure helpers, shared by the pages, the UI harness and the tests. "Approved setup" is
 // the reader's word for a baseline (redesign rule 3); ids stay in the record layer.
 import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
-import { typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { objectTypeName, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
@@ -72,15 +72,19 @@ export function changeWord(changeType: DriftRecord["changeType"]): string {
   return changeType === "added" ? "Added" : changeType === "removed" ? "Removed" : "Changed";
 }
 
-/** What one setting is: "Antivirus policy" for an endpoint security policy, else the
+/** What one setting is: "Antivirus policy" for an endpoint security policy, "Built-in
+ * admin role" or "Custom admin role" for an Entra role by its isBuiltIn flag, else the
  * plain name of its kind. */
-export function itemKindName(item: { resourceType: string; templateFamily?: string | null }): string {
+export function itemKindName(item: { resourceType: string; templateFamily?: string | null; builtIn?: boolean | null }): string {
   const area = itemArea(item);
-  return area ? `${area} policy` : plainKind(itemKind(item));
+  if (area) return `${area} policy`;
+  const kind = itemKind(item);
+  const named = objectTypeName(kind, item.builtIn ?? null);
+  return named !== typeInfo(kind).name ? named : plainKind(kind);
 }
 
 /** "Sign-in rule · changed": what the thing is, then what happened to it. */
-export function kindLine(item: Pick<DriftRecord, "resourceType" | "changeType"> & Partial<Pick<DriftRecord, "templateFamily">>): string {
+export function kindLine(item: Pick<DriftRecord, "resourceType" | "changeType"> & Partial<Pick<DriftRecord, "templateFamily" | "builtIn">>): string {
   return `${itemKindName(item)} · ${changeWord(item.changeType).toLowerCase()}`;
 }
 

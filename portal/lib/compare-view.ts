@@ -29,6 +29,8 @@ export interface SettingsItem {
   blastRadius: string | null;
   // The settings catalog template family, when the stored object has one.
   templateFamily?: string | null;
+  // The isBuiltIn flag, when the stored object has one (an Entra admin role).
+  builtIn?: boolean | null;
   fields?: CompareField[];
   fieldsTotal?: number;
 }
@@ -221,15 +223,46 @@ export function compareVerdict(data: CompareData): { text: string; tone: "good" 
   if (data.problem) return { text: "One of the chosen backups is not available. Choose another pair.", tone: "attention" };
   if (!data.result) return { text: "Choose two backups to compare.", tone: "attention" };
   const { total } = differenceTotals(data.result);
-  // Kinds or workloads not compared, objects that cannot be matched across tenants, and
-  // workload resources one side read only in part all leave something unchecked.
-  const workloadGaps = (data.result.workloads?.groups ?? []).reduce((sum, group) => sum + (group.unverified ?? 0) + (group.unmatched ?? 0), 0);
-  const notCompared = (data.result.settings?.totals.notCompared ?? 0) + (data.result.settings?.totals.unmatched ?? 0)
-    + (data.result.workloads?.totals.notCompared ?? 0) + workloadGaps;
+  const gaps = notComparedCounts(data.result).total;
   const two = data.result.portable ? "the two tenants" : "the two backups";
-  if (total === 0 && notCompared === 0) return { text: `Nothing differs between ${two}.`, tone: "good" };
-  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(notCompared, "part")} could not be compared.`, tone: "attention" };
+  if (total === 0 && gaps === 0) return { text: `Nothing differs between ${two}.`, tone: "good" };
+  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(gaps, "type")} ${gaps === 1 ? "was" : "were"} not compared in full.`, tone: "attention" };
   return { text: `${plural(total, "difference")} between ${two}.`, tone: "attention" };
+}
+
+/** Whether a workload was checked: not at all (a side never read it, or every resource
+ *  in it was read only in part), in part (some resources could not be checked), or in full. */
+export type WorkloadStatus = "not-compared" | "partly" | "compared";
+
+export function workloadStatus(group: WorkloadGroup): WorkloadStatus {
+  if (group.state !== "compared") return "not-compared";
+  const checked = (group.added ?? 0) + (group.removed ?? 0) + (group.changed ?? 0) + (group.unchanged ?? 0);
+  const gaps = (group.unverified ?? 0) + (group.unmatched ?? 0);
+  // A side read only in part with nothing checked is not "no differences".
+  const partSide = group.left?.outcome === "partial" || group.right?.outcome === "partial";
+  if (gaps === 0) return checked === 0 && partSide ? "not-compared" : "compared";
+  return checked === 0 ? "not-compared" : "partly";
+}
+
+/** Kinds left out of a comparison, in one unit (kinds), so the verdict, the summary tile
+ *  and each section's own list always add up. A settings kind one side did not read in
+ *  full, a settings kind that cannot be matched across tenants, and a workload not
+ *  compared in full each count once. */
+export function notComparedCounts(result: CompareResult): { settings: number; workloads: number; total: number } {
+  const settings = (result.settings?.notCompared.length ?? 0) + (result.settings?.unmatched.length ?? 0);
+  const workloads = (result.workloads?.groups ?? []).filter((group) => workloadStatus(group) !== "compared").length;
+  return { settings, workloads, total: settings + workloads };
+}
+
+/** A kind group's counts in words. Groups that were never compared never read as
+ *  "no differences": "not compared", or "no differences, 1 not compared". */
+export function kindCountsWords(groups: readonly WorkloadGroup[]): string {
+  const sum = groups.reduce((acc, group) => ({ added: acc.added + (group.added ?? 0), removed: acc.removed + (group.removed ?? 0), changed: acc.changed + (group.changed ?? 0) }), { added: 0, removed: 0, changed: 0 });
+  const skipped = groups.filter((group) => workloadStatus(group) === "not-compared").length;
+  const partly = groups.filter((group) => workloadStatus(group) === "partly").length;
+  if (skipped === groups.length && groups.length) return "not compared";
+  const extra = [skipped ? `${skipped} not compared` : "", partly ? `${partly} compared in part` : ""].filter(Boolean);
+  return [countsWords(sum), ...extra].join(", ");
 }
 
 export const CHANGE_WORDS: Record<ChangeType, string> = { added: "Added", removed: "Removed", changed: "Changed" };
@@ -290,7 +323,19 @@ export function notComparedSentence(entry: { left: string; right: string }): str
 }
 
 export function workloadNotComparedSentence(group: WorkloadGroup): string {
-  if (group.reason === "not-collected") return !group.left ? "Not collected for the first side." : "Not collected for the second side.";
+  if (group.reason === "not-collected") {
+    if (!group.left && !group.right) return "Never backed up on either side, so nothing is compared.";
+    return !group.left ? "Never backed up for the first side, so nothing is compared." : "Never backed up for the second side, so nothing is compared.";
+  }
+  if (group.state === "compared") {
+    const leftPart = group.left?.outcome === "partial";
+    const rightPart = group.right?.outcome === "partial";
+    if (!(group.unverified ?? 0) && (group.unmatched ?? 0)) return "None of its settings could be matched between the two sides, so nothing could be checked.";
+    if (leftPart && rightPart) return "Each side read only part of it, so nothing could be checked.";
+    if (leftPart) return "The first side read only part of it, so nothing could be checked.";
+    if (rightPart) return "The second side read only part of it, so nothing could be checked.";
+    return "None of it could be checked on both sides.";
+  }
   return "A collection on one side failed or is switched off, so nothing is compared.";
 }
 

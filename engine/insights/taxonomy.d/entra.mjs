@@ -16,7 +16,7 @@ export default Object.freeze({
     { key: 'sign-in', name: 'Sign-in rules and methods', types: ['conditionalAccessPolicy', 'namedLocation', 'authenticationStrengthPolicy', 'authenticationContextClassReference', 'authenticationMethodsPolicy', 'identitySecurityDefaultsEnforcementPolicy', 'certificateBasedAuthConfiguration', 'signInIdentifier', 'activityBasedTimeoutPolicy', 'homeRealmDiscoveryPolicy', 'featureRolloutPolicy', 'deviceRegistrationPolicy', 'authenticationEventListener', 'customAuthenticationExtension'], match: /conditionalaccess|namedlocation|authentication(strength|method|context|event)|certificatebasedauth|customauthentication|signin|securitydefaults|homerealm|activitybasedtimeout|featurerollout|deviceregistration/ },
     { key: 'external', name: 'Guests and other tenants', types: ['identityProvider', 'externalDomainFederation', 'crossTenantAccessPolicy', 'crossTenantAccessPolicyConfigurationDefault', 'crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner', 'crossTenantM365Capability', 'multiTenantOrganization', 'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate', 'authenticationFlowsPolicy', 'externalIdentitiesPolicy', 'b2bManagementPolicy', 'b2xIdentityUserFlow', 'identityUserFlowAttribute', 'identityApiConnector'], match: /crosstenant|externalidentit|externaldomain|b2b|b2c|b2x|federation|identityprovider|userflow|apiconnector|authenticationflows|multitenant/ },
     { key: 'governance', name: 'Access reviews and governance', types: ['accessReviewScheduleDefinition', 'accessReviewPolicy', 'directoryRoleAccessReviewPolicy', 'accessPackageCatalog', 'accessPackage', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'accessPackageResourceRoleScope', 'connectedOrganization', 'externalOriginResourceConnector', 'entitlementManagementSettings', 'lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'lifecycleManagementSettings', 'lifecyclePolicy', 'agreement', 'verifiedIdProfile'], match: /accessreview|accesspackage|entitlement|connectedorganization|externalorigin|lifecycle|agreement|termsofuse|verifiedid/ },
-    { key: 'tenant', name: 'Tenant and directory settings', types: ['organization', 'domain', 'sharedEmailDomain', 'subscribedSku', 'authorizationPolicy', 'organizationalBranding', 'organizationalBrandingLocalization', 'attributeSet', 'customSecurityAttributeDefinition', 'schemaExtension', 'deviceTemplate', 'profileCardProperty', 'pronounsSettings', 'formsSettings', 'todoSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings', 'adminReportSettings'], match: /^(organization|domain|subscribedsku|authorizationpolicy|sharedemaildomain|schemaextension|devicetemplate|profilecard|pronouns|formssettings|todosettings|microsoft365apps|appsandservices|adminreportsettings)|branding|customsecurityattribute|attributeset|directorysetting/ },
+    { key: 'tenant', name: 'Tenant and directory settings', types: ['organization', 'domain', 'sharedEmailDomain', 'subscribedSku', 'authorizationPolicy', 'organizationalBranding', 'organizationalBrandingLocalization', 'attributeSet', 'customSecurityAttributeDefinition', 'schemaExtension', 'deviceTemplate', 'profileCardProperty', 'pronounsSettings', 'adminReportSettings'], match: /^(organization|domain|subscribedsku|authorizationpolicy|sharedemaildomain|schemaextension|devicetemplate|profilecard|pronouns|adminreportsettings)|branding|customsecurityattribute|attributeset|directorysetting/ },
   ]),
   // Links between objects (who is in a group, who owns an app), as edge changes store
   // them (engine/govern/diffSnapshots.mjs). They are not catalogue types, so they live
@@ -53,7 +53,9 @@ export default Object.freeze({
 
     // admin roles
     directoryRole: { name: 'Built-in admin role' },
-    roleDefinition: { name: 'Custom admin role' },
+    // Holds Microsoft's built-in roles and the tenant's own. The kind reads as "Admin role";
+    // one role reads as built-in or custom by its isBuiltIn flag (taxonomy objectTypeName).
+    roleDefinition: { name: 'Admin role', builtInName: 'Built-in admin role', customName: 'Custom admin role' },
     directoryRoleTemplate: { name: 'Admin role template' },
     roleAssignment: { name: 'Admin role assignment' },
     roleEligibilitySchedule: { name: 'Eligible admin role' },
@@ -135,10 +137,6 @@ export default Object.freeze({
     engageCommunity: { name: 'Viva Engage community' },
     profileCardProperty: { name: 'Profile card field' },
     pronounsSettings: { name: 'Pronouns setting' },
-    formsSettings: { name: 'Microsoft Forms setting' },
-    todoSettings: { name: 'Microsoft To Do setting' },
-    microsoft365AppsInstallationOptions: { name: 'Microsoft 365 Apps installation option' },
-    appsAndServicesSettings: { name: 'User owned apps and services setting' },
     adminReportSettings: { name: 'Usage report privacy setting' },
   }),
 });

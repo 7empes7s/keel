@@ -46,8 +46,11 @@ test("kinds not placed in a service yet get their own line instead of being hidd
   // Every unplaced kind shares one "Other services" tile.
   assert.equal(statuses.length, SERVICES.length);
   assert.equal(statuses.filter((status) => status.name === "Other services").length, 1);
-  assert.deepEqual([statuses[0].name, statuses[0].label], ["Other services", "Failing"]);
+  // A partly done read is amber "Partly done", never "Failing" (decision 31 Oct 2026).
+  assert.deepEqual([statuses[0].name, statuses[0].label, statuses[0].tone], ["Other services", "Partly done", "soon"]);
+  assert.match(statuses[0].backup.text, /^1 type partly done, 1 of 2 backed up$/);
   assert.match(statuses[0].blocker!.text, /read only part of it/);
+  assert.match(statuses[0].blocker!.fix!.href, /health=partial$/);
 });
 
 test("a service line says what backed up, what Keel can put back, the last good read and the fix", () => {

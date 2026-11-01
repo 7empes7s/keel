@@ -25,7 +25,7 @@ import {
   NOT_RUN_YET,
   RESULTS,
   canFixOn,
-  STORAGE_UNSET_TODO,
+  storageUnsetTodo,
   canGrantOn,
   complianceCounts,
   complianceScore,
@@ -63,6 +63,7 @@ import { toast } from "@/lib/toast";
 import type { ComplianceData, ComplianceFinding, OwnCheckChoices, ScubaListsView } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
 import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import type { Contacts } from "@/lib/who-to-ask";
 
 // Compliance (portal audit, pick A on a desktop, B on a phone): which security controls
 // pass, and why. Four count tiles (Failing, With exception, Could not check, Passing)
@@ -83,7 +84,7 @@ const TILES: { key: ControlResult; small: string; always: boolean }[] = [
 ];
 const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
-export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt, ownChoices = null, scubaLists = null }: {
+export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt, ownChoices = null, scubaLists = null, contacts = null }: {
   data: ComplianceData;
   canConfigure: boolean;
   // The tenant's ScubaGear lists; null when they could not be read.
@@ -93,6 +94,8 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   // Holds `collect`, the permission that runs backups: offered "Check now".
   canCheck?: boolean;
   canRestore?: boolean;
+  // Keel admins by name, for "who to ask" while backup storage is not recorded.
+  contacts?: Contacts | null;
   now?: string;
 }) {
   const router = useRouter();
@@ -337,7 +340,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
           <span aria-hidden="true" className="cp-storage-icon"><Icon name="cloud" /></span>
           <p>
             <b>{storageSentence(storage)}</b>{storage.configured ? ` ${immutabilitySentence(storage)}` : null}
-            {storage.configured ? null : <small className="cp-storage-todo">{STORAGE_UNSET_TODO}</small>}
+            {storage.configured ? null : <small className="cp-storage-todo">{storageUnsetTodo(contacts)}</small>}
           </p>
           {storage.configured ? null : <Link className="btn btn-sm" href="/resilience#storage"><Icon name="backup" />See backup storage</Link>}
           <span className="cp-help" tabIndex={0} title={NOT_A_CERTIFICATION}><Icon name="info" /><span className="visually-hidden">{NOT_A_CERTIFICATION}</span></span>

@@ -12,13 +12,14 @@ import { itemKindName, itemService } from "@/lib/baselines-view";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import { recordsNoChange } from "../../engine/store/openDrift.mjs";
-import { templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
+import { builtInOf, templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
 import type { UnnamedReference } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { savedNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type EngineRef, type RowReferences } from "@/lib/sentences";
+import { splitWaiting } from "@/lib/approval-view";
 
 export const APPROVAL_INBOX_CAPABILITY = "approve";
 export const APPROVAL_INBOX_LIMIT = 100;
@@ -186,8 +187,8 @@ function keyType(naturalKey: string): string {
 
 /** One setting a preview lists: its stored type, and the template family its saved copy
  * carries (an Intune antivirus policy is a Defender setting). */
-function keyItem(key: string, names: NamedKeys): { resourceType: string; templateFamily: string | null } {
-  return { resourceType: names[key]?.resourceType ?? keyType(key), templateFamily: names[key]?.templateFamily ?? null };
+function keyItem(key: string, names: NamedKeys): { resourceType: string; templateFamily: string | null; builtIn: boolean | null } {
+  return { resourceType: names[key]?.resourceType ?? keyType(key), templateFamily: names[key]?.templateFamily ?? null, builtIn: names[key]?.builtIn ?? null };
 }
 
 function servicesOf(items: { resourceType: string; templateFamily?: string | null }[]): ApprovalPreview["services"] {
@@ -200,8 +201,12 @@ function servicesOf(items: { resourceType: string; templateFamily?: string | nul
 }
 
 /** A drift row as a listed setting: its type and the template family either copy carries. */
-function driftItem(row: UnknownRecord): { resourceType: string; templateFamily: string | null } {
-  return { resourceType: String(row.resource_type), templateFamily: templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload) };
+function driftItem(row: UnknownRecord): { resourceType: string; templateFamily: string | null; builtIn: boolean | null } {
+  return {
+    resourceType: String(row.resource_type),
+    templateFamily: templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload),
+    builtIn: builtInOf(row.after_payload) ?? builtInOf(row.before_payload),
+  };
 }
 
 // A roll back puts each changed setting back as the approved setup holds it: "now" is
@@ -366,10 +371,12 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
   });
 }
 
-// The sidebar badge and the Overview: how many requests and content effects wait on an
-// approver. Callers check approvalInboxAccess first; this reads only the count, never
-// request detail.
-export async function getPendingApprovalCount(scope: EntityScope = CENTRAL_SCOPE): Promise<number> {
+// The sidebar badge and the Overview: how many requests and content effects wait on
+// this viewer. Requests the viewer already signed, or asked for while approvals need two
+// people (not in Solo mode), wait on someone else and are left out, by the same rule
+// the page's "Waiting for you" uses. Callers check
+// approvalInboxAccess first; this reads only the count, never request detail.
+export async function getPendingApprovalCount(scope: EntityScope = CENTRAL_SCOPE, viewerId: string | null = null): Promise<number> {
   return withClient(async (client) => {
     const pending = await listApprovalRequests(client, {
       statuses: ["pending"],
@@ -380,6 +387,18 @@ export async function getPendingApprovalCount(scope: EntityScope = CENTRAL_SCOPE
     const decided = scope.central
       ? await listApprovalRequests(client, { statuses: ["approved", "rejected", "expired"], limit: APPROVAL_INBOX_LIMIT, approverScope: scope })
       : [];
-    return pending.length + (await awaitingContentEffectIds(client, scope, decided)).size;
+    const awaiting = await awaitingContentEffectIds(client, scope, decided);
+    const waiting = [...pending, ...decided.filter((row: UnknownRecord) => awaiting.has(String(row.id)))].map(decidableShape);
+    const { mode } = (await getApprovalMode(client, { tenantRef: tenantRef() })) as { mode: "two-person" | "solo" };
+    return splitWaiting(waiting, viewerId, mode).forYou.length;
   });
+}
+
+/** What viewerCanDecide reads, from a raw engine row. */
+function decidableShape(row: UnknownRecord): { requestedBy: string; status: string; signoffs: { id: string }[] } {
+  return {
+    requestedBy: String(row.requested_by),
+    status: String(row.effective_status ?? row.status),
+    signoffs: ((row.signoffs as unknown[] | null) ?? []).map((id) => ({ id: String(id) })),
+  };
 }

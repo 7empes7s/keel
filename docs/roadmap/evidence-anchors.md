@@ -116,3 +116,24 @@ individually, or the production publication gate now fails its boundary test
 The three plan-required mutations were also killed independently (14 passed,
 1 failed each). All eight mutations were restored byte-for-byte before final
 validation, and the boundary suite passes all 15 tests.
+
+## Known breaks (explained by a record, never repaired)
+
+On 31 Oct 2026 the accept path wrote 881 records without the tenant lock and without
+moving `evidence_head` (fixed in PR #876). The chain broke at 903 records between seq
+425262 and 428902, and the stored `record_count` fell 881 behind. Old records are never
+edited. Instead:
+
+- `keel-govern.mjs evidence explain-break --from <seq> --through <seq> --cause <text>
+  --fix <ref> --principal-id <admin>` walks the chain under the tenant lock and appends
+  one `chain-break-explained` record through the normal writer. It refuses (writes
+  nothing) unless every break is inside the stretch, each broken record is consistent
+  with its own `prev_hash`, and that `prev_hash` is an earlier record's hash (a stale
+  head, which is what the bug wrote). Without `--confirm` it only prints the plan.
+- `verifyChain` then passes a listed break only with that same shape, and checks
+  `record_count` against the head plus the shortfall the record names. Any other break,
+  an edit inside the stretch, or a hand-written explanation with a bad stretch still
+  fails. The result is `{ ok: true, knownBreaks: [...] }`.
+- The portal shows "Known break, explained" in amber (Check soon) on the Overview, the
+  menu, Activity and Integrations, with the details behind "Show details". A failed
+  check still outranks it.

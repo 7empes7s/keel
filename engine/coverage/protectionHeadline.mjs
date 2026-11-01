@@ -5,7 +5,7 @@
 // (engine/coverage/report.mjs buildCoverageReport().types) and the restore-drill
 // evidence it already carries. Never a constant, and honest when the data is absent:
 //
-//  - collection failing, stale or never run for some type:
+//  - collection failing, partly done, stale or never run for some type:
 //      "3 configuration types have not been backed up since 1 Oct 2026."
 //  - a restore has been proven on this tenant (fidelity-drill evidence):
 //      "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026."
@@ -20,7 +20,8 @@
 // (restoreProof.mjs), the same rule every page's "Restore proven" number uses. "Not covered"
 // types (no collector exists) are a coverage gap reported elsewhere, not a failure,
 // and so are types Microsoft refused for a missing licence or tenant feature
-// (outcome "unavailable").
+// (outcome "unavailable"). A type whose last read was only partly done (status
+// 'partial') needs attention but is its own count, never a failure.
 
 import { canRestore, hasRestoreWriter, restoreProofSummary } from './restoreProof.mjs';
 
@@ -41,12 +42,12 @@ function plural(count, one, many) {
  *   fidelity?: { declared?: string | null, verifiedBy?: { at?: string | Date, measuredFidelity?: string | null } | null } }>} types
  * @returns {{ state: 'collection' | 'proven' | 'unproven', tone: 'good' | 'attention' | 'critical', headline: string,
  *   sentence: string, action: { label: string, href: string } | null, counts: { backedUp: number, restorable: number,
- *   failing: number, failed: number, stale: number, neverCollected: number },
+ *   failing: number, failed: number, partial: number, stale: number, neverCollected: number },
  *   proof: ReturnType<typeof restoreProofSummary>, lastProvenRestoreAt: string | null, failingSince: string | null }}
  */
 export function protectionHeadline(types) {
   const failing = types.filter((entry) => (entry.status === 'failed' && entry.outcome !== 'unavailable')
-    || entry.status === 'never-collected' || (entry.status === 'covered' && entry.stale === true));
+    || entry.status === 'partial' || entry.status === 'never-collected' || (entry.status === 'covered' && entry.stale === true));
   const backedUp = types.filter((entry) => entry.status === 'covered' && entry.stale !== true);
   const restorableTypes = backedUp.filter(canRestore);
   // "Restore proven" has one definition (restoreProof.mjs): the Overview tile, What's
@@ -55,6 +56,7 @@ export function protectionHeadline(types) {
   const lastProven = proof.lastProvenAt ? new Date(proof.lastProvenAt) : null;
   const neverCollected = failing.filter((entry) => entry.status === 'never-collected');
   const failed = failing.filter((entry) => entry.status === 'failed');
+  const partial = failing.filter((entry) => entry.status === 'partial');
   const stale = failing.filter((entry) => entry.status === 'covered');
   // Only a stale type has a known last GOOD backup; a failed type's timestamp is the
   // failed attempt, so it never feeds "since".
@@ -64,7 +66,7 @@ export function protectionHeadline(types) {
   const failingSince = staleTimes.length ? new Date(Math.min(...staleTimes.map((at) => at.getTime()))) : null;
   const counts = {
     backedUp: backedUp.length, restorable: restorableTypes.length, failing: failing.length,
-    failed: failed.length, stale: stale.length, neverCollected: neverCollected.length,
+    failed: failed.length, partial: partial.length, stale: stale.length, neverCollected: neverCollected.length,
   };
   const base = { counts, proof, lastProvenRestoreAt: lastProven?.toISOString() ?? null, failingSince: failingSince?.toISOString() ?? null };
 
@@ -75,8 +77,16 @@ export function protectionHeadline(types) {
     else if (neverCollected.length === failing.length) sentence = `${subject} never been backed up.`;
     else if (failed.length === failing.length) {
       sentence = `${plural(failed.length, 'configuration type', 'configuration types')} failed ${failed.length === 1 ? 'its' : 'their'} last backup.`;
+    } else if (partial.length === failing.length) {
+      sentence = `${plural(partial.length, 'configuration type was', 'configuration types were')} only partly backed up last time.`;
     } else {
-      sentence = `${subject} no current backup; the last backup failed for ${failed.length.toLocaleString('en-GB')} of them.`;
+      const parts = [
+        ...(failed.length ? [`failed for ${failed.length.toLocaleString('en-GB')}`] : []),
+        ...(partial.length ? [`was only partly done for ${partial.length.toLocaleString('en-GB')}`] : []),
+      ];
+      sentence = parts.length
+        ? `${subject} no ${partial.length ? 'complete, ' : ''}current backup; the last backup ${parts.join(' and ')} of them.`
+        : `${subject} no current backup.`;
     }
     return {
       ...base,

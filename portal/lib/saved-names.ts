@@ -33,7 +33,8 @@ export async function savedNames(client: QueryClient, tenantRef: string, keys: (
   const { rows } = await client.query(
     `SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, ${NAME_SQL} AS name,
             CASE WHEN rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
-            rv.payload->'templateReference'->>'templateFamily' AS template_family
+            rv.payload->'templateReference'->>'templateFamily' AS template_family,
+            rv.payload->'isBuiltIn' AS is_built_in
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
       WHERE s.tenant_ref = $1 AND rv.natural_key = ANY($2::text[])
@@ -51,6 +52,7 @@ export async function savedNames(client: QueryClient, tenantRef: string, keys: (
       name: row.name == null ? null : String(row.name),
       resourceType: type,
       ...(typeof row.template_family === "string" && row.template_family ? { templateFamily: row.template_family } : {}),
+      ...(typeof row.is_built_in === "boolean" ? { builtIn: row.is_built_in } : {}),
     };
     if (row.name == null && (DERIVED_NAME_TYPES as readonly string[]).includes(type)) unnamed.push({ key, type, payload: row.payload });
   }

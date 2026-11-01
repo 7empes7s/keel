@@ -13,7 +13,6 @@ import type { Ref } from "@/lib/types";
 
 export const DESCRIPTION = "During a security incident, restore from a backup an investigator has checked, not simply the newest one.";
 export const KEPT_HELP = "Being kept does not mean it is clean.";
-export const READ_ONLY_LINE = "Only investigators can change incidents.";
 export const WINDOW_HELP = "Attack windows cannot be edited, because checks are tied to them. Add a new one if you learn more.";
 export const CLOSE_EFFECT = "Closing stops new checks, keeps and permissions. Backups you kept stay kept until you let them go. The incident stays as a record.";
 export const ALLOW_EFFECT = "Someone else must still ask for the restore, and approvers see your reason.";
@@ -307,7 +306,8 @@ export function serviceBackupLine(entry: IncidentServiceBackup, now: string): st
 
 // The services whose backups an investigator does not check: every Microsoft 365
 // service but Entra ID and Intune (their tenant backups are the list's rows) and Keel.
-const CHECKED_SERVICES = new Set(["entra", "intune"]);
+// Microsoft 365 apps org settings (To Do, Forms) are read in the same tenant backup.
+const CHECKED_SERVICES = new Set(["entra", "intune", "microsoft 365 apps"]);
 export const OTHER_SERVICES: readonly CloudService[] = SERVICES.filter((service) => service.code !== "Keel" && !CHECKED_SERVICES.has(service.code.toLowerCase()));
 
 export interface IncidentServiceGroup {

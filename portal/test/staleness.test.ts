@@ -41,6 +41,7 @@ function coverageData(type: CoverageType): CoverageData {
     summary: {
       covered: type.stale ? 0 : 1,
       failed: 0,
+      partial: 0,
       notCovered: 0,
       neverCollected: 0,
       unavailable: 0,
@@ -72,6 +73,7 @@ function dashboardData(stale: number): Pick<
     coverage: {
       covered: 1 - stale,
       failed: 0,
+      partial: 0,
       notCovered: 0,
       neverCollected: 0,
       unavailable: 0,

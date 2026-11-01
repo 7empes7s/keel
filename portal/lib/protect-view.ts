@@ -102,13 +102,16 @@ export function standingSentence(item: CoverageType): string {
   }
 }
 
-export type BackupHealth = "ok" | "empty" | "failed" | "stale" | "never" | "not-collected" | "unavailable";
+export type BackupHealth = "ok" | "empty" | "partial" | "failed" | "stale" | "never" | "not-collected" | "unavailable";
 
 export function backupHealth(item: CoverageType): BackupHealth {
   if (item.protectionState === "not-covered" || !item.adapter) return "not-collected";
   // Microsoft refused the read for a missing licence or tenant feature (#309): not a failure.
   if (item.outcome === "unavailable") return "unavailable";
-  if (item.protectionState === "failed" || item.outcome === "failed" || item.outcome === "partial") return "failed";
+  // Only part of the type could be read: its own amber "Partly done", never "Failed"
+  // (decision 31 Oct 2026). Some items are backed up; the rest are missing.
+  if (item.outcome === "partial") return "partial";
+  if (item.protectionState === "failed" || item.outcome === "failed") return "failed";
   if (item.reportStatus === "never-collected" || !item.lastCollectedAt) return "never";
   if (item.stale) return "stale";
   return item.outcome === "complete-empty" || item.itemCount === 0 ? "empty" : "ok";
@@ -134,10 +137,10 @@ export function backupSentence(item: CoverageType, now: string): string {
       : "Not backed up: no collector exists for this type yet.";
     case "unavailable": return "Not available on this tenant: Microsoft needs a licence or tenant feature this tenant does not have.";
     case "never": return item.outcome === "not-requested" ? "Not part of the latest backup run." : "Never backed up yet.";
+    case "partial":
+      return `Partly done: the last backup read only part of this type${item.itemCount === null ? "" : ` (${item.itemCount.toLocaleString("en-GB")} settings seen)`}, so some settings are missing.`;
     case "failed":
-      return item.outcome === "partial"
-        ? `The last backup read only part of this type${item.itemCount === null ? "" : ` (${item.itemCount.toLocaleString("en-GB")} settings seen)`}, so it counts as failed.`
-        : `The last backup failed${item.lastCollectedAt ? ` ${ago(item.lastCollectedAt, now)}` : ""}.`;
+      return `The last backup failed${item.lastCollectedAt ? ` ${ago(item.lastCollectedAt, now)}` : ""}.`;
     case "stale": return `Out of date: last backed up ${ago(item.lastCollectedAt, now)}, longer ago than its tier allows.`;
     case "empty": return `Backed up ${ago(item.lastCollectedAt, now)} with no settings; an empty result counts as a successful backup.`;
     case "ok": return `Backed up ${ago(item.lastCollectedAt, now)}${items(item.itemCount)}.`;
@@ -188,6 +191,26 @@ export function workloadLiveLines(data: CoverageData): string[] {
     : `${record.label}: not proven on this tenant. A live run was recorded but does not count: ${record.reason ?? "it did not pass its checks"}.`);
 }
 
+const andList = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+/**
+ * One note for every workload live record, so the top of the page carries one
+ * "proven on this tenant" line, not one per record. `lines` (dates and reasons) sit
+ * behind a click.
+ */
+export function workloadLiveNote(data: CoverageData): { summary: string; lines: string[] } | null {
+  const records = data.liveEvidence?.workloads ?? [];
+  if (!records.length) return null;
+  const live = records.filter((record) => record.live).map((record) => record.label);
+  const waiting = records.filter((record) => !record.live).map((record) => record.label);
+  const parts: string[] = [];
+  if (live.length) parts.push(`Restore proven on this tenant by a live run: ${andList(live)}.`);
+  if (waiting.length) {
+    parts.push(`${live.length ? "Not proven yet" : "Restore not proven on this tenant yet"}: ${andList(waiting)}. ${waiting.length === 1 ? "Its live run does" : "Their live runs do"} not count yet.`);
+  }
+  return { summary: parts.join(" "), lines: workloadLiveLines(data) };
+}
+
 /** The recovery decision and whether references are rewritten when an ID changes. */
 export function recoveryDecisionSentence(item: CoverageType): string | null {
   const decision = item.qualification;
@@ -209,9 +232,9 @@ export interface ProtectProblem {
   tier: string | null;
 }
 
-/** Failed, out-of-date and never-backed-up types, by name, worst first. */
+/** Failed, partly done, out-of-date and never-backed-up types, by name, worst first. */
 export function protectProblems(data: CoverageData, now: string): ProtectProblem[] {
-  const order: BackupHealth[] = ["failed", "stale", "never"];
+  const order: BackupHealth[] = ["failed", "partial", "stale", "never"];
   return data.types
     .filter((item) => order.includes(backupHealth(item)))
     .sort((a, b) => order.indexOf(backupHealth(a)) - order.indexOf(backupHealth(b)) || a.type.localeCompare(b.type))
@@ -226,9 +249,14 @@ function plural(count: number, one: string, many: string): string {
 export function protectVerdict(data: CoverageData, now: string): { text: string; tone: "good" | "attention" | "critical" } {
   const health = data.types.map(backupHealth);
   const failed = health.filter((value) => value === "failed").length;
+  const partial = health.filter((value) => value === "partial").length;
   const stale = health.filter((value) => value === "stale").length;
   const never = health.filter((value) => value === "never").length;
-  if (failed) return { text: `${plural(failed, "type", "types")} failed ${failed === 1 ? "its" : "their"} last backup.`, tone: "critical" };
+  if (failed) {
+    const also = partial ? ` ${plural(partial, "more was", "more were")} only partly backed up.` : "";
+    return { text: `${plural(failed, "type", "types")} failed ${failed === 1 ? "its" : "their"} last backup.${also}`, tone: "critical" };
+  }
+  if (partial) return { text: `${plural(partial, "type was", "types were")} only partly backed up: some settings are missing.`, tone: "attention" };
   if (stale) return { text: `${plural(stale, "type has", "types have")} not been backed up recently enough.`, tone: "attention" };
   if (never) return { text: `${plural(never, "type has", "types have")} never been backed up.`, tone: "attention" };
   const collected = data.types.filter((item) => item.lastCollectedAt && backupHealth(item) !== "unavailable");
@@ -268,6 +296,48 @@ export function nextRunSentence(schedule: Pick<Schedule, "enabled" | "next_due_a
   return due === "already passed" ? "Next run is due now." : `Next run ${due}.`;
 }
 
+/** A tier's backup that is waiting for a worker or running now, on demand or scheduled. */
+export interface ActiveTierRun {
+  jobId: string;
+  status: "queued" | "running";
+  since: string | null;
+}
+
+export type ActiveTierRuns = Record<string, ActiveTierRun>;
+
+/** Each tier's queued or running backup, from recent jobs. A running job wins over a
+ *  queued one; otherwise the oldest, which is the one the server hands back to a second
+ *  press. */
+// Matches engine/jobs/queue.mjs ORPHANED_HEARTBEAT_STALE_MS: a running job whose worker
+// has not checked in for this long died, and does not hold its tier's buttons off.
+const STALE_HEARTBEAT_MS = 120_000;
+
+export function activeTierRuns(jobs: { id: string; kind: string; status: string; params: unknown; createdAt: string | null; startedAt: string | null; heartbeatAt?: string | null }[], now?: string): ActiveTierRuns {
+  const runs: ActiveTierRuns = {};
+  const ordered = [...jobs].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  for (const job of ordered) {
+    if (job.kind !== "backup" && job.kind !== "collect") continue;
+    if (job.status !== "queued" && job.status !== "running") continue;
+    if (job.status === "running" && now && (!job.heartbeatAt || new Date(now).valueOf() - new Date(job.heartbeatAt).valueOf() > STALE_HEARTBEAT_MS)) continue;
+    const tier = (job.params as { tier?: unknown } | null)?.tier;
+    if (typeof tier !== "string") continue;
+    const current = runs[tier];
+    if (current && (current.status === "running" || job.status === "queued")) continue;
+    runs[tier] = { jobId: job.id, status: job.status, since: job.status === "running" ? job.startedAt ?? job.createdAt : job.createdAt };
+  }
+  return runs;
+}
+
+/** The card's line for a run in progress. */
+export function activeRunSentence(run: ActiveTierRun, now: string): string {
+  // A run queued after the page was read is "just now", never "in the future".
+  const at = run.since && new Date(run.since).valueOf() > new Date(now).valueOf() ? now : run.since;
+  if (!at) return run.status === "running" ? "Running now." : "Queued; it starts when a worker is free.";
+  return run.status === "running"
+    ? `Running now, started ${ago(at, now)}.`
+    : `Queued ${ago(at, now)}; it starts when a worker is free.`;
+}
+
 export interface TierSummary {
   id: string;
   label: string;
@@ -278,27 +348,39 @@ export interface TierSummary {
   failed: boolean;
   // The last run finished but some types were not read in full: a warning, not fine.
   partial: boolean;
+  // A backup of this tier that is queued or running right now.
+  active?: ActiveTierRun | null;
 }
 
-/** One card per tier: when it runs next and how its last run ended. */
-export function tierSummaries(schedules: Schedule[], now: string): TierSummary[] {
+/** One card per tier: when it runs next, how its last run ended, and any run in progress. */
+export function tierSummaries(schedules: Schedule[], now: string, active: ActiveTierRuns = {}): TierSummary[] {
   return TIERS.map((tier) => {
     const schedule = schedules.find((entry) => (entry.job_kind === "collect" || entry.job_kind === "backup") && entry.tier === tier.id) ?? null;
+    const run = active[tier.id] ?? null;
+    // While a run is in progress the schedule's own "Running now" line would repeat it.
+    const scheduleRunning = schedule?.last_status === "running" || schedule?.last_status === "queued";
     return {
       id: tier.id, label: tier.label, description: tier.description, schedule,
       next: schedule ? nextRunSentence(schedule, now) : "No schedule; back it up on demand.",
-      last: schedule ? lastRunSentence(schedule, now) : "",
+      last: schedule && !(run && scheduleRunning) ? lastRunSentence(schedule, now) : "",
       failed: schedule?.last_status === "failed",
       partial: schedule?.last_status === "partial",
+      active: run,
     };
   });
 }
 
 // The What's protected page (portal audit: grouped list on a desktop, service cards on a phone).
 // Health in four words a tile and a badge can share; tones are risk colours only.
-export type HealthFilter = "backed-up" | "failed" | "out-of-date" | "proven";
+export type HealthTile = "backed-up" | "failed" | "partial" | "out-of-date" | "proven";
+// Filters with no tile of their own: the parts the sum line under the tiles counts, which
+// Overview's ring and banner link to ("Not backed up by Keel yet", "Not on this tenant").
+export type HealthLink = "not-backed-up" | "not-on-tenant";
+export type HealthFilter = HealthTile | HealthLink;
 
-export const HEALTH_FILTERS: HealthFilter[] = ["backed-up", "failed", "out-of-date", "proven"];
+export const HEALTH_TILE_KEYS: HealthTile[] = ["backed-up", "failed", "partial", "out-of-date", "proven"];
+export const HEALTH_LINK_KEYS: HealthLink[] = ["not-backed-up", "not-on-tenant"];
+export const HEALTH_FILTERS: HealthFilter[] = [...HEALTH_TILE_KEYS, ...HEALTH_LINK_KEYS];
 
 export function isHealthFilter(value: string): value is HealthFilter {
   return (HEALTH_FILTERS as string[]).includes(value);
@@ -309,7 +391,11 @@ export function matchesHealth(item: CoverageType, filter: HealthFilter): boolean
   switch (filter) {
     case "backed-up": return health === "ok" || health === "empty";
     case "failed": return health === "failed";
+    case "partial": return health === "partial";
     case "out-of-date": return health === "stale" || health === "never";
+    // The coverage buckets' notCollected and unavailable (coverageBuckets below).
+    case "not-backed-up": return health === "not-collected";
+    case "not-on-tenant": return health === "unavailable";
     case "proven": return restoreProof(item) === "proven";
   }
 }
@@ -320,6 +406,7 @@ export const HEALTH_BADGE: Record<BackupHealth, { label: string; tone: HealthTon
   ok: { label: "Backed up", tone: "fine" },
   empty: { label: "Backed up", tone: "fine" },
   failed: { label: "Failed", tone: "urgent" },
+  partial: { label: "Partly done", tone: "soon" },
   stale: { label: "Out of date", tone: "soon" },
   never: { label: "Never backed up", tone: "soon" },
   "not-collected": { label: "Not backed up", tone: "neutral" },
@@ -335,13 +422,15 @@ export function healthRisk(item: CoverageType): "urgent" | "soon" | undefined {
 /**
  * The one coverage count (audit 31 Oct 2026, metrics 3 and 4). Every kind lands in exactly
  * one bucket by its backupHealth, so the buckets add up to the total. A kind whose last
- * read was only partly done counts as failed. Overview, the menu badge, What's protected
+ * read was only partly done is its own "partial" bucket, never failed. Overview, the menu badge, What's protected
  * and Setup all count with this, from the same kinds (withWorkloadKinds).
  */
 export interface CoverageBuckets {
   total: number;
   backedUp: number;
   failed: number;
+  // Only part of the kind was read: amber "Partly done", never counted as failed.
+  partial: number;
   stale: number;
   never: number;
   // No collector yet, or a workload not switched on for this tenant.
@@ -351,11 +440,12 @@ export interface CoverageBuckets {
 }
 
 export function coverageBuckets(types: readonly CoverageType[]): CoverageBuckets {
-  const buckets: CoverageBuckets = { total: types.length, backedUp: 0, failed: 0, stale: 0, never: 0, notCollected: 0, unavailable: 0 };
+  const buckets: CoverageBuckets = { total: types.length, backedUp: 0, failed: 0, partial: 0, stale: 0, never: 0, notCollected: 0, unavailable: 0 };
   for (const item of types) {
     switch (backupHealth(item)) {
       case "ok": case "empty": buckets.backedUp += 1; break;
       case "failed": buckets.failed += 1; break;
+      case "partial": buckets.partial += 1; break;
       case "stale": buckets.stale += 1; break;
       case "never": buckets.never += 1; break;
       case "not-collected": buckets.notCollected += 1; break;
@@ -371,6 +461,7 @@ export function coverageSummary(types: readonly CoverageType[]): CoverageSummary
   return {
     covered: buckets.backedUp,
     failed: buckets.failed,
+    partial: buckets.partial,
     stale: buckets.stale,
     neverCollected: buckets.never,
     notCovered: buckets.notCollected,
@@ -379,12 +470,13 @@ export function coverageSummary(types: readonly CoverageType[]): CoverageSummary
   };
 }
 
-/** "203 kinds: 190 backed up, 4 failed, 3 out of date or never, 5 not backed up by Keel yet, 1 not on this tenant." */
+/** "203 kinds: 190 backed up, 2 failed, 2 partly done, 3 out of date or never, 5 not backed up by Keel yet, 1 not on this tenant." */
 export function coverageSentence(summary: CoverageSummary): string {
   const late = summary.stale + summary.neverCollected;
   const parts = [
     `${summary.covered.toLocaleString("en-GB")} backed up`,
     ...(summary.failed ? [`${summary.failed.toLocaleString("en-GB")} failed`] : []),
+    ...(summary.partial ? [`${summary.partial.toLocaleString("en-GB")} partly done`] : []),
     ...(late ? [`${late.toLocaleString("en-GB")} out of date or never`] : []),
     ...(summary.notCovered ? [`${summary.notCovered.toLocaleString("en-GB")} not backed up by Keel yet`] : []),
     ...(summary.unavailable ? [`${summary.unavailable.toLocaleString("en-GB")} not on this tenant`] : []),
@@ -439,7 +531,7 @@ export function backupPlanSentence(plan: BackupPlan): string {
 
 /** The verdict's second line: where the problems are, or when everything last ran. */
 export function protectVerdictDetail(types: CoverageType[], serviceOf: (type: string) => string, now: string): string | undefined {
-  const problems = types.filter((item) => ["failed", "stale", "never"].includes(backupHealth(item)));
+  const problems = types.filter((item) => ["failed", "partial", "stale", "never"].includes(backupHealth(item)));
   if (problems.length === 0) return undefined;
   const services = [...new Set(problems.map((item) => serviceOf(item.type)))];
   const fine = types.filter((item) => backupHealth(item) === "ok" || backupHealth(item) === "empty");
@@ -449,22 +541,24 @@ export function protectVerdictDetail(types: CoverageType[], serviceOf: (type: st
 
 /** Under a filtered verdict: which filters it counts, and every service's totals, so a
  * filter never hides failures elsewhere.
- * "Counts follow your filter: In Intune. Across all services: 11 of 15 kinds backed up, 2 failed, 2 out of date or never." */
+ * "Counts follow your filter: In Intune. Across all services: 11 of 15 kinds backed up, 2 failed, 1 partly done, 2 out of date or never." */
 export function protectScopeDetail(filters: string[], types: CoverageType[]): string {
   const counts = protectCounts(types);
   const late = counts.stale + counts.never;
   const parts = [
     `${counts.backedUp} of ${plural(counts.total, "setting type", "setting types")} backed up`,
     ...(counts.failed ? [`${counts.failed} failed`] : []),
+    ...(counts.partial ? [`${counts.partial} partly done`] : []),
     ...(late ? [`${late} out of date or never`] : []),
   ];
   return `Counts follow your ${filters.length === 1 ? "filter" : "filters"}: ${filters.join(", ")}. Across all services: ${parts.join(", ")}.`;
 }
 
-/** The header's status pill: failures first, then out of date, else backed up. */
+/** The header's status pill: failures first, then partly done, then out of date, else backed up. */
 export function protectStatus(data: CoverageData): { tone: "urgent" | "soon" | "fine"; label: string } {
   const counts = protectCounts(data.types);
   if (counts.failed) return { tone: "urgent", label: `${counts.failed} failed` };
+  if (counts.partial) return { tone: "soon", label: `${counts.partial} partly done` };
   if (counts.stale + counts.never) return { tone: "soon", label: `${counts.stale + counts.never} out of date` };
   return { tone: "fine", label: "Backed up" };
 }

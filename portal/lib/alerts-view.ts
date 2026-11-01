@@ -70,6 +70,8 @@ export interface AlertInboxData {
   // The tenant's whole count by state (alertStateCounts): the same numbers as the bell
   // and the Overview, however many alerts the list holds.
   counts: AlertCounts;
+  // The alert a link opened (`?open=<id>`) when the list does not hold it.
+  linked?: AlertItem;
 }
 
 export const ACTIVE_STATES: AlertState[] = ["open", "reopened", "acknowledged"];

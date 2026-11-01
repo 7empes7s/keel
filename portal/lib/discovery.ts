@@ -1,3 +1,4 @@
+import { distinctItems } from "../../engine/discovery/discover.mjs";
 import { loadLatestDiscovery } from "../../engine/discovery/store.mjs";
 import { connect } from "@/lib/db";
 
@@ -68,14 +69,39 @@ export interface DiscoveryInventoryData {
   items: DiscoveryItem[];
 }
 
+const LISTED: readonly DiscoveryStatus[] = ["uncatalogued", "skipped", "unreadable", "not-listed"];
+
+/**
+ * One row per type, counted the way the run's summary counts them: a Graph path found
+ * in v1.0 and in beta is one type, and a type readable in either version is not listed
+ * as unreadable. The headline counts come from the same rows, so every list and the
+ * headline add up to the total. `items` must hold every status (backed-up ones too),
+ * or a type backed up through v1.0 would show as unreadable through beta.
+ */
+export function onePerType(data: DiscoveryInventoryData): DiscoveryInventoryData {
+  const distinct = distinctItems(data.items) as DiscoveryItem[];
+  const count = (status: DiscoveryStatus) => distinct.filter((item) => item.status === status).length;
+  return {
+    ...data,
+    summary: {
+      ...data.summary,
+      types: distinct.length,
+      catalogued: count("catalogued"),
+      uncatalogued: count("uncatalogued"),
+      skipped: count("skipped"),
+      unreadable: count("unreadable"),
+      "not-listed": count("not-listed"),
+    },
+    items: distinct.filter((item) => LISTED.includes(item.status)),
+  };
+}
+
 /** The latest run with the items the page lists (everything not already backed up). */
 export async function getDiscoveryInventory(): Promise<DiscoveryInventoryData | null> {
   const client = await connect(databaseUrl());
   try {
-    return (await loadLatestDiscovery(client, {
-      tenantRef: tenantRef(),
-      statuses: ["uncatalogued", "skipped", "unreadable", "not-listed"],
-    })) as DiscoveryInventoryData | null;
+    const data = (await loadLatestDiscovery(client, { tenantRef: tenantRef() })) as DiscoveryInventoryData | null;
+    return data ? onePerType(data) : null;
   } catch (error) {
     // The discovery tables arrive with schema.d/10-discovery.sql. Until a host has
     // applied it, discovery has simply not run there.
@@ -160,6 +186,7 @@ export function discoveryHeadline(data: DiscoveryInventoryData): string {
   parts.push(`${summary.uncatalogued.toLocaleString("en-GB")} readable but not backed up yet`);
   if (summary.skipped) parts.push(`${summary.skipped.toLocaleString("en-GB")} not worth backing up`);
   if (summary.unreadable) parts.push(`${summary.unreadable.toLocaleString("en-GB")} KEEL cannot read`);
+  if (summary["not-listed"]) parts.push(`${summary["not-listed"].toLocaleString("en-GB")} not checked this run`);
   return `Discovery found ${plural(summary.types, "type")}: ${parts.join(", ")}.`;
 }
 

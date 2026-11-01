@@ -4,6 +4,7 @@ import type { BadgeTone } from "@/components/ui/badge";
 import type { StatTile } from "@/components/ui/stat-tiles";
 import { namedSubject } from "@/lib/job-names";
 import type { ActivationPreview, PreviewDrift } from "@/lib/policies";
+import { askServerAdmin } from "@/lib/who-to-ask";
 
 // The rule preview ("Before it turns on") as alerts, tiles and one table, worst first.
 // Words only: every key, id and version stays in the preview's Technical details.
@@ -72,7 +73,7 @@ export function previewAlerts(preview: ActivationPreview): PreviewAlert[] {
   if (preview.blockers.includes("automation-halted") || preview.limits.automationHalted) {
     alerts.push({
       key: "halted", tone: "urgent", icon: "pause", title: "Automation is stopped",
-      todo: "Ask an operator to start automation again, then preview again.", more: [], action: null,
+      todo: `${askServerAdmin(null, "start automation again on the Keel server")} Then preview again.`, more: [], action: null,
     });
   }
   if (preview.blockers.includes("run-as-not-authorized") || !preview.runAs.authorized) {

@@ -7,7 +7,7 @@ import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { type Day, type DayRange, normalise, rangeFromParam } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
-import { AUDIT_CHECK_WORDS, auditCheckOf } from "@/lib/audit-check";
+import { AUDIT_CHECK_WORDS, auditCheckOf, knownBreakDay } from "@/lib/audit-check";
 import { jobDisplayStatus, jobErrorLine, type NamedKeys } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
@@ -29,7 +29,7 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "policy-change", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
-  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action"] },
+  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action", "chain-break-explained"] },
 };
 export const ACTIVITY_KIND_ORDER: ActivityKind[] = ["backup", "restore", "rollback", "setup", "approval", "policy", "drill", "copy", "other"];
 
@@ -201,6 +201,7 @@ export function recordKindWords(kind: string): string {
     "collection.completed": "Backup finished",
     "job.started": "Job started",
     "alert-action": "Alert",
+    "chain-break-explained": "Audit record break explained",
   };
   return words[kind] ?? displayEnum("eventKind", kind);
 }
@@ -330,7 +331,7 @@ export function activityCounts(jobs: JobRecord[], now: string): ActivityCounts {
   };
 }
 
-export type IntegrityState = "intact" | "unchecked" | "broken" | "unknown";
+export type IntegrityState = "intact" | "known" | "unchecked" | "broken" | "unknown";
 
 /** The audit record's integrity as a word, a sentence and a tone (lib/audit-check.ts words). */
 export function integrityWords(integrity: ChainIntegrity | null): { state: IntegrityState; label: string; sentence: string; tone: BadgeTone } {
@@ -342,6 +343,13 @@ export function integrityWords(integrity: ChainIntegrity | null): { state: Integ
   }
   // Not checked is amber and only a failed check is red, on every page. A broken own
   // chain is a failed check even when there is no off-site copy to compare with.
+  if (check === "known") {
+    const day = integrity?.knownBreaks?.[0] ? knownBreakDay(integrity.knownBreaks[0]) : null;
+    return {
+      state: "known", label: AUDIT_CHECK_WORDS.known.label, tone: "soon",
+      sentence: `${day ? `A break on ${day} is explained: a` : "A"} Keel bug, since fixed, linked some entries to the wrong earlier entry. Every other entry checks out.${integrity?.status === "unanchored" ? " There is no off-site copy to compare with yet." : ""}`,
+    };
+  }
   if (check === "unchecked") return { state: "unchecked", label: AUDIT_CHECK_WORDS.unchecked.label, tone: "soon", sentence: `${AUDIT_CHECK_WORDS.unchecked.detail} Set up or fix the off-site copy.` };
   return { state: "broken", label: AUDIT_CHECK_WORDS.failed.label, tone: "urgent", sentence: integrity?.ownChain === "broken"
     ? "The record's own chain of entries does not match, and there is no off-site copy to compare with. Investigate before trusting who did what."

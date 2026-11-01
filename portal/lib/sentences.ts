@@ -342,6 +342,9 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       : `${actorName} switched approval mode to Two people, so someone other than the person who asked approves`;
     case "approval-signoff": return typeof subject.action === "string" ? `${actorName} signed off ${anAction(subject.action)}; another approval is still needed` : `${actorName} signed off a request; another approval is still needed`;
     case "approval.decided": return `${actorName} decided an approval`;
+    case "chain-break-explained": return typeof subject.breakSeqs === "object" && Array.isArray(subject.breakSeqs)
+      ? `${actorName} explained a known break in the audit record: ${subject.breakSeqs.length.toLocaleString("en-GB")} ${subject.breakSeqs.length === 1 ? "entry was" : "entries were"} chained wrongly by a Keel bug, since fixed`
+      : `${actorName} explained a known break in the audit record`;
     case "action-attempt": return subject.decision === "denied"
       ? `${actorName} was refused ${anAction(subject.action)}${typeof subject.reason === "string" && refusalWords[subject.reason] ? `: ${refusalWords[subject.reason]}` : ""}`
       : `${actorName} started ${anAction(subject.action)}`;

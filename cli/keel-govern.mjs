@@ -7,6 +7,7 @@
 // node keel-govern.mjs baseline activate --label <name> | --id <uuid>
 // node keel-govern.mjs disposition <driftId> --action accept|rollback|ignore --actor <actor> --reason <reason> [--expires <iso8601>] [--confirm]
 // node keel-govern.mjs evidence verify
+// node keel-govern.mjs evidence explain-break --from <seq> --through <seq> --cause <text> --fix <ref> --principal-id <uuid> [--confirm]
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { engageWriterAppId } from '../engine/restore/engageWriter.mjs';
@@ -27,6 +28,7 @@ import {
 } from '../engine/govern/baseline.mjs';
 import { applyDisposition } from '../engine/govern/disposition.mjs';
 import { verifyAnchoredChain } from '../engine/govern/anchor.mjs';
+import { explainChainBreaks } from '../engine/govern/evidence.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { connect } from '../engine/store/db.mjs';
@@ -42,17 +44,22 @@ function usage() {
   keel-govern.mjs baseline activate --label <name> | --id <uuid> [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
   keel-govern.mjs disposition <driftId> --action accept|rollback|ignore --actor <actor> --reason <reason> [--expires <iso8601>] [--confirm]
   keel-govern.mjs evidence verify --principal-id <uuid> [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+  keel-govern.mjs evidence explain-break --from <seq> --through <seq> --cause <text> --fix <ref> --principal-id <uuid> [--confirm]
 
 Rollback without --confirm prints only the scoped plan. A confirmed rollback requires
 --restorer-config <path>; its reads use --config (the Collector registration) and
-its writes use the separate Restorer registration.`);
+its writes use the separate Restorer registration.
+
+explain-break appends one record that explains a stretch of the audit record broken by
+a code bug. It edits nothing old, refuses unless every break lies in the stretch and has
+the bug's shape, and without --confirm only prints what it would record.`);
 }
 
 // A label, description or reason is free text a person types; see cli/args.mjs.
 const ARGS = {
   name: 'keel-govern',
-  strings: ['snapshot', 'by', 'id', 'action', 'actor', 'expires', 'restorer-config', 'principal-id', 'config', 'db-url'],
-  text: ['label', 'description', 'reason'],
+  strings: ['snapshot', 'by', 'id', 'action', 'actor', 'expires', 'restorer-config', 'principal-id', 'config', 'db-url', 'from', 'through', 'fix'],
+  text: ['label', 'description', 'reason', 'cause'],
   booleans: ['help', 'confirm'],
   short: { h: 'help' },
   positionals: 2,
@@ -352,6 +359,26 @@ async function verifyEvidence() {
   });
 }
 
+async function explainBreak() {
+  const tenantRef = tenantRefFor(readConfig());
+  await withClient(async (client) => {
+    const principal = await findPrincipalById(client, requiredArg('principal-id'));
+    if (!principal || !(await can(client, principal, 'configuration'))) throw new Error('explaining an audit record break needs an administrator');
+    const result = await explainChainBreaks(client, {
+      tenantRef,
+      fromSeq: requiredArg('from'),
+      throughSeq: requiredArg('through'),
+      cause: requiredArg('cause'),
+      fixRef: requiredArg('fix'),
+      actor: principal.id,
+      write: Boolean(flag('confirm')),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.ok) process.exitCode = 1;
+    else if (!result.written) console.log('dry run only; pass --confirm to append the explanation record');
+  });
+}
+
 async function main() {
   if (flag('help')) {
     usage();
@@ -365,6 +392,7 @@ async function main() {
   if (command === 'baseline' && subject === 'activate') return activateBaselineCmd();
   if (command === 'disposition') return disposition(subject);
   if (command === 'evidence' && subject === 'verify') return verifyEvidence();
+  if (command === 'evidence' && subject === 'explain-break') return explainBreak();
   usage();
   throw new Error(`unknown command: ${command ?? '(none)'}`);
 }

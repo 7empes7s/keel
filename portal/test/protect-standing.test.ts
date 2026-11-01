@@ -92,7 +92,7 @@ test("a type the tenant cannot have is unavailable, not failed", () => {
 
   const data: CoverageData = {
     generatedAt: NOW, snapshot: null,
-    summary: { covered: 1, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 1, total: 2 },
+    summary: { covered: 1, failed: 0, partial: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 1, total: 2 },
     types: [readOnlyType(), unavailable],
   };
   assert.deepEqual(protectProblems(data, NOW), []);

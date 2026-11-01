@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { distinctPeople } from "@/lib/people-choices";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
@@ -91,7 +92,10 @@ export function NewRuleSheet({ onClose, policy = null }: { onClose: () => void; 
   }), [does, kind, pattern, change, risk, perHour, policy, savedPerHour]);
   const offOnSave = editing && does === "undo" && policy.enabled;
 
-  const peopleOptions: ChoiceOption<string>[] = Array.isArray(people) ? people.map((person) => ({ value: person.id, label: person.display_name?.trim() || person.email.split("@")[0], hint: "Holds the restorer role" })) : [];
+  const peopleOptions: ChoiceOption<string>[] = Array.isArray(people)
+    ? distinctPeople(people.map((person) => ({ id: person.id, name: person.display_name?.trim() || person.email.split("@")[0], email: person.email })))
+      .map((person) => ({ value: person.id, label: person.name, hint: person.email ? `${person.email} · holds the restorer role` : "Holds the restorer role" }))
+    : [];
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

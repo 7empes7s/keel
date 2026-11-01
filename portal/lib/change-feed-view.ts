@@ -26,7 +26,9 @@ export interface FeedRow {
   // The kind the row is listed as (an Intune antivirus policy is a Defender endpoint
   // security policy); the same as `type` for every other row.
   kind?: string;
+  // What this object is ("Built-in admin role"); kindName names its kind ("Admin role").
   typeName: string;
+  kindName?: string;
   service: string | null;
   priority: FeedPriority;
   priorityReason: string | null;

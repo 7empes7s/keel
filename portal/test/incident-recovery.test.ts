@@ -108,7 +108,7 @@ test("rows name backups and people; every id stays in Technical details", async 
   assert.match(visible, /Checked by\s+Ines Investigator\s+· 23 hours ago/);
   assert.match(visible, /Marked unsafe by\s+Ines Investigator/);
   assert.match(visible, /Taken during the attack/);
-  assert.match(visible, /Only investigators can change incidents\./);
+  assert.match(visible, /Only investigators can open or change incidents\./);
   const rows = html.split('class="ir-row"').slice(1).map((row) => row.split("ir-row-acts")[0]);
   assert.match(rows[0], /25 Sept 2026, 06:00 UTC[\s\S]*Cleared[\s\S]*Recommended[\s\S]*Kept/, "the recommended, kept backup comes first");
   assert.doesNotMatch(rows[1], /Recommended/, "the newest (unsafe) backup is not recommended");

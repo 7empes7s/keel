@@ -100,6 +100,7 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
               <tbody>
                 <tr><th scope="row">Backed up</th><td className="ov-num">{data.coverage.covered}</td></tr>
                 <tr><th scope="row">Failed</th><td className="ov-num">{data.coverage.failed}</td></tr>
+                <tr><th scope="row">Partly done</th><td className="ov-num">{data.coverage.partial}</td></tr>
                 <tr><th scope="row">Out of date</th><td className="ov-num">{data.coverage.stale}</td></tr>
                 <tr><th scope="row">Never backed up</th><td className="ov-num">{data.coverage.neverCollected}</td></tr>
                 <tr><th scope="row">Not backed up by Keel yet</th><td className="ov-num">{data.coverage.notCovered}</td></tr>

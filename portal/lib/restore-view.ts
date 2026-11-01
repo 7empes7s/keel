@@ -2,7 +2,7 @@ import type { RiskTone } from "@/lib/menu-status";
 import type { Day } from "@/lib/date-range";
 import { fieldWords } from "@/lib/changes-view";
 import { holdsObjectId } from "@/lib/object-ids";
-import { displayEnum } from "@/lib/presentation";
+import { ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint } from "@/lib/services";
 import { itemKind } from "@/lib/type-groups";
@@ -92,13 +92,26 @@ export function shortWhen(value: string | null): string {
   return value ? `${SHORT_FORMAT.format(new Date(value))}, ${TIME_FORMAT.format(new Date(value))}` : "an unknown time";
 }
 
-/** The age of a backup in words: "Today", "Yesterday", "14 days old". */
+/** The age of a backup in words: "Taken 4 minutes ago", "Taken yesterday", "14 days
+ * old". Within a day it says minutes or hours, so a backup taken a moment ago never
+ * reads like the time the page was opened (UI audit D13). */
 export function backupAge(value: string | null, now: string): string {
   if (!value) return "Age not known";
+  const hours = (Date.parse(now) - Date.parse(value)) / 3_600_000;
+  if (Number.isFinite(hours) && hours >= 0 && hours < 24) return `Taken ${ago(value, now)}`;
   const days = Math.floor((Date.parse(now.slice(0, 10)) - Date.parse(value.slice(0, 10))) / 86_400_000);
   if (days <= 0) return "Taken today";
   if (days === 1) return "Taken yesterday";
   return `${days} days old`;
+}
+
+/** "Partial backup: 12 of 180 types" for a backup that read only some types (an hourly
+ * or daily backup reads one tier of settings); null for one that read every type. */
+export function partialWords(snapshot: Pick<SnapshotOption, "typesRead" | "typesSkipped">): string | null {
+  const skipped = snapshot.typesSkipped ?? 0;
+  if (skipped <= 0) return null;
+  const read = snapshot.typesRead ?? 0;
+  return `Partial backup: ${read.toLocaleString("en-GB")} of ${(read + skipped).toLocaleString("en-GB")} types`;
 }
 
 /** Days that have at least one backup, for the calendar's marks. */
@@ -128,12 +141,15 @@ export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
 }
 
-/** The page's one sentence for the choose step (at most 25 words). */
-export function restoreVerdict({ chosen, isNewest, changes }: {
+/** The page's one sentence for the choose step (at most 25 words), with a detail line
+ * when there is something to explain. */
+export function restoreVerdict({ chosen, isNewest, changes, partial = null }: {
   chosen: string | null;
   isNewest: boolean;
   changes: RestoreChangesData | null;
-}): { text: string; tone: "good" | "attention" } {
+  // partialWords() of the chosen backup.
+  partial?: string | null;
+}): { text: string; tone: "good" | "attention"; detail?: string } {
   const day = dayWords(chosen);
   if (!changes) return { text: `Restoring to the backup of ${day}. KEEL could not compare it with now, so choose what to put back.`, tone: "attention" };
   const count = changes.changes.length + changes.more;
@@ -143,7 +159,14 @@ export function restoreVerdict({ chosen, isNewest, changes }: {
   if (isNewest && changes.earlier?.count) {
     return { text: `${plural(changes.earlier.count, "setting")} changed just before your newest backup. Pick an earlier day to undo them.`, tone: "attention" };
   }
-  return { text: `Nothing has changed since the backup of ${day}. Choose anything you want to put back.`, tone: "good" };
+  // UI audit D13: "nothing has changed" sat beside hundreds of open changes on other
+  // pages. Those compare with the approved setup; this compares the backup with now.
+  const scope = partial ? `${partial}, so only those types are compared. ` : "";
+  return {
+    text: `Nothing has changed since the backup of ${day}, ${timeWords(chosen)}. Choose anything you want to put back.`,
+    tone: "good",
+    detail: `${scope}This compares the backup with your tenant now. The Changes page compares with your approved setup instead, so it can still list changes.`,
+  };
 }
 
 /** Tone of a row: something gone is urgent, something changed is worth a look. */

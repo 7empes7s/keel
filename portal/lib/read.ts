@@ -62,6 +62,11 @@ export const DATA_SURFACES = {
     source: "api/drift/route.ts",
     entityScoped: true,
   },
+  driftAttributionApi: {
+    capability: "read",
+    source: "api/drift/attribution/route.ts",
+    entityScoped: true,
+  },
   baselinesApi: {
     capability: "read",
     source: "api/baselines/route.ts",

@@ -190,7 +190,7 @@ export default async function RestorePage({
       <div data-layer="explanation">
         {followUps === null
           ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
-          : <RestoreFollowUps work={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
+          : <RestoreFollowUps canRestore={canRestore} work={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
         {failedRestores && failedRestores.total && !onlyFailed ? (
           <AlertRow
             as="div"

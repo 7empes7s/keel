@@ -1182,6 +1182,32 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
+// D20: a change the list did not read the audit log for is looked up when it is opened,
+// so the panel names who made it instead of "not known yet"; a failed read says so.
+test("an opened change looks up who made it when the list did not", async ({ page }) => {
+  await open(page, "/drift");
+  const sheet = await openChange(page, "Require MFA for admins");
+  const glance = sheet.locator(".bl-glance");
+  await expect(glance).toContainText("Sam Lee");
+  await expect(glance).toContainText("When it was made");
+  await expect(glance).toContainText("1 Oct 2026, 21:05 UTC");
+  await expect(glance).not.toContainText("has not checked");
+  await expect(sheet.locator(".change-attribution-headline")).toContainText("Sam Lee made this change, according to the audit log.");
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.map((call) => call.url));
+  expect(calls).toContain("/api/drift/attribution?id=dr2");
+  // A change the list already read is not looked up again.
+  expect(calls.filter((url) => url.startsWith("/api/drift/attribution"))).toEqual(["/api/drift/attribution?id=dr2"]);
+  await sheet.getByRole("button", { name: "Close", exact: true }).click();
+
+  const failed = await openChange(page, "Branch offices");
+  await expect(failed.locator(".bl-glance")).toContainText("Not known yet");
+  await expect(failed.locator(".bl-glance")).toContainText("Keel could not read the audit log just now. Close and open this change to try again.");
+  await expect(failed.locator(".change-attribution-headline")).toContainText("Not checked");
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+});
+
 // Task-98: a change lists only the settings that change behaviour, grouped by what an
 // undo can do, links the records a decision rests on and says which ones do not match.
 // An unknown earlier value is never a removal.

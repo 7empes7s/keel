@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
+import { useAttributionLookup } from "@/components/baselines/attribution-lookup";
 import { ChangeFacts } from "@/components/baselines/change-facts";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { sheetStep } from "@/lib/sheet-step";
@@ -193,6 +194,10 @@ export function ChangeList({
   const shown = useMemo(() => applyFilters(open, tiles, pickedKey ? pickedKey.split(",") : [], others), [open, tiles, pickedKey, others]);
   const counts = useMemo(() => new Map(tileCounts(open, tiles, pickedKey ? pickedKey.split(",") : [], others).map((entry) => [entry.key, entry])), [open, tiles, pickedKey, others]);
   const opened = open.find((item) => item.id === view.get("open")) ?? null;
+  // Who made the opened change, read on its own when the list did not read it.
+  const lookup = useAttributionLookup(opened && !opened.serviceRead && opened.attribution == null ? opened.id : null);
+  const openedFacts = opened && lookup?.state === "found" ? { ...opened, attribution: lookup.attribution } : opened;
+  const lookupState = lookup && lookup.state !== "found" ? lookup.state : null;
   // Previous and next in the panel follow the list as shown: its filters, grouping and sort.
   const [order, setOrder] = useState<string[]>([]);
   const step = useMemo(() => sheetStep(order, opened?.id), [order, opened?.id]);
@@ -468,7 +473,7 @@ export function ChangeList({
           title={changeName(opened)}
           wide
         >
-          <ChangeFacts item={opened} now={now} />
+          <ChangeFacts item={openedFacts ?? opened} lookup={lookupState} now={now} />
           {opened.semantic
             ? <SemanticDiff change={opened.semantic} item={opened} key={opened.id} record={<OpenedRecord item={opened} />} />
             : <DriftDiff item={opened} key={opened.id} record={<OpenedRecord item={opened} />} />}
@@ -476,8 +481,8 @@ export function ChangeList({
             <h3>Why it matters</h3>
             <p>{whyItMatters(opened.resourceType)}</p>
           </section>
-          {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} gap={opened.evidenceGap} now={now} /> : null}
-          {opened.attribution !== undefined ? <ChangeAttributionPanel attribution={opened.attribution} now={now} /> : null}
+          {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={openedFacts?.attribution ?? opened.attribution} evidence={opened.evidence} gap={opened.evidenceGap} now={now} /> : null}
+          {(opened.attribution !== undefined || lookup) && lookupState !== "gone" ? <ChangeAttributionPanel attribution={openedFacts?.attribution ?? opened.attribution} checking={lookupState === "checking"} now={now} /> : null}
         </DetailsSheet>
       ) : null}
 

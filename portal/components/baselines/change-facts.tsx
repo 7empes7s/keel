@@ -32,7 +32,7 @@ export function whatChanged(item: DriftRecord): string {
   return `${name}: ${detail}${tail ? `, and ${tail}` : ""}.`;
 }
 
-export function ChangeFacts({ item, now }: { item: DriftRecord; now: string }) {
+export function ChangeFacts({ item, now, lookup = null }: { item: DriftRecord; now: string; lookup?: "checking" | "failed" | "gone" | null }) {
   const madeAt = item.attribution?.verdict === "exact" ? item.attribution.evidence[0]?.occurredAt ?? null : null;
   const when = madeAt ?? item.detectedAt;
   const who = changedBy(item);
@@ -40,7 +40,11 @@ export function ChangeFacts({ item, now }: { item: DriftRecord; now: string }) {
     ? "Keel compares two reads of this service and cannot see who made it."
     : item.attribution
       ? who ? ATTRIBUTION_HEADLINES[item.attribution.verdict] : attributionSentence(item.attribution)
-      : "Keel has not checked the audit log for this change yet.";
+      : lookup === "gone"
+        ? "This change is no longer open. Reload the page to see the latest list."
+        : lookup === "failed"
+        ? "Keel could not read the audit log just now. Close and open this change to try again."
+        : "Keel is reading the audit log for this change now.";
   return (
     <dl aria-label="This change at a glance" className="bl-glance">
       <div className="bl-glance-fact" data-fact="what">
@@ -57,7 +61,7 @@ export function ChangeFacts({ item, now }: { item: DriftRecord; now: string }) {
       <div className="bl-glance-fact" data-known={who ? "" : undefined}>
         <dt>Who made it</dt>
         <dd>
-          {who ?? "Not known yet"}
+          {who ?? (!item.serviceRead && !item.attribution && lookup === "checking" ? "Checking the audit log…" : "Not known yet")}
           <small>{whoNote}</small>
         </dd>
       </div>

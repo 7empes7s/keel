@@ -106,7 +106,7 @@ function busy(request: NextRequest): NextResponse {
 
 // A relative Location, so the redirect never names the internal host behind the proxy.
 function renamed(location: string): NextResponse {
-  return new NextResponse(null, { status: 307, headers: { location } });
+  return new NextResponse(null, { status: 307, headers: { ...NO_STORE, location } });
 }
 
 function isUnauthenticatedHealthCheck(request: NextRequest): boolean {

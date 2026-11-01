@@ -125,7 +125,7 @@ const CSS = `
 .bl-version-actions .activate-control { display: grid; gap: var(--space-2xs); }
 
 /* Changes: tiles, context and rows */
-.bl-tiles { display: grid; margin: 0; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+.bl-tiles { display: grid; margin: 0; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
 .bl-tile { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border-left-width: 3px; }
 .bl-tile[data-tone="urgent"] { border-left-color: var(--urgent); }
 .bl-tile[data-tone="soon"] { border-left-color: var(--check-soon); }
@@ -301,6 +301,8 @@ details.compare-group > summary { display: grid; grid-template-columns: minmax(0
   .bl-row-name { flex-basis: 100%; }
   .bl-row-who { display: block; flex-basis: 100%; min-width: 0; color: var(--text-soft); text-align: left; }
   .bl-tiles:not(.compare-summary) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* An odd tile out takes the whole last row instead of sitting alone (UI audit E4). */
+  .bl-tiles:not(.compare-summary) > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .bl-row-who > span + small::before { content: " · "; }
   .bl-compare-pickers { grid-template-columns: minmax(0, 1fr); }
   .bl-swap { justify-self: center; transform: rotate(90deg); }

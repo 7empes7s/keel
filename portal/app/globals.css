@@ -6857,7 +6857,11 @@ section.wizard-panel {
 
 .segmented {
   display: inline-flex;
-  height: 2.5rem;
+  /* Never wider than its card: on a narrow screen the choices wrap onto a second line
+     instead of poking out (UI audit E4). */
+  max-width: 100%;
+  flex-wrap: wrap;
+  min-height: 2.5rem;
   padding: 3px;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
@@ -6868,6 +6872,7 @@ section.wizard-panel {
 .segment {
   display: inline-flex;
   min-width: 0;
+  min-height: calc(2.5rem - 8px);
   padding: 0 var(--space-sm);
   align-items: center;
   border: 0;
@@ -7752,6 +7757,10 @@ section.wizard-panel {
   .filter-clear { margin-left: 0; }
   .filter-empty .btn { width: 100%; justify-content: center; }
 }
+
+/* While a selection bar shows, scrolling to a row (keyboard, Find, a pick) stops above
+   it instead of under it; components/list/use-bar-space.ts measures the bar. */
+html { scroll-padding-bottom: var(--sel-bar-space, 0px); }
 
 .sel-bar {
   position: sticky;
@@ -8968,7 +8977,12 @@ section.wizard-panel {
   letter-spacing: 0;
   line-height: 1.125rem;
   text-transform: none;
-  white-space: nowrap;
+  /* A badge never pokes out of its card: when the card is narrower than the words,
+     they wrap inside the badge (UI audit E4, the sharing badge on a site page). */
+  max-width: 100%;
+  /* Stays on one line unless the card itself is narrower than the words. */
+  min-width: min(100%, max-content);
+  overflow-wrap: break-word;
 }
 .badge .icon { width: 0.875rem; height: 0.875rem; flex: none; }
 .badge[data-tone="urgent"] { background: var(--urgent-bg); color: var(--urgent); }
@@ -10209,6 +10223,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-service-head small { color: var(--text-soft); font-size: 0.8125rem; }
 .cp-ctiles { display: grid; gap: var(--space-xs); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; }
 .cp-ctiles > * { min-width: 0; }
+.cp-ctiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .cp-ctile { display: grid; align-content: start; grid-template-rows: auto auto 1fr; gap: var(--space-2xs); padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); color: inherit; text-decoration: none; }
 .cp-ctile b { font-size: 0.875rem; line-height: 1.3; overflow-wrap: anywhere; }
 .cp-ctile small { align-self: end; color: var(--text-soft); font-size: 0.75rem; line-height: 1.3; overflow-wrap: anywhere; }
@@ -10447,6 +10462,8 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 
 @media (max-width: 46rem) {
   .cp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* An odd tile out takes the whole last row instead of sitting alone (UI audit E4). */
+  .cp-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .cp-score { grid-template-columns: minmax(0, 1fr); padding: var(--space-sm); }
   .cp-score .score-ring[data-size="lg"] { width: 6rem; }
   .cp-score-list ul { grid-template-columns: minmax(0, 1fr); }
@@ -11510,6 +11527,8 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .su-cn-grants tr[data-status="missing"] td:first-child { box-shadow: none; }
   .su-cn-grants tr[data-status="missing"] { box-shadow: inset 3px 0 0 var(--urgent); }
   .su-pp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* An odd tile out takes the whole last row instead of sitting alone (UI audit E4). */
+  .su-pp-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .su-ptable, .su-ptable tbody { display: block; }
   .su-ptable thead { display: none; }
   .su-ptable tr { display: block; }
@@ -11610,6 +11629,9 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 /* Sites list and a site's page: tiles that filter, a compact table with problems first,
    and five status tiles on a site's page. Rows become labelled lines on a phone. */
 .st-page, .st-list { display: grid; gap: var(--space-md); min-width: 0; }
+/* The Sites list switches to labelled lines by its own width, not the window's: with the
+   menu open a 1278 px laptop leaves the table about 940 px (UI audit E4). */
+.st-list { container: st-list / inline-size; }
 .st-page > *, .st-list > * { min-width: 0; }
 .st-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .st-tile { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
@@ -11648,6 +11670,8 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .st-address { font-family: var(--font-mono); font-weight: 400; overflow-wrap: anywhere; }
 .st-owners { color: var(--text); }
 .st-table td > small.st-wider { color: var(--urgent); font-weight: 600; }
+/* Long badges wrap inside a cell instead of widening the table past its card. */
+.st-table td .badge, .st-status .badge { border-radius: var(--radius-md); }
 .st-table-small tbody th[scope="row"] { min-width: 10rem; }
 
 .st-statuses { display: grid; gap: var(--space-sm); grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -11674,9 +11698,12 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 }
 @media (max-width: 46rem) {
   .st-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .st-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .st-statuses { grid-template-columns: minmax(0, 1fr); }
-  .st-scroll:has(.st-table:not(.st-table-small)) { overflow: visible; }
   .st-table-small tbody th[scope="row"] { min-width: 0; }
+}
+@container st-list (max-width: 50rem) {
+  .st-scroll:has(.st-table:not(.st-table-small)) { overflow: visible; }
   .st-table:not(.st-table-small) thead { display: none; }
   .st-table:not(.st-table-small), .st-table:not(.st-table-small) tbody, .st-table:not(.st-table-small) tr, .st-table:not(.st-table-small) th, .st-table:not(.st-table-small) td { display: block; }
   .st-table:not(.st-table-small) tbody tr { display: grid; gap: 0.375rem; padding: var(--space-sm); border-top: 1px solid var(--line); }
@@ -11729,6 +11756,8 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .ui-tile > small { color: var(--text-soft); font-size: 0.8125rem; line-height: 1.35; }
 @media (max-width: 46rem) {
   .ui-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* An odd tile out takes the whole last row instead of sitting alone (UI audit E4). */
+  .ui-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .ui-tile { padding: var(--space-xs) var(--space-sm); }
   .ui-tile-value { font-size: 1.25rem; }
   .ui-alert { grid-template-columns: auto minmax(0, 1fr); padding: var(--space-sm) var(--space-sm) var(--space-sm) calc(var(--space-sm) + 4px); }

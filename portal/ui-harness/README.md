@@ -11,6 +11,7 @@ It exists so the design can be checked without a live tenant:
 |---|---|
 | `npm run ui:build` | Builds `ui-harness/dist/index.html`. Open it in a browser to click through. |
 | `npm run test:ui` | Builds, then runs `ui.spec.ts`: axe WCAG 2.1 A/AA checks on every page in both themes, screenshot comparisons, and interaction checks (palette, confirmations, toasts, restore wizard). |
+| `layout.spec.ts` (part of `test:ui`) | Every harness page at 375, 390 and 1278 px: nothing scrolls sideways, is cut off or pokes out of its card, and a picked row is never left under the selection bar. New pages are found from the router in `app.tsx`. |
 | `npm run test:ui:update` | Same, but rewrites the screenshot baselines in `__screenshots__/`. Run it after an intended visual change and review the image diff in the PR. |
 
 Fixtures live in `app.tsx`. API calls the components make are answered by a stub

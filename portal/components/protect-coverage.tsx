@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { runWord, useBackup } from "@/components/backup-controls";
 import { FailureLine } from "@/components/backup-failure";
@@ -11,6 +11,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { coverageWindows, TypeDetails, TypeRecordFields } from "@/components/coverage-report";
 import { type ListSort } from "@/components/list/list-paging";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { useBarSpace } from "@/components/list/use-bar-space";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
@@ -299,6 +300,8 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
 
   const pickedServices = services.filter((entry) => picked.has(entry.code));
   const pickedPlan = backupPlan(pickedServices.flatMap((entry) => entry.kinds));
+  const selBarRef = useRef<HTMLDivElement>(null);
+  useBarSpace(selBarRef, pickedServices.length > 0);
   const togglePick = (code: string) => setPicked((current) => {
     const next = new Set(current);
     if (next.has(code)) next.delete(code); else next.add(code);
@@ -420,7 +423,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
           })}
         </div>
         {pickedServices.length ? (
-          <div aria-label="Chosen services" className="sel-bar pt-selbar" role="region">
+          <div aria-label="Chosen services" className="sel-bar pt-selbar" ref={selBarRef} role="region">
             <span className="sel-bar-count"><b>{pickedServices.length === 1 ? "1 service" : `${pickedServices.length} services`}</b> selected</span>
             <span className="sel-bar-detail">{pickedServices.map((entry) => entry.name).join(", ")}: {backupPlanSentence(pickedPlan)}</span>
             <span className="sel-bar-actions">

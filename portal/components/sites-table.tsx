@@ -21,7 +21,7 @@ import { readList, useViewState } from "@/lib/use-view-state";
 // apps, shared with guests, shared wider than the tenant default or without an owner
 // (picking several adds them up), Find
 // (narrows), and a compact table with problems first. Columns turn into labelled lines
-// on a phone.
+// whenever the list is too narrow for them (a phone, or a laptop with the menu open).
 
 const NOUN = { one: "site", many: "sites" };
 
@@ -99,8 +99,7 @@ export function SitesTable({ sites, run, now }: { sites: SitePermissions[]; run:
                 <th scope="col">Apps with access</th>
                 <th scope="col">Sharing setting</th>
                 <th scope="col">Guests and links</th>
-                <th scope="col">Owners</th>
-                <th scope="col">Groups and people</th>
+                <th scope="col">Owners and members</th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +142,7 @@ function SiteRow({ site, run, now }: { site: SitePermissions; run: SitesContentR
         {sharing.key === "wider" ? <small className="st-wider">More open than the default</small> : null}
       </td>
       <td data-label="Guests and links">{external ? <Badge tone={external.tone}>{external.label}</Badge> : <span className="st-unknown">Not known yet</span>}</td>
-      <td data-label="Owners">
+      <td data-label="Owners and members">
         {site.people ? (
           people.key === "no-owner" ? <Badge tone="urgent">No owner</Badge> : (
             <span className="st-owners" title={owners.join(", ")}>
@@ -152,8 +151,8 @@ function SiteRow({ site, run, now }: { site: SitePermissions; run: SitesContentR
             </span>
           )
         ) : <Badge tone={people.tone}>{people.label}</Badge>}
+        {groups ? <small className="st-members">{groups}</small> : <small className="st-unknown">Groups and people not known yet</small>}
       </td>
-      <td data-label="Groups and people">{groups ?? <span className="st-unknown">Not known yet</span>}</td>
     </tr>
   );
 }

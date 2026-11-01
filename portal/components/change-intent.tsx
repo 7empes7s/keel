@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { ChangedValuesStyles, SidesRow, Value } from "@/components/changed-values";
+import { OptionPicker } from "@/components/pickers/option-picker";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { AlertList } from "@/components/ui/alert-list";
@@ -11,7 +12,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { StatTiles } from "@/components/ui/stat-tiles";
 import { valueText } from "@/lib/changed-values";
 import { fieldWords } from "@/lib/changes-view";
-import { WINDOW_HOURS, intentAlerts, intentBadge, intentEnd, intentResource, intentTiles, settledBadge, shownTransitions, type ChangeIntent, type ChangeIntentsData, type IntentCandidate, type IntentPerson, type IntentTransition } from "@/lib/change-intents-view";
+import { WINDOW_HOURS, intentAlerts, intentBadge, intentEnd, intentResource, intentTiles, openChangeCount, settledBadge, shownTransitions, type ChangeIntent, type ChangeIntentsData, type IntentCandidate, type IntentMadeBy, type IntentPerson, type IntentPersonChoice, type IntentTransition } from "@/lib/change-intents-view";
 import { ago, formatTimestamp, fromNow, resourceTypeLabel, words } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -198,17 +199,45 @@ export function EndedIntents({ intents, now }: { intents: ChangeIntent[]; now: s
   );
 }
 
+const AUDIT_LOG_NAMES: Record<string, string> = { audit: "Microsoft Entra audit log", "intune-audit": "Intune audit log" };
+
+/** Where "Who made the change" came from, in one line under the picker. */
+export function madeBySentence(madeBy: IntentMadeBy | null | undefined, chosen: string): { tone: "fine" | "low" | "neutral"; text: string } {
+  const log = madeBy?.source ? AUDIT_LOG_NAMES[madeBy.source] ?? "audit log" : "audit log";
+  const at = madeBy?.at ? ` on ${formatTimestamp(madeBy.at)}` : "";
+  switch (madeBy?.state) {
+    case "keel-user":
+      return madeBy.principalId === chosen
+        ? { tone: "fine", text: `Filled in from the ${log}: ${madeBy.who ?? "this person"} made the change${at}.` }
+        : { tone: "low", text: `The ${log} says ${madeBy.who ?? "someone else"} made the change${at}.` };
+    case "not-keel-user": return { tone: "low", text: `The ${log} says ${madeBy.who ?? "an account Keel has no name for"} made the change${at}, but they have no Keel account. Choose who answers for it.` };
+    case "app": return { tone: "low", text: `The ${log} says the app ${madeBy.who ?? "Keel has no name for"} made the change${at}. Choose the person who answers for it.` };
+    case "several": return { tone: "low", text: `The ${log} names more than one account for this change. Choose the person who made it.` };
+    case "unknown": return { tone: "neutral", text: madeBy.source ? `The ${log} does not say who made this change. Choose the person.` : "Keel reads no audit log for this kind of setting. Choose the person who made the change." };
+    default: return { tone: "neutral", text: "Keel could not tell who made this change. Choose the person." };
+  }
+}
+
 /** Approve an emergency change from one open change, field by field. */
-export function ApproveIntentForm({ changes, people, now }: { changes: IntentCandidate[]; people: { id: string; name: string }[]; now: string }) {
+export function ApproveIntentForm({ changes, people, now, openCount = changes.length }: { changes: IntentCandidate[]; people: IntentPersonChoice[]; now: string; openCount?: number }) {
   const [driftId, setDriftId] = useState(changes[0]?.driftId ?? "");
   const change = useMemo(() => changes.find((candidate) => candidate.driftId === driftId) ?? null, [changes, driftId]);
   const [fields, setFields] = useState<string[]>([]);
-  const [owner, setOwner] = useState("");
+  const [owner, setOwner] = useState(changes[0]?.madeBy?.principalId ?? "");
   const [hours, setHours] = useState<number>(4);
   const [ticket, setTicket] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const ticketProblem = ticket.trim() ? evidenceMessage("ticket", ticket) : null;
+  const changeOptions = useMemo(() => changes.map((candidate) => {
+    const count = shownTransitions(candidate.transitions).length;
+    return {
+      value: candidate.driftId,
+      label: intentResource(candidate),
+      hint: `${count === 1 ? "1 setting" : `${count} settings`} · detected ${candidate.detectedAt ? ago(candidate.detectedAt, now) : "at an unknown time"}`,
+    };
+  }), [changes, now]);
+  const personOptions = useMemo(() => people.map((person) => ({ value: person.id, label: person.name, ...(person.email ? { hint: person.email } : {}) })), [people]);
 
   if (changes.length === 0) return <p className="pg-empty"><Icon name="info" />No open change to approve. One shows here once KEEL detects it.</p>;
 
@@ -217,6 +246,15 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
   const picks = change ? shownTransitions(change.transitions) : [];
   const silent = change ? change.transitions.filter((transition) => transition.noChange).map((transition) => transition.field) : [];
   const ready = fields.length > 0 || (picks.length === 0 && silent.length > 0);
+  const madeBy = madeBySentence(change?.madeBy, owner);
+
+  function pickChange(id: string) {
+    setDriftId(id);
+    setFields([]);
+    // Who made it, from the audit log when it names a Keel user; else the choice is the reader's.
+    const next = changes.find((candidate) => candidate.driftId === id);
+    setOwner(next?.madeBy?.principalId ?? "");
+  }
 
   async function submit() {
     setBusy(true);
@@ -245,19 +283,11 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
   // typed field: picking a change or a setting never moves a box under the pointer.
   return (
     <form className="pg-form change-intent-form" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <label className="filter-field pg-wide">
-        <span>Change</span>
-        <select onChange={(event) => { setDriftId(event.target.value); setFields([]); }} value={driftId}>
-          {changes.map((candidate) => <option key={candidate.driftId} value={candidate.driftId}>{intentResource(candidate)}, detected {formatTimestamp(candidate.detectedAt)}</option>)}
-        </select>
-      </label>
-      <label className="filter-field">
-        <span>Who made the change</span>
-        <select onChange={(event) => setOwner(event.target.value)} required value={owner}>
-          <option value="">Choose a person</option>
-          {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
-        </select>
-      </label>
+      <div className="pg-wide change-intent-pick">
+        <OptionPicker label="Change" onChange={pickChange} options={changeOptions} placeholder="Find an open change by name" value={driftId || null} />
+        {openCount > changes.length ? <small className="field-help">The newest {changes.length.toLocaleString("en-GB")} of {openCount.toLocaleString("en-GB")} open changes. Type to find one by name.</small> : null}
+      </div>
+      <OptionPicker label="Who made the change" onChange={setOwner} options={personOptions} placeholder="Choose a person" value={owner || null} />
       <label className="filter-field">
         <span>For how long</span>
         <select onChange={(event) => setHours(Number(event.target.value))} value={hours}>
@@ -274,6 +304,8 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
         <input onChange={(event) => setReason(event.target.value)} placeholder="Why is this change needed now?" required value={reason} />
         <ReasonHint value={reason} />
       </label>
+      {/* Under every typed field, like the settings list: its length follows the change. */}
+      <p className="pg-wide change-intent-madeby" data-tone={madeBy.tone} role="status"><Icon name={madeBy.tone === "fine" ? "check-circle" : "info"} />{madeBy.text}</p>
       <fieldset className="pg-wide pg-picks">
         <legend>Settings to approve</legend>
         {picks.length === 0 && silent.length ? <p className="pg-muted"><Icon name="info" />{NO_CHANGE_WORDS}</p> : null}
@@ -332,9 +364,9 @@ export function EmergencyChangesView({ data }: { data: ChangeIntentsData }) {
             <h2 id="ec-approve-heading"><Icon name="check" />Approve an emergency change</h2>
             <p className="rs-sub">Pick an open change and the settings to keep for a while.</p>
           </div>
-          <Badge tone="neutral">{`${data.changes.length} open`}</Badge>
+          <Badge tone="neutral">{`${openChangeCount(data).toLocaleString("en-GB")} open`}</Badge>
         </div>
-        <ApproveIntentForm changes={data.changes} now={now} people={data.people} />
+        <ApproveIntentForm changes={data.changes} now={now} openCount={openChangeCount(data)} people={data.people} />
       </section>
       {past.length > 0 ? (
         <section aria-labelledby="ec-ended-heading" id="ec-ended">

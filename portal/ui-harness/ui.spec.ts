@@ -4553,9 +4553,27 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   const form = page.locator("form.change-intent-form");
   const submit = form.getByRole("button", { name: "Approve emergency change" });
   await expect(submit).toBeDisabled();
+  // Audit C7/E9: the count is every open change, the picker finds one by name, and who
+  // made it comes from the audit log, with each person listed once.
+  await expect(page.locator('.ui-tile[data-tile="open"] .ui-tile-value')).toHaveText("312");
+  await expect(page.locator("#ec-approve .rs-section-head .badge")).toHaveText("312 open");
+  await expect(form).toContainText("The newest 2 of 312 open changes. Type to find one by name.");
+  await expect(form.locator("select")).toHaveCount(1);
+  await expect(form.getByRole("button", { name: "Who made the change: On-call engineer" })).toBeVisible();
+  await expect(form.locator(".change-intent-madeby")).toHaveText("Filled in from the Microsoft Entra audit log: On-call engineer made the change on 2 Oct 2026, 08:21 UTC.");
+  await form.getByRole("button", { name: /^Change: / }).click();
+  await page.locator(".option-panel").getByRole("combobox").fill("sales");
+  await expect(page.locator(".option-panel [role='option']")).toHaveCount(1);
+  await page.locator(".option-panel").getByRole("combobox").fill("");
+  await page.locator(".option-panel [role='option']", { hasText: "Old project team" }).click();
   await form.getByLabel("Visibility").check();
   await expect(form.locator(".pg-summary")).toContainText("Automatic rules will not undo 1 setting on Old project team (group) until");
-  await form.getByLabel("Who made the change").selectOption({ label: "Amara Okafor" });
+  await form.getByRole("button", { name: /^Who made the change/ }).click();
+  const people = page.locator(".option-panel [role='option']");
+  await expect(people).toHaveCount(3);
+  await expect(people.filter({ hasText: "Amara Okafor" })).toHaveCount(2);
+  await people.filter({ hasText: "amara.okafor@contoso.example" }).click();
+  await expect(form.locator(".change-intent-madeby")).toHaveText("The Microsoft Entra audit log says On-call engineer made the change on 2 Oct 2026, 08:21 UTC.");
   await form.getByLabel("Reason").fill("Responders need the group open");
   await submit.click();
   const toast = page.locator(".toast").first();
@@ -4580,11 +4598,13 @@ for (const width of [1278, 390]) {
     await open(page, "/emergency-changes", "light");
     const form = page.locator("form.change-intent-form");
     const top = (locator: Locator) => locator.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
-    const fields = [form.getByLabel("Who made the change"), form.getByLabel("Change ticket (optional)"), form.getByLabel("Reason")];
+    const fields = [form.getByLabel("For how long"), form.getByLabel("Change ticket (optional)"), form.getByLabel("Reason")];
     const submit = form.getByRole("button", { name: "Approve emergency change" });
     const before = await Promise.all(fields.map(top));
-    // The first select is the change picker; its label text includes the chosen option.
-    await form.locator("select").first().selectOption({ label: "Sales CRM (app registration), detected 2 Oct 2026, 09:10 UTC" });
+    await form.getByRole("button", { name: /^Change: / }).click();
+    await page.locator(".option-panel [role='option']", { hasText: "Sales CRM" }).click();
+    // The audit log does not say who changed it: nothing is filled in.
+    await expect(form.getByRole("button", { name: "Who made the change: none chosen" })).toBeVisible();
     await expect(form.locator(".pg-pick")).toHaveCount(4);
     expect(await Promise.all(fields.map(top))).toEqual(before);
     const button = await top(submit);

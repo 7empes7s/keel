@@ -92,6 +92,7 @@ import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
+import { distinctPeople } from "@/lib/people-choices";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import type { ActivityChanges } from "@/lib/changed-values";
@@ -738,6 +739,8 @@ const INTENTS: ChangeIntent[] = [
 ];
 const INTENT_CHANGES: IntentCandidate[] = [{
   driftId: "d9300000-0000-4000-8000-000000000003", naturalKey: "group:Old project team", resourceType: "group", detectedAt: "2026-10-02T08:30:00Z",
+  // The Entra audit log names the on-call engineer, who has a Keel account: filled in.
+  madeBy: { state: "keel-user", principalId: "8c1e0000-0000-4000-8000-0000000000a2", who: "On-call engineer", at: "2026-10-02T08:21:00Z", source: "audit" },
   transitions: [
     { field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } },
     { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
@@ -746,6 +749,7 @@ const INTENT_CHANGES: IntentCandidate[] = [{
   // A change with many settings and long values: switching to it must not move the
   // fields under the settings list.
   driftId: "d9300000-0000-4000-8000-000000000004", naturalKey: "application:Sales CRM", resourceType: "application", detectedAt: "2026-10-02T09:10:00Z",
+  madeBy: { state: "unknown", principalId: null, who: null, at: null, source: "audit" },
   transitions: [
     { field: "displayName", before: { present: true, value: "Sales CRM" }, after: { present: true, value: "Sales CRM (migration)" } },
     { field: "signInAudience", before: { present: true, value: "AzureADMyOrg" }, after: { present: true, value: "AzureADMultipleOrgs" } },
@@ -1391,7 +1395,11 @@ const hiddenAlerts = (): AlertItem[] => INBOX_ALERTS.map((alert) => ({
 }));
 const hiddenIntents = (): ChangeIntentsData => ({
   intents: INTENTS.map((intent) => ({ ...intent, owner: hidePerson(intent.owner), approver: hidePerson(intent.approver), revokedBy: intent.revokedBy ? hidePerson(intent.revokedBy) : null })),
-  changes: INTENT_CHANGES,
+  // Who made a change is named as the loader names it: by the Keel user's code name.
+  changes: INTENT_CHANGES.map((change) => {
+    const person = [PERSON_AMARA, PERSON_ONCALL].find((entry) => entry.id === change.madeBy?.principalId);
+    return person && change.madeBy ? { ...change, madeBy: { ...change.madeBy, who: String(hidePerson(person).name) } } : change;
+  }),
   people: [PERSON_AMARA, PERSON_ONCALL].map((person) => ({ id: person.id, name: String(hidePerson(person).name) })),
   generatedAt: now,
 });
@@ -2976,7 +2984,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
     case "/emergency-changes": case "/emergency-changes/none": {
       const data: ChangeIntentsData = path === "/emergency-changes"
-        ? { intents: INTENTS, changes: INTENT_CHANGES, people: [{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }], generatedAt: now }
+        ? { intents: INTENTS, changes: INTENT_CHANGES, openCount: 312, generatedAt: now,
+          // Two people share a name: each keeps their sign-in address.
+          people: distinctPeople([PERSON_AMARA, PERSON_ONCALL, { id: "8c1e0000-0000-4000-8000-0000000000a5", email: "amara.okafor@partner.example", name: "Amara Okafor" }].map((person) => ({ id: person.id, name: person.name, email: person.email }))) }
         : { intents: [], changes: [], people: [], generatedAt: now };
       const verdict = changeIntentsVerdict(data.intents, now);
       const alerts = intentAlerts(data);

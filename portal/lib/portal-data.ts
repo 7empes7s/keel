@@ -841,30 +841,41 @@ async function windowStartsByContent(client: KeelClient, ref: string, rows: Reco
   return starts;
 }
 
-async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+type AttributedChange = Omit<ChangeAttribution, "route"> & { changeId: string };
+
+/** Who made each open change, from the audit logs, with the accounts KEEL backed up named
+ *  for a central reader. Names are not yet hidden: the caller applies "Hide people's
+ *  names". Throws when the read fails; the caller decides what that means. */
+export async function attributeOpenChanges(client: KeelClient, ref: string, baselineId: string, items: Pick<DriftRecord, "id" | "resourceType" | "naturalKey" | "changeType" | "before" | "after">[], scope: EntityScope): Promise<AttributedChange[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
-  if (!bounded.length) return items;
-  let byId: Map<string, Omit<ChangeAttribution, "route"> & { changeId: string }>;
-  try {
-    const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
-    const contentStarts = await windowStartsByContent(client, ref, rows);
-    const windows = new Map(rows.map((row) => [String(row.id), { from: contentStarts.get(String(row.id)) ?? iso(row.window_from), until: iso(row.window_until) }]));
-    const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
-      id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
-      fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
-      objectIds: changeObjectIds({ naturalKey: item.naturalKey, before: item.before, after: item.after }),
-    }));
-    const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as Array<Omit<ChangeAttribution, "route"> & { changeId: string }>;
-    // A central reader may see who any account is: name the ones KEEL backed up.
-    if (scope.central) {
-      const unnamed = attributed.flatMap((entry) => entry.actors.filter((actor) => !actor.name && actor.id).map((actor) => actor.id!));
-      if (unnamed.length) {
-        const lookup = await idNames(client, ref, unnamed);
-        for (const entry of attributed) {
-          entry.actors = entry.actors.map((actor) => (actor.name || !actor.id ? actor : { ...actor, name: lookup.ids[actor.id.toLowerCase()] ?? null }));
-        }
+  if (!bounded.length) return [];
+  const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
+  const contentStarts = await windowStartsByContent(client, ref, rows);
+  const windows = new Map(rows.map((row) => [String(row.id), { from: contentStarts.get(String(row.id)) ?? iso(row.window_from), until: iso(row.window_until) }]));
+  const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
+    id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
+    fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
+    objectIds: changeObjectIds({ naturalKey: item.naturalKey, before: item.before, after: item.after }),
+  }));
+  const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as AttributedChange[];
+  // A central reader may see who any account is: name the ones KEEL backed up.
+  if (scope.central) {
+    const unnamed = attributed.flatMap((entry) => entry.actors.filter((actor) => !actor.name && actor.id).map((actor) => actor.id!));
+    if (unnamed.length) {
+      const lookup = await idNames(client, ref, unnamed);
+      for (const entry of attributed) {
+        entry.actors = entry.actors.map((actor) => (actor.name || !actor.id ? actor : { ...actor, name: lookup.ids[actor.id.toLowerCase()] ?? null }));
       }
     }
+  }
+  return attributed;
+}
+
+async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+  if (!items.length) return items;
+  let byId: Map<string, AttributedChange>;
+  try {
+    const attributed = await attributeOpenChanges(client, ref, baselineId, items, scope);
     // "Hide people's names": the users the audit log names get their code names.
     const namer = await readNamer(client);
     if (namer) for (const entry of attributed) entry.actors = entry.actors.map((actor) => displayActor(actor, namer));

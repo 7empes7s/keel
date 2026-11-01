@@ -36,7 +36,7 @@ test("only someone who manages policies turns a service's restore approvals off 
     const read = guardedRead(DATA_SURFACES.restoreApprovalsApi, guardedRestoreApprovalsRead(deps));
 
     const before = await (await read(request(VIEWER, ["read"]))).json();
-    assert.equal(before.settings.length, 8);
+    assert.equal(before.settings.length, 9, "one row per service, Microsoft 365 apps included");
     assert.ok(before.settings.every((row: { approvalRequired: boolean }) => row.approvalRequired), "on for every service by default");
     assert.equal((await read(request(VIEWER, []))).status, 403);
 

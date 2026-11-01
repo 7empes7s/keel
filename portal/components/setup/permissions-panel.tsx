@@ -10,7 +10,7 @@ import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
-import { applyFilters, pickedTiles, tileCounts, toggleTile, type FilterTile } from "@/lib/filter-set";
+import { addsWords, applyFilters, pickedTiles, tileCounts, toggleTile, type FilterTile } from "@/lib/filter-set";
 import { byText, pageGroups, sortRows } from "@/lib/paging";
 import {
   PERMISSION_STATUS_LABELS, PERMISSION_STATUS_ORDER, PERMISSION_STATUS_TONES,
@@ -203,7 +203,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
         {PERMISSION_STATUS_ORDER.filter((status) => all[status] > 0).map((status) => {
           const entry = counts.get(status);
           const on = picked.includes(status);
-          const adds = picked.length && !on && entry ? (entry.adds ? `+${entry.adds} if added` : "Adds none") : null;
+          const adds = addsWords(entry, picked.length);
           return (
             <button
               aria-pressed={on}

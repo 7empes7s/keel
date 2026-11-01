@@ -67,8 +67,21 @@ test("address helpers: comma lists, old single links, toggles and adds", () => {
   assert.equal(tileParam(tiles, ["a", "b"], null), null, "the everything tile clears them all");
   assert.equal(withoutTile(["a", "b"], "a"), "b");
   assert.equal(withoutTile(["a"], "a"), null);
-  assert.equal(addsWords({ key: "b", count: 4, adds: 3, picked: false }, 1), "+3 if added");
-  assert.equal(addsWords({ key: "b", count: 4, adds: 0, picked: false }, 1), "Adds none");
+  assert.equal(addsWords({ key: "b", count: 4, adds: 3, picked: false }, 1), "+3 more if picked");
+  assert.equal(addsWords({ key: "b", count: 1500, adds: 1190, picked: false }, 1), "+1,190 more if picked");
+  assert.equal(addsWords({ key: "b", count: 4, adds: 0, picked: false }, 1), "Nothing new if picked");
   assert.equal(addsWords({ key: "b", count: 4, adds: 3, picked: false }, 0), null, "nothing picked: no adds line");
   assert.equal(addsWords({ key: "a", count: 4, adds: 0, picked: true }, 1), null, "a picked tile says nothing");
+});
+
+test("every tile says what it would add in the same words, from addsWords", () => {
+  // "+190 if added" and "Adds none" read unclearly and were written by hand on three
+  // pages; the hint now comes from one place.
+  const lib = join(import.meta.dirname, "..", "lib");
+  const sources = [...files(ROOT), ...readdirSync(lib).filter((name) => name.endsWith(".ts")).map((name) => join(lib, name))]
+    .filter((path) => !path.endsWith("filter-set.ts"))
+    .map((path) => ({ path: relative(join(ROOT, ".."), path), text: readFileSync(path, "utf8") }));
+  for (const { path, text } of sources) {
+    assert.doesNotMatch(text, /if added|Adds none|more if picked|Nothing new if picked/, `${path}: use addsWords from lib/filter-set for a tile's "would add" hint`);
+  }
 });

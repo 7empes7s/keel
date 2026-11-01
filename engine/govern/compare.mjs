@@ -38,7 +38,7 @@ import { loadSymbolContext } from '../store/resourceSymbols.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
-import { builtInOf, templateFamilyOf } from '../insights/taxonomy.mjs';
+import { builtInOf, templateFamilyOf, typeInfo } from '../insights/taxonomy.mjs';
 import { diffNormal, maskCredentials, sameForDiff } from '../safety/diffHygiene.mjs';
 
 export const COMPARE_VERSION = 1;
@@ -74,6 +74,8 @@ const CATALOG_PATH = new Map(CATALOG.map((entry) => [entry.type, entry.path ?? '
 /** The Microsoft service a catalogue type, workload or content workload belongs to. */
 export function serviceOf(kind, name) {
   if (kind === 'settings') {
+    // To Do, Forms and Office app org settings are read through Graph /admin, not Entra ID.
+    if (typeInfo(name)?.service === 'Microsoft 365 apps') return 'Microsoft 365 apps';
     return /^\/device(Management|AppManagement)/.test(CATALOG_PATH.get(name) ?? '') ? 'Intune' : 'Entra ID';
   }
   if (/^(exchange|group-conversations)/.test(name)) return 'Exchange Online';

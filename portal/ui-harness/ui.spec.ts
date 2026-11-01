@@ -914,7 +914,7 @@ test("restore lists every service in one list, each kind with its status", async
   // No separate section further down: every service is a group of the one list.
   await expect(page.locator(".restore-services")).toHaveCount(0);
   const names = page.locator(".restore-list .sel-group-name b");
-  await expect(names).toHaveText(["Changed recently", "Entra ID", "Exchange Online", "SharePoint and OneDrive", "Teams", "Intune", "Power Platform", "Purview", "Defender"]);
+  await expect(names).toHaveText(["Changed recently", "Entra ID", "Exchange Online", "SharePoint and OneDrive", "Teams", "Intune", "Power Platform", "Purview", "Defender", "Microsoft 365 apps"]);
   const group = (name: string) => page.locator(".restore-list .sel-group").filter({ has: page.locator(".sel-group-name b", { hasText: new RegExp(`^${name}$`) }) });
   // Exchange: its backed-up settings, then its other kinds in order, mailboxes first.
   const exchange = group("Exchange Online");
@@ -2254,8 +2254,8 @@ test("Changes · tiles add up, other filters narrow, chips and no dead ends", as
   await expect(page).toHaveURL(/risk=cosmetic/);
   await expect(rows).toHaveCount(3);
   // Unpicked tiles say what they would add; one service setting change is cosmetic too, so it adds 4 of its 5.
-  await expect(tile("Service settings")).toContainText("+4 if added");
-  await expect(tile("Affects access")).toContainText("+7 if added");
+  await expect(tile("Service settings")).toContainText("+4 more if picked");
+  await expect(tile("Affects access")).toContainText("+7 more if picked");
 
   await tile("Service settings").click();
   await expect(page).toHaveURL(/risk=cosmetic&from=services/);
@@ -3130,7 +3130,7 @@ test("Setup · missing permissions come first with a consent link, and the table
   await tile("Missing").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
   await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
-  await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
+  await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 more if picked");
   await tile("Not used by Keel").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(6);
   await panel.getByRole("button", { name: "App: All apps" }).click();
@@ -3170,9 +3170,9 @@ test("Setup · one status tile per service, worst first, and a warning before a 
 
   const tiles = page.locator(".su-svc-tile");
   // One tile per Microsoft 365 service; Entra ID has a failed kind, Purview a partly done one.
-  await expect(tiles).toHaveCount(8);
+  await expect(tiles).toHaveCount(9);
   // Purview's only problem is a partly done kind: amber "Partly done", not failing.
-  await expect(page.locator(".su-svc-head p")).toHaveText("1 of 8 services is failing to back up.");
+  await expect(page.locator(".su-svc-head p")).toHaveText("1 of 9 services is failing to back up.");
   await expect(tiles.filter({ hasText: "Purview" }).locator(".badge")).toHaveText("Partly done");
   await expect(tiles.first().locator(".su-svc-name b")).toHaveText("Entra ID");
   const entra = tiles.filter({ hasText: "Entra ID" });

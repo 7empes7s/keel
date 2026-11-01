@@ -33,7 +33,7 @@ import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
 import { driftActionControls } from "@/lib/drift-actions";
 import { changeTiles, SERVICES_TILE, tileParams } from "@/lib/change-tiles";
-import { applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-set";
+import { addsWords, applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-set";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { ago, BLAST_RADIUS_ORDER, brandCase, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
@@ -310,11 +310,7 @@ export function ChangeList({
     ...(query ? [{ key: "q", label: `Find: “${view.get("q").trim()}”`, clear: { q: null } }] : []),
   ];
   // What a tile says it would add, once another tile is picked.
-  const addsWords = (key: string) => {
-    const entry = counts.get(key);
-    if (!picked.length || !entry || entry.picked) return null;
-    return entry.adds ? `+${entry.adds} if added` : "Adds none";
-  };
+  const addsHint = (key: string) => addsWords(counts.get(key), picked.length);
   const serviceReads = [...new Set(open.flatMap((item) => (item.serviceRead ? [itemService(item).name] : [])))];
   // The verdict counts what the service, kind and find filters leave, like the tiles do;
   // its detail then names the filters and gives every service's totals.
@@ -340,7 +336,7 @@ export function ChangeList({
       <section aria-label="Open changes by risk" className="bl-tiles">
         {radii.map((radius) => {
           const active = picked.includes(radius);
-          const adds = addsWords(radius);
+          const adds = addsHint(radius);
           return (
             <Link aria-current={active || undefined} className="bl-card bl-tile bl-link" data-tone={impactTone(radius)} key={radius} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"} {...tileLink(radius)}>
               <span className="bl-tile-label"><Icon name={radius === "cosmetic" ? "info" : "alert"} />{impactWords(radius)}{active ? <Icon className="bl-tile-check" name="check" /> : null}</span>
@@ -360,7 +356,7 @@ export function ChangeList({
             <span className="bl-tile-label"><Icon name="cloud" />Service settings{picked.includes(SERVICES_TILE) ? <Icon className="bl-tile-check" name="check" /> : null}</span>
             <b className="bl-tile-count">{(counts.get(SERVICES_TILE)?.count ?? 0) + uncounted}</b>
             <small>{waiting === serviceIds.size ? "Waiting for review" : waiting ? `${waiting} waiting for review; ${serviceIds.size - waiting} seen` : "All seen; accept or undo them"}</small>
-            {addsWords(SERVICES_TILE) ? <small className="bl-tile-adds">{addsWords(SERVICES_TILE)}</small> : null}
+            {addsHint(SERVICES_TILE) ? <small className="bl-tile-adds">{addsHint(SERVICES_TILE)}</small> : null}
           </Link>
         ) : null}
       </section>

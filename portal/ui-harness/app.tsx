@@ -2934,7 +2934,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/people/anonymity": case "/people/anonymity-off": {
       const on = path === "/people/anonymity";
       return <>
-        <PageHeader actions={<a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a>} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <PageHeader actions={<a className="btn" href="#/people?new=1"><Icon name="plus" />Add person</a>} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
         <AnonymitySettingCard canChange now={now} setting={on ? ANONYMITY_ON : { enabled: false, changedAt: null, changedBy: null }} />
         <PeoplePage canRoles canUsers now={now} people={PEOPLE_PAGE} />
       </>;
@@ -2943,7 +2943,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // A viewer here holds users but not roles: they see everyone and can disable, not grant.
       const rolesToo = path === "/people";
       return <>
-        <PageHeader actions={rolesToo ? <a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a> : undefined} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <PageHeader actions={rolesToo ? <a className="btn" href="#/people?new=1"><Icon name="plus" />Add person</a> : undefined} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
         <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
@@ -3004,7 +3004,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/rules/anonymous": {
       const policies = POLICIES.map(hiddenRunAs);
       return <>
-        <PageHeader actions={<a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(policies), false)} title="Automatic rules" />
+        <PageHeader actions={<a className="btn" href="#/rules?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(policies), false)} title="Automatic rules" />
         {ANONYMOUS_NOTE}
         <PoliciesPage canEdit halted={false} now={now} policies={policies} />
       </>;
@@ -3019,7 +3019,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/rules": case "/rules/viewer": {
       const viewer = path === "/rules/viewer";
       return <>
-        <PageHeader actions={viewer ? undefined : <a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(POLICIES), false)} title="Automatic rules" />
+        <PageHeader actions={viewer ? undefined : <a className="btn" href="#/rules?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(POLICIES), false)} title="Automatic rules" />
         <PoliciesPage canEdit={!viewer} halted={false} now={now} policies={POLICIES} />
       </>;
     }

@@ -1291,7 +1291,7 @@ test("changes · Shift+click range, select a service, select all, filter by risk
 test("changes · phone: hold a change, then drag over others to select them", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
   const touchPage = await context.newPage();
-  await touchPage.goto(`${HARNESS}#/drift`);
+  await touchPage.goto(`${HARNESS}#/changes`);
   await touchPage.locator('.shell[data-statuses="ready"]').waitFor();
   const rows = touchPage.locator(".sel-row");
   await rows.nth(2).scrollIntoViewIfNeeded();
@@ -1836,7 +1836,7 @@ test("emergency access shows each check, keeps unknown and unchecked visible, an
   await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Block legacy auth" })).toHaveCount(1);
   // A day-to-day account is not kept for emergencies.
   await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Kept for emergencies only" })).toContainText("signed in on 12 separate days");
-  await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /drift\?q=Block%20legacy%20auth/);
+  await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /changes\?q=Block%20legacy%20auth/);
   await expect(second.locator('.ea-check[data-status="due"]')).toContainText("a new test has been due since");
   await expect(page.locator(".ea-alerts")).toContainText("Emergency admin 2 was used 1 hour ago, and made 2 changes after it.");
   await expect(page.locator(".ea-changes li")).toHaveCount(2);
@@ -3244,7 +3244,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     // Each service has its own ring.
     await expect(entra.getByRole("img", { name: /^Entra ID: \d+% match\./ })).toBeVisible();
     // A service with changes links to them, filtered to that service.
-    await expect(entra).toHaveAttribute("href", /drift\?service=/);
+    await expect(entra).toHaveAttribute("href", /changes\?service=/);
     await entra.click();
     await expect(page).toHaveURL(/changes\?service=/);
     await expect(page.locator(".sel-row")).toHaveCount(6);
@@ -3259,7 +3259,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(exchange).toHaveAttribute("data-basis", "previous-backup");
     await expect(exchange).toContainText(/Changed\s*1\s*kind/);
     await expect(exchange).toContainText(/In line\s*1\s*kind/);
-    await expect(exchange).toHaveAttribute("href", /drift\?service=Exchange/);
+    await expect(exchange).toHaveAttribute("href", /changes\?service=Exchange/);
     await expect(page.locator(".bl-service", { hasText: "Intune" })).toHaveAttribute("data-basis", "approved-setup");
     await expect(page.locator(".bl-legend")).toContainText("Not read");
     // Service cards in one row are the same height; nothing scrolls sideways.
@@ -4012,7 +4012,7 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
   await expect(main).toContainText("Phishing mail goes to quarantine");
   await expect(main).toContainText("Risky attachment types are blocked");
   await expect(main).toContainText("Links in email are checked when clicked");
-  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  await page.goto(`${HARNESS}#/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
   const sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText("Control · Defender");
@@ -4050,7 +4050,7 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
 
 test("Compliance · Defender make it pass: one row per failing setting, in plain words, planned and sent to the approvers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  await page.goto(`${HARNESS}#/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
   const panel = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
   const fix = panel.locator(".cp-fix");
   await expect(fix.locator("h3")).toContainText("Quarantine phishing");
@@ -4254,7 +4254,7 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(records.nth(0)).toContainText("Sales Admins (group)");
   await expect(records.nth(0)).toContainText("Happened between");
   await expect(records.nth(0).locator(".badge").first()).toHaveText("Changed");
-  await expect(records.nth(0).getByRole("link", { name: "Open the Changes page" })).toHaveAttribute("href", /drift/);
+  await expect(records.nth(0).getByRole("link", { name: "Open the Changes page" })).toHaveAttribute("href", /changes/);
   await expect(records.nth(1)).toContainText("the earlier backup is not known");
   await expect(records.nth(1)).toHaveAttribute("data-tone", "urgent");
   await expect(records.nth(1).locator(".badge", { hasText: "Could lock out admins" })).toHaveAttribute("data-tone", "urgent");
@@ -4529,7 +4529,7 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   await expect(alerts).toHaveCount(2);
   await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
   await expect(alerts.nth(0)).toContainText("Finance (group) is still changed after its approval ended");
-  await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /drift/);
+  await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /changes/);
   await expect(alerts.nth(1)).toContainText("Automatic rules leave Block legacy auth (Conditional Access policy) alone until");
   await expect(page.locator('.ui-tile[data-tile="active"] .ui-tile-value')).toHaveText("1");
   await expect(page.locator('.ui-tile[data-tile="next"] .ui-tile-value')).toHaveText("in 3 hours");
@@ -4757,7 +4757,7 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   await expect(page).toHaveURL(/open=a1e70000-0000-4000-8000-000000000002/);
   const sheet = page.getByRole("dialog", { name: "Finance (group)" });
   await expect(sheet).toContainText("It was removed since the approved setup was saved.");
-  await expect(sheet.getByRole("link", { name: "Open the change" })).toHaveAttribute("href", /drift\?q=Finance$/);
+  await expect(sheet.getByRole("link", { name: "Open the change" })).toHaveAttribute("href", /changes\?q=Finance$/);
   await expect(sheet).toContainText("Keel could not escalate it: no channel is set to tell anyone.");
   await expect(sheet.locator(".al-timeline > li")).toHaveCount(2);
   await expect(sheet.getByRole("button", { name: "Mute" }).or(sheet.getByRole("link", { name: "Mute" }))).toBeVisible();
@@ -4783,7 +4783,7 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   const acked = page.getByRole("dialog", { name: "Emergency admin 1 (user)" });
   await expect(acked).toContainText("This emergency account was used.");
   await expect(acked).toContainText("Planned sign-in test with the service desk");
-  await expect(acked.getByRole("link", { name: "Open emergency access" })).toHaveAttribute("href", /readiness/);
+  await expect(acked.getByRole("link", { name: "Open emergency access" })).toHaveAttribute("href", /emergency-access/);
   await acked.getByRole("link", { name: "Resolve" }).click();
   const resolve = page.getByRole("dialog", { name: "Resolve this alert?" });
   await resolve.getByRole("button", { name: "Resolve alert" }).click();
@@ -5100,7 +5100,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks", "notifications"];
+  const routes = ["protect", "resilience", "changes", "approvals", "alerts", "incidents", "approved-setups", "restore", "activity", "compliance", "notifications"];
   // Codex review: the Waiting tile never adds approvals, alerts and incidents into one
   // number; each part is its own link.
   const waiting = page.locator('.ov-tile[data-tile="waiting"]');

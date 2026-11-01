@@ -502,6 +502,9 @@ export interface DriftRecord {
   // observed or approved copy, when it has one: an antivirus or firewall policy made in
   // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind).
   templateFamily?: string | null;
+  // The object's isBuiltIn flag (an admin role Microsoft provides, or the tenant's own),
+  // so the change names it "Built-in admin role" or "Custom admin role"; null when unknown.
+  builtIn?: boolean | null;
   // Names of the objects the before/after copies point to by id (users, groups, roles,
   // apps), by id, as the collection that saw the change read them. Ids KEEL could not
   // name are absent.

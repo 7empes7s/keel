@@ -29,6 +29,8 @@ export interface SettingsItem {
   blastRadius: string | null;
   // The settings catalog template family, when the stored object has one.
   templateFamily?: string | null;
+  // The isBuiltIn flag, when the stored object has one (an Entra admin role).
+  builtIn?: boolean | null;
   fields?: CompareField[];
   fieldsTotal?: number;
 }

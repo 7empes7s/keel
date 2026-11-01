@@ -98,6 +98,10 @@ test("in Solo mode Approvals lists your own request under For you, with Approve"
   assert.match(opened, /Approval mode is Solo, so you can approve it yourself/);
   assert.match(opened, /Approve myself/);
   assert.doesNotMatch(opened, /someone else must decide it/);
+  // Waiting on others, worded for Solo: the requester decides, so nothing says they never do.
+  const others = await renderApprovalInboxAt("show=others", props);
+  assert.match(others, /Nothing you approved is waiting on another approver/);
+  assert.doesNotMatch(others, /The person who asks never decides/);
 });
 
 async function renderMenu(capabilities: { canApprove?: boolean; canRead?: boolean }, approvals: number | null, alerts: number | null): Promise<string> {

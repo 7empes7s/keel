@@ -668,7 +668,7 @@ export function ApprovalInbox({
         ) : show === "others" ? (
           <section aria-labelledby="ap-others-heading" className="ap-section">
             <h2 className="visually-hidden" id="ap-others-heading">Waiting on others</h2>
-            <p className="ap-others-note"><Icon name="info" />These wait on another approver: you asked for them, or you already approved. The person who asks never decides.</p>
+            <p className="ap-others-note"><Icon name="info" />{approvalMode === "solo" ? "These wait on another approver: you already approved, and each needs more than one approver." : "These wait on another approver: you asked for them, or you already approved. The person who asks never decides."}</p>
             {onOthers.length ? (
               <SelectableList
                 getId={(item) => item.id}
@@ -683,7 +683,7 @@ export function ApprovalInbox({
                 toneOf={(item) => requestTone(item, now)}
               />
             ) : (
-              <p className="sel-empty">Nothing you asked for is waiting on someone else.</p>
+              <p className="sel-empty">{approvalMode === "solo" ? "Nothing you approved is waiting on another approver." : "Nothing you asked for is waiting on someone else."}</p>
             )}
           </section>
         ) : (

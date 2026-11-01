@@ -90,7 +90,7 @@ function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, n
         {!source ? <RiskChip tone="soon">Not available yet</RiskChip> : null}
         {!source ? " " : null}
         {capture}
-        {gap && !source ? <> <Link href="/protect">What&apos;s protected</Link> shows each kind&apos;s last read.</> : null}
+        {gap && !source ? <> <Link href="/protect">What&apos;s protected</Link> shows each type&apos;s last read.</> : null}
       </p>
     </section>
   );
@@ -147,7 +147,7 @@ function MatchScore({ score, summaries }: { score: ComplianceScore; summaries: S
         </p>
         <p className="bl-help">
           Every setting Keel compares counts once. A setting that was changed, removed or added since counts as not matching.
-          {" "}Kinds not covered or not read are left out.
+          {" "}Types not covered or not read are left out.
           {unscored.length ? ` No percentage yet for ${unscored.join(", ")}: Keel has no count of the settings it compares there.` : ""}
         </p>
       </div>
@@ -173,15 +173,15 @@ function ServiceCard({ summary }: { summary: ServiceSummary }) {
       <dl className="bl-service-stats">
         <div data-part="changed" data-tone={summary.changed ? summary.tone : undefined}>
           <dt>Changed</dt>
-          <dd>{summary.changedKinds.length}<small>{summary.changedKinds.length === 1 ? "kind" : "kinds"}</small></dd>
+          <dd>{summary.changedKinds.length}<small>{summary.changedKinds.length === 1 ? "type" : "types"}</small></dd>
         </div>
         <div data-part="in-line">
           <dt>{words.inLine}</dt>
-          <dd>{summary.inLine.length}<small>{summary.inLine.length === 1 ? "kind" : "kinds"}</small></dd>
+          <dd>{summary.inLine.length}<small>{summary.inLine.length === 1 ? "type" : "types"}</small></dd>
         </div>
         <div data-part="not-covered">
           <dt>{words.notCovered}</dt>
-          <dd>{summary.notCovered.length}<small>{summary.notCovered.length === 1 ? "kind" : "kinds"}</small></dd>
+          <dd>{summary.notCovered.length}<small>{summary.notCovered.length === 1 ? "type" : "types"}</small></dd>
         </div>
       </dl>
       <p className="bl-service-note">{serviceNote(summary)}</p>
@@ -211,7 +211,7 @@ function OtherVersions({ baselines, canBaseline, now }: { baselines: BaselineRec
   // the version it copies, though its settings are older: each row says both.
   const ordered = [...baselines].sort((a, b) => Date.parse(b.setAt) - Date.parse(a.setAt) || (b.version ?? 1) - (a.version ?? 1));
   const about = <>Setups you approved before, newest approved first. Using one again needs <ApprovalText phrase="approval" />.{notCompared
-    ? " Keel compares each one with the newest complete backup; until a backup reads every kind in full, they show Not compared yet."
+    ? " Keel compares each one with the newest complete backup; until a backup reads every type in full, they show Not compared yet."
     : ""}</>;
   return (
     <section aria-labelledby="bl-versions-heading" className="bl-section">
@@ -264,10 +264,10 @@ function Record({ baselines }: { baselines: BaselineRecord[] }) {
           baseline.supersedesId ? <RecordField key={`${baseline.id}-sup`} label={`Supersedes baseline ID · ${name}`} value={baseline.supersedesId} /> : null,
           baseline.supersededById ? <RecordField key={`${baseline.id}-supby`} label={`Superseded by baseline ID · ${name}`} value={baseline.supersededById} /> : null,
           <RecordField copy={false} key={`${baseline.id}-basis`} label={`Capture basis · ${name}`} value={capture?.basis ?? "unknown"} />,
-          capture?.sourceSnapshotId ? <RecordField key={`${baseline.id}-src`} label={`Source snapshot ID · ${name}`} usage={<>use with <code>keel-baseline-create --snapshot-id</code></>} value={capture.sourceSnapshotId} /> : null,
+          capture?.sourceSnapshotId ? <RecordField key={`${baseline.id}-src`} label={`Source backup ID · ${name}`} usage={<>use with <code>keel-baseline-create --snapshot-id</code></>} value={capture.sourceSnapshotId} /> : null,
           <RecordField copy={false} key={`${baseline.id}-types`} label={`Types captured · ${name}`} value={capture?.types.length ? capture.types.join(", ") : null} />,
           <RecordField copy={false} key={`${baseline.id}-services`} label={`Service reads captured · ${name}`} value={capture?.services?.length ? capture.services.map((service) => `${service.workload} (${service.settings}, read ${service.collectedAt ?? "unknown"})`).join(", ") : null} />,
-          <RecordField copy={false} key={`${baseline.id}-cmp`} label={`Comparison · ${name}`} value={changes ? `${changes.state} · added ${changes.added} · modified ${changes.modified} · removed ${changes.removed}${changes.reason ? ` · ${changes.reason}` : ""}${changes.comparedSnapshotId ? ` · snapshot ${changes.comparedSnapshotId}` : ""}` : null} />,
+          <RecordField copy={false} key={`${baseline.id}-cmp`} label={`Comparison · ${name}`} value={changes ? `${changes.state} · added ${changes.added} · modified ${changes.modified} · removed ${changes.removed}${changes.reason ? ` · ${changes.reason}` : ""}${changes.comparedSnapshotId ? ` · backup ${changes.comparedSnapshotId}` : ""}` : null} />,
         ];
       })}
     </TechnicalDetails>
@@ -344,7 +344,7 @@ export function ApprovedSetup({
             {summaries.map((summary) => <ServiceCard key={summary.service.code} summary={summary} />)}
           </ul>
           <dl className="bl-legend">
-            <div><dt data-part="changed">Changed</dt><dd>Kinds of setting that differ from the approved setup. The colour shows the worst risk among them.</dd></div>
+            <div><dt data-part="changed">Changed</dt><dd>Setting types that differ from the approved setup. The colour shows the worst risk among them.</dd></div>
             <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup, including Exchange, SharePoint, Teams, Purview and Power Platform settings. Accept keeps it up to date.</dd></div>
             <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet, or the latest read of it failed. Capture a new version to add it.</dd></div>
             {anyRead ? (

@@ -111,7 +111,7 @@ test("reasons and names are words, not codes", () => {
   assert.equal(formatDuration(125 * 60_000), "2 hours 5 minutes");
   const gaps = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z")] });
   assert.equal(gaps.freshness.state, "gaps");
-  assert.equal(freshnessSentence(gaps), "Not measured: 1 item has no good backup yet.");
+  assert.equal(freshnessSentence(gaps), "Not measured: 1 setting has no good backup yet.");
 });
 
 test("a service backup failure is reported once, by its service, never against Entra ID and Intune", () => {

@@ -71,7 +71,7 @@ test("groups, chips, counts, the status pill and the verdict", () => {
   assert.equal(loadChip(DISCOVER, undefined).label, "Load not measured");
   // Only the clean-up and the off-site copy stay away from Microsoft.
   assert.equal(forecastSentence(undefined, "prune"), "Does not call Microsoft.");
-  assert.equal(forecastSentence(undefined, "discover"), "Reads Microsoft; its load is not measured for this kind yet.");
+  assert.equal(forecastSentence(undefined, "discover"), "Reads Microsoft; its load is not measured for this type yet.");
   const all = [TIER1, TIER2, PRUNE, OFFSITE, DISCOVER];
   const counts = scheduleCounts(all, [WARNING]);
   assert.deepEqual({ on: counts.on, failed: counts.failed, warnings: counts.warnings, next: counts.next?.id }, { on: 4, failed: 1, warnings: 1, next: TIER1.id });

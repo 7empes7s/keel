@@ -96,7 +96,7 @@ test("a type the tenant cannot have is unavailable, not failed", () => {
     types: [readOnlyType(), unavailable],
   };
   assert.deepEqual(protectProblems(data, NOW), []);
-  assert.deepEqual(protectVerdict(data, NOW), { text: "The one configuration type was backed up in the last 3 hours.", tone: "good" });
+  assert.deepEqual(protectVerdict(data, NOW), { text: "The one setting type was backed up in the last 3 hours.", tone: "good" });
 });
 
 test("a refused read that is not a missing prerequisite still counts as failed", () => {

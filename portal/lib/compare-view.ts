@@ -193,7 +193,7 @@ export function defaultInput(tenants: CompareTenant[]): CompareInput | null {
 }
 
 export function snapshotWords(option: CompareSnapshotOption): string {
-  return `${formatTimestamp(option.completedAt)} · ${option.resourceCount.toLocaleString("en-GB")} objects`;
+  return `${formatTimestamp(option.completedAt)} · ${option.resourceCount.toLocaleString("en-GB")} settings`;
 }
 
 function tenantLabel(tenants: CompareTenant[], tenantRef: string): string {
@@ -315,7 +315,7 @@ export function containerWords(container: string): string {
 
 export function contentItemWords(item: ContentItem): string {
   if (item.name) return item.name;
-  return item.kind ? `An item (${item.kind.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("-", " ").toLowerCase()})` : "An item";
+  return item.kind ? `A content item (${item.kind.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("-", " ").toLowerCase()})` : "A content item";
 }
 
 /** A value in words: a reference reads as the object's name, an id as the name Keel has for it. */

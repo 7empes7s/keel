@@ -164,7 +164,7 @@ const plural = (count: number, one: string, many: string) => `${count.toLocaleSt
 /** "3 settings differ: 1 changed, 1 added and 1 removed." */
 export function comparisonSentence(comparison: Comparison, against: string): string {
   const { counts, differing } = comparison;
-  if (!comparison.rows.length) return "Keel holds no settings for this item.";
+  if (!comparison.rows.length) return "Keel holds no values for this setting.";
   if (counts.unknown) return `${plural(counts.unknown, "setting is", "settings are")} set now. Keel did not keep the earlier copy, so nothing is shown as removed.`;
   if (!differing) return `Every setting matches ${against}.`;
   if (wholeItem(comparison) === "added") return `Not in ${against}. It holds ${plural(counts.added, "setting", "settings")}.`;

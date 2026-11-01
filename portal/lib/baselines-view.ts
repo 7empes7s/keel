@@ -43,7 +43,7 @@ export function itemService(item: { resourceType: string; name?: string | null; 
 /** Why a kind of setting matters, from the taxonomy's priority reason. */
 export function whyItMatters(type: string): string {
   const info = typeInfo(type);
-  return info.known && info.priorityReason ? info.priorityReason : "Keel has not ranked this kind of setting yet.";
+  return info.known && info.priorityReason ? info.priorityReason : "Keel has not ranked this setting type yet.";
 }
 
 // The redesign's plain names for the Microsoft terms people trip over (AUDIT.md rule 3).
@@ -295,11 +295,11 @@ export function putBackWords(baseline: BaselineRecord, baselines: BaselineRecord
   if (!from) return null;
   const captured = baseline.capture?.capturedAt ?? null;
   const kinds = baseline.capture?.types.length ?? 0;
-  const head = `This version is a copy of version ${from.version}, put back ${ago(baseline.setAt, now)}. It holds the settings version ${from.version} held${captured ? `, as they were ${ago(captured, now)}` : ""}${kinds ? `: ${plural(kinds, "kind")} of setting` : ""}.`;
+  const head = `This version is a copy of version ${from.version}, put back ${ago(baseline.setAt, now)}. It holds the settings version ${from.version} held${captured ? `, as they were ${ago(captured, now)}` : ""}${kinds ? `: ${plural(kinds, "setting type")}` : ""}.`;
   const replaced = baselines.find((other) => other.id === baseline.supersedesId);
   const before = replaced?.capture?.types.length ?? 0;
   if (!replaced || before <= kinds) return head;
-  return `${head} Version ${replaced.version ?? 1}, which it replaced, held ${plural(before, "kind")}, so ${plural(before - kinds, "kind is", "kinds are")} not checked until you capture a new version.`;
+  return `${head} Version ${replaced.version ?? 1}, which it replaced, held ${plural(before, "type")}, so ${plural(before - kinds, "type is", "types are")} not checked until you capture a new version.`;
 }
 
 /** Kinds Keel backs up now that the setup does not hold, in a sentence; null when none. */
@@ -307,7 +307,7 @@ export function notHeldWords(baseline: BaselineRecord, backedUp: string[]): stri
   const held = new Set(baseline.capture?.types ?? []);
   const missing = [...new Set(backedUp)].filter((type) => !held.has(type));
   if (!missing.length || !held.size) return null;
-  return `${plural(missing.length, "kind")} Keel backs up now ${missing.length === 1 ? "is" : "are"} not in it (${kindsWords(missing)}). Capture a new version to add ${missing.length === 1 ? "it" : "them"}.`;
+  return `${plural(missing.length, "setting type")} Keel backs up now ${missing.length === 1 ? "is" : "are"} not in it (${kindsWords(missing)}). Capture a new version to add ${missing.length === 1 ? "it" : "them"}.`;
 }
 
 function listWords(names: string[]): string {
@@ -324,9 +324,9 @@ export function captureBlockedWords({ capturedAt, gap, hasSource, now, sources }
   sources: { completedAt: string | null }[];
 }): string {
   if (hasSource) return "Capture new version: takes the setup from the newest complete backup. This version is kept, and you can go back to it.";
-  const need = "Capture new version needs a newer complete backup: one that read every kind of setting in full.";
+  const need = "Capture new version needs a newer complete backup: one that read every setting type in full.";
   if (gap) {
-    const kinds = (types: string[]) => (types.length > 3 ? plural(types.length, "kind") : kindsWords(types));
+    const kinds = (types: string[]) => (types.length > 3 ? plural(types.length, "type") : kindsWords(types));
     const verb = (types: string[], one: string, many: string) => (types.length === 1 ? one : many);
     const parts = [
       gap.failed.length ? `${kinds(gap.failed)} could not be read` : null,
@@ -343,7 +343,7 @@ export function captureBlockedWords({ capturedAt, gap, hasSource, now, sources }
 /** "4,812 settings in 6 kinds", plus "and 320 service settings" when it holds any. */
 export function coverageWords(baseline: BaselineRecord): string {
   const kinds = baseline.capture?.types.length ?? 0;
-  const graph = `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "kind")}` : ""}`;
+  const graph = `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "type")}` : ""}`;
   const services = baseline.capture?.services?.length ?? 0;
   return services && baseline.serviceSettingCount ? `${graph}, and ${plural(baseline.serviceSettingCount, "service setting")}` : graph;
 }

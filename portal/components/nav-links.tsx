@@ -46,11 +46,11 @@ export const SECTION_PURPOSE: Record<NavSection, string> = {
 export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
   Dashboards: [{ href: "/", label: "Overview", gate: null, aliases: "overview dashboard home" }],
   Backup: [
-    { href: "/protect", label: "What's protected", gate: null, aliases: "protect backups coverage configuration types" },
+    { href: "/protect", label: "What's protected", gate: null, aliases: "protect backups coverage setting types" },
     { href: "/schedules", label: "Schedules", gate: "canRead" },
     { href: "/sites", label: "Sites", gate: "canRead", aliases: "sharepoint site permissions app access grants groups roles" },
     { href: "/backups", label: "Backups", gate: null, hidden: true },
-    { href: "/coverage", label: "Configuration types", gate: null, hidden: true },
+    { href: "/coverage", label: "Setting types", gate: null, hidden: true },
   ],
   Restore: [
     { href: "/restore", label: "Restore", gate: null },
@@ -61,7 +61,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
   Baselines: [
     { href: "/drift", label: "Changes", gate: null, aliases: "drift changes" },
     { href: "/baselines", label: "Approved setups", gate: null, aliases: "baselines approved setup" },
-    { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare snapshots tenants differences side by side" },
+    { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare backups tenants differences side by side" },
     { href: "/benchmarks", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
   ],
   Reports: [

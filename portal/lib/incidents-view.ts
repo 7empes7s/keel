@@ -48,7 +48,7 @@ export function recoveryPointStatusLabel(status: IncidentRecoveryPoint["status"]
 
 /** "30 Sept 2026, 06:00 UTC": a backup is named by when it was taken. */
 export function backupName(point: Pick<IncidentRecoveryPoint, "snapshot">): string {
-  return point.snapshot.name.replace(/^Snapshot of /, "").replace(/^Snapshot at an unknown time$/, "A backup at an unknown time");
+  return point.snapshot.name.replace(/^(?:Snapshot|Backup) of /, "").replace(/^(?:Snapshot|Backup) at an unknown time$/, "A backup at an unknown time");
 }
 
 export function backupAge(point: Pick<IncidentRecoveryPoint, "observedTo" | "observedFrom">, now: string): string {
@@ -80,7 +80,7 @@ export interface ParsedExclusion {
   reason: string;
 }
 
-/** One harmful item per line: `resource key | reason`, or `resource key#setting | reason`.
+/** One harmful setting per line: `resource key | reason`, or `resource key#setting | reason`.
  * Kept for the command line and older links; the page uses the item picker. */
 export function parseExclusions(text: string): { exclusions: ParsedExclusion[]; error: string | null } {
   const exclusions: ParsedExclusion[] = [];
@@ -90,7 +90,7 @@ export function parseExclusions(text: string): { exclusions: ParsedExclusion[]; 
     const reason = reasonParts.join("|").trim();
     const [naturalKey, field] = target.trim().split("#");
     if (!naturalKey || !reason) {
-      return { exclusions: [], error: `Line ${index + 1}: write "resource key | reason" or "resource key#setting | reason".` };
+      return { exclusions: [], error: `Line ${index + 1}: write "setting key | reason" or "setting key#value name | reason".` };
     }
     exclusions.push({ naturalKey: naturalKey.trim(), field: field?.trim() || null, reason });
   }
@@ -105,7 +105,7 @@ export function itemLabel(item: { naturalKey: string; resourceType: string; name
 }
 
 export function harmfulItems(count: number): string {
-  return count === 1 ? "1 harmful item" : `${count} harmful items`;
+  return count === 1 ? "1 harmful setting" : `${count} harmful settings`;
 }
 
 export function backupsWord(count: number): string {
@@ -265,10 +265,10 @@ export function timeline(detail: IncidentDetail, now: string): Timeline {
 export function failureWords(status: number, message?: string | null): string {
   const text = message ?? "";
   if (status === 403) return "You can no longer change incidents. Ask an admin for the investigator role.";
-  if (/compromised verdict refuses/.test(text)) return "An unsafe backup is refused as a whole. Leaving items out applies only to a clean one.";
-  if (/field .* is not in this snapshot/.test(text)) return "That setting is not in this backup. Pick the item again, or leave the whole item out.";
-  if (/is not in this snapshot/.test(text)) return "One of the items you left out is not in this backup. Pick it again from the list.";
-  if (/duplicate exclusion/.test(text)) return "The same item is listed twice. Remove one.";
+  if (/compromised verdict refuses/.test(text)) return "An unsafe backup is refused as a whole. Leaving settings out applies only to a clean one.";
+  if (/field .* is not in this snapshot/.test(text)) return "That value is not in this backup. Pick the setting again, or leave the whole setting out.";
+  if (/is not in this snapshot/.test(text)) return "One of the settings you left out is not in this backup. Pick it again from the list.";
+  if (/duplicate exclusion/.test(text)) return "The same setting is listed twice. Remove one.";
   if (/already qualified/.test(text)) return "This backup is already cleared, so it needs no permission.";
   if (/already pinned/.test(text)) return "This backup is already kept for this incident.";
   if (/incident is closed/.test(text)) return "This incident is closed, so it cannot change. Open a new incident instead.";
@@ -344,7 +344,7 @@ export function incidentServiceGroups(entries: IncidentServiceBackup[], query = 
 /** A service group's header: how many kinds, and the most pressing problem first. */
 export function serviceGroupWords(entries: IncidentServiceBackup[]): { count: string; about: string } {
   if (!entries.length) return { count: "No backup yet", about: "Nothing to restore from" };
-  const count = `${entries.length} ${entries.length === 1 ? "kind" : "kinds"}`;
+  const count = `${entries.length} ${entries.length === 1 ? "type" : "types"}`;
   const statuses = entries.map(serviceBackupStatus);
   const none = statuses.filter((status) => status.rank === 0).length;
   const during = statuses.filter((status) => status.rank === 1).length;

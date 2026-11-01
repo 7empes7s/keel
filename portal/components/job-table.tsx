@@ -19,7 +19,7 @@ export function JobRecordFields({ job }: { job: JobRecord }) {
   return (
     <>
       <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
-      <RecordField copy={false} label="Kind" value={job.kind} />
+      <RecordField copy={false} label="Type" value={job.kind} />
       {/* The status a person reads on the page: a partly done job says so here too, and the
           stored code (what the API returns) sits beside it. */}
       <RecordField copy={false} label="Status" value={displayEnum("jobStatus", jobDisplayStatus(job))} />
@@ -112,7 +112,7 @@ export function JobTable({
   now = new Date().toISOString(),
   total,
   link = { label: "All activity", href: "/activity" },
-  empty = "No jobs of this kind have run yet.",
+  empty = "No jobs of this type have run yet.",
 }: {
   headingId: string;
   jobs: JobRecord[];

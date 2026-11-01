@@ -189,7 +189,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
 
   const groupings = useMemo<Grouping<ActivityRow>[]>(() => [
     { key: "day", label: "Day", groupsOf: (items) => groupBy(items, (item) => dayKey(item.at), (key, list) => ({ label: dayLabel(list[0].at, now), icon: "calendar", about: failedWords(list) }), (key) => (key === "unknown" ? Infinity : -Date.parse(key))) },
-    { key: "kind", label: "Kind", groupsOf: (items) => groupBy(items, (item) => item.kind, (key, list) => ({ label: ACTIVITY_KINDS[key as keyof typeof ACTIVITY_KINDS].label, icon: ACTIVITY_KINDS[key as keyof typeof ACTIVITY_KINDS].icon, about: failedWords(list) }), (key) => ACTIVITY_KIND_ORDER.indexOf(key as never)) },
+    { key: "kind", label: "Type", groupsOf: (items) => groupBy(items, (item) => item.kind, (key, list) => ({ label: ACTIVITY_KINDS[key as keyof typeof ACTIVITY_KINDS].label, icon: ACTIVITY_KINDS[key as keyof typeof ACTIVITY_KINDS].icon, about: failedWords(list) }), (key) => ACTIVITY_KIND_ORDER.indexOf(key as never)) },
     { key: "who", label: "Person", groupsOf: (items) => groupBy(items, (item) => item.who ?? "nobody", (key, list) => ({ label: list[0].person ? capital(personLabel(list[0].person)) : "Keel", icon: list[0].person?.system || !list[0].person ? "clock" : undefined, about: failedWords(list) })) },
     { key: "outcome", label: "Outcome", groupsOf: (items) => groupBy(items, (item) => item.outcome, (key) => ({ label: OUTCOMES[key as keyof typeof OUTCOMES].plural, icon: OUTCOMES[key as keyof typeof OUTCOMES].icon }), (key) => OUTCOME_ORDER.indexOf(key as never)) },
   ], [now]);
@@ -251,7 +251,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
           <Segmented label="Show" onChange={(value) => navigate({ show: value === "all" ? null : value })} options={SHOW} value={filters.show} />
           <DatePicker allowClear label="When" onChange={(range: DayRange | null) => navigate({ range: rangeToParam(range) || null })} today={today} value={filters.range} />
           <MultiOptionPicker anyLabel="Anyone" label="Who" onChange={(values) => navigate({ who: values.join(",") || null })} options={whoOptions} values={filters.who} />
-          <MultiOptionPicker anyLabel="All kinds" label="What" onChange={(values) => navigate({ what: values.join(",") || null })} options={whatOptions} values={filters.what} />
+          <MultiOptionPicker anyLabel="All types" label="What" onChange={(values) => navigate({ what: values.join(",") || null })} options={whatOptions} values={filters.what} />
           <MultiOptionPicker anyLabel="Any outcome" label="Outcome" onChange={(values) => navigate({ outcome: values.join(",") || null })} options={outcomeOptions} values={filters.outcomes} />
         </div>
         {feedback}
@@ -457,7 +457,7 @@ function WhatChanged({ row }: { row: ActivityRow }) {
       <h3 className="ac-changes-heading" id="ac-changes-heading">What changed{data.total ? ` (${data.total.toLocaleString("en-GB")})` : ""}</h3>
       <p className="ac-muted">{data.total || data.basis !== "backup" ? data.about : data.compare ? "Nothing changed since the backup before this one." : data.about}</p>
       {data.changes.length ? <ChangedObjects changes={data.changes} names={data.names} sides={data.sides} /> : null}
-      {more > 0 ? <p className="ac-muted">And {more.toLocaleString("en-GB")} more {more === 1 ? "object" : "objects"}.</p> : null}
+      {more > 0 ? <p className="ac-muted">And {more.toLocaleString("en-GB")} more {more === 1 ? "setting" : "settings"}.</p> : null}
       {data.compare && data.total ? <Link className="btn btn-sm" href={`/compare?from=${encodeURIComponent(data.compare.from)}&to=${encodeURIComponent(data.compare.to)}`}><Icon name="swap" />See every difference in Compare</Link> : null}
     </section>
   );
@@ -474,7 +474,7 @@ function groupBy<T>(items: T[], key: (item: T) => string, meta: (key: string, li
 function EntryRecordFields({ entry, person }: { entry: EvidenceEntry; person?: EngineRef | null }) {
   return <>
     <RecordField copy={false} label="Entry number" usage="entries are numbered in order; each is chained to the one before it" value={entry.seq} />
-    <RecordField copy={false} label="Kind" value={entry.kind} />
+    <RecordField copy={false} label="Type" value={entry.kind} />
     <RecordField label="Done by (account)" value={displayAccount(entry.actor, person)} />
     <RecordField copy={false} label="When" value={entry.occurred_at} />
     <RecordField label="Subject" value={entry.subject as RecordValue} />

@@ -73,7 +73,7 @@ test("the verdict names the newest CLEARED backup in one short sentence, with on
   const verdict = incidentVerdict({ incidents: [detail.incident], selected: detail, now: NOW });
   assert.equal(verdict.text, "Restore from the backup of 25 Sept 2026, 06:00 UTC, the newest one cleared for “Admin consent phishing”.");
   assert.ok(verdict.text.split(/\s+/).length <= 25);
-  assert.equal(verdict.detail, "It leaves out 1 harmful item: Helpdesk Tier 0 (group).");
+  assert.equal(verdict.detail, "It leaves out 1 harmful setting: Helpdesk Tier 0 (group).");
   assert.equal(verdict.action?.label, "Restore from this backup");
   assert.match(verdict.action?.href ?? "", new RegExp(`snapshot=${OLD_ID}`));
 
@@ -115,7 +115,7 @@ test("rows name backups and people; every id stays in Technical details", async 
   assert.match(html, /class="btn btn-sm" href="\/restore\?snapshot=aaaaaaaa-[^"]*">Restore from this backup</);
   assert.doesNotMatch(html, />Record your check<|>Record a new check<|>Close incident<|>Add attack window<|>New incident</, "read-only without investigate");
   // Record completeness: each id is still there, labelled.
-  assert.ok(recordValues(html, "Recommended snapshot ID").some((value) => value.startsWith(`<code>${OLD_ID}</code>`)));
+  assert.ok(recordValues(html, "Recommended backup ID").some((value) => value.startsWith(`<code>${OLD_ID}</code>`)));
   assert.ok(recordValues(html, "Retention pin ID").some((value) => value.startsWith("<code>44444444-")));
 
   const actionable = await renderIncidentsAt("", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
@@ -140,7 +140,7 @@ test("a tile filters the list by state and keeps it in the URL", async () => {
 });
 
 test("engine refusals become plain sentences, with no key or id in them", () => {
-  assert.equal(failureWords(409, "exclusion group:x is not in this snapshot"), "One of the items you left out is not in this backup. Pick it again from the list.");
+  assert.equal(failureWords(409, "exclusion group:x is not in this snapshot"), "One of the settings you left out is not in this backup. Pick it again from the list.");
   assert.match(failureWords(409, "a compromised verdict refuses the whole point — exclusions apply only to a clean verdict"), /refused as a whole/);
   assert.match(failureWords(409, "this point is already qualified — no override is needed"), /already cleared/);
   assert.match(failureWords(409, "the incident is closed"), /closed/);
@@ -306,7 +306,7 @@ test("incident changes require investigate, re-checked against current grants", 
   // References arrive resolved to names, never bare ids.
   assert.equal(data.selected?.incident.owner.name, "investigator@contoso.example");
   assert.equal(data.selected?.points[0].assessment?.assessedBy?.name, "investigator@contoso.example");
-  assert.match(data.selected?.points[0].snapshot.name ?? "", /^Snapshot of /);
+  assert.match(data.selected?.points[0].snapshot.name ?? "", /^Backup of /);
   assert.equal(data.selected?.points[0].assessment?.rationale, "before the window", "the check's own words reach the panel");
 
   // A restore allowed anyway on an unchecked backup is read back, with who allowed it.

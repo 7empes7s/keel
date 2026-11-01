@@ -43,8 +43,8 @@ export function menuStatuses(data: Pick<DashboardData, "headline" | "coverage" |
   const failed = data.coverage.failed;
   const late = data.coverage.stale + data.coverage.neverCollected;
   // The number counts only what its colour says: failures when it is red.
-  if (failed > 0) statuses.Backup = { tone: "urgent", count: failed, note: `${plural(failed, "kind of setting", "kinds of settings")} failed to back up${late ? `, and ${late} more ${late === 1 ? "is" : "are"} out of date` : ""}` };
-  else if (late > 0) statuses.Backup = { tone: "soon", count: late, note: `${plural(late, "kind of setting is", "kinds of settings are")} not backed up recently` };
+  if (failed > 0) statuses.Backup = { tone: "urgent", count: failed, note: `${plural(failed, "setting type", "setting types")} failed to back up${late ? `, and ${late} more ${late === 1 ? "is" : "are"} out of date` : ""}` };
+  else if (late > 0) statuses.Backup = { tone: "soon", count: late, note: `${plural(late, "setting type is", "setting types are")} not backed up recently` };
 
   if (data.openDriftTotal > 0) {
     const radius = new Map(data.openDriftByBlastRadius.map((entry) => [entry.blastRadius, entry.count]));

@@ -111,7 +111,7 @@ test("the dashboard alert appears only when at least one type is stale", () => {
   assert.deepEqual(staleAlerts, [{
     key: "stale",
     severity: "warning",
-    title: "1 kind of setting is out of date or never backed up",
+    title: "1 setting type is out of date or never backed up",
     detail: "They have no backup recent enough for how critical they are. Run a backup.",
     href: "/protect?health=out-of-date",
   }]);

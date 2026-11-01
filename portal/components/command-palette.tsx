@@ -13,7 +13,7 @@ import { applyThemePreference, type ThemePreference } from "@/lib/theme";
 
 // What the palette finds. Empty, it lists actions first, as the mockup does; once
 // something is typed, the group with the best match leads and ties keep this order.
-export const PALETTE_GROUPS = ["Pages", "Your views", "Actions", "Items"] as const;
+export const PALETTE_GROUPS = ["Pages", "Your views", "Actions", "People and settings"] as const;
 const EMPTY_ORDER: PaletteGroup[] = ["Actions", "Pages", "Your views"];
 export type PaletteGroup = (typeof PALETTE_GROUPS)[number];
 
@@ -60,14 +60,14 @@ export function openCommandPalette(): void {
 }
 
 /**
- * The matches for what was typed, in groups. Items (people, kinds of settings) show
+ * The matches for what was typed, in groups. People and setting types show
  * only once something is typed, so the empty palette stays short. The group with the
  * best match comes first; inside a group, better matches first, then the given order.
  */
 export function paletteResults(commands: Command[], query: string): { group: PaletteGroup; commands: Command[] }[] {
   const typed = query.trim().length > 0;
   const scored = commands
-    .filter((command) => typed || command.group !== "Items")
+    .filter((command) => typed || command.group !== "People and settings")
     .map((command, order) => ({ command, order, score: scoreCommand(command.label, command.keywords, query) }))
     .filter((entry) => entry.score > 0);
   return PALETTE_GROUPS
@@ -116,7 +116,7 @@ async function readItems(capabilities: NavCapabilities): Promise<Found[]> {
     found.push({
       id: `type:${entry.type}`,
       label: typeName(entry.type),
-      hint: "Kind of setting",
+      hint: "Setting type",
       href: "/protect",
       icon: "backup",
       keywords: "setting settings backup",
@@ -211,7 +211,7 @@ export function CommandPalette(capabilities: NavCapabilities) {
       })),
     ];
     const found: Command[] = (items ?? []).map((item) => ({
-      id: item.id, label: item.label, hint: item.hint, keywords: item.keywords, group: "Items" as const, icon: item.icon, run: () => router.push(item.href),
+      id: item.id, label: item.label, hint: item.hint, keywords: item.keywords, group: "People and settings" as const, icon: item.icon, run: () => router.push(item.href),
     }));
     return [...pages, ...views, ...actions, ...found];
     // links is recomputed each render; key the memo on what it is derived from.

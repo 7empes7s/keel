@@ -152,10 +152,10 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="Last proven restore" value={data.headline.lastProvenRestoreAt} />
           <RecordField copy={false} label="Engine sentence" value={data.headline.sentence} />
         </RecordGroup>
-        <RecordGroup title="Snapshots">
-          <RecordField copy={false} label="Latest snapshot status" value={data.lastCollection?.status ?? "missing"} />
-          <RecordField copy={false} label="Latest snapshot completed" value={data.lastCollection?.completedAt ?? "never"} />
-          <RecordField copy={false} label="Last completed snapshot" value={data.lastCompletedCollectionAt} />
+        <RecordGroup title="Backups">
+          <RecordField copy={false} label="Latest backup status" value={data.lastCollection?.status ?? "missing"} />
+          <RecordField copy={false} label="Latest backup completed" value={data.lastCollection?.completedAt ?? "never"} />
+          <RecordField copy={false} label="Last completed backup" value={data.lastCompletedCollectionAt} />
         </RecordGroup>
         {data.activeBaseline ? (
           <RecordGroup note="approved setup" title={data.activeBaseline.label ?? "Active baseline"}>

@@ -316,8 +316,8 @@ export function outcomeSentence(outcomes: OutcomeSummary): string {
   if (outcomes.total === 0) return "Keel was not asked to put anything back in this period.";
   const verified = outcomes.states.verified;
   const head = verified
-    ? `Keel put back and checked ${plural(verified, "item")} of ${outcomes.total} it was asked to (${percentText(outcomes.percentVerified)}).`
-    : `Keel was asked to put back ${plural(outcomes.total, "item")}; none is checked yet.`;
+    ? `Keel put back and checked ${plural(verified, "setting")} of ${outcomes.total} it was asked to (${percentText(outcomes.percentVerified)}).`
+    : `Keel was asked to put back ${plural(outcomes.total, "setting")}; none is checked yet.`;
   const retries = outcomes.retries ? ` ${plural(outcomes.retries, "retry", "retries")} counted once each.` : "";
   return `${head}${retries}`;
 }
@@ -470,7 +470,7 @@ export function backupView(backups: BackupSection | Withheld | undefined): Backu
       count: content.expected ? content.workloads : null, of: content.expected || null,
       word: content.expected ? null : "None yet",
       detail: content.expected || content.itemsStored
-        ? `areas backed up · ${plural(content.itemsStored, "new item")} stored (${bytesShort(content.bytesStored)})`
+        ? `areas backed up · ${plural(content.itemsStored, "new content item")} stored (${bytesShort(content.bytesStored)})`
         : "No content backup has run yet",
       problem: familyProblem(content), problemTone: problemTone(content), tone: familyTone(content), meter: familyMeter(content),
     },
@@ -492,7 +492,7 @@ export function backupView(backups: BackupSection | Withheld | undefined): Backu
     ? { text: `${plural(needsLook, "area needs", "areas need")} a look`, tone: urgent ? "urgent" as const : "soon" as const }
     : { text: "Everything backed up", tone: "fine" as const };
   const note = content.itemsStored && familyCounts(content).partial
-    ? "New items count everything stored in the period, including items from areas backed up only in part."
+    ? "New content items count everything stored in the period, including content from areas backed up only in part."
     : null;
   return { state: "shown", tiles, groups, needsLook, headline, note };
 }

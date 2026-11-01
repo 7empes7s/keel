@@ -211,8 +211,8 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
     if (value === "") return "empty";
     if (value === HIDDEN_VALUE) return HIDDEN_WORDS;
     if (names) {
-      if (isObjectId(value)) return names[value.toLowerCase()] ?? "an object Keel has no name for";
-      if (holdsObjectId(value)) return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "(unnamed object)");
+      if (isObjectId(value)) return names[value.toLowerCase()] ?? "a setting Keel has no name for";
+      if (holdsObjectId(value)) return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "(unnamed setting)");
     }
     // Stored enum-like codes ("enabledForReportingButNotEnforced") read as words.
     return /^[a-z]+[A-Z][A-Za-z]*$/.test(value) ? words(value).toLowerCase() : value;
@@ -225,7 +225,7 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
       const named = value
         .filter((entry) => !(typeof entry === "string" && isObjectId(entry) && !names[entry.toLowerCase()]))
         .map((entry) => valueWords(entry, names));
-      if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "object" : "objects"} Keel has no name for`);
+      if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "setting" : "settings"} Keel has no name for`);
       return named.join(", ");
     }
     // A list of objects (grants, rules, members): one short phrase per entry.

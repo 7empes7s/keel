@@ -105,7 +105,7 @@ function AnswerSummary({ answer }: { answer: GroundedAnswer }) {
   return (
     <section aria-label="Summary of every match" className="ak-summary">
       <SummaryList icon="service-keel" rows={summary.services} title="By service" total={total} />
-      <SummaryList icon="filter" rows={summary.kinds} title="By kind of setting" total={total} />
+      <SummaryList icon="filter" rows={summary.kinds} title="By setting type" total={total} />
       <SummaryList icon="alert" rows={summary.risks} title="By risk" total={total} />
       <SummaryList icon="swap" rows={summary.changes} title="By change" total={total} />
     </section>
@@ -117,7 +117,7 @@ function CoverageSummaryCards({ answer }: { answer: GroundedAnswer }) {
   const summary = coverageAnswerSummary(answer);
   if (!summary) return null;
   return (
-    <section aria-label="Summary of every kind" className="ak-summary">
+    <section aria-label="Summary of every type" className="ak-summary">
       <SummaryList icon="backup" rows={summary.states} title="By state" total={summary.total} />
       {summary.services.length ? <SummaryList icon="service-keel" rows={summary.services} title="By service" total={summary.total} /> : null}
     </section>
@@ -207,9 +207,9 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
                 </select>
               </label>
               <label className="filter-field">
-                <span>Kind of resource</span>
+                <span>Setting type</span>
                 <select defaultValue="" name="type">
-                  <option value="">Any kind</option>
+                  <option value="">Any type</option>
                   {typeOptions.map(([type, label]) => <option key={type} value={type}>{label[0].toUpperCase() + label.slice(1)}</option>)}
                 </select>
               </label>

@@ -47,7 +47,7 @@ export const POST = guarded(
       || targets.length > 200
       || targets.some((key) => typeof key !== "string" || key.length === 0 || key.length > 512)
     ) {
-      throw new InvalidActionRequest("targets must name between 1 and 200 objects from the backup");
+      throw new InvalidActionRequest("targets must name between 1 and 200 settings from the backup");
     }
     // Looked up by id, so a backup older than the Restore page's list (an undo from an old
     // approved setup's read) is accepted too.

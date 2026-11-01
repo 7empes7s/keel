@@ -150,7 +150,7 @@ test("phone: top bar, five tabs, and All opens the whole menu as a sheet", async
   await expect(page.locator("aside.rail")).toBeHidden();
   const tabs = page.locator(".tabbar .tab");
   // Each badge also says, for a screen reader, what it means.
-  await expect(tabs).toHaveText([/^Dashboards/, /^Backup4Urgent: 4 kinds/, /^Restore$/, /^Baselines2Urgent: 2 changes could lock out admins/, /^All/]);
+  await expect(tabs).toHaveText([/^Dashboards/, /^Backup4Urgent: 4 setting types/, /^Restore$/, /^Baselines2Urgent: 2 changes could lock out admins/, /^All/]);
   await expect(page.locator(".tabbar a[aria-current]")).toContainText("Backup");
   // A section's pages are one scrolling row.
   const row = page.locator(".section-tabs");
@@ -395,7 +395,7 @@ test("search finds pages by what they do, your saved views, actions and people",
   await expect(palette.getByRole("option").first()).toContainText("Setup");
   await page.keyboard.press("Control+a");
   await page.keyboard.type("amara");
-  await expect(palette.getByRole("group", { name: "Items" }).getByRole("option")).toContainText("Amara Okafor");
+  await expect(palette.getByRole("group", { name: "People and settings" }).getByRole("option")).toContainText("Amara Okafor");
   await page.keyboard.press("Control+a");
   await page.keyboard.type("settings by");
   await expect(palette.getByRole("option").first()).toContainText("Favourite");

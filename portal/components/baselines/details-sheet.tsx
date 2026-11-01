@@ -35,7 +35,7 @@ type SheetProps = {
   noun?: string;
 };
 
-function SheetPanel({ title, kicker, onClose, children, footer, wide = false, step = null, onStep, noun = "item" }: SheetProps) {
+function SheetPanel({ title, kicker, onClose, children, footer, wide = false, step = null, onStep, noun = "setting" }: SheetProps) {
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);

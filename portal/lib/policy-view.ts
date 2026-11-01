@@ -322,7 +322,7 @@ const RULE_FIELD_WORDS: Record<string, { label: string; words: (value: unknown) 
   action: { label: "What it does", words: (value) => RULE_KINDS[ruleKind({ action: str(value) ?? "alert" } as Pick<Policy, "action">)].label },
   enabled: { label: "On or off", words: (value) => (value === true ? "On" : "Off") },
   name: { label: "Name", words: (value) => str(value) ?? "No name" },
-  resourceType: { label: "Kind of thing", words: (value) => (str(value) ? plainKind(String(value)) : "Anything") },
+  resourceType: { label: "Type of thing", words: (value) => (str(value) ? plainKind(String(value)) : "Anything") },
   naturalKeyGlob: { label: "Name like", words: (value) => namePattern({ natural_key_glob: str(value) }) ?? "Any name" },
   changeType: { label: "Change", words: (value) => (str(value) && CHANGE_WORDS[String(value)]) || "Any change" },
   blastRadius: { label: "Risk", words: (value) => riskWords(str(value)) },

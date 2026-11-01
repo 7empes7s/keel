@@ -37,7 +37,7 @@ const UNKNOWN_WORDS: Record<string, string> = {
   "not-in-backup": "It is not in the backup Keel would restore from",
   "unresolved-reference": "It refers to something that is not in the backup",
   "impact-unknown": "Its impact is not rated",
-  "operation-unknown": "Keel does not recognise the kind of change",
+  "operation-unknown": "Keel does not recognise the type of change",
 };
 const FINDING_WORDS: Record<string, { label: string; tone: BadgeTone }> = {
   pass: { label: "Passing", tone: "fine" },

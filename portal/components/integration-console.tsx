@@ -129,7 +129,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
           const status = statusFor(statuses, destination.id);
           return <RecordGroup key={destination.id} note={`destination · ${destination.kind}`} title={destination.name}>
             <RecordField label="Destination ID" usage={<>use with <code>POST /api/integrations/&lt;id&gt;/replay</code></>} value={destination.id} />
-            <RecordField copy={false} label="Kind code" value={destination.kind} />
+            <RecordField copy={false} label="Type code" value={destination.kind} />
             <RecordField copy={false} label="Config" value={JSON.stringify(destination.config, null, 2)} />
             {status ? <RecordField copy={false} label="Delivery checkpoint" value={JSON.stringify(status.checkpoint ?? null)} /> : null}
             {(quarantined[destination.id] ?? []).map((event) => <RecordField key={event.id} label="Held-back event ID" value={event.event_id} />)}
@@ -253,7 +253,7 @@ function AddDestinationSheet({ busy, busyAction, errorRow, onClose, onSave }: {
   return <DetailsSheet kicker={<span className="ig-sheet-kicker"><Icon name="audit" />Audit record copies</span>} onClose={onClose} title="Add a destination">
     <form aria-label="New destination" className="nf-form" onSubmit={submit}>
       <fieldset disabled={busy}>
-        <Segmented label="Kind" onChange={setKind} options={KIND_OPTIONS} value={kind} />
+        <Segmented label="Type" onChange={setKind} options={KIND_OPTIONS} value={kind} />
         <p className="pg-help"><Icon name="info" />{kind === "cef" ? "A SIEM that reads CEF, over HTTPS or syslog." : "Keel posts each audit entry to a web address."}</p>
         <div className="nf-fields">
           <label className="filter-field"><span>Name</span><input autoComplete="off" name="name" required /></label>

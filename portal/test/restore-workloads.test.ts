@@ -82,7 +82,7 @@ test("every workload is listed under its service, with its newest backup", async
   assert.equal(mailFlow.backup?.items, 3);
   assert.equal(mailFlow.lastRun, null);
   assert.ok(mailFlow.writes.length > 0, "mail flow rules can be put back");
-  assert.deepEqual(workloadBackupLine(mailFlow, "2026-10-02T09:00:00Z"), { tone: "fine", text: "Backed up 3 hours ago · 3 items" });
+  assert.deepEqual(workloadBackupLine(mailFlow, "2026-10-02T09:00:00Z"), { tone: "fine", text: "Backed up 3 hours ago · 3 settings" });
   assert.equal(hasBackupData(mailFlow), true);
 
   const teams = workloads.find((workload) => workload.workload === "teams-org-policies")!;

@@ -43,7 +43,7 @@ const LOCAL_KINDS = new Set(["prune", "offsite"]);
 
 /** What the schedule costs Microsoft, or why Keel cannot say yet. */
 export function forecastSentence(forecast: ScheduleForecast | undefined, jobKind?: string): string {
-  if (!forecast) return jobKind && !LOCAL_KINDS.has(jobKind) ? "Reads Microsoft; its load is not measured for this kind yet." : "Does not call Microsoft.";
+  if (!forecast) return jobKind && !LOCAL_KINDS.has(jobKind) ? "Reads Microsoft; its load is not measured for this type yet." : "Does not call Microsoft.";
   if (forecast.status === "unknown") {
     if (forecast.reason === "invalid-schedule") return "Keel cannot estimate the load of this timetable.";
     if (forecast.reason === "no-samples") return "No measured runs yet, so Keel cannot estimate its load.";

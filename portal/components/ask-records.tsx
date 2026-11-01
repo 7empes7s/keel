@@ -24,7 +24,7 @@ type GroupKey = "service" | "kind" | "risk" | "none";
 
 const GROUPS: { key: GroupKey; label: string }[] = [
   { key: "service", label: "Service" },
-  { key: "kind", label: "Kind of setting" },
+  { key: "kind", label: "Setting type" },
   { key: "risk", label: "Risk" },
   { key: "none", label: "No grouping" },
 ];
@@ -48,7 +48,7 @@ interface Column { key: ColumnKey; label: string; sort?: string; optional: boole
 // the name and the group already say them.
 const COLUMNS: readonly Column[] = [
   { key: "what", label: "What", sort: "name", optional: false },
-  { key: "kind", label: "Kind", sort: "kind", optional: true },
+  { key: "kind", label: "Type", sort: "kind", optional: true },
   { key: "service", label: "Service", sort: "service", optional: true },
   { key: "state", label: "State", sort: "risk", optional: true },
   { key: "fields", label: "Settings changed", sort: "fields", optional: true },
@@ -84,7 +84,7 @@ const SORTS: readonly ListSort<Row>[] = [
   { key: "when", label: "When", desc: true, compare: (a, b) => byTime(a.time, b.time) },
   { key: "risk", label: "Risk", desc: true, compare: (a, b) => (TONE_RANK[b.tone] ?? 9) - (TONE_RANK[a.tone] ?? 9) },
   { key: "name", label: "Name", compare: (a, b) => byText(a.title, b.title) },
-  { key: "kind", label: "Kind", compare: (a, b) => byText(a.kind, b.kind) },
+  { key: "kind", label: "Type", compare: (a, b) => byText(a.kind, b.kind) },
   { key: "service", label: "Service", compare: (a, b) => byText(a.service.name, b.service.name) },
   { key: "fields", label: "Settings changed", compare: (a, b) => byText(a.fields || "\uffff", b.fields || "\uffff") },
 ];
@@ -198,7 +198,7 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
           {recordNote(record) ? <small>{recordNote(record)}</small> : null}
         </td>
       );
-      case "fields": return <td data-label="Settings changed" key={key}>{row.fields ? <span className="ak-fields">{row.fields}</span> : <span className="ak-none">{record.kind === "change" && record.changeType !== "modified" ? "The whole item" : "Not recorded"}</span>}</td>;
+      case "fields": return <td data-label="Settings changed" key={key}>{row.fields ? <span className="ak-fields">{row.fields}</span> : <span className="ak-none">{record.kind === "change" && record.changeType !== "modified" ? "The whole setting" : "Not recorded"}</span>}</td>;
       case "when": return <td data-label="When" key={key}><span className="ask-record-window">{windowSentence(record)}</span></td>;
       case "source": return <td data-label="Source" key={key}><Link href={record.source.href}>{sourceLabel(record)}</Link></td>;
       default: return null;
@@ -217,7 +217,7 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
       </div>
       <div className="ak-controls">
         <label className="filter-field ak-search"><span>Find</span>
-          <input onChange={(event) => { setQuery(event.target.value); restart(); }} placeholder="Name, kind, service or setting" type="search" value={query} />
+          <input onChange={(event) => { setQuery(event.target.value); restart(); }} placeholder="Name, type, service or setting" type="search" value={query} />
         </label>
         <OptionPicker label="Group by" onChange={(next) => { setGroup(next); setClosed(new Set()); restart(); }} options={GROUPS.map((option) => ({ value: option.key, label: option.label }))} value={group} />
         <SortControl paging={paging} sorts={SORTS} />

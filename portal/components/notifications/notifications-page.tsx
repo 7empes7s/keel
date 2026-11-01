@@ -257,7 +257,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
 
   const channelGroupings = useMemo<Grouping<Channel>[]>(() => [
     { key: "health", label: "Health", groupsOf: (items) => groupBy(items, (item) => health.get(item.id)?.state ?? "untested", (key) => ({ label: HEALTH_WORDS[key as keyof typeof HEALTH_WORDS].plural, icon: HEALTH_WORDS[key as keyof typeof HEALTH_WORDS].icon, about: HEALTH_WORDS[key as keyof typeof HEALTH_WORDS].about }), (key) => HEALTH_ORDER.indexOf(key as never)) },
-    { key: "kind", label: "Kind", groupsOf: (items) => groupBy(items, (item) => item.kind, (key) => ({ label: channelKindLabel(key), icon: channelIcon(key), about: channelKind(key) ? CHANNEL_KINDS[key as ChannelKind].about : undefined }), (key) => CHANNEL_KIND_ORDER.indexOf(key as never)) },
+    { key: "kind", label: "Type", groupsOf: (items) => groupBy(items, (item) => item.kind, (key) => ({ label: channelKindLabel(key), icon: channelIcon(key), about: channelKind(key) ? CHANNEL_KINDS[key as ChannelKind].about : undefined }), (key) => CHANNEL_KIND_ORDER.indexOf(key as never)) },
   ], [health]);
 
   const ruleGroupings = useMemo<Grouping<Subscription>[]>(() => [
@@ -530,7 +530,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
               <RecordField label="Channel ID" value={delivery.channel_id} />
               <RecordField copy={false} label="Status" value={delivery.status} />
               <RecordField copy={false} label="Attempts" value={delivery.attempts} />
-              <RecordField copy={false} label="Event kind" value={delivery.event.kind} />
+              <RecordField copy={false} label="Event type" value={delivery.event.kind} />
               <RecordField copy={false} label="Severity" value={delivery.event.severity} />
               {delivery.event.alertId ? <RecordField label="Alert ID" value={delivery.event.alertId} /> : null}
               <RecordField copy={false} label="Queued" value={delivery.created_at} />
@@ -631,7 +631,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
 function ChannelRecordFields({ channel }: { channel: Channel }) {
   return <>
     <RecordField label="Channel ID" value={channel.id} />
-    <RecordField copy={false} label="Kind" value={channel.kind} />
+    <RecordField copy={false} label="Type" value={channel.kind} />
     <RecordField copy={false} label="State" value={channel.enabled ? "enabled" : "disabled"} />
     <RecordField label="Config" usage="secrets are never stored; a setting name points to where the server reads them" value={channel.config as RecordValue} />
     <RecordField copy={false} label="Created" value={channel.created_at} />
@@ -799,7 +799,7 @@ function ChannelSheet({ busy, error, onClose, onSave }: {
     <DetailsSheet kicker={<span>Where alerts go</span>} onClose={onClose} title="Add a channel">
       <form className="nf-form" id="nf-add-channel" onSubmit={submit}>
         <fieldset disabled={busy !== null}>
-          <OptionPicker label="Kind" onChange={setKind} options={KIND_OPTIONS} value={kind} />
+          <OptionPicker label="Type" onChange={setKind} options={KIND_OPTIONS} value={kind} />
           <p className="nf-plain nf-muted">{CHANNEL_KINDS[kind].help}</p>
           <div className="nf-fields">
             {kind === "teams" || kind === "slack" ? <>

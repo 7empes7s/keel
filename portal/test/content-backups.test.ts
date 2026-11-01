@@ -48,11 +48,11 @@ test("every content workload gets a row, with what it holds summed over its stor
   const planner = rows.find((row) => row.workload.code === "planner")!;
   assert.equal(planner.items, 8, "Planner and group conversations are one collector");
   assert.equal(planner.bytes, 2479 + 9496);
-  assert.equal(holdingLine(rows[0]), "23 items · 15 KB · in 2 mailboxes");
-  assert.equal(holdingLine(rows[2]), "888 items · 7.4 MB · in 1 site");
+  assert.equal(holdingLine(rows[0]), "23 content items · 15 KB · in 2 mailboxes");
+  assert.equal(holdingLine(rows[2]), "888 content items · 7.4 MB · in 1 site");
   assert.ok(rows.every((row) => row.state === "backed-up"));
   assert.equal(contentHeadline(rows), "Keel holds 932 content items (7.7 MB) across 5 workloads. The last nightly run backed up all 5.");
-  assert.equal(runLine(rows[0]), "Last run stored 2 new items or versions (2.0 KB)");
+  assert.equal(runLine(rows[0]), "Last run stored 2 new content items or versions (2.0 KB)");
 });
 
 test("scope is the newest run's name prefix, and Teams reads every team", () => {

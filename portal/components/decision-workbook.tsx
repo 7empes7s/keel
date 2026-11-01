@@ -151,8 +151,8 @@ export function ChangeEvidencePanel({ evidence, attribution, now, gap }: { evide
       </dl>
       <TechnicalDetails summary="Technical details: linked records">
         <RecordField copy={false} label="Ownership" value={`${evidence.ownership.state}${evidence.ownership.entityCode ? ` · ${evidence.ownership.entityCode}` : ""}${evidence.ownership.sharedWith.length ? ` · shared ${evidence.ownership.sharedWith.join(", ")}` : ""}${evidence.ownership.othersWithheld ? " · others withheld" : ""}`} />
-        <RecordField label="Observed snapshot ID" usage={`${evidence.observation.state}${evidence.observation.versionId ? ` · version ${evidence.observation.versionId}` : ""}`} value={evidence.observation.snapshotId} />
-        <RecordField label="Baseline backup snapshot ID" usage={`${evidence.backup.state}${evidence.backup.versionId ? ` · version ${evidence.backup.versionId}` : ""}`} value={evidence.backup.snapshotId} />
+        <RecordField label="Observed backup ID" usage={`${evidence.observation.state}${evidence.observation.versionId ? ` · version ${evidence.observation.versionId}` : ""}`} value={evidence.observation.snapshotId} />
+        <RecordField label="Approved setup backup ID" usage={`${evidence.backup.state}${evidence.backup.versionId ? ` · version ${evidence.backup.versionId}` : ""}`} value={evidence.backup.snapshotId} />
         {evidence.findings.map((finding) => (
           <RecordField key={`finding-${finding.evaluationId}`} label={`Evaluation ID · ${finding.controlId}`} usage={`${finding.verdict} · ${finding.link}`} value={finding.evaluationId} />
         ))}
@@ -160,7 +160,7 @@ export function ChangeEvidencePanel({ evidence, attribution, now, gap }: { evide
           <RecordField key={`approval-${approval.id}`} label={`Approval request ID · ${approval.action}`} usage={`${approval.status}${approval.job ? ` · job ${approval.job.id} ${approval.job.status}` : ""}`} value={approval.id} />
         ))}
         {evidence.plans.map((plan) => (
-          <RecordField key={`plan-${plan.id}`} label="Dry-run ID" usage={`${plan.status} · ${plan.link} · snapshot ${plan.snapshotId}${plan.outcome ? ` · outcome ${plan.outcome.state}` : ""}${plan.approvals.map((approval) => ` · request ${approval.id} ${approval.status}`).join("")}`} value={plan.id} />
+          <RecordField key={`plan-${plan.id}`} label="Dry-run ID" usage={`${plan.status} · ${plan.link} · backup ${plan.snapshotId}${plan.outcome ? ` · outcome ${plan.outcome.state}` : ""}${plan.approvals.map((approval) => ` · request ${approval.id} ${approval.status}`).join("")}`} value={plan.id} />
         ))}
       </TechnicalDetails>
     </section>

@@ -61,7 +61,7 @@ import { csvLine } from "@/lib/csv";
 // every kind opens a details panel (`open=`, so Back closes it). Ids stay in one record
 // under the list.
 
-const NOUN = { one: "kind", many: "kinds" };
+const NOUN = { one: "type", many: "types" };
 const PROBLEM: BackupHealth[] = ["failed", "stale", "never"];
 
 const serviceCode = (item: CoverageType) => typeService(item.type).code;
@@ -104,12 +104,12 @@ const STANDING_ABOUT: Record<RestoreStanding, string> = {
   protected: "A test restore brought everything back",
 };
 
-// Order by: name, health (worst first), last backup, and how many items it holds.
+// Order by: name, health (worst first), last backup, and how many settings it holds.
 const SORTS: ListSort<CoverageType>[] = [
   { key: "name", label: "Name", compare: (a, b) => byText(kindName(a), kindName(b)) },
   { key: "health", label: "Health", desc: true, compare: (a, b) => byRisk(healthRisk(a), healthRisk(b)) },
   { key: "backed-up", label: "Last backup", desc: true, compare: (a, b) => byTime(a.lastCollectedAt, b.lastCollectedAt) },
-  { key: "items", label: "Items", desc: true, compare: (a, b) => (a.itemCount ?? -1) - (b.itemCount ?? -1) },
+  { key: "items", label: "Settings", desc: true, compare: (a, b) => (a.itemCount ?? -1) - (b.itemCount ?? -1) },
 ];
 
 const GROUPINGS: Grouping<CoverageType>[] = [
@@ -204,7 +204,7 @@ function Meter({ service }: { service: ServiceSummary }) {
 }
 
 function downloadCsv(types: CoverageType[], now: string) {
-  const rows = [["Kind", "Service", "Tier", "Backup health", "Can it be restored", "Last backup", "Items"],
+  const rows = [["Type", "Service", "Tier", "Backup health", "Can it be restored", "Last backup", "Settings"],
     ...types.map((item) => [kindName(item), typeService(item.type).name, item.criticality ? tierLabel(item.criticality) : "No tier",
       HEALTH_BADGE[backupHealth(item)].label, STANDING_LABEL[restoreStanding(item)], item.lastCollectedAt ? ago(item.lastCollectedAt, now) : "Never", item.itemCount])];
   const blob = new Blob([rows.map((row) => csvLine(row)).join("\n")], { type: "text/csv" });
@@ -227,9 +227,9 @@ const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: til
 const TIER_IDS = TIERS.map((tier) => tier.id);
 
 function retryTitle(plan: RetryPlan): string {
-  if (plan.kind === "tier") return `Runs every ${tierLabel(plan.tier)} kind again. It only reads your tenant.`;
+  if (plan.kind === "tier") return `Runs every ${tierLabel(plan.tier)} type again. It only reads your tenant.`;
   if (plan.kind === "workloads") return "Runs the Exchange, SharePoint, Teams, Purview and Power Platform settings backup again. It only reads your tenant.";
-  return "This kind has no tier, so this runs a full backup. It only reads your tenant.";
+  return "This type has no tier, so this runs a full backup. It only reads your tenant.";
 }
 
 export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, tierStrip, children }: {
@@ -288,7 +288,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
   });
 
   const tileSmall: Record<HealthFilter, string> = {
-    "backed-up": `of ${counts.total} ${counts.total === 1 ? "kind" : "kinds"}`,
+    "backed-up": `of ${counts.total} ${counts.total === 1 ? "type" : "types"}`,
     failed: counts.failed ? "Their last backup did not finish" : "Nothing failed",
     "out-of-date": `${counts.stale} out of date, ${counts.never} never`,
     proven: counts.tested ? `${counts.tested} more pass tests, not yet run live` : "By a live test restore on this tenant",
@@ -353,7 +353,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
         <div className="pt-section-head">
           <div>
             <h2 id="by-service-heading">By service</h2>
-            <p>Open a service to see its kinds below, or tick services to back them up together.</p>
+            <p>Open a service to see its types below, or tick services to back them up together.</p>
           </div>
         </div>
         <div className="pt-services">
@@ -373,7 +373,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                   <b>{entry.name}</b>
                   <Badge tone={badge.tone}>{badge.label}</Badge>
                 </div>
-                <p className="pt-service-big"><b>{entry.backedUp}</b><span>of {entry.kinds.length} {entry.kinds.length === 1 ? "kind" : "kinds"} backed up</span></p>
+                <p className="pt-service-big"><b>{entry.backedUp}</b><span>of {entry.kinds.length} {entry.kinds.length === 1 ? "type" : "types"} backed up</span></p>
                 <Meter service={entry} />
                 <ul className="pt-service-lines">
                   {ordered_problems.length ? ordered_problems.map((item) => (
@@ -391,7 +391,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                   href={href({ service: active ? null : entry.code, open: null })}
                   onClick={(event) => follow(event, { service: active ? null : entry.code, open: null })}
                 >
-                  {active ? "Show every service" : `Open ${entry.kinds.length} ${entry.kinds.length === 1 ? "kind" : "kinds"}`}
+                  {active ? "Show every service" : `Open ${entry.kinds.length} ${entry.kinds.length === 1 ? "type" : "types"}`}
                   <Icon name={active ? "close" : "chevron-down"} />
                 </Link>
               </div>
@@ -421,17 +421,17 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
       <section aria-labelledby="kinds-heading" className="pt-section" id="kinds">
         <div className="pt-section-head">
           <div>
-            <h2 id="kinds-heading">Every kind of setting</h2>
+            <h2 id="kinds-heading">Every setting type</h2>
             <p>Whether each one is backed up and whether Keel can put it back. Open one for the details.</p>
           </div>
           <button className="btn btn-sm" onClick={() => downloadCsv(shown, now)} type="button"><Icon name="save" />Download CSV</button>
         </div>
-        {windows.length > 1 ? <p className="pt-note"><Icon name="info" /><span>These kinds were read at different times, so treat each one as its own copy, not one picture of the tenant at a single moment.</span></p> : null}
+        {windows.length > 1 ? <p className="pt-note"><Icon name="info" /><span>These types were read at different times, so treat each one as its own copy, not one picture of the tenant at a single moment.</span></p> : null}
         {liveLines.map((line) => <p className="pt-note" key={line}><Icon name="info" /><span>{line}</span></p>)}
         <ActiveFilters extra={{ open: null }} filters={activeFilters} noun={NOUN} shown={shown.length} total={data.types.length} />
         <SelectableList
           action={{
-            label: (count) => `Back up ${count} ${count === 1 ? "kind" : "kinds"}`,
+            label: (count) => `Back up ${count} ${count === 1 ? "type" : "types"}`,
             detail: (_count, ids) => backupPlanSentence(backupPlan(data.types.filter((item) => ids.includes(item.type)))),
             run: (ids) => {
               const plan = backupPlan(data.types.filter((item) => ids.includes(item.type)));
@@ -442,7 +442,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
           getId={(item) => item.type}
           groupings={GROUPINGS}
           items={shown}
-          label="Every kind of setting"
+          label="Every setting type"
           matches={(item, query) => `${kindName(item)} ${typeName(item.type)} ${item.type} ${typeService(item.type).name}`.toLowerCase().includes(query)}
           noun={NOUN}
           renderRow={(item) => {
@@ -483,7 +483,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                       className="btn btn-sm"
                       disabled={!canBackup || busy !== null}
                       onClick={() => void backUp([tier], item.type)}
-                      title={`Runs every ${tierLabel(tier)} kind`}
+                      title={`Runs every ${tierLabel(tier)} type`}
                       type="button"
                     >
                       Back up {tierLabel(tier)} again
@@ -498,7 +498,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
           toneOf={healthRisk}
         />
         {feedback}
-        <TechnicalDetails summary="Technical details for every kind">
+        <TechnicalDetails summary="Technical details for every type">
           {windows.length > 1 ? <RecordField copy={false} label="Observation windows differ" value={windows.join("; ")} /> : null}
           {data.types.map((item) => (
             <RecordGroup key={item.type} note={`${typeService(item.type).name} · ${item.type}`} title={kindName(item)}>
@@ -536,7 +536,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
               >
                 <Icon name="play" />Back up {tierLabel(opened.criticality)}
               </button>
-              <p className="bl-help">Runs every {tierLabel(opened.criticality)} kind. It only reads your tenant.</p>
+              <p className="bl-help">Runs every {tierLabel(opened.criticality)} type. It only reads your tenant.</p>
             </>
           ) : undefined}
           kicker={<><Badge tone={HEALTH_BADGE[backupHealth(opened)].tone}>{HEALTH_BADGE[backupHealth(opened)].label}</Badge><span>{typeService(opened.type).name}</span></>}

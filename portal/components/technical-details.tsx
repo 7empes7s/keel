@@ -374,7 +374,7 @@ export function ReferenceFields({ references, skipPeople = [] }: { references: R
       {references.plan ? <RecordField label="Dry run ID" usage={refUsage(references.plan, references.plan.status ? `status ${references.plan.status}` : null)} value={references.plan.id} /> : null}
       {references.plan?.dryRunJobId ? <RecordField label="Dry run job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={references.plan.dryRunJobId} /> : null}
       {references.undoes ? <RecordField label="Undoes dry run ID" usage={refUsage(references.undoes)} value={references.undoes.id} /> : null}
-      {references.snapshot ? <RecordField label="Snapshot ID" usage={refUsage(references.snapshot, references.snapshot.takenAt ? `taken ${references.snapshot.takenAt}` : null)} value={references.snapshot.id} /> : null}
+      {references.snapshot ? <RecordField label="Backup ID" usage={refUsage(references.snapshot, references.snapshot.takenAt ? `taken ${references.snapshot.takenAt}` : null)} value={references.snapshot.id} /> : null}
       {changes.map((change) => (
         <RecordField key={`change:${change.id}`} label="Change ID" usage={refUsage(change, [change.resourceType, change.changeType, change.naturalKey].filter(Boolean).join(" · ") || null)} value={change.id} />
       ))}

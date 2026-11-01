@@ -19,7 +19,7 @@ test("a plain value is one line; an object reads one line per setting inside it"
 });
 
 test("ids inside values read as names, and an id without one is said so, never shown", () => {
-  assert.equal(valueText([ID, "f1aa0000-0000-4000-8000-000000000002"], { [ID]: "Break-glass admins" }), "Break-glass admins, an object Keel has no name for");
+  assert.equal(valueText([ID, "f1aa0000-0000-4000-8000-000000000002"], { [ID]: "Break-glass admins" }), "Break-glass admins, a setting Keel has no name for");
   assert.equal(valueText({ includeGroups: [ID] }, { [ID]: "Break-glass admins" }), "Include groups: Break-glass admins");
   assert.deepEqual(idsInValues([{ a: [ID.toUpperCase()] }, "plain"]), [ID]);
 });

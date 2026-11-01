@@ -80,8 +80,8 @@ const isId = (value: unknown) => typeof value === "string" && isObjectId(value);
 // Redesign rule 4: ids never reach the screen. A list of object ids reads as a count;
 // an id inside a value is dropped.
 function short(value: unknown): string {
-  if (Array.isArray(value) && value.length && value.every(isId)) return `${value.length} ${value.length === 1 ? "item" : "items"}`;
-  if (isId(value)) return "one item";
+  if (Array.isArray(value) && value.length && value.every(isId)) return `${value.length} ${value.length === 1 ? "setting" : "settings"}`;
+  if (isId(value)) return "one setting";
   const text = replaceObjectIds(valueWords(value), () => "…");
   return text.length > MAX_VALUE_LENGTH ? `${text.slice(0, MAX_VALUE_LENGTH - 1)}…` : text;
 }

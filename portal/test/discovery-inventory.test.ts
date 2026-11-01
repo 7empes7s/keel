@@ -81,7 +81,7 @@ test("the section lists what is not backed up and what cannot be read, with path
   assert.match(html, /Not worth backing up \(1\)/);
   assert.match(html, /Not backed up: it holds logs, reports or activity, not settings\./);
   assert.match(html, /Booking business/);
-  assert.match(html, /2 objects/);
+  assert.match(html, /2 settings/);
   assert.match(html, /Get-JournalRule/);
   assert.match(html, /It needs the Printer\.Read\.All permission/);
   // The raw path appears only inside the record layer.

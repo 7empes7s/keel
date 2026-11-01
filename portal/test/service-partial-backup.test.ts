@@ -48,7 +48,7 @@ test("a service backup with only partial workloads reads Partly done, never Fail
   const line = incompleteTypesLine(jobIncompleteTypes(partial));
   assert.match(line, /^Not backed up: /);
   assert.doesNotMatch(line, /workload:|exchange-mail-flow/, "workload keys are named in words");
-  assert.match(jobStatusSentence(partial, now), /^Partly done .*: 2 kinds incomplete$/);
+  assert.match(jobStatusSentence(partial, now), /^Partly done .*: 2 types incomplete$/);
   const row = renderToStaticMarkup(createElement(JobRow, { job: partial, now }));
   assert.match(row, /Partly done/);
   assert.doesNotMatch(row, />Failed</);

@@ -49,7 +49,7 @@ function completenessOf(item: CoverageType): TypeCompleteness | null {
 }
 
 function missingWords(completeness: TypeCompleteness): string[] {
-  return completeness.missing.map((part) => `${part.part} (${REASON_WORDS[part.reason] ?? part.reason})${part.perObject ? ", listed per object in each backup" : ""}`);
+  return completeness.missing.map((part) => `${part.part} (${REASON_WORDS[part.reason] ?? part.reason})${part.perObject ? ", listed per setting in each backup" : ""}`);
 }
 
 // Roadmap task-131, rebuilt for the portal audit (What's protected, pick B): one details
@@ -98,7 +98,7 @@ export function TypeRecordFields({ item }: { item: CoverageType }) {
   const completeness = completenessOf(item);
   return (
     <>
-      <RecordField label="Configuration type" value={item.type} />
+      <RecordField label="Setting type code" value={item.type} />
       <RecordField
         label="Coverage state"
         value={completeness ? `${completeness.state} · recreate ${completeness.recreate}${completeness.missing.length ? ` · missing ${completeness.missing.map((part) => `${part.part} [${part.reason}]`).join(", ")}` : ""}` : "not recorded"}
@@ -170,7 +170,7 @@ export function TypeRecordFields({ item }: { item: CoverageType }) {
       <RecordField label="Blast radius" value={item.blastRadius ?? "unknown"} copy={false} />
       <RecordField label="Remappable" value={item.remappable === null ? "unknown" : String(item.remappable)} copy={false} />
       <RecordField label="Last collected" value={item.lastCollectedAt ?? "never"} copy={false} />
-      <RecordField label="Items in the last backup" value={item.itemCount ?? "unknown"} copy={false} />
+      <RecordField label="Settings in the last backup" value={item.itemCount ?? "unknown"} copy={false} />
       <RecordField label="Stale" value={item.stale ? "yes, older than its schedule allows" : "no"} copy={false} />
       {detail?.startedAt ? <RecordField label="Last read started" value={detail.startedAt} copy={false} /> : null}
       {detail?.completedAt ? <RecordField label="Last read completed" value={detail.completedAt} copy={false} /> : null}
@@ -256,7 +256,7 @@ export function TypeDetails({ item, now, name }: { item: CoverageType; now: stri
         </ul>
       </section>
       <p className="pt-details-links">
-        {standing !== "cannot-restore" ? <Link className="pt-inline-link" href={`/restore?q=${encodeURIComponent(name)}`}>Restore this kind</Link> : null}
+        {standing !== "cannot-restore" ? <Link className="pt-inline-link" href={`/restore?q=${encodeURIComponent(name)}`}>Restore this type</Link> : null}
         {standing === "unproven" ? <Link className="pt-inline-link" href="/restore">Plan a test restore</Link> : null}
         {needsGrant && !failure?.needs.length ? <Link className="pt-inline-link" href="/setup#setup-permissions">Give Keel the permission it needs</Link> : null}
       </p>

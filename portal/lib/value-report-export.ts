@@ -50,7 +50,7 @@ export function valueReportSheets(report: ValueReport): Sheet[] {
   summary.push(["Note", NO_COMPLIANCE_CLAIM]);
   summary.push(["Report digest", report.provenance.digest]);
 
-  const requests: Cell[][] = [["What was asked", "Kind", "Result", "Why", "Attempts", "First asked", "Last activity", "Job ID", "Outcome ID"]];
+  const requests: Cell[][] = [["What was asked", "Type", "Result", "Why", "Attempts", "First asked", "Last activity", "Job ID", "Outcome ID"]];
   for (const row of orderOutcomes(outcomes.rows)) {
     requests.push([outcomeName(row), FAMILY_WORDS[row.family].one, OUTCOME_STATE_LABELS[row.state], reasonSentence(row.reason), row.attempts, day(row.firstRequestedAt), day(outcomeWhen(row)), row.lastJobId ?? "", row.id]);
   }

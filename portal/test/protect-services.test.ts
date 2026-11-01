@@ -85,8 +85,8 @@ test("a filtered Protect verdict names its filter and every service's totals", (
   assert.equal(backupHealth(never), "never");
   assert.equal(
     protectScopeDetail(["In Intune"], [ok, failed, never]),
-    "Counts follow your filter: In Intune. Across all services: 1 of 3 kinds backed up, 1 failed, 1 out of date or never.",
+    "Counts follow your filter: In Intune. Across all services: 1 of 3 setting types backed up, 1 failed, 1 out of date or never.",
   );
   // Nothing wrong anywhere: only the backed-up total.
-  assert.equal(protectScopeDetail(["In Teams"], [ok]), "Counts follow your filter: In Teams. Across all services: 1 of 1 kind backed up.");
+  assert.equal(protectScopeDetail(["In Teams"], [ok]), "Counts follow your filter: In Teams. Across all services: 1 of 1 setting type backed up.");
 });

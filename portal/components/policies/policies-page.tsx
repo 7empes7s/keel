@@ -143,7 +143,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
     { key: "state", label: "State", groupsOf: (items) => groupBy(items, (item) => ruleState(item), (key, list) => ({ label: RULE_STATES[key as RuleState].plural, icon: RULE_STATES[key as RuleState].icon, about: rules(list.length) }), (key) => RULE_STATE_ORDER.indexOf(key as RuleState)) },
     // Service by service, and inside each by kind (users, groups, roles, then policies
     // and settings); rules that watch anything come last.
-    { key: "kind", label: "Kind of thing", groupsOf: (items) => groupBy(items, (item) => kindWords(item), (key, list) => ({ label: capital(key), icon: "cloud", about: rules(list.length) }), (key) => { const type = watchedType(items.find((item) => kindWords(item) === key)!); return type ? kindOrder(type) : Number.MAX_SAFE_INTEGER; }) },
+    { key: "kind", label: "Type of thing", groupsOf: (items) => groupBy(items, (item) => kindWords(item), (key, list) => ({ label: capital(key), icon: "cloud", about: rules(list.length) }), (key) => { const type = watchedType(items.find((item) => kindWords(item) === key)!); return type ? kindOrder(type) : Number.MAX_SAFE_INTEGER; }) },
   ], []);
 
   const renderRow = (policy: Policy) => {

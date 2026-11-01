@@ -64,7 +64,7 @@ const KIND_WORDS: Record<string, string> = {
   baseline: "Baseline",
   "dry-run": "Dry run",
   change: "Change",
-  snapshot: "Snapshot",
+  snapshot: "Backup",
   policy: "Policy",
   channel: "Channel",
 };
@@ -140,7 +140,7 @@ function planPhrase(plan: PlanRef | null | undefined): string {
   if (!plan || !plan.readable) return "a dry run that is no longer readable";
   if (plan.complianceFix) return `a fix for a failing compliance check (${plural(plan.resources ?? 0, "setting")})`;
   if (plan.workload) return `${workloadSubject(plan.workload)} (${plural(plan.resources ?? 0, "setting")}) from the backup of ${when(plan.snapshotAt)}`;
-  return `${plural(plan.resources ?? 0, "resource")} from the snapshot of ${when(plan.snapshotAt)}`;
+  return `${plural(plan.resources ?? 0, "setting")} from the backup of ${when(plan.snapshotAt)}`;
 }
 
 /** A dry run of another Microsoft 365 service's restore, named by its service and what was chosen. */
@@ -219,7 +219,7 @@ export function jobName(job: JobLike): string {
   const params = (job.params ?? {}) as Record<string, unknown>;
   const refs = job.references ?? EMPTY_REFERENCES;
   switch (job.kind) {
-    case "collect": return "Backup of every configuration type";
+    case "collect": return "Backup of every setting type";
     case "backup": return `Backup of ${tierPhrase(params.tier)}`;
     case "restore": {
       if (typeof params.compensates === "string") return `Dry run of an undo of the restore of ${planPhrase(refs.undoes)}`;
@@ -234,7 +234,7 @@ export function jobName(job: JobLike): string {
         return typeof key === "string" && key ? `Dry run of a fix for a failing compliance check on ${namedResource(key)}` : "Dry run of a fix for a failing compliance check";
       }
       const selected = Array.isArray(params.selection) ? params.selection.length : 0;
-      return `Dry run of a restore of ${plural(selected, "selected resource")} from the snapshot of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
+      return `Dry run of a restore of ${plural(selected, "selected setting")} from the backup of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
     }
     case "remediate": return `Roll back of ${changesPhrase(refs.changes)}`;
     case "dispose": return decisionPhrase(params, refs);
@@ -265,8 +265,8 @@ export function jobStatusSentence(job: JobLike, now: string): string {
       const gaps = jobIncompleteTypes(job).length;
       const done = `${ago(job.finishedAt ?? null, now)}${took ? ` after ${took}` : ""}`;
       if (!gaps) return `Finished ${done}`;
-      if (job.kind === "content-collect") return `Partly done ${done}: ${plural(gaps, "kind")} of content not backed up in full`;
-      if (job.kind === "workload-collect") return `Partly done ${done}: ${plural(gaps, "kind")} incomplete`;
+      if (job.kind === "content-collect") return `Partly done ${done}: ${plural(gaps, "type")} of content not backed up in full`;
+      if (job.kind === "workload-collect") return `Partly done ${done}: ${plural(gaps, "type")} incomplete`;
       return `Partly done ${done}: ${plural(gaps, "type")} not backed up`;
     }
     case "failed": return `Failed ${ago(job.finishedAt ?? job.startedAt ?? null, now)}`;
@@ -361,7 +361,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared${subject.selfApproved === true ? " they asked for themselves (self-approved: approval mode is Solo)" : ""}`;
     case "recovery-completion": return `${actorName} updated the follow-up work of a restore`;
     case "incident-recovery": return `${actorName} updated incident recovery: ${typeof subject.transition === "string" ? words(subject.transition).toLowerCase() : "a change"}`;
-    case "incident-recovery-check": return "KEEL checked a restore for malicious items left behind";
+    case "incident-recovery-check": return "KEEL checked a restore for malicious settings left behind";
     case "fidelity-drill": return typeof subject.resourceType === "string"
       ? `A test restore of a ${resourceTypeLabel(subject.resourceType)} was measured`
       : "A test restore was measured";
@@ -373,7 +373,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       : "An off-site copy of the backups failed its check and does not count";
     case "job.started": return `${actorName} started ${anAction(subject.kind)}`;
     case "collection.completed": return typeof subject.items === "number"
-      ? `A backup of ${plural(Number(subject.types ?? 0), "type")} finished with ${plural(subject.items, "item")}`
+      ? `A backup of ${plural(Number(subject.types ?? 0), "type")} finished with ${plural(subject.items, "setting")}`
       : "A backup finished";
     case "baseline-resnapshot": return `${actorName} re-captured an approved setup from a newer backup`;
     case "benchmark-evaluation": return typeof subject.verdict === "string"

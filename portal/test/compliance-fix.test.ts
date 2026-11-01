@@ -66,7 +66,7 @@ test("Make it pass words: only a failing control with a fix, values in words, re
   assert.match(complianceVerdict(DATA).detail ?? "", /let Keel fix it after an approval/);
   assert.equal(fixRefusal(409, "not_failing"), "This control passes now, so there is nothing to fix.");
   assert.equal(fixRefusal(403, "forbidden"), "You need the restore permission to fix a control.");
-  assert.equal(fixPlanProblem("compliance fix refused: namedLocation:X already passes this control; nothing to fix"), "This object already passes in the live tenant. Nothing needs to change.");
+  assert.equal(fixPlanProblem("compliance fix refused: namedLocation:X already passes this control; nothing to fix"), "This setting already passes in the live tenant. Nothing needs to change.");
   assert.doesNotMatch(fixPlanProblem("weird"), /namedLocation|refused/);
 });
 

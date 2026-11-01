@@ -121,6 +121,6 @@ export function planSentence(plan: ChangeEvidence["plans"][number]): string {
       : "Keel cannot tell which backup the approved setup came from.";
   const status = plan.status === "completed" ? "A roll-back plan is ready." : plan.status === "refused" ? "A roll-back plan was refused." : "A roll-back plan failed to build.";
   const outcome = plan.outcome ? ` Result: ${OUTCOME_WORDS[plan.outcome.state] ?? "not recorded."}` : " No result is recorded yet.";
-  const others = plan.othersWithheld ? " It also covers other resources." : plan.others ? ` It also covers ${plural(plan.others, "other resource", "other resources")}.` : "";
+  const others = plan.othersWithheld ? " It also covers other settings." : plan.others ? ` It also covers ${plural(plan.others, "other setting", "other settings")}.` : "";
   return `${status} ${source}${outcome}${others}`;
 }

@@ -386,7 +386,7 @@ export function ApprovalInbox({
 
   const groupings = useMemo<Grouping<ApprovalRequestRecord>[]>(() => [
     {
-      key: "kind", label: "Kind",
+      key: "kind", label: "Type",
       groupsOf: (items) => groupBy(items, (item) => approvalKind(item), (key) => ({ label: KIND_WORDS[key as keyof typeof KIND_WORDS].plural, icon: KIND_WORDS[key as keyof typeof KIND_WORDS].icon, about: KIND_WORDS[key as keyof typeof KIND_WORDS].about }), (key) => KIND_ORDER.indexOf(key as never)),
     },
     {

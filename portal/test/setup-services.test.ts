@@ -58,7 +58,7 @@ test("a service line says what backed up, what Keel can put back, the last good 
   ], NOW);
   const entra = statuses.find((status) => status.code === "Entra")!;
   assert.equal(entra.tone, "urgent");
-  assert.equal(entra.backup.text, "1 kind failed, 2 of 3 backed up");
+  assert.equal(entra.backup.text, "1 type failed, 2 of 3 backed up");
   assert.equal(entra.restore.tone, "fine");
   assert.match(entra.restore.text, /^1 of 3 can be put back, 1 proven on this tenant$/);
   // The last good read ignores the failed kind.

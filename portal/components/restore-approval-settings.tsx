@@ -148,7 +148,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
           <span aria-hidden="true" className="ra-risk-icon"><Icon name="alert" /></span>
           <div>
             <strong>
-              Approvals are off for {riskyOff.length === 1 ? "1 high-risk kind" : `${riskyOff.length} high-risk kinds`} of restore
+              Approvals are off for {riskyOff.length === 1 ? "1 high-risk type" : `${riskyOff.length} high-risk types`} of restore
             </strong>
             <p>These restores now start without anyone checking them first. Keel recommends turning approvals back on unless you are sure.</p>
             <ul>
@@ -182,7 +182,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
             With approvals on, {approvalWords.approver} approves a restore before it starts. Some restores also shorten how long
             content is kept, release a hold, widen sharing, delete content, run scripts on devices or shorten group
             lifetimes; with approvals off, Keel makes these with the restore and still lists them in the plan. A restore
-            starts without waiting only when every service and every kind of restore it touches has approvals off.
+            starts without waiting only when every service and every type of restore it touches has approvals off.
           </p>
           <p>
             Lockout checks always run, Keel never writes sign-in trust or certificate settings, and a two-person rule you
@@ -194,8 +194,8 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
         <>
           <h3 className="ra-group">By service</h3>
           {list(services, "Restore approvals by service")}
-          <h3 className="ra-group">By kind of restore</h3>
-          {list(kinds, "Restore approvals by kind of restore")}
+          <h3 className="ra-group">By type of restore</h3>
+          {list(kinds, "Restore approvals by type of restore")}
         </>
       ) : null}
       {error ? <p className="ra-error" role="alert">{error}</p> : null}

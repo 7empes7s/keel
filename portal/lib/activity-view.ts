@@ -500,7 +500,7 @@ function shortDate(day: Day): string {
 
 /** A CSV of the chosen rows: the sentence, who, when and the outcome; ids in extra columns. */
 export function activityCsv(rows: ActivityRow[]): string {
-  const lines = [["When", "What", "Kind", "Outcome", "Who", "Source", "Job ID", "Audit sequence", "Account"].join(",")];
+  const lines = [["When", "What", "Type", "Outcome", "Who", "Source", "Job ID", "Audit sequence", "Account"].join(",")];
   for (const row of rows) {
     lines.push(csvLine([
       row.at ?? "", row.title, ACTIVITY_KINDS[row.kind].one, OUTCOMES[row.outcome].label,

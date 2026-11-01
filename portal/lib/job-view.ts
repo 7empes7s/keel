@@ -82,7 +82,7 @@ export function jobAlerts(job: JobRecord): AlertItem[] {
   if (gaps.length) {
     alerts.push({
       key: "gaps", tone: "soon", icon: "backup",
-      title: `${gaps.length === 1 ? "1 kind" : `${gaps.length} kinds`} could not be backed up in full`,
+      title: `${gaps.length === 1 ? "1 type" : `${gaps.length} types`} could not be backed up in full`,
       todo: "The rest was saved. The next backup tries these again.",
       more: gaps.map((type) => incompleteTypeLabel(type).replace(/^./, (letter) => letter.toUpperCase())),
       action: { label: "Open backups", href: "/protect" },
@@ -209,7 +209,7 @@ export function contentGapItem(reason: string): GapItem {
   const [, why, tone] = ITEM_CAUSES.find(([pattern]) => pattern.test(rest)) ?? [null, "Could not be read in full", "soon" as ReadTone];
   // A name, never an object id or an API path.
   const plain = /^https?:\/\//i.test(head) ? nameFromUrl(head) : head;
-  const name = !plain || plain.startsWith("/") ? "Part of this backup" : holdsObjectId(plain) ? "Unnamed item" : plain.replace(/^./, (letter) => letter.toUpperCase());
+  const name = !plain || plain.startsWith("/") ? "Part of this backup" : holdsObjectId(plain) ? "Unnamed content item" : plain.replace(/^./, (letter) => letter.toUpperCase());
   return { name, why, tone, raw: reason };
 }
 
@@ -332,11 +332,11 @@ export function jobProgressTiles(job: JobRecord, rows: TypeRow[], now: string): 
     {
       key: "progress", label: "Progress", icon: "backup",
       value: `${done} of ${rows.length}`,
-      about: reading ? `Reading ${reading.name.toLowerCase()}` : running ? "kinds read so far" : "kinds read",
+      about: reading ? `Reading ${reading.name.toLowerCase()}` : running ? "types read so far" : "types read",
       tone: problems ? "soon" : done === rows.length ? "fine" : "low",
     },
-    { key: "saved", label: "Items saved", icon: "save", value: saved.toLocaleString("en-GB"), about: running ? "so far" : "in this backup", tone: "neutral" },
-    { key: "problems", label: "Problems", icon: "alert", value: String(problems), about: problems ? `${problems === 1 ? "kind" : "kinds"} not read in full` : "none", tone: problems ? (rows.some((row) => row.tone === "urgent") ? "urgent" : "soon") : "fine" },
+    { key: "saved", label: "Settings saved", icon: "save", value: saved.toLocaleString("en-GB"), about: running ? "so far" : "in this backup", tone: "neutral" },
+    { key: "problems", label: "Problems", icon: "alert", value: String(problems), about: problems ? `${problems === 1 ? "type" : "types"} not read in full` : "none", tone: problems ? (rows.some((row) => row.tone === "urgent") ? "urgent" : "soon") : "fine" },
     {
       key: "ran", label: running ? "Running for" : "Took", icon: "clock",
       value: job.startedAt ? (ran ?? "Unknown") : "Not started",
@@ -359,7 +359,7 @@ export function typeProblemsAlert(rows: TypeRow[]): AlertItem | null {
   const failed = problems.filter((row) => row.tone === "urgent").length;
   return {
     key: "types", tone: failed ? "urgent" : "soon", icon: "backup",
-    title: `${problems.length === 1 ? "1 kind was" : `${problems.length} kinds were`} not backed up in full`,
+    title: `${problems.length === 1 ? "1 type was" : `${problems.length} types were`} not backed up in full`,
     todo: "The rest was saved. The next backup tries these again. The list below shows why.",
     more: problems.map((row) => `${row.name}: ${row.problem}`),
     action: problems.some((row) => row.items.length) ? { label: "See what was not read", href: "#job-gaps" } : { label: "See the list", href: "#job-types" },

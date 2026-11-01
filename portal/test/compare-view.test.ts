@@ -65,8 +65,8 @@ test("the verdict counts differences, and says when nothing differs", () => {
 });
 
 test("values read as names, never as ids or address codes", () => {
-  assert.equal(compareValueWords(["ref:group:Break-glass admins", "<id>"]), "Break-glass admins (group), an object Keel could not name");
-  assert.equal(compareValueWords(ID(9)), "an object Keel has no name for");
+  assert.equal(compareValueWords(["ref:group:Break-glass admins", "<id>"]), "Break-glass admins (group), a setting Keel could not name");
+  assert.equal(compareValueWords(ID(9)), "a setting Keel has no name for");
   assert.equal(compareValueWords([ID(9)], { [ID(9).toLowerCase()]: "Finance approvers" }), "Finance approvers");
   assert.equal(compareValueWords("smtp:a@b.example"), "a@b.example (SMTP address)");
   assert.equal(containerWords(`mailbox/${ID(4)}/items/inbox`), "Inbox (mailbox)");

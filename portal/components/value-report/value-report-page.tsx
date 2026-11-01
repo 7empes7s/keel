@@ -131,7 +131,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
 
   const groupings = useMemo<Grouping<OutcomeRow>[]>(() => [
     { key: "result", label: "Result", groupsOf: (items) => groupBy(items, (item) => item.state, (key, list) => ({ label: OUTCOME_STATE_LABELS[key as OutcomeState], icon: OUTCOME_WORDS[key as OutcomeState].icon, about: plural(list.length, "request") }), (key) => OUTCOME_WORDS[key as OutcomeState].rank) },
-    { key: "kind", label: "Kind", groupsOf: (items) => groupBy(items, (item) => item.family, (key, list) => ({ label: FAMILY_WORDS[key as OutcomeRow["family"]].label, icon: FAMILY_WORDS[key as OutcomeRow["family"]].icon, about: plural(list.length, "request") }), (key) => (key === "restore" ? 0 : 1)) },
+    { key: "kind", label: "Type", groupsOf: (items) => groupBy(items, (item) => item.family, (key, list) => ({ label: FAMILY_WORDS[key as OutcomeRow["family"]].label, icon: FAMILY_WORDS[key as OutcomeRow["family"]].icon, about: plural(list.length, "request") }), (key) => (key === "restore" ? 0 : 1)) },
   ], []);
 
   const renderRow = (row: OutcomeRow) => {
@@ -156,7 +156,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
 
   function downloadRows(ids: string[]) {
     const chosen = shown.filter((row) => ids.includes(row.id));
-    const lines = [["What was asked", "Kind", "Result", "Why", "Attempts", "Last activity", "Job ID"].join(",")];
+    const lines = [["What was asked", "Type", "Result", "Why", "Attempts", "Last activity", "Job ID"].join(",")];
     for (const row of chosen) lines.push(csvLine([outcomeName(row), FAMILY_WORDS[row.family].one, OUTCOME_STATE_LABELS[row.state], reasonSentence(row.reason), row.attempts, (outcomeWhen(row) ?? "").slice(0, 10), row.lastJobId ?? ""]));
     const url = URL.createObjectURL(new Blob([`${lines.join("\n")}\n`], { type: "text/csv" }));
     const link = document.createElement("a");
@@ -227,11 +227,11 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
         <div className="vr-grid vr-grid-wide">
           <section aria-labelledby="vr-chart-heading" className="vr-card">
             <div className="vr-card-head">
-              <h2 id="vr-chart-heading"><Icon name="reports" />Results by kind</h2>
+              <h2 id="vr-chart-heading"><Icon name="reports" />Results by type</h2>
               <Badge tone={resultsBadge(outcomes).tone}>{resultsBadge(outcomes).label}</Badge>
               <a className="btn btn-sm btn-ghost vr-full" href={href({ chart: "full" })} onClick={openChart}><Icon name="show" />Full screen</a>
             </div>
-            <a aria-label="Results by kind: open full screen" className="vr-chart-open" href={href({ chart: "full" })} onClick={openChart}>
+            <a aria-label="Results by type: open full screen" className="vr-chart-open" href={href({ chart: "full" })} onClick={openChart}>
               <ResultsChart outcomes={outcomes} />
             </a>
             <p className="vr-muted">{outcomeSentence(outcomes)}</p>
@@ -382,12 +382,12 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
 
       {chartOpen ? <BaselinesStyles /> : null}
       {chartOpen ? (
-        <DetailsSheet kicker="Value report" onClose={() => view.set({ chart: null })} title="Results by kind" wide>
+        <DetailsSheet kicker="Value report" onClose={() => view.set({ chart: null })} title="Results by type" wide>
           <div className="vr-sheet">
             <p className="vr-muted">{periodWords(period, today)}. {scopeSentence(report)}</p>
             <ResultsChart big outcomes={outcomes} />
             <table className="vr-table vr-chart-table">
-              <caption className="visually-hidden">Results by kind, as numbers</caption>
+              <caption className="visually-hidden">Results by type, as numbers</caption>
               <thead><tr><th scope="col">Result</th><th className="vr-num" scope="col">Restores</th><th className="vr-num" scope="col">Undo changes</th><th className="vr-num" scope="col">All</th></tr></thead>
               <tbody>
                 {CHART_ORDER.map((state) => (

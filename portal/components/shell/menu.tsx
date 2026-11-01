@@ -144,7 +144,7 @@ function PinButton({ item }: { item: MenuItem }) {
 const GROUP_TITLES: Record<PersonalGroup, string> = { pinned: "Pinned", favourites: "Favourites" };
 const GROUP_EMPTY: Record<PersonalGroup, string> = {
   pinned: "Pin any page from Everything below with its pin button.",
-  favourites: "Star a page or an item from its title to keep it here. Saved list filters land here too.",
+  favourites: "Star a page or a setting from its title to keep it here. Saved list filters land here too.",
 };
 
 function GroupHeader({ group, title, count, extra, actions }: { group: MenuGroup; title: string; count?: number; extra?: ReactNode; actions?: ReactNode }) {

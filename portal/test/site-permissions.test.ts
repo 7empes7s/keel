@@ -230,7 +230,7 @@ test("the list is a table that links each site; a site's page shows status tiles
   assert.match(list, /<table[^>]*aria-label="Sites"/);
   assert.ok(list.includes(`href="/sites/${HOST}%2C11111111-1111-4111-8111-111111111111%2C22222222-2222-4222-8222-222222222222"`));
   assert.match(list, /Backed up/);
-  assert.match(list, /1,200 items · 5\.0 MB/);
+  assert.match(list, /1,200 content items · 5\.0 MB/);
   assert.match(list, /Amara Okafor/);
   assert.match(list, /Guests who sign in/);
   assert.doesNotMatch(list, /not read yet/);

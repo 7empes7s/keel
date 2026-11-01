@@ -121,7 +121,7 @@ function powershellArea(source: string): string {
 
 export function objectCount(objects: number | null, exact: boolean | null): string {
   if (objects === null) return "count unknown";
-  return `${exact === false ? "at least " : ""}${plural(objects, "object")}`;
+  return `${exact === false ? "at least " : ""}${plural(objects, "setting")}`;
 }
 
 const REASONS: Record<string, string> = {

@@ -34,16 +34,16 @@ export function captureSentence(capture: BaselineCapture | undefined, now: strin
   if (!capture || capture.basis === "unknown" || !capture.capturedAt) {
     return "When its backup was collected is not recorded.";
   }
-  const covers = capture.types.length ? `, covering ${plural(capture.types.length, "configuration type")}` : "";
-  const from = capture.basis === "legacy-resource-versions" ? "read from the backups its resources came from" : "from one complete backup";
+  const covers = capture.types.length ? `, covering ${plural(capture.types.length, "setting type")}` : "";
+  const from = capture.basis === "legacy-resource-versions" ? "read from the backups its settings came from" : "from one complete backup";
   return `Captured ${ago(capture.capturedAt, now)} ${from}${covers}.`;
 }
 
 /** What the capture covered, without repeating its age (the table shows that once). */
 export function captureScope(capture: BaselineCapture | undefined): string {
   if (!capture || capture.basis === "unknown" || !capture.capturedAt) return "What it covered is not recorded.";
-  const from = capture.basis === "legacy-resource-versions" ? "Read from the backups its resources came from" : "From one complete backup";
-  return `${from}, covering ${plural(capture.types.length, "configuration type")}.`;
+  const from = capture.basis === "legacy-resource-versions" ? "Read from the backups its settings came from" : "From one complete backup";
+  return `${from}, covering ${plural(capture.types.length, "setting type")}.`;
 }
 
 /** The kinds a baseline left out because Microsoft kept failing to answer, in words; null when none. */
@@ -364,7 +364,7 @@ const SUBJECT_WORDS: Record<string, string> = {
 /** The heading of the checked-settings table's first column: Policy, Group, Location... */
 export function checkSubjectWord(finding: ComplianceFinding): string {
   const type = CONTROL_WORDS[finding.controlId]?.types[0] ?? finding.evidence[0]?.resourceType;
-  return (type && SUBJECT_WORDS[type]) ?? "Item";
+  return (type && SUBJECT_WORDS[type]) ?? "Setting";
 }
 
 const CHECK_WORDS: Record<string, string> = {
@@ -978,7 +978,7 @@ export function fixRefusal(status: number, error: string | undefined): string {
   if (error === "not_failing") return "This control passes now, so there is nothing to fix.";
   if (error === "not_newest") return "A newer check of this control exists. Reload the page.";
   if (error === "no_fix") return "Keel has no fix for this control. Fix it in Microsoft 365 or grant an exception.";
-  if (error === "not_a_candidate") return "This object no longer needs the fix in the newest backup. Reload the page.";
+  if (error === "not_a_candidate") return "This setting no longer needs the fix in the newest backup. Reload the page.";
   if (status === 0) return "Keel could not be reached. Check your connection and try again.";
   return "Keel could not plan the fix. Try again.";
 }
@@ -986,13 +986,13 @@ export function fixRefusal(status: number, error: string | undefined): string {
 /** Why a planned fix cannot go ahead, from the worker's message, in plain words. */
 export function fixPlanProblem(message: string | null | undefined): string {
   const text = message ?? "";
-  if (/already passes/.test(text)) return "This object already passes in the live tenant. Nothing needs to change.";
-  if (/not in the tenant now/.test(text)) return "This object is no longer in the tenant, so there is nothing to fix.";
-  if (/no complete backup holds/.test(text)) return "No finished backup holds this object yet. Run a backup, then try again.";
+  if (/already passes/.test(text)) return "This setting already passes in the live tenant. Nothing needs to change.";
+  if (/not in the tenant now/.test(text)) return "This setting is no longer in the tenant, so there is nothing to fix.";
+  if (/no complete backup holds/.test(text)) return "No finished backup holds this setting yet. Run a backup, then try again.";
   if (/no complete service read holds/.test(text)) return "No finished backup holds this policy yet. Run a backup, then try again.";
   if (/could not be checked/.test(text)) return "Keel could not read this policy in the live tenant just now. Try again in a few minutes.";
-  if (/points to other objects/.test(text)) return "This object points to other objects, so Keel cannot change one setting on its own. Fix it in Microsoft 365.";
-  if (/not updated in place/.test(text)) return "Keel would have to recreate this object, not change one setting. Fix it in Microsoft 365.";
+  if (/points to other objects/.test(text)) return "This setting points to other settings, so Keel cannot change one value on its own. Fix it in Microsoft 365.";
+  if (/not updated in place/.test(text)) return "Keel would have to recreate this setting, not change one value. Fix it in Microsoft 365.";
   if (/incident/.test(text)) return "The backup lies inside an open incident. Plan the fix from the incident instead.";
   return "Keel could not plan the fix. The details are below.";
 }
@@ -1037,7 +1037,7 @@ export function changeLinkSentence(finding: ComplianceFinding): string | null {
     ? `${plural(change.linked.length, "open change")} in the same backup.`
     : null;
   const mismatched = change.mismatched.length
-    ? `${plural(change.mismatched.length, "open change")} to these kinds ${change.mismatched.length === 1 ? "comes" : "come"} from a different backup, so ${change.mismatched.length === 1 ? "it is" : "they are"} not linked.`
+    ? `${plural(change.mismatched.length, "open change")} to these types ${change.mismatched.length === 1 ? "comes" : "come"} from a different backup, so ${change.mismatched.length === 1 ? "it is" : "they are"} not linked.`
     : null;
   return [linked, mismatched].filter(Boolean).join(" ");
 }

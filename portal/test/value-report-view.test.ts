@@ -132,7 +132,7 @@ test("counts read from the engine: a retry is one outcome, a queued job is not p
   assert.equal(value.outcomes.states.verified, 1);
   assert.equal(value.outcomes.states.queued, 1, "a matching collection does not verify a queued job");
   assert.equal(value.outcomes.retries, 1);
-  assert.equal(outcomeSentence(value.outcomes), "Keel put back and checked 1 item of 2 it was asked to (50%). 1 retry counted once each.");
+  assert.equal(outcomeSentence(value.outcomes), "Keel put back and checked 1 setting of 2 it was asked to (50%). 1 retry counted once each.");
   const verdict = valueVerdict(value);
   assert.equal(verdict.text, "1 of 2 requests put back and checked; none failed.");
   assert.ok(verdict.text.split(/\s+/).length <= 25);
@@ -251,7 +251,7 @@ test("the Excel workbook is a valid zip with the report's sheets in plain words"
   const value = report({ estimate: { minutesPerVerifiedOutcome: { restore: 90, finding: 30 }, assumptions: ["A manual group restore takes about 90 minutes."], owner: "IT lead" } });
   const sheets = valueReportSheets(value);
   assert.deepEqual(sheets.map((sheet) => sheet.name), ["Summary", "Requests", "Security checks", "Time saved"]);
-  assert.deepEqual(sheets[1].rows[0].slice(0, 3), ["What was asked", "Kind", "Result"]);
+  assert.deepEqual(sheets[1].rows[0].slice(0, 3), ["What was asked", "Type", "Result"]);
   assert.equal(sheets[1].rows.length, 1 + value.outcomes.rows.length);
   assert.ok(sheets[2].rows.slice(1).every((row) => !String(row[0]).startsWith("keel")), "check titles, not codes, lead each row");
   const bytes = valueReportXlsx(value);
@@ -292,7 +292,7 @@ test("the backups card shows tiles, a problems-first table and explains stored i
   const states = [...card.matchAll(/<tr data-state="([a-z-]+)"/g)].map((match) => match[1]);
   assert.deepEqual(states, ["failed", "good", "partial"], "the group with a failure first, problems first inside it");
   assert.match(card, /Backed up in part/);
-  assert.match(card, /including items from areas backed up only in part/);
+  assert.match(card, /including content from areas backed up only in part/);
   assert.doesNotMatch(visible(card), /exchange-mail|teams-org-policies/, "areas are named, never by their codes");
 });
 

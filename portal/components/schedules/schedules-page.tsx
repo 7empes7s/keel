@@ -505,7 +505,7 @@ function ScheduleRecord({ schedule, forecast }: { schedule: Schedule; forecast: 
   return (
     <>
       <RecordField label="Schedule ID" usage={<>Use with <code>POST /api/schedules</code></>} value={schedule.id} />
-      <RecordField copy={false} label="Job kind" value={`${schedule.job_kind}${schedule.tier ? ` · ${schedule.tier}` : ""}`} />
+      <RecordField copy={false} label="Job type" value={`${schedule.job_kind}${schedule.tier ? ` · ${schedule.tier}` : ""}`} />
       <RecordField copy={false} label="Cadence" value={schedule.cron_override !== null ? `cron ${schedule.cron_override} (UTC)` : JSON.stringify(schedule.cadence)} />
       <RecordField copy={false} label="Next due" value={schedule.next_due_at} />
       <RecordField copy={false} label="Enabled" value={String(schedule.enabled)} />

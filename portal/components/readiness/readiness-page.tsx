@@ -484,7 +484,7 @@ function AccountCard({ account, index, now, canConfigure, stepHref, follow }: {
           <RecordField copy={false} label="Last test" value={account.lastValidatedAt} />
           <RecordField copy={false} label="Last credential change" value={account.lastRotatedAt} />
           <RecordField copy={false} label="Intervals (days)" value={`test ${account.validationIntervalDays} · credential ${account.rotationIntervalDays ?? "not set"}`} />
-          <RecordField label="Alert resource key" value={account.resourceKey} />
+          <RecordField label="Alert setting key" value={account.resourceKey} />
         </TechnicalDetails>
       </footer>
     </article>

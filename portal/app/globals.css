@@ -12087,3 +12087,11 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 /* UI audit C1: a reason that is too weak to keep says so under its field. */
 .reason-hint { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.25rem; color: var(--urgent); font-size: 0.8125rem; }
 .reason-hint .icon { width: 0.875rem; height: 0.875rem; flex: none; }
+
+/* A link opened an item the page does not hold (components/list/missing-opened.tsx). */
+.missing-opened { display: flex; gap: var(--space-sm); align-items: flex-start; margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in srgb, var(--check-soon) 45%, var(--line)); border-radius: var(--radius-md); background: var(--surface); color: var(--text); }
+.missing-opened-icon { display: inline-grid; flex: none; place-items: center; width: 1.5rem; height: 1.5rem; color: var(--check-soon); }
+.missing-opened-icon .icon { width: 1rem; height: 1rem; }
+.missing-opened-body { flex: 1; min-width: 0; }
+.missing-opened-body p { margin: var(--space-2xs) 0 0; color: var(--text-soft); line-height: 1.5; }
+.missing-opened .btn { flex: none; }

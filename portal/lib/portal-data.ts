@@ -1444,7 +1444,7 @@ export function buildAlerts({
       severity: "warning",
       title: `${kinds(coverage.notCovered, "kind of setting is", "kinds of settings are")} not backed up by Keel yet`,
       detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.",
-      href: "/protect",
+      href: "/protect?health=not-backed-up",
     });
   }
 

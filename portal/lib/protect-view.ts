@@ -352,9 +352,15 @@ export function tierSummaries(schedules: Schedule[], now: string, active: Active
 
 // The What's protected page (portal audit: grouped list on a desktop, service cards on a phone).
 // Health in four words a tile and a badge can share; tones are risk colours only.
-export type HealthFilter = "backed-up" | "failed" | "partial" | "out-of-date" | "proven";
+export type HealthTile = "backed-up" | "failed" | "partial" | "out-of-date" | "proven";
+// Filters with no tile of their own: the parts the sum line under the tiles counts, which
+// Overview's ring and banner link to ("Not backed up by Keel yet", "Not on this tenant").
+export type HealthLink = "not-backed-up" | "not-on-tenant";
+export type HealthFilter = HealthTile | HealthLink;
 
-export const HEALTH_FILTERS: HealthFilter[] = ["backed-up", "failed", "partial", "out-of-date", "proven"];
+export const HEALTH_TILE_KEYS: HealthTile[] = ["backed-up", "failed", "partial", "out-of-date", "proven"];
+export const HEALTH_LINK_KEYS: HealthLink[] = ["not-backed-up", "not-on-tenant"];
+export const HEALTH_FILTERS: HealthFilter[] = [...HEALTH_TILE_KEYS, ...HEALTH_LINK_KEYS];
 
 export function isHealthFilter(value: string): value is HealthFilter {
   return (HEALTH_FILTERS as string[]).includes(value);
@@ -367,6 +373,9 @@ export function matchesHealth(item: CoverageType, filter: HealthFilter): boolean
     case "failed": return health === "failed";
     case "partial": return health === "partial";
     case "out-of-date": return health === "stale" || health === "never";
+    // The coverage buckets' notCollected and unavailable (coverageBuckets below).
+    case "not-backed-up": return health === "not-collected";
+    case "not-on-tenant": return health === "unavailable";
     case "proven": return restoreProof(item) === "proven";
   }
 }

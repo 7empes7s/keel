@@ -78,8 +78,8 @@ export const COVERAGE_LINKS = {
   failed: "/protect?health=failed",
   partial: "/protect?health=partial",
   late: "/protect?health=out-of-date",
-  uncovered: "/protect",
-  unavailable: "/protect",
+  uncovered: "/protect?health=not-backed-up",
+  unavailable: "/protect?health=not-on-tenant",
 } as const;
 
 export interface CoverageSegment { key: keyof typeof COVERAGE_LINKS; label: string; value: number; href: string }

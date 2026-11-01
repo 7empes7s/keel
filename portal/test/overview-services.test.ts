@@ -91,8 +91,8 @@ test("the Overview sentence, ring, tile and menu badge count what What's protect
     ["failed", 2, "/protect?health=failed"],
     ["partial", 2, "/protect?health=partial"],
     ["late", 2, "/protect?health=out-of-date"],
-    ["uncovered", 3, "/protect"],
-    ["unavailable", 1, "/protect"],
+    ["uncovered", 3, "/protect?health=not-backed-up"],
+    ["unavailable", 1, "/protect?health=not-on-tenant"],
   ]);
 
   const dashboard = {

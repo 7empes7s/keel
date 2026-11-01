@@ -360,6 +360,16 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ schedule: { id: "saved" } });
   }
   if (/\/api\/actions\/(collect|discover|workload-collect|content-collect)$/.test(url)) return json({ job: { id: "a1" } }, 202);
+  // Changes: who made a change the list did not read. "Require MFA for admins" is named
+  // by the audit log; any other change's read fails.
+  if (url.includes("/api/drift/attribution?id=")) {
+    if (url.endsWith("id=dr2")) return json({ attribution: {
+      verdict: "exact", reason: "audit-record-names-resource", source: "audit", service: "Entra", actors: [{ kind: "user", id: "5a3e0000-0000-4000-8000-0000000000a5", name: "Sam Lee" }],
+      evidence: [{ sourceEventId: "Directory_2b7d", occurredAt: "2026-10-01T21:05:00Z", operation: "update", activity: "Update conditional access policy", fields: ["sessionControls"] }],
+      resourceObjectId: null, window: { from: "2026-10-01T18:00:00Z", until: "2026-10-01T21:40:00Z" }, coverage: { audit: "covered", signIn: "covered" }, route: null,
+    } });
+    return json({ error: "data_unavailable" }, 503);
+  }
   // Emergency access: every change to an emergency account is recorded.
   if (url.endsWith("/api/actions/breakglass")) return json({ ok: true });
   if (url.endsWith("/api/actions/setup")) return json({ run: { artifactId: SETUP_RUN, status: "pending-manual", stepId: null } });

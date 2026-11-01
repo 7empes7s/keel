@@ -17,7 +17,7 @@ const NOW = "2026-10-21T10:00:00.000Z";
 
 const WORKLOADS = workloadKinds([
   { workload: "exchange-mail-flow", status: "complete", resources: null, observation: { endedAt: "2026-10-21T02:05:00Z" } },
-  // Partly done: What's protected has always called this failed; the Overview called it backed up.
+  // Partly done: its own amber count everywhere, never failed and never backed up (decision 31 Oct 2026).
   { workload: "teams-settings", status: "partial", resources: 4, observation: { endedAt: "2026-10-21T02:06:00Z" } },
   { workload: "purview-labels", status: "failed", resources: null, observation: { endedAt: "2026-10-21T02:07:00Z" } },
   { workload: "power-platform", status: "disabled", resources: null, observation: null },
@@ -38,7 +38,7 @@ const TYPES: CoverageType[] = [
   kind("user", { outcome: "complete-empty", itemCount: 0 }),
   kind("namedLocation", { stale: true, lastCollectedAt: "2026-10-01T00:00:00Z" }),
   kind("conditionalAccessPolicy", { reportStatus: "failed", protectionState: "failed", outcome: "failed" }),
-  // A partly done type read: failed in the engine and on What's protected.
+  // A partly done type read: "partial" on What's protected and the Overview, not failed.
   kind("application", { reportStatus: "failed", protectionState: "failed", outcome: "partial", itemCount: 40 }),
   kind("crossTenantAccessPolicyPartner", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null }),
   kind("deviceConfiguration", { reportStatus: "failed", protectionState: "failed", outcome: "unavailable", itemCount: null }),
@@ -60,7 +60,8 @@ test("every kind lands in exactly one bucket, so the buckets add up to the total
   assert.deepEqual(buckets, {
     total: 13,
     backedUp: 3, // group, user (empty), exchange-mail-flow
-    failed: 4, // conditionalAccessPolicy, application (partial), teams-settings (partial), purview-labels
+    failed: 2, // conditionalAccessPolicy, purview-labels
+    partial: 2, // application, teams-settings
     stale: 1,
     never: 1,
     notCollected: 3, // managedDevice, power-platform (switched off), onedrive-site-settings (switched off)
@@ -68,27 +69,30 @@ test("every kind lands in exactly one bucket, so the buckets add up to the total
   });
   const { total, ...parts } = buckets;
   assert.equal(Object.values(parts).reduce((sum, value) => sum + value, 0), total);
-  assert.equal(coverageSentence(DATA.summary), "13 kinds: 3 backed up, 4 failed, 2 out of date or never, 3 not backed up by Keel yet and 1 not on this tenant.");
+  assert.equal(coverageSentence(DATA.summary), "13 kinds: 3 backed up, 2 failed, 2 partly done, 2 out of date or never, 3 not backed up by Keel yet and 1 not on this tenant.");
 });
 
 test("the Overview sentence, ring, tile and menu badge count what What's protected counts", () => {
   const headline = protectionHeadline(headlineEntries(RAW, KINDS) as never) as ProtectionHeadline;
   const protect = protectCounts(KINDS);
-  assert.equal(headline.counts.failed, protect.failed, "partly done reads are failed in the sentence too");
+  assert.equal(headline.counts.failed, protect.failed, "partly done reads are not failed in the sentence either");
+  assert.equal(headline.counts.partial, protect.partial);
+  assert.equal(headline.sentence, "6 configuration types have no complete, current backup; the last backup failed for 2 and was only partly done for 2 of them.");
   assert.equal(headline.counts.stale, protect.stale);
   assert.equal(headline.counts.neverCollected, protect.never);
   assert.equal(headline.counts.backedUp, protect.backedUp);
-  assert.equal(headline.counts.failing, protect.failed + protect.stale + protect.never, "switched-off and unavailable kinds are not failures");
+  assert.equal(headline.counts.failing, protect.failed + protect.partial + protect.stale + protect.never, "switched-off and unavailable kinds are not failures");
 
   const ring = coverageSegments(DATA.summary);
   assert.equal(ring.total, KINDS.length);
   assert.equal(ring.segments.reduce((sum, segment) => sum + segment.value, 0), ring.total, "the ring's parts add up to every kind");
   assert.deepEqual(ring.segments.map((segment) => [segment.key, segment.value, segment.href]), [
     ["covered", 3, "/protect?health=backed-up"],
-    ["failed", 4, "/protect?health=failed"],
+    ["failed", 2, "/protect?health=failed"],
+    ["partial", 2, "/protect?health=partial"],
     ["late", 2, "/protect?health=out-of-date"],
-    ["uncovered", 3, "/protect"],
-    ["unavailable", 1, "/protect"],
+    ["uncovered", 3, "/protect?health=not-backed-up"],
+    ["unavailable", 1, "/protect?health=not-on-tenant"],
   ]);
 
   const dashboard = {
@@ -96,8 +100,8 @@ test("the Overview sentence, ring, tile and menu badge count what What's protect
     evidence: { ok: true, chainLength: 1 }, waiting: { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 },
   } as unknown as DashboardData;
   const tile = overviewTiles(dashboard, null).find((entry) => entry.key === "backups")!;
-  assert.equal(tile.value, "4 failed");
-  assert.equal(tile.detail, "3 of 13 kinds backed up");
+  assert.equal(tile.value, "2 failed");
+  assert.equal(tile.detail, "3 of 13 kinds backed up, 2 partly done");
   assert.equal(menuStatuses(dashboard).Backup?.count, protect.failed, "the menu badge is What's protected's failed count");
 });
 

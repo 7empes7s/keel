@@ -63,6 +63,8 @@ export interface PolicyAction {
   /** The template family the newest backup's copy carries, when it has one: an endpoint
    * security policy made in Intune is a Defender setting. Filled in by the reader. */
   template_family?: string | null;
+  /** The isBuiltIn flag the newest backup's copy carries (an Entra admin role). */
+  built_in?: boolean | null;
 }
 
 // Roadmap task-92: the frozen activation preview, as engine/policy/activation.mjs stores it.
@@ -128,6 +130,7 @@ async function namedActions(client: QueryClient, tenantRef: string, policyId: st
     queued_at: toIso(row.queued_at), finished_at: row.finished_at ? toIso(row.finished_at) : null,
     name: payloadName({ displayName: display_name }) ?? (row.natural_key ? names[row.natural_key]?.name ?? null : null),
     ...(row.natural_key && names[row.natural_key]?.templateFamily ? { template_family: names[row.natural_key].templateFamily } : {}),
+    ...(row.natural_key && typeof names[row.natural_key]?.builtIn === "boolean" ? { built_in: names[row.natural_key].builtIn } : {}),
   }));
 }
 

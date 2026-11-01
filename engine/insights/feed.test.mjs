@@ -292,3 +292,20 @@ test('grouping by type keeps endpoint security policies apart from other setting
     ['defenderEndpointSecurityPolicy', 'Endpoint security policy', 1],
   ]);
 });
+
+test('an admin role reads as built-in or custom by its isBuiltIn flag, and groups under one kind', async () => {
+  const tenant = 'woodgrove';
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@woodgrove.test') RETURNING id", [tenant, hoursAgo(100)]);
+  const role = (id, displayName, isBuiltIn) => [`roleDefinition:${id}`, 'roleDefinition', { id, templateId: id, displayName, isBuiltIn }];
+  const globalAdmin = role('62e90394-69f5-4237-9190-012177145e10', 'Global Administrator', true);
+  const custom = role('e731bb7f-0000-4000-8000-000000000002', 'KEEL-RT-Role', false);
+  const snap = await snapshot(tenant, hoursAgo(6), [globalAdmin, custom]);
+  for (const [key, type, payload] of [globalAdmin, custom]) {
+    await drift(tenant, baseline.id, snap, { key, type, change: 'modified', before: payload, after: payload, at: hoursAgo(5) });
+  }
+  const { rows } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW });
+  const byName = Object.fromEntries(rows.map((entry) => [entry.object.name, entry]));
+  assert.equal(byName['Global Administrator'].typeName, 'Built-in admin role');
+  assert.equal(byName['KEEL-RT-Role'].typeName, 'Custom admin role');
+  assert.deepEqual(groupChangeFeed(rows, 'type').map((group) => [group.key, group.label, group.count]), [['roleDefinition', 'Admin role', 2]]);
+});

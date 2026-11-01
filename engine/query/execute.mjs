@@ -172,6 +172,8 @@ const TEMPLATES = Object.freeze({
        )
        SELECT m.id::text AS id, m.natural_key, m.resource_type, m.template_family, m.change_type, m.blast_radius, m.detected_at,
               m.observed_snapshot::text AS collection_id, m.seen_at, o.window_from,
+              -- An admin role reads as built-in or custom (taxonomy objectTypeName).
+              COALESCE(d.after_payload->'isBuiltIn', d.before_payload->'isBuiltIn') AS is_built_in,
               COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name,
               CASE WHEN m.change_type = 'modified' AND jsonb_typeof(d.before_payload) = 'object' AND jsonb_typeof(d.after_payload) = 'object'
                    THEN ARRAY(SELECT k FROM (SELECT jsonb_object_keys(d.before_payload) UNION SELECT jsonb_object_keys(d.after_payload)) keys(k)
@@ -231,6 +233,7 @@ const TEMPLATES = Object.freeze({
         id: row.id,
         resourceType: row.resource_type,
         ...(row.template_family ? { templateFamily: row.template_family } : {}),
+        ...(typeof row.is_built_in === 'boolean' ? { builtIn: row.is_built_in } : {}),
         naturalKey: row.natural_key,
         name: clip(row.display_name, MAX_NAME_TEXT),
         changeType: row.change_type,

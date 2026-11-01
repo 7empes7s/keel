@@ -1432,7 +1432,7 @@ const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1,
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
 const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 kinds of settings are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect?health=not-backed-up" };
 const ALERTS: DashboardData["alerts"][] = [
   [
     { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
@@ -1443,7 +1443,7 @@ const ALERTS: DashboardData["alerts"][] = [
   [],
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
-const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, partial: 0, stale: 0, neverCollected: 0 };
 // "Restore proven" comes from the same kinds What's protected lists, so the Overview tile and that page agree.
 const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
 const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
@@ -1463,7 +1463,7 @@ function dashboard(posture: number): DashboardData {
     openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
     // The buckets add up to the total, as coverageSummary makes them.
-    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
+    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, partial: 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
     headline: HEADLINES[posture],
@@ -1803,6 +1803,17 @@ const INBOX_ALERTS: AlertItem[] = [
     ],
   },
 ];
+
+// The emergency sign-in that "Review the sign-in" on Emergency access links to. The list
+// does not hold it, so the server sends it on its own (`linked`): the link opens it, and
+// the list stays the same.
+const LINKED_ALERT: AlertItem = {
+  ...INBOX_ALERTS.find((alert) => alert.id === "a1e70000-0000-4000-8000-000000000005")!,
+  id: "a1e70000-0000-4000-8000-000000000094", resourceKey: "user:bg2@contoso.onmicrosoft.com", name: "Emergency admin 2",
+  state: "open", acknowledgedAt: null, acknowledgedByName: null, owner: null, firstOpenedAt: "2026-10-02T08:40:00Z", occurrenceStartedAt: "2026-10-02T08:40:00Z",
+  lastFiringAt: "2026-10-02T08:40:00Z", ackDeadlineAt: "2026-10-02T08:55:00Z", lastEventId: "breakglass-sign-in:si-7f21",
+  history: [alertEntry("94", 1, null, "open", "condition-firing", "2026-10-02T08:40:00Z")],
+};
 
 
 // Task-73: measured recovery point and recovery time. A newer off-site copy lacks a
@@ -2941,7 +2952,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
-      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
+      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} linked={LINKED_ALERT} now={now} />;
     }
     case "/setup/anonymous": {
       const state = hiddenSetup();

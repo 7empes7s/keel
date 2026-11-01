@@ -311,6 +311,29 @@ test('listAlerts and listAlertTransitions share one tenant and capability gate',
   await assert.rejects(() => acknowledgeAlert(client, { tenantRef: tenantA, alertId: inB.alert.id, actor: operator }), AlertStateError);
 });
 
+// A link to one alert (`/alerts?open=<id>`) must open it even when the inbox's newest
+// page no longer holds it: `ids` reads exactly those alerts, still within the tenant.
+test('listAlerts reads chosen alerts by id, past the limit, and never across tenants', async (t) => {
+  const client = await schemaClient(t);
+  const tenantA = freshTenant();
+  const tenantB = freshTenant();
+  const viewer = await principal(client, 'viewer');
+  const oldest = await applyConditionEvent(client, observation(tenantA, 'firing', 'old', 0, { resourceKey: 'user:bg1' }));
+  await applyConditionEvent(client, observation(tenantA, 'firing', 'mid', 10, { resourceKey: 'group:one' }));
+  await applyConditionEvent(client, observation(tenantA, 'firing', 'new', 20, { resourceKey: 'group:two' }));
+  const elsewhere = await applyConditionEvent(client, observation(tenantB, 'firing', 'b1', 0));
+  await client.query('UPDATE alert SET updated_at = $2 WHERE id = $1', [oldest.alert.id, at(-3600)]);
+
+  const newest = await listAlerts(client, { tenantRef: tenantA, actor: viewer, limit: 2 });
+  assert.equal(newest.length, 2);
+  assert.ok(!newest.some((row) => row.id === oldest.alert.id), 'the oldest alert is past the limit');
+  const chosen = await listAlerts(client, { tenantRef: tenantA, actor: viewer, ids: [String(oldest.alert.id)], limit: 1 });
+  assert.deepEqual(chosen.map((row) => row.id), [oldest.alert.id]);
+  assert.deepEqual(await listAlerts(client, { tenantRef: tenantA, actor: viewer, ids: [String(elsewhere.alert.id)] }), []);
+  assert.deepEqual(await listAlerts(client, { tenantRef: tenantA, actor: viewer, ids: [] }), []);
+  await assert.rejects(() => listAlerts(client, { tenantRef: tenantA, actor: viewer, ids: 'nope' }), /ids must be an array/);
+});
+
 test('hysteresis: a resolution inside the window is a recorded flap, and the boundary is strict', async (t) => {
   const client = await schemaClient(t);
 

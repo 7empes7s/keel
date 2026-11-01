@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { failureReason, retryPlan, setupPermissionHref } from "@/lib/backup-failure";
+import { failureReason, needsRetry, retryPlan, setupPermissionHref } from "@/lib/backup-failure";
+import { backupHealth } from "@/lib/protect-view";
 import { serviceStatuses } from "@/lib/setup-services";
 import type { CoverageOutcomeDetail, CoverageType } from "@/lib/types";
 import { workloadKinds } from "@/lib/workload-kinds";
@@ -96,4 +97,14 @@ test("Setup's service tile links a refused read to its permission", () => {
   })], NOW);
   assert.match(entra.blocker!.text, /^Authentication methods policy: Microsoft refused the read/);
   assert.deepEqual(entra.blocker!.fix, { label: "Check Policy.Read.All", href: setupPermissionHref("Policy.Read.All") });
+});
+
+test("a partly done kind is not Failed, but still says why and can be run again", () => {
+  const partly = kind("retentionLabel", { outcome: "partial", itemCount: 17, detail: detail({ httpStatus: 504, graphCode: "GatewayTimeout" }) });
+  assert.equal(backupHealth(partly), "partial");
+  assert.equal(needsRetry(partly), true);
+  assert.match(failureReason(partly)!.text, /^Microsoft 365 did not answer in time/);
+  const fine = kind("user", { reportStatus: "covered", protectionState: "protected", outcome: "complete", itemCount: 3 });
+  assert.equal(needsRetry(fine), false);
+  assert.equal(failureReason(fine), null);
 });

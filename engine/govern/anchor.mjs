@@ -136,5 +136,6 @@ export async function verifyAnchoredChain(client, options) {
   if (!integrity.ok) return { ...integrity, status: integrity.reason === 'truncated' ? 'truncated' : 'broken-at-sequence' };
   return { ok: true, status: 'verified', qualification: options.mode === 'fixture' ? 'fixture-tested' : 'live-qualified',
     anchoredThroughSeq: checkpoint.sequence, build: checkpoint.build, keyId: checkpoint.keyId,
-    unanchoredRecords: Number(BigInt(stats.total) - BigInt(stats.through_count)) };
+    unanchoredRecords: Number(BigInt(stats.total) - BigInt(stats.through_count)),
+    ...(integrity.knownBreaks ? { knownBreaks: integrity.knownBreaks } : {}) };
 }

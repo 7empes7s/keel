@@ -10,7 +10,8 @@ import type { IconName } from "@/components/shell/icons";
 // one scrolling row of tabs on a phone). A page's PageHeader names the section it sits
 // in (`section`), typed, so no page can carry a second taxonomy.
 export const MENU_SECTIONS = ["Dashboards", "Backup", "Restore", "Baselines", "Reports", "Automation center", "Audit log", "Settings"] as const;
-// Approvals and alerts live behind the bell, not in the menu list.
+// Approvals and alerts are not one of the eight: they head the menu as its own Inbox
+// group (and stay behind the bell), so they are not listed again under Everything.
 export const NAV_SECTIONS = [...MENU_SECTIONS, "Inbox"] as const;
 export type MenuSection = (typeof MENU_SECTIONS)[number];
 export type NavSection = (typeof NAV_SECTIONS)[number];

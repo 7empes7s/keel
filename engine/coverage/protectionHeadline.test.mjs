@@ -55,3 +55,25 @@ test('a type unavailable on the tenant is neither failing nor backed up', () => 
   assert.equal(failing.counts.failed, 1);
   assert.equal(failing.sentence, '1 configuration type failed its last backup.');
 });
+
+// Decision 31 Oct 2026: a partly done read is its own count, never a failure, but it
+// still needs attention and is never counted as backed up.
+test('a partly done type is its own count, not failed and not backed up', () => {
+  const only = protectionHeadline([
+    entry('ok', { fidelity: { declared: 'full', verifiedBy: null } }),
+    entry('partOne', { status: 'partial', outcome: 'partial' }),
+    entry('partTwo', { status: 'partial', outcome: 'partial' }),
+  ]);
+  assert.deepEqual([only.counts.failed, only.counts.partial, only.counts.failing, only.counts.backedUp], [0, 2, 2, 1]);
+  assert.equal(only.state, 'collection');
+  assert.equal(only.tone, 'attention');
+  assert.equal(only.sentence, '2 configuration types were only partly backed up last time.');
+
+  const mixed = protectionHeadline([
+    entry('ok'),
+    entry('broken', { status: 'failed', outcome: 'failed' }),
+    entry('part', { status: 'partial', outcome: 'partial' }),
+  ]);
+  assert.deepEqual([mixed.counts.failed, mixed.counts.partial, mixed.counts.failing], [1, 1, 2]);
+  assert.equal(mixed.sentence, '2 configuration types have no complete, current backup; the last backup failed for 1 and was only partly done for 1 of them.');
+});

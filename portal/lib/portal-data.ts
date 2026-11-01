@@ -44,7 +44,7 @@ import {
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
-import { templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { builtInOf, templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
@@ -423,6 +423,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
     templateFamily: templateFamilyOf(raw.after_payload) ?? templateFamilyOf(raw.before_payload),
+    builtIn: builtInOf(raw.after_payload) ?? builtInOf(raw.before_payload),
   };
 }
 
@@ -1451,6 +1452,17 @@ export function buildAlerts({
     });
   }
 
+  // Partly done is its own amber row, never inside "failed" (decision 31 Oct 2026).
+  if (coverage.partial > 0) {
+    alerts.push({
+      key: "partial",
+      severity: "warning",
+      title: `${kinds(coverage.partial, "kind of setting was", "kinds of settings were")} only partly backed up`,
+      detail: "Keel read part of each one, so some items are missing from the backup. Open each one to see what was missed.",
+      href: "/protect?health=partial",
+    });
+  }
+
   // The same buckets as the ring and What's protected: out of date and never backed up
   // share the "out-of-date" list there, so they share one row here.
   const late = coverage.stale + coverage.neverCollected;
@@ -1470,7 +1482,7 @@ export function buildAlerts({
       severity: "warning",
       title: `${kinds(coverage.notCovered, "kind of setting is", "kinds of settings are")} not backed up by Keel yet`,
       detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.",
-      href: "/protect",
+      href: "/protect?health=not-backed-up",
     });
   }
 
@@ -1503,15 +1515,26 @@ export function buildAlerts({
       });
   }
 
-  // The same two states, and words, as Activity, the menu and Integrations: a failed
-  // check is Urgent, a record with no off-site copy to compare with is Check soon.
+  // The same states, and words, as Activity, the menu and Integrations: a failed check
+  // is Urgent; a known, explained break or a record with no off-site copy to compare
+  // with is Check soon.
   const audit = dashboardAuditCheck(evidence);
-  if (audit === "failed" || audit === "unchecked") {
+  if (audit === "failed" || audit === "known" || audit === "unchecked") {
     alerts.push({
       key: "audit",
       severity: audit === "failed" ? "critical" : "warning",
       title: AUDIT_CHECK_WORDS[audit].title,
       detail: AUDIT_CHECK_WORDS[audit].detail,
+      href: AUDIT_RECORD_HREF,
+    });
+  }
+  // A known break outranks "no off-site copy", but the missing copy still needs fixing.
+  if (audit === "known" && evidence?.unanchored) {
+    alerts.push({
+      key: "audit-unchecked",
+      severity: "warning",
+      title: AUDIT_CHECK_WORDS.unchecked.title,
+      detail: AUDIT_CHECK_WORDS.unchecked.detail,
       href: AUDIT_RECORD_HREF,
     });
   }
@@ -1617,12 +1640,16 @@ export async function getDashboardData(): Promise<DashboardData> {
         chainLength: Number(evidenceRaw.chainLength),
         // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
         // A broken own chain is already a failed check: no second walk.
-        check: evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
-          .then(auditCheckOf)
+        ...(evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+          .then((integrity) => {
+            const check = auditCheckOf(integrity);
+            // Only a known break hides "no off-site copy"; say it separately then.
+            return { check, ...(check === "known" && integrity.status === "unanchored" ? { unanchored: true } : {}) };
+          })
           .catch((error) => {
             console.error("[keel-portal] overview audit record check unavailable", error);
-            return undefined;
-          }) : "failed",
+            return {};
+          }) : { check: "failed" as const }),
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
       offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })

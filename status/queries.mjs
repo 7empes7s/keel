@@ -75,7 +75,13 @@ export async function getEvidenceIntegrity(client, { tenantRef, chainCache }) {
     'SELECT record_count FROM evidence_head WHERE tenant_ref = $1',
     [tenantRef],
   );
-  return { ok: result.ok, chainLength: rows[0] ? Number(rows[0].record_count) : 0 };
+  // A known, explained break (engine CHAIN_BREAK_EXPLAINED) passes the check; its
+  // explanation travels with the result so pages can show it in amber.
+  return {
+    ok: result.ok,
+    chainLength: rows[0] ? Number(rows[0].record_count) : 0,
+    ...(result.knownBreaks ? { knownBreaks: result.knownBreaks } : {}),
+  };
 }
 
 async function verifyInSnapshot(client, tenantRef, cache) {

@@ -3045,7 +3045,7 @@ test("Setup · Connections on a working host: a certificate ending soon is amber
 // Production host (backlog C4): a grant Keel never uses is excess privilege. It is
 // flagged amber on the tile, in an alert that says why it matters and links to where an
 // admin removes it, and on its row; Keel itself never removes it. With read access
-// confirmed, the first backup is still the page's one amber (primary) action.
+// confirmed, the first backup is still the page's one primary button.
 test("Setup · a grant Keel never uses is flagged amber as extra access to remove, and the first backup runs from the verdict", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/setup/checked", "light");

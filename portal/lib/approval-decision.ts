@@ -12,8 +12,10 @@ export interface DecisionResult {
 export async function decideRequest(id: string, decision: Decision, reason = ""): Promise<DecisionResult> {
   const response = await fetch(`/api/approvals/${encodeURIComponent(id)}/${decision}`, {
     method: "POST",
-    headers: decision === "reject" ? { "content-type": "application/json" } : undefined,
-    body: decision === "reject" ? JSON.stringify({ reason }) : undefined,
+    // A rejection always has a reason; an approval has one only when the person approves
+    // their own request (solo approval mode).
+    headers: decision === "reject" || reason ? { "content-type": "application/json" } : undefined,
+    body: decision === "reject" || reason ? JSON.stringify({ reason }) : undefined,
   });
   const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   return { ok: response.ok, status: response.status, payload };

@@ -9,7 +9,7 @@ import type { DriftRecord, ServiceUndo } from "@/lib/types";
 // workload_drift). The Changes page lists them beside the Entra ID and Intune changes, so
 // its service filter and grouping cover every service. Accept adds a change to the
 // approved setup; undo puts the approved value back through the service restore (a
-// check, then someone else's approval). Each change raised an alert, which the read
+// check, then an approval that follows the approval mode). Each change raised an alert, which the read
 // that matches the approved setup again resolves.
 
 const FIELD_LABELS: Record<string, string> = {

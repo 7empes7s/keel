@@ -33,6 +33,8 @@ test("undoing changes previews before confirming, blocks refusals, and invalidat
       }];
     },
     useMemo<T>(compute: () => T) { return compute(); },
+    // Context reads (the approval mode) return the default: two people.
+    useContext<T>(context: { _currentValue: T }) { return context._currentValue; },
   };
   // The chosen changes come from the shared list; changing the choice re-renders the
   // decision with different items.
@@ -81,7 +83,7 @@ test("undoing changes previews before confirming, blocks refusals, and invalidat
     // check itself — not the empty-reason gate — must block the submission.
     const refusedReason = find(render(), (element) => element.props.placeholder === "Why is this decision right?");
     assert.ok(refusedReason);
-    (refusedReason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "justified" } });
+    (refusedReason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "Justified by the change owner" } });
     click("Send for approval");
     assert.equal(calls.length, 1, "a refused preview cannot submit even with a justification through its handler");
     chosen = ["one", "two"];
@@ -93,10 +95,10 @@ test("undoing changes previews before confirming, blocks refusals, and invalidat
     assert.equal(button("Send for approval")?.props.disabled, false);
     const reason = find(render(), (element) => element.props.placeholder === "Why is this decision right?");
     assert.ok(reason);
-    (reason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "reviewed" } });
+    (reason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "Reviewed with the change owner" } });
     click("Send for approval");
     await settle();
-    assert.deepEqual(calls.at(-1), { path: "/api/actions/remediate", body: { driftIds: ["two"], justification: "reviewed" } });
+    assert.deepEqual(calls.at(-1), { path: "/api/actions/remediate", body: { driftIds: ["two"], justification: "Reviewed with the change owner" } });
     assert.equal(button("Send for approval"), undefined, "confirmation consumes the preview");
     assert.deepEqual(done, ["Sent to approvers. Nothing changes until one of them approves."]);
   } finally {

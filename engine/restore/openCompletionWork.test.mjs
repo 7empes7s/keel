@@ -3,7 +3,7 @@
 import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 
-import { countOpenCompletionSteps, emitCompletionItems, listCompletionItems, listOpenCompletionWork } from './completion.mjs';
+import { countOpenCompletionSteps, countOpenCompletionWork, emitCompletionItems, listCompletionItems, listOpenCompletionWork, readOpenCompletionWork } from './completion.mjs';
 import { enqueue } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -99,4 +99,36 @@ test('an enforcement step is never replaced by a later restore', async (t) => {
   const second = await emitCompletionItems(client, { tenantRef, restoreRef: '73000000-0000-4000-8000-000000000002', owner: null, applied: [policy] });
   assert.ok(first.some((entry) => entry.kind === 'enforcement'));
   assert.equal(await countOpenCompletionSteps(client, { tenantRef }), first.length + second.length);
+});
+
+// The totals never come from the shortened list of cards: with more restores than the
+// page shows, steps and restores still count every open one.
+test('open follow-up totals count every restore, not only the cards a page shows', async (t) => {
+  const client = await database.connect();
+  t.after(async () => { await client.end(); });
+  await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+  await client.query(schemaSql());
+  const tenantRef = 'sha256:totals-past-the-limit';
+  assert.deepEqual(await readOpenCompletionWork(client, { tenantRef, limit: 3 }), { steps: 0, restores: 0, href: '/restore#follow-up', cards: [] });
+
+  let steps = 0;
+  for (let n = 1; n <= 5; n++) {
+    const restoreRef = `74000000-0000-4000-8000-00000000000${n}`;
+    const group = { naturalKey: `group:KEEL-RT-${n}`, resourceType: 'group', mechanism: 'recreate' };
+    steps += (await emitCompletionItems(client, { tenantRef, restoreRef, owner: null, applied: [group] })).length;
+    // Set explicitly so the order never depends on two inserts landing in one tick.
+    await client.query(`UPDATE recovery_completion_item SET created_at = now() - make_interval(hours => $2) WHERE restore_ref = $1`, [restoreRef, 10 - n]);
+  }
+  // Another tenant's restore is never counted.
+  await emitCompletionItems(client, { tenantRef: 'sha256:someone-else', restoreRef: 'elsewhere', owner: null, applied: [recreatedGroup] });
+
+  const work = await readOpenCompletionWork(client, { tenantRef, limit: 3 });
+  assert.equal(work.steps, steps);
+  assert.equal(work.restores, 5);
+  assert.equal(work.href, '/restore#follow-up');
+  assert.equal(work.cards.length, 3, 'the page shows the newest three');
+  assert.equal(work.cards[0].restoreRef, '74000000-0000-4000-8000-000000000005');
+  assert.ok(work.cards.reduce((sum, card) => sum + card.pending, 0) < work.steps, 'the cards alone would under-count');
+  assert.deepEqual(await countOpenCompletionWork(client, { tenantRef }), { steps, restores: 5, href: '/restore#follow-up' });
+  assert.equal(await countOpenCompletionSteps(client, { tenantRef }), steps, 'Overview and the menu read the same total');
 });

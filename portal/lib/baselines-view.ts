@@ -2,6 +2,7 @@
 // approved setup per service, the open changes against it, and what each decision does.
 // Pure helpers, shared by the pages, the UI harness and the tests. "Approved setup" is
 // the reader's word for a baseline (redesign rule 3); ids stay in the record layer.
+import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
@@ -10,7 +11,7 @@ import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { ComplianceScore } from "@/lib/compliance-view";
 import { itemArea, itemKind } from "@/lib/type-groups";
-import type { BaselineRecord, DriftRecord } from "@/lib/types";
+import type { BackupGap, BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
@@ -268,7 +269,9 @@ export function setupStatus(active: BaselineRecord | null, items: Pick<DriftReco
 export function setupVerdict(active: BaselineRecord | null, items: Pick<DriftRecord, "blastRadius">[] | null, now: string, total = items?.length ?? 0): { text: string; tone: "good" | "attention" | "critical" } {
   if (!active) return { text: "No setup is approved yet, so Keel cannot tell what changed. Create one from a backup.", tone: "critical" };
   const name = `“${setupName(active)}”`;
-  const when = active.capture?.capturedAt ? `, captured ${ago(active.capture.capturedAt, now)}` : "";
+  // When it was approved, as on the Overview and the Changes page. Its settings can be
+  // older (a version put back from an earlier one); the page says that beside it.
+  const when = active.setAt ? `, approved ${ago(active.setAt, now)}` : "";
   if (items === null) return { text: `The tenant is measured against ${name}${when}.`, tone: "good" };
   const count = Math.max(total, items.length);
   if (!count) return { text: `The tenant matches ${name}${when}.`, tone: "good" };
@@ -282,6 +285,59 @@ export function setupVerdict(active: BaselineRecord | null, items: Pick<DriftRec
 export function versionState(baseline: BaselineRecord): { label: string; tone: RiskTone | null } {
   if (baseline.supersededById || baseline.supersededAt) return { label: "Replaced by a newer version", tone: null };
   return baseline.active ? { label: "In use", tone: "fine" } : { label: "Not in use", tone: null };
+}
+
+/** A version put back from an earlier one, in words: which version it copies, that its
+ * settings are that version's (so older than the version it replaced), and how much less
+ * it holds than that one. Null for a version that was not put back. */
+export function putBackWords(baseline: BaselineRecord, baselines: BaselineRecord[], now: string): string | null {
+  const from = baseline.reinstatedFrom;
+  if (!from) return null;
+  const captured = baseline.capture?.capturedAt ?? null;
+  const kinds = baseline.capture?.types.length ?? 0;
+  const head = `This version is a copy of version ${from.version}, put back ${ago(baseline.setAt, now)}. It holds the settings version ${from.version} held${captured ? `, as they were ${ago(captured, now)}` : ""}${kinds ? `: ${plural(kinds, "kind")} of setting` : ""}.`;
+  const replaced = baselines.find((other) => other.id === baseline.supersedesId);
+  const before = replaced?.capture?.types.length ?? 0;
+  if (!replaced || before <= kinds) return head;
+  return `${head} Version ${replaced.version ?? 1}, which it replaced, held ${plural(before, "kind")}, so ${plural(before - kinds, "kind is", "kinds are")} not checked until you capture a new version.`;
+}
+
+/** Kinds Keel backs up now that the setup does not hold, in a sentence; null when none. */
+export function notHeldWords(baseline: BaselineRecord, backedUp: string[]): string | null {
+  const held = new Set(baseline.capture?.types ?? []);
+  const missing = [...new Set(backedUp)].filter((type) => !held.has(type));
+  if (!missing.length || !held.size) return null;
+  return `${plural(missing.length, "kind")} Keel backs up now ${missing.length === 1 ? "is" : "are"} not in it (${kindsWords(missing)}). Capture a new version to add ${missing.length === 1 ? "it" : "them"}.`;
+}
+
+function listWords(names: string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+/** Why "Capture new version" is off, in words: what a complete backup needs and what the
+ * newest backup missed. `hasSource` is true when a newer complete backup exists. */
+export function captureBlockedWords({ capturedAt, gap, hasSource, now, sources }: {
+  capturedAt: string | null;
+  gap: BackupGap | null;
+  hasSource: boolean;
+  now: string;
+  sources: { completedAt: string | null }[];
+}): string {
+  if (hasSource) return "Capture new version: takes the setup from the newest complete backup. This version is kept, and you can go back to it.";
+  const need = "Capture new version needs a newer complete backup: one that read every kind of setting in full.";
+  if (gap) {
+    const kinds = (types: string[]) => (types.length > 3 ? plural(types.length, "kind") : kindsWords(types));
+    const verb = (types: string[], one: string, many: string) => (types.length === 1 ? one : many);
+    const parts = [
+      gap.failed.length ? `${kinds(gap.failed)} could not be read` : null,
+      gap.partial.length ? `${kinds(gap.partial)} ${verb(gap.partial, "was", "were")} read only in part` : null,
+      gap.notInBackup.length ? `${kinds(gap.notInBackup)} ${verb(gap.notInBackup, "was", "were")} not part of it` : null,
+    ].filter((part): part is string => Boolean(part));
+    return `${need} The newest backup, finished ${ago(gap.completedAt, now)}, was not complete: ${listWords(parts)}.`;
+  }
+  if (!sources.length) return `${need} No backup has finished yet.`;
+  const newest = sources[0]?.completedAt ?? null;
+  return `${need} None has finished since this version's settings were taken${capturedAt ? ` ${ago(capturedAt, now)}` : ""}${newest ? `; the newest complete one finished ${ago(newest, now)}` : ""}.`;
 }
 
 /** "4,812 settings in 6 kinds", plus "and 320 service settings" when it holds any. */
@@ -313,7 +369,7 @@ export function kindsWords(types: string[], limit = 3): string {
 export type Decision = "accept" | "ignore" | "undo";
 
 /** What a decision does, before it does it. */
-export function decisionWords(decision: Decision, count: number): { title: string; detail: string; confirm: string } {
+export function decisionWords(decision: Decision, count: number, mode: ApprovalModeName = "two-person"): { title: string; detail: string; confirm: string } {
   const changes = plural(count, "change");
   if (decision === "accept") {
     return {
@@ -331,7 +387,7 @@ export function decisionWords(decision: Decision, count: number): { title: strin
   }
   return {
     title: `Undo ${changes}`,
-    detail: `Keel puts the approved values back in Microsoft 365. First it shows what it would do, and nothing changes until someone else approves.`,
+    detail: `Keel puts the approved values back in Microsoft 365. First it shows what it would do, and nothing changes until ${approvalWords(mode).approves}.`,
     confirm: "Send for approval",
   };
 }

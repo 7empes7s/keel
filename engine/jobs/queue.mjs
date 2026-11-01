@@ -40,10 +40,16 @@ export const APPROVED_JOB_PRIORITY = 1;
 /**
  * @param {any} client
  * @param {{ kind: string, params?: any, requestedBy: string, idempotencyKey?: string | null,
- *   notBefore?: any, priority?: number, maxQueuedForRequester?: number | null }} job
+ *   notBefore?: any, priority?: number, maxQueuedForRequester?: number | null,
+ *   reuseActive?: { kinds: string[], params: Record<string, unknown> } | null }} job
+ *
+ * reuseActive: when a job of one of these kinds whose params contain these params is
+ * still queued or running, that job is returned (marked `reused: true`) and no new job
+ * is added. "Back up Tier 3" pressed twice, from two places or by two people, runs once.
  */
 export async function enqueue(client, {
   kind, params, requestedBy, idempotencyKey, notBefore, priority = 0, maxQueuedForRequester = null,
+  reuseActive = null,
 }) {
   // Offsite has no portal route: enforce admission here as well as at execution.
   if (kind === 'offsite') {
@@ -54,6 +60,23 @@ export async function enqueue(client, {
     }
   }
   const insert = async () => {
+    if (reuseActive) {
+      // Held to the end of the transaction, so two parallel requests cannot both miss
+      // each other's job.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-active:' || $1, 0))",
+        [JSON.stringify([[...reuseActive.kinds].sort(), reuseActive.params])]);
+      const { rows: active } = await client.query(
+        `SELECT *, started_at::text AS event_started_at FROM job
+          WHERE kind = ANY($1::text[]) AND params @> $2::jsonb
+            -- A run whose worker died (stale heartbeat) does not block a new one.
+            AND (status = 'queued'
+              OR (status = 'running' AND heartbeat_at > now() - ($3 * interval '1 millisecond')))
+          ORDER BY created_at LIMIT 1`,
+        [reuseActive.kinds, reuseActive.params, ORPHANED_HEARTBEAT_STALE_MS],
+      );
+      // A replay of the request that queued it is not a second press.
+      if (active[0]) return active[0].idempotency_key === idempotencyKey ? active[0] : { ...active[0], reused: true };
+    }
     const { rows } = await client.query(
       `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before, priority)
        SELECT $1, $2, $3, $4, COALESCE($5, now()), $6
@@ -75,13 +98,16 @@ export async function enqueue(client, {
     if (!existing[0] && maxQueuedForRequester !== null) throw new QueueFullError(maxQueuedForRequester);
     return existing[0];
   };
-  if (maxQueuedForRequester === null) return insert();
+  if (maxQueuedForRequester === null && !reuseActive) return insert();
   // A capped enqueue runs in its own transaction holding a per-person lock, so parallel
   // requests from one person count each other and cannot pass the cap together. Callers
-  // must not already be inside a transaction (the portal routes never are).
+  // must not already be inside a transaction (the portal routes never are). The person
+  // lock is always taken before the reuseActive lock, so the two never deadlock.
   await client.query('BEGIN');
   try {
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-queue-cap:' || $1, 0))", [requestedBy]);
+    if (maxQueuedForRequester !== null) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-queue-cap:' || $1, 0))", [requestedBy]);
+    }
     const job = await insert();
     await client.query('COMMIT');
     return job;
@@ -167,10 +193,19 @@ export async function summarizeJobs(client, { tenantRef, jobs }) {
   return resolveRowReferences(client, { tenantRef, rows: jobs, people: ['requested_by'] });
 }
 
+// A finished backup that could not read some kinds in full: stored as succeeded, with
+// `result.partial` and at least one named `incompleteTypes` entry. The portal's
+// `jobDisplayStatus` reads the same rule and calls such a job "partial".
+const DISPLAY_STATUS_SQL = `CASE WHEN status = 'succeeded'
+    AND result @> '{"partial": true}'
+    AND jsonb_path_exists(result, 'strict $.incompleteTypes[*] ? (@.type.type() == "string" && @.type != "")', '{}', true)
+  THEN 'partial' ELSE status END`;
+
 // kinds narrows the list in the query, so a page about one kind (restores) never loses
 // its rows to a busier kind (scheduled backups) crowding the newest-N window.
 // statuses narrows the same way, so "every failed job" is found past the newest-N window
-// of jobs that finished.
+// of jobs that finished. They match the status a person reads: 'partial' finds partly
+// done backups, and 'succeeded' finds only the ones that read everything.
 /**
  * @param {any} client
  * @param {{ limit?: number, kinds?: string[] | null, statuses?: string[] | null }} [options]
@@ -179,7 +214,10 @@ export async function listJobs(client, { limit = 50, kinds = null, statuses = nu
   const { rows } = await client.query(
     `SELECT *, started_at::text AS event_started_at FROM job
       WHERE ($2::text[] IS NULL OR kind = ANY($2))
-        AND ($3::text[] IS NULL OR status = ANY($3))
+        AND ($3::text[] IS NULL OR (
+          -- The stored status first, so the status index still narrows the scan.
+          status = ANY(array_replace($3::text[], 'partial', 'succeeded'))
+          AND ${DISPLAY_STATUS_SQL} = ANY($3)))
       ORDER BY created_at DESC LIMIT $1`,
     [limit, kinds, statuses],
   );

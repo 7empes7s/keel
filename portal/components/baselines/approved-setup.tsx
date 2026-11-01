@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ApprovalText } from "@/components/approval-mode-context";
 import { ActivateBaseline } from "@/components/activate-baseline";
 import { RiskChip, SectionHead } from "@/components/baselines/parts";
 import { ScoreRing } from "@/components/compliance/score-ring";
@@ -8,11 +9,12 @@ import { ResnapshotBaseline } from "@/components/resnapshot-baseline";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  coverageWords, kindsWords, overallScore, serviceSettingsWords, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
+  captureBlockedWords, coverageWords, kindsWords, notHeldWords, overallScore, putBackWords, serviceSettingsWords, serviceSummaries, setupName, versionState,
+  type ServiceReadKind, type ServiceSummary,
 } from "@/lib/baselines-view";
 import { captureScope, changesSentence, leftOutWords, resnapshotSource, scoreTone, type ComplianceScore } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
-import type { BaselineRecord, DriftRecord } from "@/lib/types";
+import type { BackupGap, BaselineRecord, DriftRecord } from "@/lib/types";
 
 export interface CaptureSource {
   id: string;
@@ -35,9 +37,12 @@ function Fact({ label, value, note }: { label: string; value: string; note?: str
 }
 
 /** The approved setup in use: what it is, how old, who approved it, and what to do next. */
-function CurrentSetup({ active, canBaseline, latest, now, sources }: {
+function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, now, sources }: {
   active: BaselineRecord;
+  backedUp: string[];
+  baselines: BaselineRecord[];
   canBaseline: boolean;
+  gap: BackupGap | null;
   latest: CaptureSource | null;
   now: string;
   sources: CaptureSource[];
@@ -46,6 +51,9 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
   const compare = compareHref(active, latest);
   const source = resnapshotSource(active, sources);
   const leftOut = leftOutWords(active.capture);
+  const putBack = putBackWords(active, baselines, now);
+  const notHeld = notHeldWords(active, backedUp);
+  const capture = captureBlockedWords({ capturedAt: captured, gap, hasSource: Boolean(source), now, sources });
   return (
     <section aria-labelledby="bl-current-heading" className="bl-card bl-current">
       <div className="bl-current-head">
@@ -57,13 +65,19 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
         <RiskChip tone="fine">In use</RiskChip>
       </div>
       <dl className="bl-facts">
-        <Fact label="Captured" note={captureScope(active.capture)} value={captured ? ago(captured, now) : "Not recorded"} />
+        <Fact label="Approved by" note={`${ago(active.setAt, now)}, on ${formatTimestamp(active.setAt)}`} value={active.setByRef?.name ?? "an unknown account"} />
+        <Fact label="Settings from" note={captureScope(active.capture)} value={captured ? ago(captured, now) : "Not recorded"} />
         <Fact label="Holds" note={serviceSettingsWords(active) ?? "Every setting it holds is checked after each backup."} value={coverageWords(active)} />
-        <Fact label="Approved by" note={`On ${formatTimestamp(active.setAt)}`} value={active.setByRef?.name ?? "an unknown account"} />
         <Fact label="Version" note={active.version && active.version > 1 ? "Earlier versions are kept below." : "The first version of this setup."} value={String(active.version ?? 1)} />
       </dl>
+      {putBack ? (
+        <p className="bl-help" data-part="put-back" role="note"><RiskChip tone="soon">Put back</RiskChip> {putBack}</p>
+      ) : null}
       {leftOut ? (
         <p className="bl-help" role="note"><RiskChip tone="soon">Left out</RiskChip> {leftOut}</p>
+      ) : null}
+      {notHeld && !putBack ? (
+        <p className="bl-help" data-part="not-held" role="note"><RiskChip tone="low">Not covered</RiskChip> {notHeld}</p>
       ) : null}
       <div className="bl-actions">
         {compare ? (
@@ -72,10 +86,11 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
         <ResnapshotBaseline baselineId={active.id} disabled={!canBaseline} label={setupName(active)} snapshotId={source?.id ?? null} />
         <Link className="btn" href="/baselines/new"><Icon name="plus" />New approved setup</Link>
       </div>
-      <p className="bl-help">
-        {source
-          ? "Capture new version: takes the setup from the newest complete backup. This version is kept, and you can go back to it."
-          : "There is no newer complete backup to capture a new version from yet."}
+      <p className="bl-help" data-part="capture-reason">
+        {!source ? <RiskChip tone="soon">Not available yet</RiskChip> : null}
+        {!source ? " " : null}
+        {capture}
+        {gap && !source ? <> <Link href="/protect">What&apos;s protected</Link> shows each kind&apos;s last read.</> : null}
       </p>
     </section>
   );
@@ -182,17 +197,27 @@ function ServiceCard({ summary }: { summary: ServiceSummary }) {
 /** "41 changes since" in one short line; the split by kind is in Technical details. */
 function versionChanges(baseline: BaselineRecord): string {
   const changes = baseline.changesSinceCapture;
+  // Every version is compared with the same newest complete backup, so the reason there
+  // is none is said once, above the list and beside "Capture new version".
+  if (changes?.state === "no-collection") return "Not compared yet";
   if (!changes || changes.state !== "compared") return changesSentence(changes, { short: true });
   return changes.total === 0 ? "Matches the tenant since" : `${changes.total.toLocaleString("en-GB")} ${changes.total === 1 ? "change" : "changes"} since`;
 }
 
 function OtherVersions({ baselines, canBaseline, now }: { baselines: BaselineRecord[]; canBaseline: boolean; now: string }) {
   if (!baselines.length) return null;
+  const notCompared = baselines.some((baseline) => baseline.changesSinceCapture?.state === "no-collection");
+  // Newest approved first. A version put back from an earlier one is approved later than
+  // the version it copies, though its settings are older: each row says both.
+  const ordered = [...baselines].sort((a, b) => Date.parse(b.setAt) - Date.parse(a.setAt) || (b.version ?? 1) - (a.version ?? 1));
+  const about = <>Setups you approved before, newest approved first. Using one again needs <ApprovalText phrase="approval" />.{notCompared
+    ? " Keel compares each one with the newest complete backup; until a backup reads every kind in full, they show Not compared yet."
+    : ""}</>;
   return (
     <section aria-labelledby="bl-versions-heading" className="bl-section">
-      <SectionHead about="Setups you approved before, newest first. Using one again needs someone else's approval." id="bl-versions-heading" title="Other approved setups" />
+      <SectionHead about={about} id="bl-versions-heading" title="Other approved setups" />
       <ul className="bl-versions">
-        {baselines.map((baseline) => {
+        {ordered.map((baseline) => {
           const state = versionState(baseline);
           const replaced = Boolean(baseline.supersededById || baseline.supersededAt);
           const captured = baseline.capture?.capturedAt ?? null;
@@ -201,11 +226,14 @@ function OtherVersions({ baselines, canBaseline, now }: { baselines: BaselineRec
               <span aria-hidden="true" className="bl-kind-icon"><Icon name="baselines" /></span>
               <div className="bl-version-name">
                 <b>{setupName(baseline)}</b>
-                <small>Version {baseline.version ?? 1} · {coverageWords(baseline)}</small>
+                <small>Version {baseline.version ?? 1}{baseline.reinstatedFrom ? `, a copy of version ${baseline.reinstatedFrom.version}` : ""} · {coverageWords(baseline)}</small>
               </div>
               <div className="bl-version-when">
-                <time dateTime={captured ?? undefined} title={formatTimestamp(captured)}>{captured ? `Captured ${ago(captured, now)}` : "Capture not recorded"}</time>
-                <small>{versionChanges(baseline)}</small>
+                <time dateTime={baseline.setAt} title={formatTimestamp(baseline.setAt)}>Approved {ago(baseline.setAt, now)}</time>
+                <small>
+                  <time dateTime={captured ?? undefined} title={formatTimestamp(captured)}>{captured ? `Settings from ${ago(captured, now)}` : "Settings date not recorded"}</time>
+                  {" · "}{versionChanges(baseline)}
+                </small>
               </div>
               <RiskChip tone={state.tone}>{state.label}</RiskChip>
               {replaced ? <span className="bl-version-actions" /> : (
@@ -255,6 +283,7 @@ export function ApprovedSetup({
   serviceReads = [],
   backedUp,
   canBaseline,
+  gap = null,
   held = null,
   now,
   sources,
@@ -270,6 +299,8 @@ export function ApprovedSetup({
   // Kinds of setting Keel backs up today, to show what the setup does not cover.
   backedUp: string[];
   canBaseline: boolean;
+  // The newest finished backup when it cannot be the source of a new version, and why.
+  gap?: BackupGap | null;
   // Settings the setup in use holds, per kind; null when they could not be counted, and
   // then no score shows. A score also needs the open changes.
   held?: Record<string, number> | null;
@@ -286,7 +317,7 @@ export function ApprovedSetup({
     <div className="bl-page">
       <BaselinesStyles />
       {active ? (
-        <CurrentSetup active={active} canBaseline={canBaseline} latest={sources[0] ?? null} now={now} sources={sources} />
+        <CurrentSetup active={active} backedUp={backedUp} baselines={baselines} canBaseline={canBaseline} gap={gap} latest={sources[0] ?? null} now={now} sources={sources} />
       ) : (
         <section className="bl-card bl-empty">
           <span aria-hidden="true" className="bl-kind-icon" data-tone="urgent"><Icon name="baselines" /></span>

@@ -45,7 +45,7 @@ const ALL = [OVERDUE, WAITING, ACKED, RESOLVED, OLD_RESOLVED, MUTED];
 
 test("counts, the header pill and the tile filters", () => {
   const counts = alertCounts(ALL, NOW);
-  assert.deepEqual(counts, { waiting: 2, overdue: 1, acknowledged: 1, resolvedWeek: 1, muted: 1, total: 6 });
+  assert.deepEqual(counts, { waiting: 2, overdue: 1, acknowledged: 1, resolved: 2, resolvedWeek: 1, muted: 1, total: 6 });
   assert.deepEqual(alertsStatus(counts), { tone: "urgent", label: "1 overdue" });
   assert.deepEqual(alertsStatus(alertCounts([WAITING], NOW)), { tone: "soon", label: "1 waiting" });
   assert.deepEqual(alertsStatus(alertCounts([ACKED], NOW)), { tone: "low", label: "1 in hand" });

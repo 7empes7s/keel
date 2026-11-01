@@ -120,7 +120,7 @@ export interface AttentionRow { key: string; tone: BadgeTone; icon: IconName; ti
 const SEVERITY_TONE: Record<DashboardAlert["severity"], BadgeTone> = { critical: "urgent", warning: "soon", notice: "low" };
 const ALERT_ICONS: Record<string, IconName> = {
   "no-baseline": "baselines", "empty-baseline": "baselines", "nothing-backed-up": "backup", "backup-unfinished": "backup",
-  failed: "x-circle", stale: "clock", uncovered: "info", audit: "audit", "no-offsite": "cloud",
+  failed: "x-circle", stale: "clock", uncovered: "info", audit: "audit", "audit-unchecked": "audit", "no-offsite": "cloud", deletable: "backup",
 };
 
 /** The word on a row's badge. */
@@ -191,7 +191,7 @@ export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | 
     rows.push({
       key: "approvals", tone: "soon", icon: "inbox",
       title: `${plural(pendingApprovals, "request waits", "requests wait")} for a decision`,
-      detail: "Restores, undo changes and approved-setup changes wait for a second person.",
+      detail: "Restores, undo changes and approved-setup changes wait for approval.",
       href: "/approvals",
     });
   }

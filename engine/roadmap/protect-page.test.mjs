@@ -111,11 +111,12 @@ test('Protect: the verdict comes from the coverage reader, the tier strip from t
       assert.match(html, /<span class="tier-next">Next run (in \d+ (minute|hour|day)s?|is due now)\.<\/span>/);
       assert.doesNotMatch(html, /Keel could not read the schedules/);
 
-      // Failed kinds are listed by name, with a run of their tier.
+      // Failed kinds are listed by name, with why they failed and a Retry.
       const problems = protectProblems(data, data.generatedAt);
       assert.ok(problems.some((problem) => problem.type === 'roleAssignment' && problem.health === 'failed'));
       assert.ok(html.includes('>' + plainKind('roleAssignment') + '</a>'));
-      assert.match(html, /Back up Tier 1 again/);
+      assert.match(html, new RegExp('aria-label="Retry ' + plainKind('roleAssignment') + '"'));
+      assert.match(html, /class="pt-row-why"/);
 
       // One record per kind under the list (the Microsoft 365 workloads too, so every
       // service shows), each with its proof reference; the details panel states the

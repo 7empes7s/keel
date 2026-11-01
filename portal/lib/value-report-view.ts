@@ -2,6 +2,7 @@ import type { BadgeTone } from "@/components/ui/badge";
 import type { IconName } from "@/components/shell/icons";
 import type { VerdictTone } from "@/components/verdict";
 import { plainKind } from "@/lib/baselines-view";
+import type { FailedRestoreCounts } from "@/lib/failed-restores";
 import { addDays, isDay, shortDay, toDay, type Day, type DayRange } from "@/lib/date-range";
 import type { RiskTone } from "@/lib/menu-status";
 import { workloadLabel } from "@/lib/compare-view";
@@ -90,6 +91,8 @@ export interface RecoverySection {
   };
   freshness: { state: "measured" | "gaps" | "unmeasured"; achievedRpoMs: number | null; gaps: number; asOf: string };
   recoverablePoint: { state: "measured" | "unmeasured"; ageMs: number | null; asOf: string };
+  /** Failed restores: the engine's one count (the same Resilience and Restore show), plus this period's. */
+  failedRestores: FailedRestoreCounts;
 }
 
 /** One backed-up area (a workload) and how its runs in the period went. */

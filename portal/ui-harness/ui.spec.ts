@@ -40,8 +40,10 @@ const PAGES = [
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
   { name: "approvals-settings", hash: "/approvals/settings" },
+  { name: "approvals-solo", hash: "/approvals/solo" },
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
+  { name: "baselines-put-back", hash: "/baselines/put-back" },
   { name: "benchmarks", hash: "/benchmarks" },
   { name: "benchmarks-scuba-lists", hash: "/benchmarks/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/benchmarks/scuba?lists=edit" },
@@ -164,6 +166,50 @@ test("reject shows the spinner on Reject only", async ({ page }) => {
   await expect(card.getByRole("button", { name: "Reject the request" })).toHaveAttribute("aria-busy", "true");
   await expect(card.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-busy", "true");
   await expect(page.locator(".toast").first()).toContainText("Request rejected");
+});
+
+// Approval mode: two people by default; switching to Solo needs the risk ticked, and in
+// Solo the viewer approves their own request, which is then marked "Self-approved".
+test("Approvals · approval mode switches to Solo only with the risk confirmed, and Solo lets you approve your own", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === "/api/approval-mode").map((call) => JSON.parse(call.body ?? "{}"));
+  await open(page, "/approvals/settings", "light");
+  const card = page.locator(".am-card");
+  await expect(card.locator("#approval-mode-heading")).toContainText("Two people");
+  await card.getByRole("button", { name: "Switch to Solo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Switch to Solo approval?" });
+  await expect(dialog).toContainText("A mistake or a stolen account is not caught by a second person.");
+  const confirm = dialog.getByRole("button", { name: "Switch to Solo" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /one person can now approve their own changes/ }).check();
+  await confirm.click();
+  await expect(page.locator(".toast").first()).toContainText("Approval mode is now Solo");
+  expect(await posts()).toEqual([{ mode: "solo", riskAcknowledged: true }]);
+
+  await open(page, "/approvals/solo", "light");
+  await expect(page.locator("#approval-mode-heading")).toContainText("Solo: you can approve your own");
+  await expect(page.locator(".verdict").first()).toContainText("Approval mode is Solo, so you can approve your own requests");
+  await page.locator(".ap-row-link").first().click();
+  const request = page.locator("article.ap-card");
+  await expect(request.locator(".ap-help")).toContainText("Approval mode is Solo, so you can approve it yourself: say why");
+  await expect(request.getByText("You can self-approve")).toBeVisible();
+  // A self-approval needs a reason that says why: the button waits for one.
+  const approveMyself = request.getByRole("button", { name: "Approve myself" });
+  const why = request.getByLabel("Why are you approving this yourself?");
+  await expect(why).toHaveValue("Nobody meant to add the contractors to Finance.");
+  await why.fill("");
+  await expect(approveMyself).toBeDisabled();
+  await why.fill("Restore the policy deleted by mistake");
+  await expect(approveMyself).toBeEnabled();
+  await approveMyself.click();
+  const decisions = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url.endsWith("/approve"));
+  expect(decisions.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ reason: "Restore the policy deleted by mistake" }]);
+  await page.getByRole("radio", { name: /Decided/ }).click();
+  await expect(page.locator(".ap-history-row").first().getByText("Self-approved")).toBeVisible();
+  await page.locator(".am-card").getByRole("button", { name: "Switch to two people" }).click();
+  expect((await posts()).at(-1)).toEqual({ mode: "two-person" });
 });
 
 // Restore approvals stay the customer's choice, but a high-risk kind is flagged: a red
@@ -411,6 +457,27 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 });
 
+// Five tiles on a tablet wrap 4 + 1 (about 46 to 52rem): a tile left alone on a row
+// takes the full width, never one narrow column, on Activity and Schedules alike.
+test("Activity and Schedules · a wrapped lone tile spans the row at tablet widths", async ({ page }) => {
+  for (const [hash, tile] of [["/activity", ".ac-tile"], ["/schedules", ".sc-tile"]] as const) {
+    for (const width of [700, 760, 800, 840, 900, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, hash);
+      const boxes = await page.locator(tile).evaluateAll((items) => {
+        const parent = items[0].parentElement!.getBoundingClientRect();
+        return { parent: parent.width, tiles: items.map((item) => { const box = item.getBoundingClientRect(); return { top: Math.round(box.top), width: box.width }; }) };
+      });
+      expect(boxes.tiles).toHaveLength(5);
+      const rows = new Map<number, number[]>();
+      for (const box of boxes.tiles) rows.set(box.top, [...(rows.get(box.top) ?? []), box.width]);
+      for (const widths of rows.values()) {
+        if (widths.length === 1) expect(widths[0], `${hash} at ${width}px`).toBeGreaterThan(boxes.parent - 2);
+      }
+    }
+  }
+});
+
 // The page's done-test (portal audit, Activity, pick A: a timeline by day): the status
 // pill and verdict name what failed, the tiles are links that set a filter, the newest
 // day comes first, a row opens its panel (Back closes it), "Run again" on a failed
@@ -467,10 +534,10 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page).toHaveURL(/outcome=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
-  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 18 entries loaded");
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 20 entries loaded");
   await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page).not.toHaveURL(/outcome=/);
-  await expect(page.locator(".sel-row")).toHaveCount(18);
+  await expect(page.locator(".sel-row")).toHaveCount(20);
 
   // Who: one person's jobs and audit entries, no one else's.
   await page.getByRole("button", { name: /^Who:/ }).click();
@@ -485,6 +552,43 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Failed");
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 });
+
+// A rule edit or delete is an audit row whose panel shows who changed which rule
+// setting, old and new; a delete shows the rule as it was.
+for (const [viewport, theme] of [[{ width: 390, height: 844 }, "light"], [{ width: 1440, height: 1000 }, "dark"]] as const) {
+  test(`Activity · a rule edit and delete show each setting before and after at ${viewport.width} px ${theme}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/activity?open=record:18179", theme);
+    const panel = page.getByRole("dialog");
+    await expect(panel).toContainText("edited the automatic rule “KEEL-RT Undo low-risk group changes”: 4 settings changed; it stays off until it is previewed again");
+    const changes = panel.locator(".ac-changes");
+    await expect(changes.locator("h3")).toHaveText("What changed (1)");
+    const rule = changes.locator(".cv-object");
+    await expect(rule.locator(".cv-chip")).toHaveText("Changed");
+    await expect(rule.locator(".cv-object-kind")).toHaveText("automatic rule");
+    const state = rule.locator(".cc-row", { hasText: "On or off" });
+    await expect(state.locator('[data-side="before"]')).toContainText("On");
+    await expect(state.locator('[data-side="after"]')).toContainText("Off");
+    const limit = rule.locator(".cc-row", { hasText: "Limit" });
+    await expect(limit.locator('[data-side="before"]')).toContainText("No limit");
+    await expect(limit.locator('[data-side="after"]')).toContainText("10 an hour");
+    await expect(rule.locator(".cc-row", { hasText: "Kind of thing" }).locator('[data-side="after"]')).toContainText("Group");
+    await expect(panel.getByRole("link", { name: "Open the rule" })).toHaveAttribute("href", /\/policies\/5a000000-0000-4000-8000-000000000001/);
+    await page.screenshot({ path: `test-results/rule-edit-${viewport.width}-${theme}.png`, fullPage: false });
+
+    await open(page, "/activity?open=record:18180", theme);
+    const deleted = page.getByRole("dialog");
+    await expect(deleted).toContainText("deleted the automatic rule “KEEL-RT Alert on lockout risk”");
+    const gone = deleted.locator(".ac-changes .cv-object");
+    await expect(gone.locator(".cv-chip")).toHaveText("Removed");
+    await gone.getByRole("button", { name: /Show its \d+ settings/ }).click();
+    await expect(gone.locator(".cc-whole-list")).toContainText("Could lock out admins");
+    await expect(deleted.getByRole("link", { name: "Show the automatic rules" })).toHaveAttribute("href", /\/policies$/);
+    // Ids stay in Technical details: the sentence and the settings never show one.
+    expect(await deleted.locator(".ac-changes").evaluate((element) => element.textContent ?? "")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    await page.screenshot({ path: `test-results/rule-delete-${viewport.width}-${theme}.png`, fullPage: false });
+  });
+}
 
 // A row's panel says what it changed: each object, each setting, its value before and
 // after, ids read as names, and nested values one line per setting.
@@ -645,8 +749,8 @@ for (const theme of ["dark", "light"] as const) {
           await rows.nth(3).click({ modifiers: ["Shift"] });
           await expect(page.locator(".sel-bar-count")).toContainText("4 entries");
           await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 4 entries");
-          await page.getByRole("button", { name: /Select all 18 entries/ }).click();
-          await expect(page.locator(".sel-bar-count")).toContainText("18 entries");
+          await page.getByRole("button", { name: /Select all 20 loaded entries/ }).click();
+          await expect(page.locator(".sel-bar-count")).toContainText("20 entries");
         }
       });
     }
@@ -1271,7 +1375,7 @@ test("What's protected · one line counts every kind, and its parts add up", asy
   await expect(page.locator(".pt-tiles-sum")).toHaveText("15 kinds: 8 backed up, 2 failed, 3 out of date or never, 1 not backed up by Keel yet and 1 not on this tenant.");
 });
 
-test("What's protected sorts failed and out-of-date kinds first, each with a run of its tier", async ({ page }) => {
+test("What's protected sorts failed and out-of-date kinds first; each failed kind says why and can be retried", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("2 types failed their last backup.");
@@ -1281,9 +1385,60 @@ test("What's protected sorts failed and out-of-date kinds first, each with a run
   await expect(signIn.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
   const failed = signIn.locator(".sel-row").first();
   await expect(failed.locator(".badge")).toHaveText("Failed");
-  await failed.getByRole("button", { name: "Back up Tier 1 again" }).click();
+  // The reason names the missing permission and links to its row on Setup (audit issue 10).
+  await expect(failed.locator(".pt-row-why")).toContainText("Policy.Read.All");
+  await expect(failed.locator(".bf-need")).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
+  // A failure that is not a permission says what happened, and is retried the same way.
+  const labels = page.locator(".sel-row", { hasText: "Retention label" }).first();
+  await expect(labels.locator(".pt-row-why")).toContainText("did not answer in time");
+  await expect(labels.locator(".bf-need")).toHaveCount(0);
+  await expect(labels.getByRole("button", { name: /^Retry / })).toBeVisible();
+  // Every failed kind has a retry button.
+  await expect(page.locator(".pt-row.health-failed")).toHaveCount(await page.locator(".pt-row.health-failed").getByRole("button", { name: /^Retry / }).count());
+  // The details panel puts the reason first, with the permission's link and a Retry.
+  await signIn.locator(".pt-row-link").first().click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator(".pt-details-why")).toContainText("Why the last backup failed");
+  await expect(sheet.locator(".pt-details-why .bf-need")).toHaveText("Policy.Read.All");
+  await expect(sheet.getByRole("button", { name: "Retry Authentication methods policy" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Close" }).click();
+  // Retry runs the kind's tier once (audit B1): the row then says the tier is queued and
+  // cannot be pressed again, and the panel offers no second start.
+  await failed.getByRole("button", { name: "Retry Authentication methods policy" }).click();
   await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+  await expect(failed.getByRole("button", { name: "Tier 1 queued" })).toBeDisabled();
+  await signIn.locator(".pt-row-link").first().click();
+  await expect(sheet.getByRole("button", { name: "Tier 1 queued" })).toBeDisabled();
 });
+
+// UI audit B1: "Back up Tier 2" from a kind's panel shows its toast above the panel, turns
+// every Tier 2 button off, and the tier card says Queued; a second press is impossible.
+for (const [width, height, theme] of [[1440, 900, "dark"], [390, 844, "light"]] as const) {
+  test(`a backup started from the panel is confirmed and cannot start twice · ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await open(page, "/protect?open=deviceConfiguration", theme);
+    const sheet = page.locator(".bl-sheet");
+    await sheet.getByRole("button", { name: "Back up Tier 2" }).click();
+    const toast = page.locator(".toast").first();
+    await expect(toast).toContainText("Tier 2 backup queued");
+    // The toast is on top of the panel, not under it.
+    const box = (await toast.boundingBox())!;
+    expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".toast"), [box.x + box.width / 2, box.y + box.height / 2])).toBe(true);
+    await expect(sheet.getByRole("button", { name: "Tier 2 queued" })).toBeDisabled();
+    await expect(sheet.locator(".bl-help")).toContainText("it starts when a worker is free");
+    await page.screenshot({ path: `test-results/backup-queued-panel-${width}-${theme}.png` });
+    await sheet.getByRole("button", { name: "Close" }).click();
+    const card = page.locator(".pt-tier.tier2-card");
+    await expect(card.locator(".badge")).toHaveText("Queued");
+    await expect(card.locator(".tier-run")).toContainText("Queued");
+    await expect(card.getByRole("button", { name: "Tier 2 backup is queued" })).toBeDisabled();
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `test-results/backup-queued-card-${width}-${theme}.png` });
+    type Call = { url: string; method: string };
+    const posts = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls.filter((call) => call.method === "POST" && call.url === "/api/actions/backup").length);
+    expect(posts).toBe(1);
+  });
+}
 
 // The page's done-test (portal audit, What's protected): tiles filter the list in the
 // address, the view survives a reload, selection names the tiers it runs, every job
@@ -1470,7 +1625,10 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(mail.locator(".ui-alert-more li")).toBeHidden();
   await mail.getByText("Show details").click();
   await expect(mail.locator(".ui-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
-  await expect(page.locator('.ui-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
+  // Failed restores: the engine's one count with its window, linking to the Restore list.
+  const failedRestores = page.locator('.ui-alert[data-alert="restore-failed"]');
+  await expect(failedRestores).toContainText("47 restores failed · 3 in the last 30 days");
+  await expect(failedRestores.getByRole("link", { name: "See failed restores" })).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
   await expect(page.locator('.ui-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
   // Tiles and the service table.
   await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
@@ -1523,6 +1681,11 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   expect(Number((await tile.locator(".vr-tile-count").innerText()).split(" ")[0]) + still).toBe(total);
   const heights = await page.locator(".vr-tile").evaluateAll((tiles) => tiles.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
+  // Failed restores: the same count and words as Resilience, linked to the same list.
+  const failedLine = page.locator('[data-line="failed-restores"]');
+  await expect(failedLine).toContainText("2 failed in this period");
+  await expect(failedLine).toContainText("47 restores failed · 3 in the last 30 days");
+  await expect(failedLine.getByRole("link")).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
 
   // Every request opens its job; every check shows a title, never a code.
   const links = page.locator(".vr-row-link");
@@ -1589,6 +1752,25 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   // No ids outside Technical details.
   await open(page, "/reports");
   expect(await textOutside(page, "main#main-content", '[data-layer="record"]')).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|restore-plan:|finding:|sha256:/i);
+});
+
+// Audit 31 Oct 2026: the report listed 50 of 98 requests, its pager could not reach the
+// rest, and Select all said 50. Every request is listed and paged; a capped list says so.
+test("the value report pages through every request, and Select all states the true count", async ({ page }) => {
+  await open(page, "/reports/many");
+  const pager = page.getByRole("navigation", { name: "Pages of Requests" });
+  await expect(pager.locator(".list-pager-range")).toHaveText("Showing 1–25 of 98 requests");
+  await expect(page.getByRole("button", { name: "Select all 98 requests" })).toBeVisible();
+  await expect(page.locator(".sel-partial")).toHaveCount(0);
+  await pager.getByRole("button", { name: "Last page" }).click();
+  await expect(pager.locator(".list-pager-range")).toHaveText("Showing 76–98 of 98 requests");
+  await expect(page.locator(".vr-row-link")).toHaveCount(23);
+  await page.getByRole("button", { name: "Select all 98 requests" }).click();
+  await expect(page.locator(".sel-bar-count")).toContainText("98 requests");
+
+  await open(page, "/reports/capped");
+  await expect(page.getByRole("button", { name: "Select all 50 loaded requests" })).toBeVisible();
+  await expect(page.locator(".sel-partial")).toHaveText("Only the first 50 of 98 requests are listed. The tiles count every request.");
 });
 
 test("the value report fits 390 and 1440 in both themes, and every tile, chart and row is a working control", async ({ page }) => {
@@ -2204,6 +2386,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
+  "baselines-put-back": ["b1190000-0000-4000-8000-000000000119", "b1160000-0000-4000-8000-000000000116"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
   incidents: ["1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "7e000000-0000-4000-8000-000000000071", "9b000000-0000-4000-8000-000000000071", "3f9c2b1e-0000-4000-8000-0000000000aa"],
   "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
@@ -2974,8 +3157,9 @@ test("Setup · one status tile per service, worst first, and a warning before a 
   const entra = tiles.filter({ hasText: "Entra ID" });
   await expect(entra).toHaveAttribute("data-tone", "urgent");
   await expect(entra.locator(".badge")).toHaveText("Failing");
-  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app is missing a permission Microsoft asks for.");
-  await expect(entra.getByRole("link", { name: "Check read access" })).toHaveAttribute("href", "#setup-read");
+  // The failed kind names the permission it needs and opens its row in the permission list.
+  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app does not hold the permission Policy.Read.All.");
+  await expect(entra.getByRole("link", { name: "Check Policy.Read.All" })).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
   const teams = tiles.filter({ hasText: "Teams" });
   await expect(teams.locator(".badge")).toHaveText("Out of date");
   await expect(teams.getByRole("link", { name: "See what is out of date" })).toHaveAttribute("href", /\/protect\?service=Teams&health=out-of-date$/);
@@ -3065,6 +3249,33 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     // A replaced setup offers no actions.
     await expect(page.locator(".bl-version", { hasText: "Replaced by a newer version" }).getByRole("button")).toHaveCount(0);
     await expect(page.locator(".bl-version", { hasText: "Before migration (v2)" }).getByRole("button", { name: "Use this one" })).toBeVisible();
+  });
+}
+
+// Backlog B12 and D16: a version put back from an older one says so, with both dates,
+// and a disabled "Capture new version" says what the newest backup missed. Every page
+// that lists versions orders them by when they were approved and shows both dates.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`a put-back approved setup explains its dates and why capture is off at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/baselines/put-back", viewport.width < 600 ? "dark" : "light");
+    const current = page.locator(".bl-current");
+    await expect(current.locator(".bl-fact", { hasText: "Approved by" })).toContainText("4 hours ago, on");
+    await expect(current.locator(".bl-fact", { hasText: "Settings from" })).toContainText("43 days ago");
+    await expect(current.locator("[data-part='put-back']")).toHaveText(
+      "Put back This version is a copy of version 1, put back 4 hours ago. It holds the settings version 1 held, as they were 43 days ago: 2 kinds of setting. Version 2, which it replaced, held 6 kinds, so 4 kinds are not checked until you capture a new version.");
+    const reason = current.locator("[data-part='capture-reason']");
+    await expect(reason).toContainText("Not available yet");
+    await expect(reason).toContainText("Capture new version needs a newer complete backup: one that read every kind of setting in full. The newest backup, finished 2 hours ago, was not complete: Microsoft To Do setting could not be read and Group was read only in part.");
+    await expect(reason.getByRole("link", { name: "What's protected" })).toHaveAttribute("href", /\/protect$/);
+    await expect(current.getByRole("button", { name: /Capture new version/ })).toBeDisabled();
+    // Older versions: newest approved first, both dates, and the reason said once above.
+    const versions = page.locator(".bl-version");
+    await expect(versions.locator(".bl-version-name small")).toHaveText([/^Version 2 ·/, /^Version 1 ·/]);
+    await expect(versions.first().locator(".bl-version-when")).toContainText(/^Approved 31 days ago\s*Settings from 31 days ago · Not compared yet$/);
+    await expect(page.locator("#bl-versions-heading").locator("xpath=..")).toContainText("until a backup reads every kind in full, they show Not compared yet");
+    await expect(page.getByText("No complete backup to compare with yet")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 }
 
@@ -3950,7 +4161,10 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
   const card = page.locator(".cp-by-service .cp-service");
   await expect(card).toHaveCount(1);
   await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
-  await expect(card.locator(".cp-ctile")).toHaveCount(5);
+  // Only the controls that need something done get a tile; the rest are counted, with a link to the list.
+  await expect(card.locator(".cp-ctile")).toHaveCount(3);
+  await expect(card.locator(".cp-service-rest")).toContainText("See all 5 controls");
+  await expect(card.locator(".cp-service-rest a")).toHaveAttribute("href", "#cp-controls");
   await expect(card.locator(".cp-service-head .score-ring")).toHaveAttribute("aria-label", /^Entra ID: 25% pass/);
   // The service list in the score is the cards' job on a phone.
   await expect(page.locator('.cp-score-list[data-kind="service"]')).toBeHidden();
@@ -3971,7 +4185,8 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : 5);
+        // The own-check page holds a CISA check to do by hand, so it has that sixth tile.
+        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : hash.startsWith("/benchmarks/own") ? 6 : 5);
         expect(new Set(tiles).size).toBe(1);
         if (width === 390 && hash !== "/benchmarks/empty") {
           // Tiles are equal within each service's scorecard (each service is its own grid).
@@ -4325,7 +4540,7 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   await submit.click();
   const toast = page.locator(".toast").first();
   await expect(toast).toContainText("Not approved");
-  await expect(toast).toContainText("The person who made the change cannot approve it.");
+  await expect(toast).toContainText("The person who made the change cannot approve it while approvals need two people.");
 
   await active.getByLabel(/Why revoke the approval/).fill("Partner app fixed");
   await active.getByRole("button", { name: "Revoke" }).click();
@@ -4646,9 +4861,20 @@ test("Alerts · a viewer sees the alerts, no amber action and no controls", asyn
   await expect(sheet.getByRole("link", { name: /Resolve|Mute/ })).toHaveCount(0);
 });
 
+// Audit 31 Oct 2026: the page said 197 waiting while the bell said 722. The tiles, the
+// verdict and the pill count every alert; the list says when it holds fewer.
+test("Alerts · the counts are the tenant's, not the list's", async ({ page }) => {
+  await open(page, "/alerts/many");
+  await expect(page.locator(".al-tile", { hasText: "Needs someone" }).locator(".al-tile-count")).toHaveText("1,722");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toContainText("1,722 alerts need someone");
+  await expect(page.locator(".al-listed")).toContainText("of 4,200 alerts");
+  await open(page, "/alerts");
+  await expect(page.locator(".al-listed")).toHaveCount(0);
+});
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001"]) {
+    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001", "/alerts/many"]) {
       test(`Alerts · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -5217,20 +5443,24 @@ test("Compliance · measure against a known standard, write your own check, remo
   const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
 
   // Known standards: SCuBA first, every ScubaGear v2.0.0 rule checked by CISA's own rule,
-  // worst first, 25 to a page.
+  // worst first, 25 to a page. Only policies with a result count as checked, and CISA's
+  // checks to do by hand are counted apart from those that could not be checked.
   const known = page.locator(".cp-known");
   const rows = known.locator(".cp-known-table tbody tr");
   await expect(known.locator("h2")).toHaveText("Measure against a known standard");
-  await expect(known).toContainText("Keel checks 109 of 109 CISA SCuBA policies: 1 passes, 1 does not, 107 could not be checked.");
+  await expect(known).toContainText("Keel checks 2 of 109 CISA SCuBA policies: 1 passes, 1 does not. 107 are not checked: 1 is a check to do by hand, 106 could not be checked.");
   await expect(known).toContainText("ScubaGear v2.0.0");
   await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
+  // The policy table is folded: the result chips summarise it, and it opens on request.
+  await expect(known.locator(".cp-known-table")).toHaveCount(0);
+  await expect(known.getByRole("group", { name: "Show results" })).toContainText("Checks to do by hand");
+  await known.getByRole("button", { name: "Show each policy (109)" }).click();
   await expect(known.locator(".cp-known-table thead")).not.toContainText("How much");
   await expect(rows).toHaveCount(25);
   await expect(rows.first()).toContainText("MS.AAD.1.1v1");
   await expect(rows.first()).toContainText("Fails");
   await expect(rows.nth(1)).toContainText("MS.AAD.2.1v1");
   await expect(rows.nth(1)).toContainText("It runs after the next backup.");
-  await expect(rows.filter({ hasText: "MS.AAD.2.2v1" })).toContainText("CISA lists this as a check to do by hand.");
   await expect(known.locator(".list-pager").getByRole("status")).toHaveText("Showing 1–25 of 109 policies");
   // The result chips add up: Fails and Passes together show both.
   const chips = known.getByRole("group", { name: "Show results" });
@@ -5242,10 +5472,12 @@ test("Compliance · measure against a known standard, write your own check, remo
   await chips.getByRole("button", { name: /Passes/ }).click();
   await known.getByRole("button", { name: "NIST SP 800-53" }).click();
   await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await known.getByRole("button", { name: /^Show each policy/ }).click();
   await expect(known.locator(".cp-known-table tbody tr", { hasText: "AC-6" })).toContainText("Checks part of this");
   await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
   // A policy's check opens that control's panel.
   await known.getByRole("button", { name: "CISA SCuBA" }).click();
+  await known.getByRole("button", { name: /^Show each policy/ }).click();
   await known.locator(".cp-known-table").getByRole("link", { name: "Legacy authentication SHALL be blocked." }).click();
   await expect(page.locator(".bl-sheet h2")).toContainText("Legacy authentication SHALL be blocked.");
   await page.keyboard.press("Escape");
@@ -5255,7 +5487,21 @@ test("Compliance · measure against a known standard, write your own check, remo
   await open(page, "/benchmarks/own?std-result=excepted");
   await expect(known.locator(".cp-known-table")).toHaveCount(0);
   await expect(known).toContainText("No policy has these results.");
+  // CISA's checks to do by hand come after those that could not be checked, and say so.
+  await open(page, "/benchmarks/own?std-result=by-hand");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("MS.AAD.2.2v1");
+  await expect(rows.first()).toContainText("CISA lists this as a check to do by hand.");
   await open(page, "/benchmarks/own");
+
+  // CISA's check to do by hand has its own tile and links to CISA's steps, never "Run a backup".
+  await expect(page.locator(".cp-tile", { hasText: "Check by hand" }).locator(".cp-tile-count")).toHaveText("1");
+  const byHand = page.locator(".sel-row", { hasText: "A notification SHOULD be sent" });
+  await expect(byHand.getByRole("link", { name: "How to check it" })).toHaveAttribute("href", "https://github.com/cisagov/ScubaGear/blob/v2.0.0/PowerShell/ScubaGear/baselines/aad.md#msaad22v1");
+  await expect(byHand.getByRole("link", { name: "Run a backup" })).toHaveCount(0);
+  // Keel's legacy sign-in check tests what CISA MS.AAD.1.1v1 tests: one row, with Keel's result on it.
+  await expect(page.locator(".sel-row", { hasText: "Legacy authentication SHALL be blocked." })).toContainText("Keel's own check tests the same: not set up yet");
+  await expect(page.locator(".sel-row .cp-row-link", { hasText: "Old sign-in methods are blocked" })).toHaveCount(0);
 
   // The tenant's own check sits beside Keel's, filed under its own standard.
   await expect(page.locator(".cp-score-list", { hasText: "By standard" })).toContainText("Contoso hardening");
@@ -5442,4 +5688,22 @@ for (const { name, hash, box } of [
     await input.fill("");
     await expect(page).not.toHaveURL(/q=/);
   });
+}
+
+// Approval mode, part 3: in Solo mode the Changes page never promises that someone else
+// approves an undo; it says the person who asked may approve. Two people keeps "someone else".
+for (const width of [390, 1440]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`Changes · undo wording follows the approval mode · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
+      await open(page, "/drift/solo", theme);
+      const main = page.locator("main");
+      await expect(main).toContainText("undo puts the approved value back once it is approved (in Solo mode you can approve it yourself)");
+      await expect(main).not.toContainText("someone else approves");
+      await main.getByText("in Solo mode you can approve it yourself").first().scrollIntoViewIfNeeded();
+      if (process.env.KEEL_SHOTS) await page.screenshot({ path: `${process.env.KEEL_SHOTS}/solo-changes-${width}-${theme}.png` });
+      await open(page, "/drift/services", theme);
+      await expect(page.locator("main")).toContainText("undo puts the approved value back once someone else approves");
+    });
+  }
 }

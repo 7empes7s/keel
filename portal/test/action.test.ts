@@ -553,7 +553,14 @@ test("baseline activation requires approval — it creates a request, never a jo
   );
 });
 
+// A tier's backup already queued by an earlier test would be reused (UI audit B1), so
+// tests about idempotency keys start with no backup waiting.
+async function settleActiveJobs() {
+  await client.query(`UPDATE job SET status = 'succeeded', finished_at = now() WHERE status IN ('queued', 'running')`);
+}
+
 test("a replayed request with the same idempotency key does not enqueue twice", async () => {
+  await settleActiveJobs();
   const replay = {
     principalId: OPERATOR,
     capabilities: ["backup"],
@@ -582,6 +589,7 @@ test("a caller's idempotency key cannot claim a scheduler or install-run job key
     "schedule:1b2a4a00-0000-4000-8000-00000000b001:2026-10-28T02:00:00.000Z",
     "install-run:sha256:tenant:tier1:2026-10-28",
   ]) {
+    await settleActiveJobs();
     const response = await backupRoute(postAction("/api/actions/backup", {
       principalId: OPERATOR, capabilities: ["backup"], idempotencyKey: rawKey, body: { tier: "tier1" },
     }));
@@ -589,6 +597,40 @@ test("a caller's idempotency key cannot claim a scheduler or install-run job key
     const { rows } = await client.query(`SELECT id FROM job WHERE idempotency_key = $1`, [rawKey]);
     assert.equal(rows.length, 0, `no caller job may hold ${rawKey.split(":")[0]}: keys`);
   }
+});
+
+test("a tier's backup pressed again while it is queued or running returns that job (UI audit B1)", async () => {
+  await settleActiveJobs();
+  const press = (key: string, body: Record<string, unknown> = { tier: "tier3" }) =>
+    backupRoute(postAction("/api/actions/backup", { principalId: OPERATOR, capabilities: ["backup"], idempotencyKey: key, body }));
+
+  const first = await press("tier3-drawer");
+  assert.equal(first.status, 202);
+  const firstBody = await first.json();
+  assert.equal(firstBody.alreadyActive, undefined);
+
+  // The card's button, with its own key: the same job comes back, marked already active.
+  const second = await press("tier3-card");
+  assert.equal(second.status, 200);
+  const secondBody = await second.json();
+  assert.equal(secondBody.alreadyActive, true);
+  assert.equal(secondBody.job.id, firstBody.job.id);
+
+  // Running still counts; another tier is its own job.
+  await client.query(`UPDATE job SET status = 'running', started_at = now(), heartbeat_at = now() WHERE id = $1`, [firstBody.job.id]);
+  assert.equal((await (await press("tier3-again")).json()).job.id, firstBody.job.id);
+  const other = await press("tier1-now", { tier: "tier1" });
+  assert.equal(other.status, 202);
+  assert.notEqual((await other.json()).job.id, firstBody.job.id);
+
+  const { rows } = await client.query(`SELECT id FROM job WHERE kind = 'backup' AND params->>'tier' = 'tier3' AND status IN ('queued', 'running')`);
+  assert.equal(rows.length, 1, "pressing Back up twice must not queue a second Tier 3 run");
+
+  // Once it finishes, a new press starts a new run.
+  await settleActiveJobs();
+  const fresh = await press("tier3-later");
+  assert.equal(fresh.status, 202);
+  assert.notEqual((await fresh.json()).job.id, firstBody.job.id);
 });
 
 test("an over-long idempotency key is refused before anything is queued", async () => {
@@ -758,12 +800,26 @@ test("Automatic rules: edit saves the whole rule, delete hides it and keeps its 
   assert.equal(after.max_blast_radius, "access-affecting");
   assert.equal(after.max_actions_per_window, 20);
   assert.equal(after.action, "alert");
+  // The edit leaves one record naming who changed which settings, old and new; the
+  // refused edits above leave none.
+  const records = async () => (await client.query(
+    "SELECT actor, subject FROM evidence WHERE kind = 'policy-change' AND subject->>'policyId' = $1 ORDER BY seq", [policy.id],
+  )).rows as { actor: string; subject: { change: string; fields: { field: string; before: unknown; after: unknown }[] } }[];
+  const [editRecord, ...extra] = await records();
+  assert.equal(extra.length, 0, "refused edits leave no record");
+  assert.equal(editRecord.actor, "admin");
+  assert.equal(editRecord.subject.change, "edited");
+  assert.deepEqual(editRecord.subject.fields.find((entry) => entry.field === "name"), { field: "name", before: "Edit me", after: "Edited" });
+  assert.deepEqual(editRecord.subject.fields.find((entry) => entry.field === "maxActionsPerWindow"), { field: "maxActionsPerWindow", before: 50, after: 20 });
   const missing = await editPolicyRoute(postAction(`/api/policies/${randomUUID()}/edit`, { ...options, body: { name: "x", maxBlastRadius: "cosmetic" } }));
   assert.equal(missing.status, 404);
 
   const removed = await deletePolicyRoute(postAction(`/api/policies/${policy.id}/delete`, options));
   assert.equal(removed.status, 200);
   assert.deepEqual(await removed.json(), { deleted: { id: policy.id, name: "Edited" } });
+  const deleteRecord = (await records()).at(-1);
+  assert.equal(deleteRecord?.subject.change, "deleted");
+  assert.equal(deleteRecord?.actor, "admin");
   assert.equal((await showPolicyRoute(getJobs(`/api/policies/${policy.id}`, options))).status, 404);
   const listed = await (await listPoliciesRoute(getJobs("/api/policies", options))).json();
   assert.ok(!listed.policies.some((p: { id: string }) => p.id === policy.id));

@@ -308,6 +308,7 @@ export const DISPLAY_ENUMS = {
     "automation-execution": "Automatic roll-backs",
     "content-effect-approval": "Content-effect approvals",
     "restore-approval-setting": "Restore approval settings",
+    "approval-mode": "Approval mode changes",
     "scuba-config-list": "ScubaGear lists",
     "recovery-completion": "Restore follow-up",
     "incident-recovery": "Incident recovery",
@@ -318,6 +319,7 @@ export const DISPLAY_ENUMS = {
     "baseline-resnapshot": "Baseline re-captures",
     "benchmark-evaluation": "Control checks",
     "benchmark-exception": "Control exceptions",
+    "chain-break-explained": "Audit record break explanations",
   },
   // Roadmap task-87: a control check's stored verdict and its exception state.
   controlVerdict: {

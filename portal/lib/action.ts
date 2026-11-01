@@ -12,6 +12,7 @@ import {
   rejectRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
+import { supportIds } from "@/lib/support-ids";
 import { applyDisposition, dispositionNeedsReview } from "../../engine/govern/disposition.mjs";
 import {
   DISPOSE_APPROVAL_ACTION, IgnoreExpiryError, driftAlreadyAccepted, ignoreExpiry, pendingDisposeRequest,
@@ -40,6 +41,7 @@ import { withSavedChangeNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
 import { isJsonContentType } from "@/lib/same-origin";
+import { requireOptionalReason, refuseWeakReason, WeakReasonError } from "@/lib/written-reason";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -178,6 +180,10 @@ export interface TypeProgress {
   httpStatus?: number | null;
   error?: string | null;
   throttles?: number;
+  // A failed Microsoft call: the ids a Microsoft support case cites, and when it answered.
+  requestId?: string;
+  clientRequestId?: string;
+  requestAt?: string;
   // Content backups: each item not read in full (at most 50) and how many there were.
   reasons?: string[];
   reasonCount?: number;
@@ -206,6 +212,7 @@ function jobProgress(value: unknown): JobProgress | null {
       httpStatus: Number.isSafeInteger(entry.httpStatus) ? entry.httpStatus : null,
       error: typeof entry.error === "string" ? entry.error : null,
       ...(Number.isSafeInteger(entry.throttles) ? { throttles: entry.throttles } : {}),
+      ...supportIds(entry),
       ...listedReasons(entry.reasons, entry.reasonCount),
     }])),
     updatedAt: typeof updatedAt === "string" ? updatedAt : null,
@@ -428,8 +435,7 @@ export function guarded(
           action: spec.jobKind ?? spec.action,
           params,
           requestedBy: principalId,
-          justification:
-            typeof justification === "string" ? justification : null,
+          justification: requireOptionalReason(justification, "justification"),
           ttlMs: approvalTtlMs(),
           entityScope: await approvalScopeFor(client, resolveTenantRef(), params),
         })) as Record<string, unknown>;
@@ -456,6 +462,13 @@ export function guarded(
         request,
       });
     } catch (error) {
+      // UI audit C1: a placeholder reason ("x", "BECAUSE") is refused in plain words.
+      if (error instanceof WeakReasonError) {
+        return Response.json(
+          { error: "weak_reason", field: error.field, message: error.message },
+          { status: 400, headers: NO_STORE },
+        );
+      }
       if (error instanceof InvalidActionRequest) {
         return Response.json(
           { error: "invalid_request" },
@@ -509,6 +522,10 @@ export interface ActionSpec {
   // The only body fields the route passes on as job params. Any other field is refused,
   // so a caller cannot steer the job at a server file through `config` (issue #411).
   allowedParams?: readonly string[];
+  // While a job of one of these kinds with the same values for these params is queued or
+  // running, a new request returns that job (`alreadyActive: true`, status 200) instead of
+  // adding another. A tier's backup pressed twice, from two places, runs once.
+  reuseActive?: { kinds: readonly string[]; params: readonly string[] };
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
@@ -552,6 +569,7 @@ export function guardedAction(
           throw new InvalidActionRequest(`this action takes only: ${allowed.join(", ")}`);
         }
       }
+      const reuse = spec.reuseActive;
       const job = (await enqueue(client, {
         kind: spec.jobKind,
         params: spec.acceptsParams === false ? {} : params,
@@ -559,7 +577,17 @@ export function guardedAction(
         idempotencyKey: callerIdempotencyKey(request, principalId, spec.action),
         notBefore: undefined,
         maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
+        reuseActive: reuse
+          ? { kinds: [...reuse.kinds], params: Object.fromEntries(reuse.params.filter((key) => params[key] !== undefined).map((key) => [key, params[key]])) }
+          : null,
       })) as Record<string, unknown>;
+      if (job.reused === true) {
+        return Response.json(
+          // The run may be someone else's: their request key is not theirs to see.
+          { job: { ...normalizeJob(job), idempotencyKey: null }, alreadyActive: true },
+          { status: 200, headers: NO_STORE },
+        );
+      }
       return Response.json(
         { job: normalizeJob(job) },
         { status: 202, headers: NO_STORE },
@@ -617,6 +645,7 @@ export function guardedDispose(
         }
         if (action !== "accept") throw new InvalidActionRequest("a service setting change can only be accepted");
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
+        refuseWeakReason(reason);
         // Audit run 2, finding 3: an admin-access service change goes to a second person.
         if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
           const waiting = await pendingDisposeRequest(client, { serviceChangeId, action: "accept", requestedBy: principalId });
@@ -660,6 +689,7 @@ export function guardedDispose(
       if (typeof reason !== "string" || reason.length === 0) {
         throw new InvalidActionRequest("reason is required");
       }
+      refuseWeakReason(reason);
 
       // Audit run 2, finding 3: an ignore always ends, within 90 days; said plainly.
       let until: Date | null = null;
@@ -675,7 +705,7 @@ export function guardedDispose(
       }
       // A sign-in or admin-access change is decided by two people: this request waits
       // for a different approver, and the worker applies it once approved.
-      // A change already accepted, or already waiting for a second person to accept it,
+      // A change already accepted, or already waiting for approval to accept it,
       // is not sent again: a second click or a retried send adds no second row.
       if (action === "accept" && await driftAlreadyAccepted(client, { driftId })) {
         return Response.json({ disposition: { alreadyAccepted: true } }, { headers: NO_STORE });
@@ -716,7 +746,8 @@ export function guardedDispose(
   );
 }
 
-export const JOB_STATUSES = ["queued", "running", "succeeded", "failed", "cancelled"] as const;
+// The statuses a person reads (`jobDisplayStatus`): "partial" is a succeeded backup with gaps.
+export const JOB_STATUSES = ["queued", "running", "succeeded", "partial", "failed", "cancelled"] as const;
 
 export function guardedJobList(
   deps: GuardDeps = {},
@@ -884,10 +915,13 @@ export function guardedApprovalDecision(
 
       try {
         if (decision === "approve") {
+          // Solo approval mode: approving your own request takes a reason that says why.
+          const { reason } = await readActionParams(request);
           const { job, signoffs, approvers, requiredApprovals } = (await approveRequest(client, {
             tenantRef: tenant,
             id,
             decidedBy: principalId,
+            reason: typeof reason === "string" ? reason : null,
             enforceScope: true,
             approverScope: entityScopeFrom(request.headers, "approve"),
           })) as { job: Record<string, unknown> | null; signoffs?: number; approvers?: string[]; requiredApprovals?: number };
@@ -905,7 +939,7 @@ export function guardedApprovalDecision(
           tenantRef: tenant,
           id,
           decidedBy: principalId,
-          reason: body.reason,
+          reason: refuseWeakReason(body.reason),
           enforceScope: true,
           approverScope: entityScopeFrom(request.headers, "approve"),
         })) as Record<string, unknown>;
@@ -926,7 +960,7 @@ export function guardedApprovalDecision(
         }
         if (error instanceof ApprovalReasonRequiredError) {
           return Response.json(
-            { error: "invalid_request" },
+            decision === "approve" ? { error: "reason_required", message: error.message } : { error: "invalid_request" },
             { status: 400, headers: NO_STORE },
           );
         }

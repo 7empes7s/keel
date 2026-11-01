@@ -14,6 +14,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
 import { fixFor, listFixCandidates } from '../benchmarks/fix.mjs';
+import { BY_HAND_REASON, foldTwins } from '../benchmarks/standards.mjs';
 import { OWN_PREFIX, controlFromRow, ownCheckRows, shapeOwnCheck } from '../benchmarks/ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
@@ -153,16 +154,25 @@ async function withPayloadsWhereHashesDiffer(client, baselineRows, latest) {
   for (const row of differing) row.payload = payloads.get(String(row.id)) ?? null;
 }
 
+// Read 50 backups at a time: tier backups can bury the newest complete one deeper than
+// one page, and the "Capture new version" list (listEligibleBaselineSnapshots) looks
+// through them all, so this must too.
+const SNAPSHOT_PAGE = 50;
+
 async function latestEligibleSnapshot(client, tenantRef) {
-  const { rows } = await client.query(
-    `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
-     FROM snapshot
-     WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
-     ORDER BY completed_at DESC
-     LIMIT 50`,
-    [tenantRef],
-  );
-  const snapshot = rows.find((candidate) => isEligibleBaselineSource(candidate, { tenantRef }));
+  let snapshot = null;
+  for (let offset = 0; !snapshot; offset += SNAPSHOT_PAGE) {
+    const { rows } = await client.query(
+      `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
+       FROM snapshot
+       WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
+       ORDER BY completed_at DESC, id DESC
+       LIMIT ${SNAPSHOT_PAGE} OFFSET $2`,
+      [tenantRef, offset],
+    );
+    snapshot = rows.find((candidate) => isEligibleBaselineSource(candidate, { tenantRef })) ?? null;
+    if (rows.length < SNAPSHOT_PAGE) break;
+  }
   if (!snapshot) return null;
   const { rows: versions } = await client.query(
     `SELECT id, natural_key, resource_type, payload_hash, hash_version, blast_radius
@@ -176,6 +186,21 @@ async function latestEligibleSnapshot(client, tenantRef) {
     ...serviceErrorLeftOut(snapshot.coverage_digest),
   ]);
   return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions, unavailableTypes };
+}
+
+/**
+ * The versions that were put back (reinstateBaseline), each with the earlier version it
+ * copies, as reinstateBaseline recorded it (reinstated_from_id). A put-back version keeps
+ * that version's capture, so it can read older than the version it replaced.
+ */
+function reinstatedFrom(baselines) {
+  const byId = new Map(baselines.map((baseline) => [String(baseline.id), baseline]));
+  const result = new Map();
+  for (const baseline of baselines) {
+    const source = baseline.reinstated_from_id ? byId.get(String(baseline.reinstated_from_id)) : null;
+    if (source) result.set(String(baseline.id), { id: String(source.id), version: Number(source.version ?? 1) });
+  }
+  return result;
 }
 
 /** Every baseline of the tenant, newest first, with capture, scope, version chain and changes since capture. */
@@ -218,6 +243,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
   const successor = new Map(baselines
     .filter((baseline) => baseline.supersedes_id)
     .map((baseline) => [String(baseline.supersedes_id), String(baseline.id)]));
+  const reinstated = reinstatedFrom(baselines);
 
   return baselines.map((baseline) => {
     const rows = byBaseline.get(String(baseline.id)) ?? [];
@@ -237,6 +263,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
       supersedesId: baseline.supersedes_id ? String(baseline.supersedes_id) : null,
       supersededById: successor.get(String(baseline.id)) ?? null,
       supersededAt: iso(baseline.superseded_at),
+      reinstatedFrom: reinstated.get(String(baseline.id)) ?? null,
       serviceSettingCount: [...(serviceCounts.get(String(baseline.id))?.values() ?? [])].reduce((sum, count) => sum + count, 0),
       capture: captureOf(baseline, legacyWindow, now, serviceCounts.get(String(baseline.id))),
       changesSinceCapture: changesSince(rows, latest, new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type))),
@@ -368,9 +395,15 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
     || (ownRows.has(evaluation.control_id) && !ownRows.get(evaluation.control_id).removed_at));
   if (evaluations.length === 0) return { findings: [], summary: summarize([]) };
 
-  const workloads = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
-    .map((window) => window.resourceType)
-    .filter((type) => WORKLOAD_FACT_TYPES.has(type))))];
+  const windowTypes = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
+    .map((window) => window?.resourceType)
+    .filter((type) => typeof type === 'string')))];
+  const workloads = windowTypes.filter((type) => WORKLOAD_FACT_TYPES.has(type));
+  // Only the kinds some evaluation was checked on can match its evidence, so each
+  // backup's coverage is read for those kinds alone, and a backup that read none of
+  // them is not read at all. Reading every kind of every backup ever taken grew with
+  // each hourly backup and was most of this read's time.
+  const snapshotTypes = windowTypes.filter((type) => !WORKLOAD_FACT_TYPES.has(type));
   const [{ rows: exceptions }, { rows: snapshotRows }, { rows: driftRows }, { rows: planRows }, { rows: collections }] = await Promise.all([
     client.query(
       `SELECT * FROM benchmark_exception
@@ -378,11 +411,17 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
        ORDER BY granted_at DESC, id DESC`,
       [tenantRef, evaluations.map((evaluation) => evaluation.id)],
     ),
-    client.query(
-      `SELECT id, tenant_ref, started_at, completed_at, coverage_digest
-       FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL`,
-      [tenantRef],
-    ),
+    snapshotTypes.length
+      ? client.query(
+        `SELECT id, tenant_ref, started_at, completed_at,
+                CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN
+                  (SELECT jsonb_object_agg(entry.key, entry.value) FROM jsonb_each(coverage_digest) AS entry
+                    WHERE entry.key = ANY($2::text[]))
+                END AS coverage_digest
+         FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL AND coverage_digest ?| $2::text[]`,
+        [tenantRef, snapshotTypes],
+      )
+      : { rows: [] },
     client.query(
       // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
       `WITH latest AS (
@@ -513,7 +552,9 @@ function fixDescriptor(controlId) {
   return { resourceType: fix.resourceType, field: fix.field, to: fix.to };
 }
 
-function summarize(findings) {
+// Counted once per setting: a Keel check and its CISA twin are one result (standards.mjs).
+function summarize(all) {
+  const findings = foldTwins(all);
   return {
     controls: findings.length,
     exposed: findings.filter((finding) => finding.exposed).length,
@@ -524,6 +565,8 @@ function summarize(findings) {
     notConfigured: findings.filter((finding) => finding.exposed && finding.reason === 'not-configured').length,
     passing: findings.filter((finding) => finding.verdict === 'pass').length,
     unknown: findings.filter((finding) => finding.verdict === 'unknown').length,
+    // Of the unknowns, the rules CISA marks as checks to do by hand: no backup answers them.
+    byHand: findings.filter((finding) => finding.verdict === 'unknown' && finding.reason === BY_HAND_REASON).length,
     notApplicable: findings.filter((finding) => finding.verdict === 'not-applicable').length,
   };
 }

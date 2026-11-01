@@ -10,6 +10,7 @@ import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts, type KindPart } from "@/lib/type-groups";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { ago } from "@/lib/presentation";
+import { supportLines } from "@/lib/support-ids";
 
 // The Job page as alerts and tiles. A failed job leads with a plain cause and one next
 // step; the engine's own error text waits behind "Show details".
@@ -161,6 +162,8 @@ export interface TypeRow {
   problem: string | null;
   // The engine's own error text, shown only when asked for.
   raw: string | null;
+  // A failed Microsoft call's request ids and time, for a support case; behind the same click.
+  support: string[];
   // Content backups: each mailbox, OneDrive or site that could not be read in full.
   items: GapItem[];
   // How many there were in all ("10 OneDrives"); the list holds at most 50.
@@ -288,6 +291,7 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
       took: state === "reading" ? jobGap(entry.startedAt, now) : jobGap(entry.startedAt, entry.completedAt),
       problem: look.problem ? (serviceError ? SERVICE_ERROR.problem : label ? itemsProblem(label, items) : readProblem(state, raw)) : null,
       raw: look.problem && !items.length ? raw : null,
+      support: look.problem && !items.length ? supportLines(entry) : [],
       items,
       itemTotal: total,
       itemsLabel: label,

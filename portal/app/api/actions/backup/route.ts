@@ -10,4 +10,6 @@ export const POST = guardedAction({
   jobKind: "backup",
   requiresApproval: false,
   allowedParams: ["tier"],
+  // A tier already queued or running (on demand or on its schedule) is not started twice.
+  reuseActive: { kinds: ["backup", "collect"], params: ["tier"] },
 });

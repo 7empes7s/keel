@@ -20,7 +20,7 @@ export const ROLE_ORDER: Role[] = ["admin", "approver", "restorer", "operator", 
 
 export const ROLES: Record<Role, { label: string; plural: string; meaning: string; can: string }> = {
   admin: { label: "Admin", plural: "Admins", meaning: "Adds people, grants roles and changes Keel's settings and rules", can: "add people, grant roles and change Keel's settings and rules" },
-  approver: { label: "Approver", plural: "Approvers", meaning: "Approves restores and changes someone else asked for", can: "approve restores and changes someone else asked for" },
+  approver: { label: "Approver", plural: "Approvers", meaning: "Approves restores and changes before they run", can: "approve restores and changes before they run" },
   restorer: { label: "Restorer", plural: "Restorers", meaning: "Restores settings and content, and undoes changes", can: "restore settings and content, and undo changes" },
   operator: { label: "Operator", plural: "Operators", meaning: "Runs backups and decides on changes", can: "run backups and decide on changes" },
   investigator: { label: "Investigator", plural: "Investigators", meaning: "Investigates incidents and marks which backups are safe", can: "investigate incidents and mark which backups are safe" },
@@ -151,7 +151,7 @@ const ABILITY_GROUPS: { label: string; icon: IconName; capabilities: Record<stri
   { label: "Look", icon: "show", capabilities: { read: "See backups, changes, reports and activity" } },
   { label: "Back up", icon: "backup", capabilities: { collect: "Run backups", backup: "Run backups", "content-backup": "Back up mail and files", discover: "Find what the tenant holds", export: "Export copies", "baseline-create": "Approve a setup to compare against", "dispose-accept": "Decide on changes" } },
   { label: "Restore", icon: "restore", capabilities: { restore: "Restore settings", "content-restore": "Restore mail and files", rollback: "Undo changes", remediate: "Fix changes", "template-apply": "Apply a saved setup" } },
-  { label: "Approve", icon: "inbox", capabilities: { approve: "Approve what someone else asked for" } },
+  { label: "Approve", icon: "inbox", capabilities: { approve: "Approve restores and changes before they run" } },
   { label: "Investigate", icon: "search", capabilities: { investigate: "Investigate incidents and mark safe backups" } },
   { label: "Administer", icon: "settings", capabilities: { users: "Add and disable people", roles: "Grant and remove roles", policies: "Manage automatic rules", configuration: "Change settings", automation: "Change what runs on its own" } },
 ];

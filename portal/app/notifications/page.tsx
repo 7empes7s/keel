@@ -18,6 +18,9 @@ import { getAnonymitySetting } from "@/lib/anonymity";
 const TITLE = "Notifications";
 const DESCRIPTION = "Where Keel sends alerts, who gets which alerts, and what was sent.";
 
+// How many sends the page reads; at the limit the list says older ones are left out.
+const DELIVERY_LIMIT = 200;
+
 export default async function NotificationsPage() {
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.notificationsPage);
@@ -33,7 +36,7 @@ export default async function NotificationsPage() {
 
   let history: { deliveries: Delivery[]; generatedAt: string };
   try {
-    history = await bodyOf(await loadDeliveries(requestFor("/api/deliveries?limit=200")), "/api/deliveries");
+    history = await bodyOf(await loadDeliveries(requestFor(`/api/deliveries?limit=${DELIVERY_LIMIT}`)), "/api/deliveries");
   } catch {
     return <><PageHeader description={DESCRIPTION} section="Settings" title={TITLE} /><DataUnavailable surface="Alert history" /></>;
   }
@@ -73,6 +76,7 @@ export default async function NotificationsPage() {
         canConfiguration={configured}
         channels={channels}
         deliveries={history.deliveries}
+        deliveryLimit={DELIVERY_LIMIT}
         escalationRules={escalationRules}
         now={history.generatedAt}
         people={people}

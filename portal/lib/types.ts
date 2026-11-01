@@ -1,3 +1,4 @@
+import type { AuditCheck } from "@/lib/audit-check";
 import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef } from "@/lib/sentences";
 
@@ -29,6 +30,10 @@ export interface CoverageOutcomeDetail {
   pagesCompleted: number | null;
   startedAt: string | null;
   completedAt: string | null;
+  // A failed Microsoft call's ids and time, for a support case. Absent when not recorded.
+  requestId?: string;
+  clientRequestId?: string;
+  requestAt?: string;
 }
 
 // Evidence-backed operation capability (roadmap task-52), surfaced per
@@ -223,8 +228,21 @@ export interface BaselineRecord {
   supersedesId?: string | null;
   supersededById?: string | null;
   supersededAt?: string | null;
+  // A version put back from an earlier one (reinstateBaseline): it holds that version's
+  // settings and keeps its capture, so it can read older than the version it replaced.
+  reinstatedFrom?: { id: string; version: number } | null;
   capture?: BaselineCapture;
   changesSinceCapture?: BaselineChanges;
+}
+
+// The newest finished backup when it cannot be the source of a new version, and why,
+// kind by kind (engine/govern/baseline.mjs#newestBackupGap).
+export interface BackupGap {
+  id: string;
+  completedAt: string;
+  notInBackup: string[];
+  partial: string[];
+  failed: string[];
 }
 
 // Roadmap task-87. The age of a baseline is measured from capturedAt, when its source
@@ -346,6 +364,9 @@ export interface ComplianceFinding {
   fix?: { resourceType: string; field: string | null; to: unknown; settings?: Record<string, unknown> } | null;
   // A check the tenant wrote itself; null or absent for Keel's own controls.
   own?: OwnCheck | null;
+  // The Keel check or CISA rule that tests the same thing, folded into this one so the
+  // page shows the pair once (engine/benchmarks/standards.mjs foldTwins).
+  twin?: ComplianceFinding;
   fixCandidates?: ComplianceFixCandidate[];
 }
 
@@ -371,6 +392,8 @@ export interface ComplianceSummary {
   notApplicable: number;
   // Of the exposed fails, those where the setting does not exist yet. Absent in older reads.
   notConfigured?: number;
+  // Of the unknowns, the rules CISA marks as checks to do by hand. Absent in older reads.
+  byHand?: number;
 }
 
 export interface StorageResidency {
@@ -653,7 +676,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -671,10 +694,18 @@ export interface DashboardData {
   // entry per day for the trend window (zero-filled), so the sparkline is to scale.
   driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
-  evidence: { ok: boolean; chainLength: number };
+  // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
+  // "unchecked" when there is none to compare with; undefined when it could not be read.
+  // "known" (an explained break) can hide "unchecked", so unanchored says there is also no
+  // off-site copy to compare with.
+  evidence: { ok: boolean; chainLength: number; check?: AuditCheck; unanchored?: boolean };
   // Whether a checked off-site copy holds every backed-up type (the Resilience page's
   // recoverable point). Undefined when it could not be read.
   offsite?: { measured: boolean };
+  // Whether the backups can be deleted where they are kept, as the Resilience page's
+  // storage alert reads it: "deletable" (the storage cannot lock them), "unknown" (no
+  // storage details set), "other" (locked, or locking not proven yet). Absent when unread.
+  backupStorage?: "deletable" | "unknown" | "other";
   alerts: DashboardAlert[];
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).
@@ -702,6 +733,18 @@ export interface RestoreFollowUp {
   pending: number;
   since: string;
   jobId: string | null;
+}
+
+// Open follow-up work across every restore: the one count every page shows, and the
+// newest restores as cards. `cards` can hold fewer restores than `restores`.
+export interface OpenFollowUpTotals {
+  steps: number;
+  restores: number;
+  href: string;
+}
+
+export interface OpenFollowUpWork extends OpenFollowUpTotals {
+  cards: RestoreFollowUp[];
 }
 
 export interface DashboardWaiting {

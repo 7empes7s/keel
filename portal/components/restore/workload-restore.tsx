@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -21,6 +22,8 @@ import {
   type WorkloadChoices,
 } from "@/lib/restore-workloads-view";
 import type { SnapshotOption } from "@/lib/portal-jobs";
+import { ReasonHint } from "@/components/reason-hint";
+import { optionalReasonMessage } from "@/lib/written-reason";
 
 // One service's restore from the Restore page (Exchange, Teams, Purview): the same
 // steps as Entra ID and Intune. Choose objects from a backup, KEEL checks what would
@@ -172,6 +175,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
   start?: { collectionId: string; targets: string[] };
 }) {
   const [choices, setChoices] = useState<WorkloadChoices | null>(null);
+  const approvalWords = useApprovalWords();
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<Step>("select");
@@ -490,14 +494,15 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
               <label className="filter-field">
                 <span>Why (optional, approvers see it)</span>
                 <input disabled={busy} onChange={(event) => setJustification(event.target.value)} placeholder="Why is this restore appropriate?" value={justification} />
+                <ReasonHint value={justification} />
               </label>
               <div className="drift-action-buttons">
-                <button aria-busy={busy || undefined} className="primary-action" disabled={!canRestore || busy} onClick={() => void send()} type="button">
+                <button aria-busy={busy || undefined} className="primary-action" disabled={!canRestore || busy || optionalReasonMessage(justification) !== null} onClick={() => void send()} type="button">
                   {sendable.length > 1 ? `Send ${sendable.length} for approval` : "Send for approval"}
                 </button>
                 <button className="secondary-action" disabled={busy} onClick={discard} type="button">Discard</button>
               </div>
-              <p className="selection-scope">This goes to approvers next. Someone other than you approves exactly this plan, and KEEL reads the tenant again before it writes.</p>
+              <p className="selection-scope">This goes to approvers next. {approvalWords.planApprover} approves exactly this plan, and KEEL reads the tenant again before it writes.</p>
             </div>
           ) : (
             <div className="drift-action-buttons">
@@ -516,7 +521,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
             ) : (
               <>
                 <li className="track-done">Approval requested</li>
-                <li className="track-current">Another person reviews this same plan</li>
+                <li className="track-current">{approvalWords.reviewStep}</li>
               </>
             )}
             <li className={allStarted ? "track-current" : undefined}>KEEL reads the tenant again, writes, then reads it back</li>

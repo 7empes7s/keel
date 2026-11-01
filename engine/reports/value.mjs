@@ -54,6 +54,7 @@ import { NOT_A_GAP } from '../collect/incomplete.mjs';
 import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
 import { loadRecoveryMetrics } from '../coverage/recoveryMetrics.mjs';
+import { countFailedRestores } from '../restore/failedRestores.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalJson, jobCorrelationId } from '../telemetry/events.mjs';
@@ -61,6 +62,11 @@ import { canonicalJson, jobCorrelationId } from '../telemetry/events.mjs';
 export const VALUE_REPORT_VERSION = 1;
 /** Rows serialized per table; totals always count every row. */
 export const MAX_REPORT_ROWS = 50;
+/**
+ * Requests serialized: every one the page pages through and the downloads list. Far
+ * above any real period's count; past it the page says the list is capped.
+ */
+export const MAX_OUTCOME_ROWS = 2000;
 /** Longest period one report may cover. */
 export const MAX_PERIOD_DAYS = 366;
 /** Source rows read per family; beyond this the report says it is incomplete. */
@@ -898,6 +904,9 @@ export async function loadValueReport(client, {
     findings = { withheld: false, ...summarizeFindings(inPeriod), rows: table.rows, rowsShown: table.shown };
     const metrics = await loadRecoveryMetrics(client, { tenantRef, requiredTypes, now: period.to });
     recovery = recoverySection(metrics, period);
+    // Failed restores: the same count Resilience and Restore show (all time, last 30 days),
+    // plus the ones that finished in this period.
+    recovery.failedRestores = await countFailedRestores(client, { tenantRef, now: generatedAt, from: period.from, to: period.to });
     backups = await loadBackupSection(client, { tenantRef, from: period.from, to: period.to });
   }
 
@@ -914,7 +923,7 @@ export async function loadValueReport(client, {
     [tenantRef],
   );
 
-  const table = capped(outcomes.map(outcomeRow));
+  const table = capped(outcomes.map(outcomeRow), MAX_OUTCOME_ROWS);
   const report = {
     version: VALUE_REPORT_VERSION,
     tenantRef,

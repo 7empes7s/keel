@@ -83,12 +83,12 @@ function request(path: string, method: string, principalId: string | null, capab
 test("only a central approver can read, approve or revoke emergency changes", async () => {
   for (const capabilities of [["read"], ["policies", "remediate", "dispose-accept"], []]) {
     assert.equal((await listRoute(request("/api/change-intents", "GET", OWNER, capabilities))).status, 403, `${capabilities}: list`);
-    assert.equal((await createRoute(request("/api/change-intents", "POST", OWNER, capabilities, { driftId, fields: ["visibility"], ownerPrincipalId: APPROVER, windowHours: 4, reason: "x" }))).status, 403, `${capabilities}: approve`);
-    assert.equal((await revokeRoute(request(`/api/change-intents/${randomUUID()}/revoke`, "POST", OWNER, capabilities, { reason: "x" }))).status, 403, `${capabilities}: revoke`);
+    assert.equal((await createRoute(request("/api/change-intents", "POST", OWNER, capabilities, { driftId, fields: ["visibility"], ownerPrincipalId: APPROVER, windowHours: 4, reason: "Emergency fix for the outage" }))).status, 403, `${capabilities}: approve`);
+    assert.equal((await revokeRoute(request(`/api/change-intents/${randomUUID()}/revoke`, "POST", OWNER, capabilities, { reason: "Emergency fix for the outage" }))).status, 403, `${capabilities}: revoke`);
   }
   assert.equal((await listRoute(request("/api/change-intents", "GET", null, ["approve"]))).status, 403, "no principal, no read");
   // The header claims approve, but the engine re-checks the person's current grant.
-  const claimed = await createRoute(request("/api/change-intents", "POST", OWNER, ["approve"], { driftId, fields: ["visibility"], ownerPrincipalId: APPROVER, windowHours: 4, reason: "self" }));
+  const claimed = await createRoute(request("/api/change-intents", "POST", OWNER, ["approve"], { driftId, fields: ["visibility"], ownerPrincipalId: APPROVER, windowHours: 4, reason: "Self-approved emergency fix" }));
   assert.equal(claimed.status, 403);
   assert.equal((await claimed.json()).error, "approver-not-authorized");
 });
@@ -101,7 +101,7 @@ test("an approver approves a change field by field, sees it in force, and revoke
   assert.equal((await approve({ driftId, fields: ["visibility"], ownerPrincipalId: OWNER, windowHours: 5, reason: "not an offered window" })).status, 400);
   assert.equal((await approve({ driftId, fields: ["displayName"], ownerPrincipalId: OWNER, windowHours: 4, reason: "unchanged field" })).status, 409);
 
-  const created = await approve({ driftId, fields: ["visibility"], ownerPrincipalId: OWNER, windowHours: 4, externalChangeId: "CHG0031337", reason: "INC-4410" });
+  const created = await approve({ driftId, fields: ["visibility"], ownerPrincipalId: OWNER, windowHours: 4, externalChangeId: "CHG0031337", reason: "Emergency fix for INC-4410" });
   assert.equal(created.status, 201);
   const { intent } = await created.json() as { intent: ChangeIntent };
   assert.equal(intent.owner.name, "On-call engineer");
@@ -130,8 +130,8 @@ test("an approver approves a change field by field, sees it in force, and revoke
   const body = await revoked.json() as { intent: ChangeIntent; settlement: { currentState: string } };
   assert.equal(body.intent.revokeReason, "emergency over");
   assert.equal(body.settlement.currentState, "unknown", "no baseline resources to compare with: nothing is rolled back");
-  assert.equal((await revokeRoute(request(`/api/change-intents/${intent.id}/revoke`, "POST", APPROVER, ["approve"], { reason: "again" }))).status, 409);
-  assert.equal((await revokeRoute(request(`/api/change-intents/${randomUUID()}/revoke`, "POST", APPROVER, ["approve"], { reason: "missing" }))).status, 404);
+  assert.equal((await revokeRoute(request(`/api/change-intents/${intent.id}/revoke`, "POST", APPROVER, ["approve"], { reason: "Emergency is over again" }))).status, 409);
+  assert.equal((await revokeRoute(request(`/api/change-intents/${randomUUID()}/revoke`, "POST", APPROVER, ["approve"], { reason: "Emergency is over now" }))).status, 404);
   const after = await (await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]))).json() as { intents: ChangeIntent[]; generatedAt: string };
   assert.equal(after.intents[0].state, "revoked");
   assert.equal(changeIntentsVerdict(after.intents, after.generatedAt).text, "No emergency change is approved right now. Changes follow your automatic rules as usual.");

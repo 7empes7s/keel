@@ -16,13 +16,18 @@ import {
 import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
-import { countOpenCompletionSteps, listOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
+import { alertStateCounts } from "../../engine/notify/alerts.mjs";
 import {
   getActiveBaseline,
   listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "@/lib/db";
 import { evidenceChainCache } from "@/lib/evidence-chain-cache";
+import type { FailedRestoreCounts } from "@/lib/failed-restores";
+import { checkAuditRecord } from "@/lib/evidence";
+import { AUDIT_CHECK_WORDS, AUDIT_RECORD_HREF, auditCheckOf, dashboardAuditCheck } from "@/lib/audit-check";
 import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
@@ -58,6 +63,7 @@ import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
+import { supportIds } from "@/lib/support-ids";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -91,7 +97,8 @@ import type {
   ProtectionHeadline,
   QualificationDecision,
   Ref,
-  RestoreFollowUp,
+  OpenFollowUpTotals,
+  OpenFollowUpWork,
   RestoreScope,
   SemanticChange,
   SemanticSummary,
@@ -364,6 +371,7 @@ export function normalizeCoverageType(raw: UnknownRecord): CoverageType {
             typeof rawDetail.pagesCompleted === "number" ? rawDetail.pagesCompleted : null,
           startedAt: iso(rawDetail.startedAt),
           completedAt: iso(rawDetail.completedAt),
+          ...supportIds(rawDetail),
         }
       : null,
     fidelity: {
@@ -488,6 +496,7 @@ async function baselinesWithCapture(client: KeelClient, ref: string, now: Date):
       supersedesId: (entry.supersedesId as string | null) ?? null,
       supersededById: (entry.supersededById as string | null) ?? null,
       supersededAt: (entry.supersededAt as string | null) ?? null,
+      reinstatedFrom: (entry.reinstatedFrom as BaselineRecord["reinstatedFrom"]) ?? null,
       capture: entry.capture as BaselineCapture,
       changesSinceCapture: entry.changesSinceCapture as BaselineChanges,
     };
@@ -518,6 +527,19 @@ function storageFrom(): StorageResidency {
   const { manifest, source, basis } = readRecoveryManifest();
   const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
   return { ...storage, basis: storage.configured ? basis : null };
+}
+
+// The storage risk the Resilience page marks Check soon: storage that cannot lock
+// backups, or no storage details at all. Undefined when the details could not be read.
+function backupStorageRisk(): DashboardData["backupStorage"] {
+  try {
+    const storage = storageFrom();
+    if (!storage.configured) return "unknown";
+    return storage.immutability === "unsupported" ? "deletable" : "other";
+  } catch (error) {
+    console.error("[keel-portal] overview backup storage state unavailable", error);
+    return undefined;
+  }
 }
 
 export async function getComplianceData(): Promise<ComplianceData> {
@@ -1335,10 +1357,11 @@ export function buildAlerts({
   coverage,
   evidence,
   offsite,
+  backupStorage,
 }: Pick<
   DashboardData,
   "activeBaseline" | "lastCollection" | "coverage" | "evidence"
-> & Partial<Pick<DashboardData, "offsite">>): DashboardAlert[] {
+> & Partial<Pick<DashboardData, "offsite" | "backupStorage">>): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
   const kinds = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -1413,28 +1436,56 @@ export function buildAlerts({
     });
   }
 
-  // No safe off-site copy: one Check soon item, linked to Resilience (the same recoverable
-  // point that page shows). Left out while nothing is backed up yet: that alert comes first.
-  if (offsite && !offsite.measured && coverage.covered > 0) {
-    alerts.push({
-      key: "no-offsite",
-      severity: "warning",
-      title: "No safe copy outside this server",
-      detail: "If this server is lost, its backups are lost with it. Fix the daily off-site copy.",
-      href: "/resilience",
-    });
+  // Backup safety is one Check soon item, linked to Resilience (the same recoverable point
+  // and storage that page shows): no safe off-site copy, backups that can be deleted where
+  // they are kept, or both in one sentence. Left out while nothing is backed up yet: that
+  // alert comes first.
+  const noOffsite = Boolean(offsite && !offsite.measured);
+  const storageRisk = backupStorage === "deletable" || backupStorage === "unknown" ? backupStorage : null;
+  if (coverage.covered > 0 && (noOffsite || storageRisk)) {
+    const storageSentence = storageRisk === "deletable"
+      ? " They can also be deleted where they are kept."
+      : storageRisk === "unknown" ? " Keel also cannot tell whether they can be deleted where they are kept." : "";
+    alerts.push(noOffsite
+      ? {
+        key: "no-offsite",
+        severity: "warning",
+        title: "No safe copy outside this server",
+        detail: `If this server is lost, its backups are lost with it.${storageSentence} Fix the daily off-site copy.`,
+        href: "/resilience",
+      }
+      : {
+        key: "deletable",
+        severity: "warning",
+        title: storageRisk === "deletable" ? "Backups can be deleted" : "Backup storage unknown",
+        detail: storageRisk === "deletable"
+          ? "They are kept on storage that cannot lock them, so anyone with access can delete them. Move them to storage that blocks deletion."
+          : "Keel cannot tell whether backups can be deleted where they are kept. Set the storage details on the Keel server.",
+        href: "/resilience",
+      });
   }
 
-  // getEvidenceIntegrity checks the record's own hash chain, not the off-site checkpoint,
-  // so ok false here is a real failed check. "Not checked" lives on Activity, which reads
-  // the off-site checkpoint.
-  if (!evidence.ok) {
+  // The same states, and words, as Activity, the menu and Integrations: a failed check
+  // is Urgent; a known, explained break or a record with no off-site copy to compare
+  // with is Check soon.
+  const audit = dashboardAuditCheck(evidence);
+  if (audit === "failed" || audit === "known" || audit === "unchecked") {
     alerts.push({
       key: "audit",
-      severity: "critical",
-      title: "The audit record failed its integrity check",
-      detail: "Who-did-what records cannot be trusted until this is investigated.",
-      href: "/activity?show=records",
+      severity: audit === "failed" ? "critical" : "warning",
+      title: AUDIT_CHECK_WORDS[audit].title,
+      detail: AUDIT_CHECK_WORDS[audit].detail,
+      href: AUDIT_RECORD_HREF,
+    });
+  }
+  // A known break outranks "no off-site copy", but the missing copy still needs fixing.
+  if (audit === "known" && evidence?.unanchored) {
+    alerts.push({
+      key: "audit-unchecked",
+      severity: "warning",
+      title: AUDIT_CHECK_WORDS.unchecked.title,
+      detail: AUDIT_CHECK_WORDS.unchecked.detail,
+      href: AUDIT_RECORD_HREF,
     });
   }
 
@@ -1443,12 +1494,12 @@ export function buildAlerts({
 
 export async function waitingFor(client: KeelClient, ref: string): Promise<DashboardWaiting> {
   const { rows: [row] } = await client.query(
-    `SELECT (SELECT count(*)::int FROM alert WHERE tenant_ref = $1 AND state IN ('open','reopened')) AS open_alerts,
-            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents`,
+    `SELECT count(*)::int AS open_incidents FROM incident WHERE tenant_ref = $1 AND status = 'open'`,
     [ref],
   );
   return {
-    openAlerts: Number(row?.open_alerts ?? 0),
+    // The same count as the Alerts page's "Needs someone" tile.
+    openAlerts: (await alertStateCounts(client, { tenantRef: ref })).waiting,
     openIncidents: Number(row?.open_incidents ?? 0),
     // A step a later restore replaced is not waiting on anyone.
     restoreFollowUps: await countOpenCompletionSteps(client, { tenantRef: ref }),
@@ -1467,10 +1518,11 @@ export async function notifyRoutesFor(client: KeelClient): Promise<NotifyRoutes>
   return { channels: Number(row?.channels ?? 0), routed: Number(row?.routed ?? 0) };
 }
 
-// Restores that still have follow-up steps open, with the job page each is finished on.
-export async function getRestoreFollowUps(): Promise<RestoreFollowUp[]> {
+// Open follow-up work: the shared totals (the same numbers Overview and the menu show)
+// plus the newest restores as cards, each with the job page its steps are closed on.
+export async function getRestoreFollowUps(): Promise<OpenFollowUpWork> {
   const ref = tenantRef();
-  return withClient(async (client) => (await listOpenCompletionWork(client, { tenantRef: ref })) as RestoreFollowUp[]);
+  return withClient(async (client) => (await readOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpWork);
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
@@ -1536,6 +1588,18 @@ export async function getDashboardData(): Promise<DashboardData> {
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),
+        // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
+        // A broken own chain is already a failed check: no second walk.
+        ...(evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+          .then((integrity) => {
+            const check = auditCheckOf(integrity);
+            // Only a known break hides "no off-site copy"; say it separately then.
+            return { check, ...(check === "known" && integrity.status === "unanchored" ? { unanchored: true } : {}) };
+          })
+          .catch((error) => {
+            console.error("[keel-portal] overview audit record check unavailable", error);
+            return {};
+          }) : { check: "failed" as const }),
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
       offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
@@ -1544,6 +1608,7 @@ export async function getDashboardData(): Promise<DashboardData> {
           console.error("[keel-portal] overview off-site copy state unavailable", error);
           return undefined;
         }),
+      backupStorage: backupStorageRisk(),
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),
@@ -1593,9 +1658,18 @@ export async function getResilienceData(): Promise<ResilienceData> {
         pins: listing.pins.length,
       });
     }
+    const failedRestores = (await countFailedRestores(client, { tenantRef: ref, now })) as FailedRestoreCounts;
+    // The same follow-up totals as Overview and Restore, not a count of restore attempts.
+    // Secondary: if it cannot be read, the page still loads and leaves the alert out.
+    let followUps: OpenFollowUpTotals | null;
+    try {
+      followUps = (await countOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpTotals;
+    } catch {
+      followUps = null;
+    }
     // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
     const kinds = resilienceKinds((await coverageFor(client, ref)).types);
-    return { generatedAt: now.toISOString(), metrics, kinds, incidents, storage };
+    return { generatedAt: now.toISOString(), metrics, failedRestores, kinds, incidents, storage, followUps };
   });
 }
 

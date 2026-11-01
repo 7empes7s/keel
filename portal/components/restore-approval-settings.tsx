@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
@@ -44,6 +45,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
   now: string;
 }) {
   const router = useRouter();
+  const approvalWords = useApprovalWords();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Off first in each group: those are the ones to look at.
@@ -53,7 +55,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
     return {
       key: `service:${row.service}`, body: { service: row.service }, name: service.name, detail: null, icon: service.icon,
       approvalRequired: row.approvalRequired, changedAt: row.changedAt, changedBy: row.changedBy,
-      offWarning: <p>Restores in {service.name}, and their high-impact changes, will be made without a second person approving them. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>,
+      offWarning: <p>Restores in {service.name}, and their high-impact changes, will be made without waiting for approval. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>,
       highRisk: false,
     };
   }).sort((a, b) => offFirst(a, b) || serviceOrder((a.body as { service: string }).service) - serviceOrder((b.body as { service: string }).service));
@@ -177,14 +179,14 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
                 : <Badge tone="fine">On for everything</Badge>}
           </h2>
           <p>
-            With approvals on, a second person approves a restore before it starts. Some restores also shorten how long
+            With approvals on, {approvalWords.approver} approves a restore before it starts. Some restores also shorten how long
             content is kept, release a hold, widen sharing, delete content, run scripts on devices or shorten group
             lifetimes; with approvals off, Keel makes these with the restore and still lists them in the plan. A restore
             starts without waiting only when every service and every kind of restore it touches has approvals off.
           </p>
           <p>
             Lockout checks always run, Keel never writes sign-in trust or certificate settings, and a two-person rule you
-            set up still applies.
+            set up still applies, unless the approval mode on Approvals is Solo.
           </p>
         </div>
       </div>

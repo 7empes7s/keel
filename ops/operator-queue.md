@@ -14258,7 +14258,10 @@ item that needs it stays untouched.
   row and never touches `evidence_head` by hand**. It refuses, and writes nothing, unless every break lies in the stretch and
   has the bug's shape. Once the entry exists, the Overview shows "Known break, explained" in amber, not red Urgent.
   No tenant calls. Never print the database URL, a password, a token or a tenant id (say "tenant A").
-- Needs: PR #887 merged **and** deployed (`/opt/keel-live` at a commit that contains it).
+- Needs: PRs #887 **and #893** merged **and** deployed (`/opt/keel-live` at a commit that contains both). **Do not run on a
+  build with #887 but without #893:** that build would append the entry but report its number as "undefined". Check with
+  `git -C <your clone> merge-base --is-ancestor <#893 merge commit> <deployed commit>`, or check that
+  `engine/govern/evidence.mjs` in `/opt/keel-live` contains `({ emit } = written);`.
 - Status: todo
 - Do, on Mulinux, from `/opt/keel-live`, with `/etc/keel/db.env` sourced. Use the Keel **admin principal** you normally use for
   CLI actions; if you have none, use the owner's admin principal.

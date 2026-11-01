@@ -84,7 +84,7 @@ function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, n
           <Link className="btn" href={compare}><Icon name="page" />Compare with the latest backup</Link>
         ) : null}
         <ResnapshotBaseline baselineId={active.id} disabled={!canBaseline} label={setupName(active)} snapshotId={source?.id ?? null} />
-        <Link className="btn" href="/baselines/new"><Icon name="plus" />New approved setup</Link>
+        <Link className="btn" href="/approved-setups/new"><Icon name="plus" />New approved setup</Link>
       </div>
       <p className="bl-help" data-part="capture-reason">
         {!source ? <RiskChip tone="soon">Not available yet</RiskChip> : null}
@@ -188,7 +188,7 @@ function ServiceCard({ summary }: { summary: ServiceSummary }) {
     </>
   );
   return summary.changed ? (
-    <li><Link className="bl-card bl-service bl-link" data-basis={summary.basis} data-tone={summary.tone} href={`/drift?service=${encodeURIComponent(summary.service.code)}`}>{body}</Link></li>
+    <li><Link className="bl-card bl-service bl-link" data-basis={summary.basis} data-tone={summary.tone} href={`/changes?service=${encodeURIComponent(summary.service.code)}`}>{body}</Link></li>
   ) : (
     <li><div className="bl-card bl-service" data-basis={summary.basis} data-tone={summary.notCovered.length && !summary.inLine.length ? undefined : "fine"}>{body}</div></li>
   );
@@ -325,7 +325,7 @@ export function ApprovedSetup({
             <h2>No approved setup yet</h2>
             <p>An approved setup is a copy of how the tenant should look. Keel compares the tenant with it after every backup and lists what changed.</p>
           </div>
-          <Link className="btn" href="/baselines/new"><Icon name="plus" />Create an approved setup</Link>
+          <Link className="btn" href="/approved-setups/new"><Icon name="plus" />Create an approved setup</Link>
         </section>
       )}
       {active ? (

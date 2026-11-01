@@ -19,7 +19,7 @@ export const DATA_SURFACES = {
   restoreApprovalsApi: { capability: "read", source: "api/restore-approvals/route.ts" },
   approvalModeApi: { capability: "read", source: "api/approval-mode/route.ts" },
   principalsApi: { capability: "users", source: "api/principals/route.ts" },
-  principalsPage: { capability: "users", source: "principals/page.tsx" },
+  principalsPage: { capability: "users", source: "people/page.tsx" },
   principalGrantApi: { capability: "roles", source: "api/principals/[id]/grant/route.ts" },
   principalRevokeApi: { capability: "roles", source: "api/principals/[id]/revoke/route.ts" },
   principalDisableApi: { capability: "users", source: "api/principals/[id]/disable/route.ts" },
@@ -44,8 +44,8 @@ export const DATA_SURFACES = {
   policyDeleteApi: { capability: "policies", source: "api/policies/[id]/delete/route.ts" },
   policyActivationPreviewApi: { capability: "policies", source: "api/policies/[id]/activation-preview/route.ts" },
   policyActivateApi: { capability: "policies", source: "api/policies/[id]/activate/route.ts" },
-  policiesPage: { capability: "policies", source: "policies/page.tsx" },
-  policyPage: { capability: "policies", source: "policies/[id]/page.tsx" },
+  policiesPage: { capability: "policies", source: "rules/page.tsx" },
+  policyPage: { capability: "policies", source: "rules/[id]/page.tsx" },
   dashboardApi: {
     capability: "read",
     source: "api/dashboard/route.ts",
@@ -104,21 +104,21 @@ export const DATA_SURFACES = {
   },
   driftPage: {
     capability: "read",
-    source: "drift/page.tsx",
+    source: "changes/page.tsx",
     entityScoped: true,
   },
   baselinesPage: {
     capability: "read",
-    source: "baselines/page.tsx",
+    source: "approved-setups/page.tsx",
   },
   // Baselines redesign: the guided flow that creates an approved setup.
   baselinesNewPage: {
     capability: "read",
-    source: "baselines/new/page.tsx",
+    source: "approved-setups/new/page.tsx",
   },
   benchmarksPage: {
     capability: "read",
-    source: "benchmarks/page.tsx",
+    source: "compliance/page.tsx",
   },
   jobsPage: {
     capability: "read",
@@ -173,7 +173,7 @@ export const DATA_SURFACES = {
   askApi: { capability: "read", source: "api/ask/route.ts", entityScoped: true },
   askPage: { capability: "read", source: "ask/page.tsx", entityScoped: true },
   // Task-94: emergency account readiness and the usage canary. Tenant-wide readers only.
-  readinessPage: { capability: "read", source: "readiness/page.tsx" },
+  readinessPage: { capability: "read", source: "emergency-access/page.tsx" },
   // Wave 2 CMP: compare two snapshots or two tenants. Tenant-wide readers only.
   compareApi: { capability: "read", source: "api/compare/route.ts" },
   comparePage: { capability: "read", source: "compare/page.tsx" },

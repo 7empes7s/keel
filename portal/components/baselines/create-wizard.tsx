@@ -123,7 +123,7 @@ export function CreateWizard({
           <p>Keel is copying {chosen ? settings(chosen.resourceCount) : "the settings"} from the backup. When it finishes, it becomes the approved setup in use and every change is measured against it.</p>
           <div className="bl-actions">
             <Link className="btn btn-primary" href={`/jobs/${encodeURIComponent(jobId)}`}>Follow its progress</Link>
-            <Link className="btn" href="/baselines">Back to approved setups</Link>
+            <Link className="btn" href="/approved-setups">Back to approved setups</Link>
           </div>
         </div>
       </section>
@@ -216,7 +216,7 @@ export function CreateWizard({
       {disabled ? <p className="bl-help">Your role can look but not create an approved setup. Someone who can manage approved setups has to do it.</p> : null}
 
       <div className="bl-wizard-actions">
-        {step > 0 ? <button className="btn" disabled={submitting} onClick={() => { setError(null); setStep(step - 1); }} type="button"><Icon name="chevron" className="bl-flip" />Back</button> : <Link className="btn" href="/baselines">Cancel</Link>}
+        {step > 0 ? <button className="btn" disabled={submitting} onClick={() => { setError(null); setStep(step - 1); }} type="button"><Icon name="chevron" className="bl-flip" />Back</button> : <Link className="btn" href="/approved-setups">Cancel</Link>}
         {step < 2 ? (
           <button className="btn btn-primary" disabled={disabled} onClick={next} type="button">Next<Icon name="chevron" /></button>
         ) : (

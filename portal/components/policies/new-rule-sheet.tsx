@@ -112,7 +112,7 @@ export function NewRuleSheet({ onClose, policy = null }: { onClose: () => void; 
       });
       if (!result.ok) { setError(result.reason); return; }
       toast({ title: `${name.trim()} created`, detail: does === "undo" ? "It is off until you preview and turn it on." : "It is on and watching for changes." });
-      router.push(`/policies/${encodeURIComponent(result.id)}`);
+      router.push(`/rules/${encodeURIComponent(result.id)}`);
     } finally {
       setBusy(false);
     }

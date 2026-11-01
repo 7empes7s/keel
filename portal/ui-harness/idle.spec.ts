@@ -6,7 +6,7 @@ const HARNESS = pathToFileURL(join(__dirname, "dist/index.html")).href;
 
 // A list that reports its order to its page must not re-render forever: once a page with
 // a list (and its open details panel) has settled, the main thread is idle.
-for (const hash of ["/drift", "/drift?open=dr5", "/benchmarks", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/compare"]) {
+for (const hash of ["/changes", "/changes?open=dr5", "/compliance", "/compliance?open=e7a10000-0000-4000-8000-0000000000e1", "/compare"]) {
   test(`idle once settled · ${hash}`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`${HARNESS}#${hash}`);

@@ -582,7 +582,7 @@ export async function withExceptionPeople(client: KeelClient, findings: Complian
       "SELECT id::text AS id, lower(email) AS email, display_name FROM principal WHERE lower(email) = ANY($1::text[])",
       [owners],
     );
-    for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/principals" });
+    for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/people" });
   }
   const granters = await principalRefs(client, exceptions.map((exception) => exception.grantedBy).filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)));
   // "Hide people's names": the owner by code name (a Keel user keeps theirs; a typed
@@ -598,7 +598,7 @@ export async function withExceptionPeople(client: KeelClient, findings: Complian
       exception: {
         ...finding.exception,
         ...(hidden ? { owner: null } : {}),
-        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/principals" : null, pseudonym: true } : known,
+        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/people" : null, pseudonym: true } : known,
         grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
       },
     };
@@ -685,7 +685,7 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
       : person
         ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true, system: person.system_kind != null }, namer), "an account without a name")
         : "an account that no longer exists";
-    const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
+    const setByRef: Ref = { kind: "person", id, name, href: person ? "/people" : null };
     return { ...baseline, setByRef };
   });
 }
@@ -1226,7 +1226,7 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   for (const row of rows) {
     const id = String(row.id);
     const shown = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer) : null;
-    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/principals", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
+    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/people", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
   }
   for (const id of wanted) {
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });
@@ -1421,7 +1421,7 @@ export function buildAlerts({
       severity: "critical",
       title: "No setup is approved yet",
       detail: "Keel cannot tell what changed until you approve a setup.",
-      href: "/baselines/new",
+      href: "/approved-setups/new",
     });
   } else if (activeBaseline.resourceCount === 0) {
     alerts.push({
@@ -1429,7 +1429,7 @@ export function buildAlerts({
       severity: "critical",
       title: "The approved setup is empty",
       detail: "It holds no settings, so it cannot describe how the tenant should look.",
-      href: "/baselines",
+      href: "/approved-setups",
     });
   }
 

@@ -33,7 +33,7 @@ export default async function PrincipalsPage() {
   const anonymity = await getAnonymitySetting();
   return <>
     <PageHeader
-      actions={canUsers && canRoles ? <Link className="btn" href="/principals?new=1"><Icon name="plus" />Add person</Link> : undefined}
+      actions={canUsers && canRoles ? <Link className="btn" href="/people?new=1"><Icon name="plus" />Add person</Link> : undefined}
       description={DESCRIPTION}
       generatedAt={data.generatedAt}
       section="Settings"

@@ -103,7 +103,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
             </section>
 
             <div className="ov-side">
-              <Link className="ov-side-card" href="/baselines">
+              <Link className="ov-side-card" href="/approved-setups">
                 <span className="ov-tile-label"><Icon name="baselines" />Approved setup</span>
                 {data.activeBaseline ? (
                   <>
@@ -200,7 +200,7 @@ function ComplianceCard({ summary }: { summary: ComplianceSummary }) {
     : counts["not-set-up"]
       ? <Badge tone="soon">{counts["not-set-up"]} not set up yet</Badge>
       : null;
-  const href = counts.failing ? "/benchmarks?result=failing" : counts["not-set-up"] ? "/benchmarks?result=not-set-up" : "/benchmarks";
+  const href = counts.failing ? "/compliance?result=failing" : counts["not-set-up"] ? "/compliance?result=not-set-up" : "/compliance";
   return (
     <Link className="ov-side-card ov-score-card" href={href}>
       <span className="ov-tile-label"><Icon name="check-circle" />Compliance score</span>

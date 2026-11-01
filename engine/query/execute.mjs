@@ -244,7 +244,7 @@ const TEMPLATES = Object.freeze({
         fields: Array.isArray(row.fields) ? row.fields.slice(0, MAX_FIELDS) : null,
         moreFields: Array.isArray(row.fields) && row.fields.length > MAX_FIELDS,
         window: { from: iso(row.window_from), to: iso(row.seen_at) },
-        source: { kind: 'change', id: row.id, href: '/drift', collectionId: row.collection_id },
+        source: { kind: 'change', id: row.id, href: '/changes', collectionId: row.collection_id },
       })),
     };
   },

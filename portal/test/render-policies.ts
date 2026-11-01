@@ -15,9 +15,9 @@ async function contexts(pathname: string, search: string) {
 }
 
 export async function renderPoliciesAt(search: string, props: ComponentProps<typeof PoliciesPage>): Promise<string> {
-  return (await contexts("/policies", search))(createElement(PoliciesPage, props));
+  return (await contexts("/rules", search))(createElement(PoliciesPage, props));
 }
 
 export async function renderPolicy(props: ComponentProps<typeof PolicyPage>): Promise<string> {
-  return (await contexts(`/policies/${props.policy.id}`, ""))(createElement(PolicyPage, props));
+  return (await contexts(`/rules/${props.policy.id}`, ""))(createElement(PolicyPage, props));
 }

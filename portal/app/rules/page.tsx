@@ -33,7 +33,7 @@ export default async function PoliciesPage() {
   const canEdit = access.capabilities.includes("policies");
   return <>
     <PageHeader
-      actions={canEdit ? <Link className="btn" href="/policies?new=1"><Icon name="plus" />New rule</Link> : undefined}
+      actions={canEdit ? <Link className="btn" href="/rules?new=1"><Icon name="plus" />New rule</Link> : undefined}
       description={DESCRIPTION}
       generatedAt={data.generatedAt}
       section="Automation center"

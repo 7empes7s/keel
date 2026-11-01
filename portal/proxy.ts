@@ -19,6 +19,7 @@ import {
   type ResolvedIdentity,
   type SignInHints,
 } from "@/lib/principal";
+import { renamedPath } from "@/lib/route-names";
 import { isSameOriginRequest } from "@/lib/same-origin";
 
 type ConfigProvider = () => AccessVerificationConfig;
@@ -103,6 +104,11 @@ function busy(request: NextRequest): NextResponse {
   });
 }
 
+// A relative Location, so the redirect never names the internal host behind the proxy.
+function renamed(location: string): NextResponse {
+  return new NextResponse(null, { status: 307, headers: { location } });
+}
+
 function isUnauthenticatedHealthCheck(request: NextRequest): boolean {
   return request.method === "GET" && request.nextUrl.pathname === "/api/health";
 }
@@ -163,6 +169,11 @@ export function createAccessMiddleware(
       requestHeaders.set(PRINCIPAL_ID_HEADER, identity.principalId);
       requestHeaders.set(CAPABILITIES_HEADER, identity.capabilities.join(" "));
       requestHeaders.set(ENTITY_CAPABILITIES_HEADER, encodeEntityCapabilities(identity.entityCapabilities));
+
+      // A page that moved to its menu name: send the old link on, query and all. Only
+      // after the sign-in check, so an unknown visitor is refused, never redirected.
+      const moved = request.method === "GET" || request.method === "HEAD" ? renamedPath(request.nextUrl.pathname) : null;
+      if (moved) return renamed(`${moved}${request.nextUrl.search}`);
 
       return NextResponse.next({ request: { headers: requestHeaders } });
     } catch {

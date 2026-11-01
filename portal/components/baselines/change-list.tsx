@@ -157,7 +157,7 @@ export function ChangeList({
   summary?: SemanticSummary;
 }) {
   const view = useViewState();
-  const pathname = usePathname() ?? "/drift";
+  const pathname = usePathname() ?? "/changes";
   const params = useLiveSearchParams();
   const router = useRouter();
   const [settled, setSettled] = useState<string[]>([]);
@@ -328,7 +328,7 @@ export function ChangeList({
   return (
     <>
     <Verdict
-      action={baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
+      action={baseline ? null : { label: "Create an approved setup", href: "/approved-setups/new" }}
       detail={narrowing.length ? changesScopeDetail(narrowing, open, open.filter((item) => item.serviceRead).length + unlisted) : undefined}
       text={verdict.text}
       tone={verdict.tone}
@@ -370,7 +370,7 @@ export function ChangeList({
         {baseline ? (
           <p>
             <Icon name="baselines" />
-            <span>Measured against <Link href="/baselines">{setupName(baseline)}</Link>, approved <time dateTime={baseline.setAt} title={formatTimestamp(baseline.setAt)}>{ago(baseline.setAt, now)}</time>.</span>
+            <span>Measured against <Link href="/approved-setups">{setupName(baseline)}</Link>, approved <time dateTime={baseline.setAt} title={formatTimestamp(baseline.setAt)}>{ago(baseline.setAt, now)}</time>.</span>
           </p>
         ) : null}
         <p>

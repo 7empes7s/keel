@@ -72,7 +72,7 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
 }) {
   const router = useRouter();
   const view = useViewState();
-  const pathname = usePathname() ?? "/principals";
+  const pathname = usePathname() ?? "/people";
   const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -246,7 +246,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
               {shownFindings && shownFindings.total ? <Ring label="fixed" value={shownFindings.percentResolved ?? 0} /> : null}
               <p className="vr-muted">{findingSentence(findings)} A check counts as fixed only while its newest result passes. An exception does not fix it.</p>
             </div>
-            <Link className="vr-link" href="/benchmarks">Open Compliance</Link>
+            <Link className="vr-link" href="/compliance">Open Compliance</Link>
           </section>
         </div>
 
@@ -357,7 +357,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
                       <Badge icon={words.icon} tone={words.badge}>{FINDING_STATE_LABELS[row.state]}</Badge>
                       <small>{findingLine(row, today)}</small>
                     </span>
-                    <span className="vr-row-acts"><Link className="btn btn-sm btn-ghost" href="/benchmarks">Open in Compliance</Link></span>
+                    <span className="vr-row-acts"><Link className="btn btn-sm btn-ghost" href="/compliance">Open in Compliance</Link></span>
                   </li>
                 );
               })}

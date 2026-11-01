@@ -90,7 +90,7 @@ function change(templateFamily: string | null): ChangeRecord {
     kind: "change", id: "d1", resourceType: "configurationPolicy", ...(templateFamily ? { templateFamily } : {}),
     naturalKey: "configurationPolicy:p1", name: "KEEL-RT-Antivirus", changeType: "modified", impact: "access-affecting",
     decision: null, seenAt: "2026-10-30T10:00:00.000Z", window: { from: null, to: "2026-10-30T10:00:00.000Z" },
-    source: { kind: "change", id: "d1", href: "/drift" },
+    source: { kind: "change", id: "d1", href: "/changes" },
   };
 }
 

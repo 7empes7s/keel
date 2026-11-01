@@ -217,14 +217,14 @@ export function rowHref(row: ActivityRow): string | null {
   if (row.job) return `/jobs/${encodeURIComponent(row.job.id)}`;
   const subject = (row.entry?.subject ?? {}) as Record<string, unknown>;
   if (typeof subject.jobId === "string" && subject.jobId) return `/jobs/${encodeURIComponent(subject.jobId)}`;
-  if (row.entry?.kind === "policy-evaluation" && typeof subject.naturalKey === "string") return `/drift?q=${encodeURIComponent(subject.naturalKey.replace(/^[^:]+:/, ""))}`;
+  if (row.entry?.kind === "policy-evaluation" && typeof subject.naturalKey === "string") return `/changes?q=${encodeURIComponent(subject.naturalKey.replace(/^[^:]+:/, ""))}`;
   if (row.entry?.kind === "policy-change") {
-    return subject.change !== "deleted" && typeof subject.policyId === "string" && subject.policyId ? `/policies/${encodeURIComponent(subject.policyId)}` : "/policies";
+    return subject.change !== "deleted" && typeof subject.policyId === "string" && subject.policyId ? `/rules/${encodeURIComponent(subject.policyId)}` : "/rules";
   }
   if (row.entry?.kind === "approval-request" || row.entry?.kind === "approval-decision" || row.entry?.kind === "approval-signoff") return "/approvals?show=decided";
   if (row.entry?.kind === "recovery-drill" || row.entry?.kind === "fidelity-drill") return "/resilience";
   if (row.entry?.kind === "offsite-copy") return "/integrations";
-  if (row.entry?.kind === "benchmark-evaluation" || row.entry?.kind === "benchmark-exception") return "/benchmarks";
+  if (row.entry?.kind === "benchmark-evaluation" || row.entry?.kind === "benchmark-exception") return "/compliance";
   if (row.entry?.kind === "alert-action" && typeof subject.alertId === "string" && subject.alertId) return `/alerts?open=${encodeURIComponent(subject.alertId)}`;
   return null;
 }
@@ -234,13 +234,13 @@ export function rowHrefLabel(row: ActivityRow): string {
   const href = rowHref(row);
   if (!href) return "";
   if (href.startsWith("/jobs/")) return "Open the job it is about";
-  if (href.startsWith("/drift")) return "Show the change it checked";
+  if (href.startsWith("/changes")) return "Show the change it checked";
   if (href.startsWith("/approvals")) return "Show decided approvals";
   if (href.startsWith("/resilience")) return "Show recovery readiness";
   if (href.startsWith("/integrations")) return "Show off-site copy settings";
   if (href.startsWith("/alerts")) return "Open the alert";
-  if (href === "/policies") return "Show the automatic rules";
-  if (href.startsWith("/policies/")) return "Open the rule";
+  if (href === "/rules") return "Show the automatic rules";
+  if (href.startsWith("/rules/")) return "Open the rule";
   return "Show the control checks";
 }
 
@@ -253,7 +253,7 @@ export function retryOf(job: Pick<JobRecord, "kind" | "status" | "params"> | nul
   if (job.kind === "backup") return { kind: "backup", tier: typeof params.tier === "string" ? params.tier : null };
   if (job.kind === "collect") return { kind: "collect" };
   if (job.kind === "restore" || job.kind === "restore-dry-run") return { kind: "plan", href: "/restore", label: "Plan it again" };
-  if (job.kind === "remediate") return { kind: "plan", href: "/drift", label: "Plan it again" };
+  if (job.kind === "remediate") return { kind: "plan", href: "/changes", label: "Plan it again" };
   return null;
 }
 

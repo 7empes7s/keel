@@ -278,8 +278,8 @@ export function subjectLinks(request: ApprovalRequestRecord): { href: string; la
   const refs = request.references;
   const links: { href: string; label: string; icon: IconName }[] = [];
   if (refs?.plan?.readable && refs.plan.dryRunJobId) links.push({ href: `/jobs/${refs.plan.dryRunJobId}`, label: "Open the full preview", icon: "show" });
-  if (refs?.baseline?.readable) links.push({ href: `/baselines?q=${encodeURIComponent(refs.baseline.name ?? "")}`, label: "View the approved setup", icon: "baselines" });
-  if (refs?.changes?.length) links.push({ href: "/drift", label: "Review the changes", icon: "swap" });
+  if (refs?.baseline?.readable) links.push({ href: `/approved-setups?q=${encodeURIComponent(refs.baseline.name ?? "")}`, label: "View the approved setup", icon: "baselines" });
+  if (refs?.changes?.length) links.push({ href: "/changes", label: "Review the changes", icon: "swap" });
   return links;
 }
 

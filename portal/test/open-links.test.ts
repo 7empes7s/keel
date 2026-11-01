@@ -35,8 +35,8 @@ function sources(directory: string): { file: string; text: string }[] {
 // Every page another page links into with `?open=`, and the component that reads it.
 const OPEN_TARGETS: Record<string, string> = {
   "/alerts": "components/alerts/alerts-page.tsx",
-  "/drift": "components/baselines/change-list.tsx",
-  "/principals": "components/people/people-page.tsx",
+  "/changes": "components/baselines/change-list.tsx",
+  "/people": "components/people/people-page.tsx",
   "/schedules": "components/schedules/schedules-page.tsx",
 };
 

@@ -1065,6 +1065,37 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
   });
 }
 
+// Who made one open change, looked up when a person opens it. The Changes list reads the
+// audit log for its first MAX_ATTRIBUTED_CHANGES changes only, so a change further down
+// would otherwise say "not known yet". The change must be open against the active baseline
+// and inside the reader's entities; anything else is null, the same as one that does not
+// exist. A failed audit read comes back as { attribution: null }.
+export async function getChangeAttribution(driftId: string, scope: EntityScope = CENTRAL_SCOPE): Promise<{ attribution: ChangeAttribution | null } | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(driftId)) return null;
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const active = (await getActiveBaseline(client, { tenantRef: ref })) as UnknownRecord | null;
+    if (!active) return null;
+    const visible = scopePredicate(scope, {
+      tenantRef: ref, typeExpr: "d.resource_type", keyExpr: "d.natural_key", asOfExpr: "d.detected_at", nextParam: 4,
+    }) as { sql: string; values: unknown[] };
+    const { rows } = await client.query(
+      `SELECT d.* FROM drift d
+        WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = $3::uuid
+          AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
+          AND NOT EXISTS (
+            SELECT 1 FROM drift n
+             WHERE n.tenant_ref = d.tenant_ref AND n.baseline_id = d.baseline_id AND n.natural_key = d.natural_key
+               AND (n.detected_at > d.detected_at OR (n.detected_at = d.detected_at AND n.id > d.id))
+          )`,
+      [ref, String(active.id), driftId, ...visible.values],
+    );
+    if (!rows[0]) return null;
+    const [item] = await withAttribution(client, ref, String(active.id), [normalizeDrift(rows[0])], scope);
+    return { attribution: item.attribution ?? null };
+  });
+}
+
 // Plan task 17 (portal-design §4.1): the restore surface lists the resources an
 // operator can select from one snapshot. The filter mirrors cli/keel-restore.mjs —
 // users are never written; authentication strengths are listed since roadmap

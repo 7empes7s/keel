@@ -5141,7 +5141,7 @@ test("Job · a running backup shows progress and every kind by service, with sta
   expect(await services.evaluateAll((groups) => groups.map((group) => group.getAttribute("data-service")))).toEqual(["Entra", "Intune"]);
   await expect(page.locator('.job-types-table tr[data-state="reading"]')).toHaveCount(1);
   await expect(page.locator('.job-types-table tr[data-state="reading"] .badge')).toHaveText("Reading now");
-  await expect(page.locator(".job-types-table tr[data-state]").filter({ has: page.getByText("Group", { exact: true }) }).locator("td[data-label='Settings']")).toHaveText("214");
+  await expect(page.locator(".job-types-table tr[data-state]").filter({ has: page.getByText("Group", { exact: true }) }).locator("td[data-label='Saved']")).toHaveText("214");
 });
 
 test("Job · a partly done backup leads with the kinds it missed and why", async ({ page }) => {

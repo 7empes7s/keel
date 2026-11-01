@@ -59,7 +59,8 @@ function uiStrings(file: string): { line: number; text: string }[] {
   const visit = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
     if (ts.isJsxAttribute(node) && CODE_ATTRIBUTES.has(node.name.getText(source))) return;
-    if (ts.isJsxAttribute(node) && node.name.getText(source).startsWith("data-")) return;
+    // data-label is read out on phones (content: attr(data-label)); other data-* are codes.
+    if (ts.isJsxAttribute(node) && node.name.getText(source).startsWith("data-") && node.name.getText(source) !== "data-label") return;
     let text: string | null = null;
     if (ts.isJsxText(node)) text = node.text;
     else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {

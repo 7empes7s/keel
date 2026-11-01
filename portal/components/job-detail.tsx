@@ -134,7 +134,7 @@ function JobTypes({ job, rows }: { job: JobRecord; rows: TypeRow[] }) {
         <table className="rs-table job-types-table">
           <caption className="visually-hidden">Each type this backup reads, with its state</caption>
           <thead>
-            <tr><th scope="col">Type</th><th scope="col">State</th><th scope="col">Settings</th><th scope="col">Took</th><th scope="col">Problem</th></tr>
+            <tr><th scope="col">Type</th><th scope="col">State</th><th scope="col">Saved</th><th scope="col">Took</th><th scope="col">Problem</th></tr>
           </thead>
           {groups.map((group) => (
             <tbody data-service={group.key} key={group.key}>
@@ -151,7 +151,7 @@ function JobTypes({ job, rows }: { job: JobRecord; rows: TypeRow[] }) {
                   <tr data-state={row.state} data-tone={row.tone} key={row.type}>
                     <th scope="row"><span className="rs-row-name">{row.name}</span></th>
                     <td data-label="State"><Badge icon={row.state === "reading" ? "refresh" : undefined} tone={row.tone}>{row.label}</Badge></td>
-                    <td data-empty={row.count === null ? "" : undefined} data-label="Settings">{row.count === null ? "—" : row.count.toLocaleString("en-GB")}</td>
+                    <td data-empty={row.count === null ? "" : undefined} data-label="Saved">{row.count === null ? "—" : row.count.toLocaleString("en-GB")}</td>
                     <td data-empty={row.took ? undefined : ""} data-label="Took">{row.took ?? "—"}</td>
                     <td data-empty={row.problem ? undefined : ""} data-label="Problem">
                       {row.problem ? <>

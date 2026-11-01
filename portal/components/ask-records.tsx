@@ -190,7 +190,7 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
   const cell = (row: Row, key: ColumnKey) => {
     const record = row.record;
     switch (key) {
-      case "kind": return <td data-label="Kind" key={key}>{row.kind}</td>;
+      case "kind": return <td data-label="Type" key={key}>{row.kind}</td>;
       case "service": return <td data-label="Service" key={key}><span className="ak-service"><Icon name={row.service.icon as IconName} />{row.service.name}</span></td>;
       case "state": return (
         <td data-label="State" key={key}>

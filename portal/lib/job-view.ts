@@ -335,7 +335,7 @@ export function jobProgressTiles(job: JobRecord, rows: TypeRow[], now: string): 
       about: reading ? `Reading ${reading.name.toLowerCase()}` : running ? "types read so far" : "types read",
       tone: problems ? "soon" : done === rows.length ? "fine" : "low",
     },
-    { key: "saved", label: "Settings saved", icon: "save", value: saved.toLocaleString("en-GB"), about: running ? "so far" : "in this backup", tone: "neutral" },
+    { key: "saved", label: "Saved", icon: "save", value: saved.toLocaleString("en-GB"), about: running ? "so far" : "in this backup", tone: "neutral" },
     { key: "problems", label: "Problems", icon: "alert", value: String(problems), about: problems ? `${problems === 1 ? "type" : "types"} not read in full` : "none", tone: problems ? (rows.some((row) => row.tone === "urgent") ? "urgent" : "soon") : "fine" },
     {
       key: "ran", label: running ? "Running for" : "Took", icon: "clock",

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { PagedRows } from "@/components/list/paged-rows";
-import { RecoveryCompletion } from "@/components/recovery-completion";
+import { FollowUpSteps } from "@/components/restore/follow-up-steps";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { formatTimestamp } from "@/lib/presentation";
@@ -84,10 +84,7 @@ function FollowUpCard({ card, name, now, canRestore }: { card: RestoreFollowUp; 
       </TechnicalDetails>
       {href ? null : (
         // Run outside the portal: no job page to open, so its steps open here.
-        <details className="follow-up-steps">
-          <summary>Show the steps</summary>
-          <RecoveryCompletion canComplete={canRestore} restoreRef={card.restoreRef} />
-        </details>
+        <FollowUpSteps canComplete={canRestore} restoreRef={card.restoreRef} />
       )}
     </li>
   );

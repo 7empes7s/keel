@@ -194,7 +194,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
           <div className="po-note" data-tone="urgent" role="status">
             <Icon name="alert" />
             <div>
-              <b>Automation is stopped by an operator{haltedAt ? <> since <time dateTime={haltedAt} title={formatTimestamp(haltedAt)}>{ago(haltedAt, now)}</time></> : null}.</b>
+              <b>Automation is stopped on the Keel server{haltedAt ? <> since <time dateTime={haltedAt} title={formatTimestamp(haltedAt)}>{ago(haltedAt, now)}</time></> : null}.</b>
               <p>{askServerAdmin(contacts, "start it again on the Keel server")} Until then no rule acts, whatever its state here.</p>
             </div>
           </div>

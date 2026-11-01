@@ -45,7 +45,7 @@ export function askServerAdmin(contacts: Contacts | null | undefined, task: stri
 export function investigatorLine(contacts: Contacts | null | undefined, canGrant: boolean): string {
   const investigators = contacts?.investigators ?? null;
   if (investigators?.length) return `Only investigators can open or change incidents. Ask ${askWho(investigators, INVESTIGATOR_ROLE)}.`;
-  if (canGrant) return "Only investigators can open or change incidents, and nobody has the role yet. You can give it to yourself or someone else.";
+  if (canGrant && investigators) return "Only investigators can open or change incidents, and nobody has the role yet. You can give it to yourself or someone else.";
   if (investigators) return `Only investigators can open or change incidents, and nobody has the role yet. Ask ${askWho(contacts?.admins, ADMIN_ROLE)} to give it to someone.`;
   return `Only investigators can open or change incidents. Ask ${askWho(contacts?.admins, ADMIN_ROLE)} who has the role, or for the role.`;
 }

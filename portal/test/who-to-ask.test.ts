@@ -43,6 +43,8 @@ test("a reader who is not an investigator is told who is, or who can give the ro
   assert.match(investigatorLine({ admins: [], investigators: [], youAreAdmin: true }, true), /nobody has the role yet\. You can give it to yourself/);
   assert.match(investigatorLine({ admins: ["Ana"], investigators: [] }, false), /nobody has the role yet\. Ask Ana \(Keel admin\) to give it to someone\./);
   assert.match(investigatorLine(null, false), /Ask a Keel admin who has the role, or for the role\./);
+  // Contacts unread: an admin is not told that nobody has the role.
+  assert.doesNotMatch(investigatorLine(null, true), /nobody has the role/);
 });
 
 test("Incidents without the investigator role: names investigators, and an admin can give themselves the role", async () => {

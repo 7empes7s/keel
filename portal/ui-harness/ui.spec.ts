@@ -1389,8 +1389,6 @@ test("What's protected sorts failed and out-of-date kinds first; each failed kin
   // The reason names the missing permission and links to its row on Setup (audit issue 10).
   await expect(failed.locator(".pt-row-why")).toContainText("Policy.Read.All");
   await expect(failed.locator(".bf-need")).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Policy\.Read\.All#setup-permissions$/);
-  await failed.getByRole("button", { name: "Retry Authentication methods policy" }).click();
-  await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
   // A failure that is not a permission says what happened, and is retried the same way.
   const labels = page.locator(".sel-row", { hasText: "Retention label" }).first();
   await expect(labels.locator(".pt-row-why")).toContainText("did not answer in time");
@@ -1404,7 +1402,44 @@ test("What's protected sorts failed and out-of-date kinds first; each failed kin
   await expect(sheet.locator(".pt-details-why")).toContainText("Why the last backup failed");
   await expect(sheet.locator(".pt-details-why .bf-need")).toHaveText("Policy.Read.All");
   await expect(sheet.getByRole("button", { name: "Retry Authentication methods policy" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Close" }).click();
+  // Retry runs the kind's tier once (audit B1): the row then says the tier is queued and
+  // cannot be pressed again, and the panel offers no second start.
+  await failed.getByRole("button", { name: "Retry Authentication methods policy" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+  await expect(failed.getByRole("button", { name: "Tier 1 queued" })).toBeDisabled();
+  await signIn.locator(".pt-row-link").first().click();
+  await expect(sheet.getByRole("button", { name: "Tier 1 queued" })).toBeDisabled();
 });
+
+// UI audit B1: "Back up Tier 2" from a kind's panel shows its toast above the panel, turns
+// every Tier 2 button off, and the tier card says Queued; a second press is impossible.
+for (const [width, height, theme] of [[1440, 900, "dark"], [390, 844, "light"]] as const) {
+  test(`a backup started from the panel is confirmed and cannot start twice · ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await open(page, "/protect?open=deviceConfiguration", theme);
+    const sheet = page.locator(".bl-sheet");
+    await sheet.getByRole("button", { name: "Back up Tier 2" }).click();
+    const toast = page.locator(".toast").first();
+    await expect(toast).toContainText("Tier 2 backup queued");
+    // The toast is on top of the panel, not under it.
+    const box = (await toast.boundingBox())!;
+    expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".toast"), [box.x + box.width / 2, box.y + box.height / 2])).toBe(true);
+    await expect(sheet.getByRole("button", { name: "Tier 2 queued" })).toBeDisabled();
+    await expect(sheet.locator(".bl-help")).toContainText("it starts when a worker is free");
+    await page.screenshot({ path: `test-results/backup-queued-panel-${width}-${theme}.png` });
+    await sheet.getByRole("button", { name: "Close" }).click();
+    const card = page.locator(".pt-tier.tier2-card");
+    await expect(card.locator(".badge")).toHaveText("Queued");
+    await expect(card.locator(".tier-run")).toContainText("Queued");
+    await expect(card.getByRole("button", { name: "Tier 2 backup is queued" })).toBeDisabled();
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `test-results/backup-queued-card-${width}-${theme}.png` });
+    type Call = { url: string; method: string };
+    const posts = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls.filter((call) => call.method === "POST" && call.url === "/api/actions/backup").length);
+    expect(posts).toBe(1);
+  });
+}
 
 // The page's done-test (portal audit, What's protected): tiles filter the list in the
 // address, the view survives a reload, selection names the tiers it runs, every job

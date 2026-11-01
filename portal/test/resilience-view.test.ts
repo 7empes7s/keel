@@ -314,3 +314,17 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
   const none = resilienceKinds([kind("managedDevice", { protectionState: "not-covered", adapter: null, lastCollectedAt: null })]);
   assert.deepEqual(serviceGroups(base, none, NOW)[0].rows[0].status, "Not run yet");
 });
+
+test("alerts that need work on the Keel server name the Keel admins (D12)", () => {
+  const base = metrics({ observations: [success("user", "2026-10-03T11:00:00.000Z")] });
+  const data = { generatedAt: NOW, metrics: base, failedRestores: NO_FAILED_RESTORES, kinds: resilienceKinds([kind("user")]), incidents: [], storage: { configured: false }, followUps: null } as unknown as ResilienceData;
+  const todo = (alerts: ReturnType<typeof resilienceAlerts>, key: string) => String(alerts.find((alert) => alert.key === key)?.todo);
+  const named = resilienceAlerts({ ...data, contacts: { admins: ["Ana Admin", "Ben Admin"], investigators: [] } });
+  assert.equal(todo(named, "no-offsite"), "Ask Ana Admin or Ben Admin (Keel admins) to fix the daily off-site copy on the Keel server.");
+  assert.equal(todo(named, "no-drill"), "Ask Ana Admin or Ben Admin (Keel admins) to run one from the Keel server. It uses test objects only.");
+  assert.equal(todo(named, "storage"), "Ask Ana Admin or Ben Admin (Keel admins) to record where backups are stored on the Keel server.");
+  const mine = resilienceAlerts({ ...data, contacts: { admins: [], investigators: [], youAreAdmin: true } });
+  assert.equal(todo(mine, "no-offsite"), "As the Keel admin, fix the daily off-site copy on the Keel server.");
+  // Unread contacts still name the role, never "your server admin".
+  for (const alert of resilienceAlerts(data)) assert.doesNotMatch(String(alert.todo), /server admin/i);
+});

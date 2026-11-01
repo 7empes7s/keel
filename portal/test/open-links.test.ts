@@ -36,6 +36,7 @@ function sources(directory: string): { file: string; text: string }[] {
 const OPEN_TARGETS: Record<string, string> = {
   "/alerts": "components/alerts/alerts-page.tsx",
   "/drift": "components/baselines/change-list.tsx",
+  "/principals": "components/people/people-page.tsx",
   "/schedules": "components/schedules/schedules-page.tsx",
 };
 

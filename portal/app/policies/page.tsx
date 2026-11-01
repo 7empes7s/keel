@@ -12,6 +12,7 @@ import type { Policy } from "@/lib/policies";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { AnonymityNote } from "@/components/anonymity-note";
 import { getAnonymitySetting } from "@/lib/anonymity";
+import { getContacts } from "@/lib/portal-data";
 
 const TITLE = "Automatic rules";
 const DESCRIPTION = "What Keel does on its own when something changes, and who it acts as.";
@@ -40,6 +41,6 @@ export default async function PoliciesPage() {
       title={TITLE}
     />
     <AnonymityNote setting={await getAnonymitySetting()} />
-    <PoliciesBody canEdit={canEdit} haltFile={data.haltFile} halted={data.automationDisabled} haltedAt={data.automationHaltedAt} now={data.generatedAt} policies={data.policies} />
+    <PoliciesBody canEdit={canEdit} contacts={data.automationDisabled ? await getContacts(access.principalId) : null} haltFile={data.haltFile} halted={data.automationDisabled} haltedAt={data.automationHaltedAt} now={data.generatedAt} policies={data.policies} />
   </>;
 }

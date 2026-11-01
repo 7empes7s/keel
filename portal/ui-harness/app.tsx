@@ -2696,7 +2696,7 @@ function IncidentsRoute({ viewer }: { viewer: boolean }) {
   const selected = id === INCIDENT_CLOSED.incident.id ? INCIDENT_CLOSED : INCIDENT;
   return <>
     <PageHeader description={INCIDENTS_DESCRIPTION} generatedAt={now} marker={viewer ? "Read-only" : undefined} section="Restore" status={incidentStatus(INCIDENTS, selected)} title="Incidents" />
-    <IncidentsPage canInvestigate={!viewer} incidents={INCIDENTS} now={now} selected={selected} />
+    <IncidentsPage canInvestigate={!viewer} contacts={viewer ? { admins: ["Amara Okafor"], investigators: ["Ines Investigator"] } : null} incidents={INCIDENTS} now={now} selected={selected} />
   </>;
 }
 

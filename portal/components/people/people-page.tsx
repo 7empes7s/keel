@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type MouseEvent } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { MissingOpened } from "@/components/list/missing-opened";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { AddPersonSheet } from "@/components/people/add-person-sheet";
@@ -190,6 +191,7 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
     <div className="pe-page">
       <Verdict action={verdictAction} detail={verdict.detail} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
+        {openId && !opened ? <MissingOpened noun="person" onDismiss={() => view.set({ open: null })} /> : null}
         <section aria-label="People at a glance" className="pe-tiles">
           {tiles.map((tile) => {
             const adds = addsWords(tileTotals.get(TILE_KEYS[tile.key]), pickedTiles.length);

@@ -162,7 +162,8 @@ export function AlertsPage({ alerts, linked, counts: serverCounts, now, canRespo
 
   // One call per alert; one toast that names what did not change.
   async function run(action: AlertAction, ids: string[], text?: string): Promise<string | null> {
-    const chosen = known.filter((alert) => ids.includes(alert.id) && actionable(action, alert));
+    // Picks act on listed alerts only; the linked alert only when it is the one opened.
+    const chosen = known.filter((alert, index) => ids.includes(alert.id) && (index < alerts.length || alert.id === opened?.id) && actionable(action, alert));
     if (chosen.length === 0) {
       toast({ tone: "warning", title: "Nothing to change", detail: action === "acknowledge" ? "The chosen alerts are already acknowledged or closed." : "The chosen alerts are already in that state." });
       return null;

@@ -6,7 +6,7 @@
 import type { BadgeTone } from "@/components/ui/badge";
 import { fromNow } from "@/lib/presentation";
 import type { ConnectionExpiry } from "@/lib/setup-services";
-import type { PermissionEntry } from "@/lib/setup-view";
+import { UNUSED_WHY, type PermissionEntry } from "@/lib/setup-view";
 
 // The states engine/bootstrap/connections.mjs records (CONNECTION_STATES).
 export type ConnectionState =
@@ -172,14 +172,15 @@ export const GRANT_LABELS: Record<GrantStatus, string> = {
   missing: "Missing",
   "not-checked": "Not checked",
   granted: "Granted",
-  extra: "Not used by Keel",
+  extra: "Extra access",
 };
 
 export const GRANT_TONES: Record<GrantStatus, BadgeTone> = {
   missing: "urgent",
   "not-checked": "neutral",
   granted: "fine",
-  extra: "neutral",
+  // Excess privilege: amber, with a reason and a removal hint on the row.
+  extra: "soon",
 };
 
 const GRANT_ORDER: GrantStatus[] = ["missing", "not-checked", "granted", "extra"];
@@ -225,7 +226,7 @@ export function grantRows(connection: Connection, catalog: PermissionEntry[] = [
     rows.push(permission(name, true, status));
   }
   for (const name of observed?.extraPermissions ?? []) {
-    if (!wanted.permissions.includes(name)) rows.push(permission(name, false, "extra"));
+    if (!wanted.permissions.includes(name)) rows.push({ ...permission(name, false, "extra"), usedFor: `Nothing in Keel uses this. ${UNUSED_WHY} Remove it from the app in Entra ID.` });
   }
   const rolesMissing = observed?.missingRoles ?? null;
   for (const name of wanted.roles) {

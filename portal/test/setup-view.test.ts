@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import {
+  PERMISSION_STATUS_LABELS, PERMISSION_STATUS_ORDER, PERMISSION_STATUS_TONES, UNUSED_WHY, unusedSentence,
   apiPermissionsLink, appFor, confirmedRoles, consentLink, firstBackupLine, currentStep, missingSentence, missingWords, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
   roleLink, setupPrimary, setupStatus, stepHelp, stepLink, stepTitle,
   type PermissionEntry, type SetupPermissions, type SetupScope, type SetupState, type SetupStep,
@@ -129,6 +130,15 @@ test("permission rows: granted, missing, optional and held-but-unused, grouped b
   assert.equal(restorer[0].service, "entra");
   assert.deepEqual(restorer.slice(-2).map((row) => [row.status, row.name]), [["unused", "Channel.Create"], ["unused", "Team.ReadBasic.All"]]);
   assert.equal(restorer.at(-1)!.words, "List teams", "an unused permission still gets plain words when Keel knows them");
+  // Backlog C4: a held permission Keel never uses is excess privilege, flagged amber with
+  // a plain reason and a removal hint, never grey and silent.
+  const unused = restorer.filter((row) => row.status === "unused");
+  assert.equal(PERMISSION_STATUS_TONES.unused, "soon", "extra access is amber");
+  assert.equal(PERMISSION_STATUS_LABELS.unused, "Extra access");
+  assert.deepEqual(PERMISSION_STATUS_ORDER.slice(0, 2), ["missing", "unused"], "right after missing: an action for an admin");
+  assert.ok(unused.every((row) => row.usedFor.includes(UNUSED_WHY) && /Remove it from the app in Entra ID/.test(row.usedFor)));
+  assert.equal(unused[0].serviceLabel, "Extra access Keel never uses");
+  assert.equal(unusedSentence("restorer", unused), "The restore writer app holds 2 permissions Keel never uses. Remove them.");
   const entra = restorer.filter((row) => row.service === "entra");
   const kinds = ["Users", "Groups", "Memberships", "Roles", "Devices", "Apps", "Policies", "Settings", "Content"];
   assert.deepEqual(entra.map((row) => kinds.indexOf(row.kind)), [...entra.map((row) => kinds.indexOf(row.kind))].sort((a, b) => a - b), "users, groups, roles, then policies and settings");

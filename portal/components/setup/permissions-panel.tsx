@@ -14,7 +14,7 @@ import { addsWords, applyFilters, pickedTiles, tileCounts, toggleTile, type Filt
 import { byText, pageGroups, sortRows } from "@/lib/paging";
 import {
   PERMISSION_STATUS_LABELS, PERMISSION_STATUS_ORDER, PERMISSION_STATUS_TONES,
-  apiPermissionsLink, appFor, appName, appNameInSentence, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows, roleLink,
+  UNUSED_WHY, apiPermissionsLink, appFor, appName, appNameInSentence, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows, roleLink, unusedSentence,
   type PermissionRow, type PermissionStatus, type SetupState,
 } from "@/lib/setup-view";
 import { toast } from "@/lib/toast";
@@ -25,7 +25,8 @@ import { readList, useViewState } from "@/lib/use-view-state";
 // app holds it. A missing role links to where it is assigned: consent never assigns one.
 // Missing ones come first with Microsoft's admin consent page one click away; when the
 // admin comes back to this tab, the page checks the tenant again on its own. Held
-// permissions Keel never uses are listed last, grey, never as a warning.
+// permissions Keel never uses are excess privilege: amber, with an alert per app that
+// says why it matters and links to where an admin removes them. Keel never removes them.
 
 const SERVICE_ICONS: Record<string, IconName> = {
   entra: "service-entra", governance: "service-entra", intune: "service-intune", exchange: "service-exchange",
@@ -37,7 +38,7 @@ const STATUS_HINTS: Record<PermissionStatus, string> = {
   optional: "Would add a feature; nothing fails without them",
   "not-checked": "Keel could not look in your tenant",
   granted: "The app holds these",
-  unused: "The app holds these, but Keel never uses them",
+  unused: "Keel never uses these. Remove them",
 };
 
 const NOUN = { one: "permission or role", many: "permissions and roles" };
@@ -117,6 +118,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
       consent: consentLink(state.tenantId, info?.appId),
       entra: apiPermissionsLink(info?.appId),
       missing: own.filter((row) => row.status === "missing"),
+      unused: own.filter((row) => row.status === "unused"),
     };
   });
 
@@ -199,6 +201,43 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
         );
       })}
 
+      {apps.filter((entry) => entry.unused.length).map((entry) => {
+        const roles = entry.unused.filter((row) => row.type === "admin-role");
+        const permissions = entry.unused.length - roles.length;
+        return (
+          <div className="su-pp-alert" data-kind="unused" data-tone="soon" key={`unused:${entry.identity}`} role="status">
+            <span aria-hidden="true" className="su-pp-alert-icon"><Icon name="alert" /></span>
+            <div className="su-pp-alert-body">
+              <p className="su-pp-alert-title">{unusedSentence(entry.identity, entry.unused)}</p>
+              <p>
+                This is extra access. {UNUSED_WHY} Every permission an app does not need is one more way in for an attacker, so remove what Keel does not use. Nothing in Keel stops working.
+              </p>
+              <p>
+                {permissions ? `An admin removes ${permissions === 1 ? "the permission" : "the permissions"} in Entra ID under the app's API permissions${roles.length ? ", and " : "."}` : ""}
+                {roles.length ? `${permissions ? "a" : "A"} Privileged Role Administrator removes ${roles.length === 1 ? "the role" : "each role"} from ${entry.info?.displayName ?? `the ${appNameInSentence(entry.identity)}`}: ${roles.map((row) => row.name).join(", ")}.` : ""}
+                {" "}Keel never removes access for you.
+              </p>
+              <div className="su-pp-alert-actions">
+                {permissions && entry.entra ? (
+                  <a className="btn" href={entry.entra} onClick={arm} rel="noreferrer" target="_blank">
+                    <Icon name="link" />Remove in Entra ID<span className="visually-hidden"> (opens in a new tab)</span>
+                  </a>
+                ) : null}
+                {roles.map((row) => {
+                  const href = roleLink(row);
+                  return href ? (
+                    <a className="btn" href={href} key={row.id} onClick={arm} rel="noreferrer" target="_blank">
+                      <Icon name="person" />Remove {row.name}<span className="visually-hidden"> in {row.api === "intune" ? "Intune" : "Entra ID"} (opens in a new tab)</span>
+                    </a>
+                  ) : null;
+                })}
+                <CopyNames names={entry.unused.map((row) => row.name)} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
       <div aria-label="Permissions by status" className="su-pp-tiles" role="group">
         {PERMISSION_STATUS_ORDER.filter((status) => all[status] > 0).map((status) => {
           const entry = counts.get(status);
@@ -214,7 +253,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
               title={STATUS_HINTS[status]}
               type="button"
             >
-              <span className="su-pp-tile-label"><Icon name={status === "granted" ? "check-circle" : status === "missing" ? "x-circle" : "info"} />{PERMISSION_STATUS_LABELS[status]}</span>
+              <span className="su-pp-tile-label"><Icon name={status === "granted" ? "check-circle" : status === "missing" ? "x-circle" : status === "unused" ? "alert" : "info"} />{PERMISSION_STATUS_LABELS[status]}</span>
               <b>{entry?.count ?? 0}</b>
               <small>{adds ?? STATUS_HINTS[status]}</small>
             </button>
@@ -264,7 +303,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
                         <span className="su-ptable-app-counts">
                           {appEntry.counts.missing ? <Badge tone="urgent">{appEntry.counts.missing} missing</Badge> : null}
                           <Badge tone="fine">{appEntry.counts.granted} granted</Badge>
-                          {appEntry.counts.unused ? <Badge tone="neutral">{appEntry.counts.unused} not used</Badge> : null}
+                          {appEntry.counts.unused ? <Badge tone={PERMISSION_STATUS_TONES.unused}>{appEntry.counts.unused} extra</Badge> : null}
                         </span>
                       </div></th>
                     </tr>
@@ -275,7 +314,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
                       {group.label}
                       <small>{group.rows.length}{continued ? " · continued" : ""}</small>
                       {group.service === "unused" && appEntry.entra ? (
-                        <a className="su-inline-link" href={appEntry.entra} rel="noreferrer" target="_blank">Review in Entra ID<span className="visually-hidden"> (opens in a new tab)</span></a>
+                        <a className="su-inline-link" href={appEntry.entra} rel="noreferrer" target="_blank">Remove in Entra ID<span className="visually-hidden"> (opens in a new tab)</span></a>
                       ) : null}
                     </div></th>
                   </tr>

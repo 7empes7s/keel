@@ -191,7 +191,7 @@ test("a backup job lists every kind it reads by service, with state, count, time
   assert.equal(ended.tone, "urgent");
   // The problems lead the page as one alert; specifics behind Show details.
   const alert = typeProblemsAlert(rows)!;
-  assert.equal(alert.title, "1 kind was not backed up in full");
+  assert.equal(alert.title, "1 type was not backed up in full");
   assert.deepEqual(alert.more, ["Device compliance policy: Microsoft 365 slowed Keel down"]);
   const html = renderToStaticMarkup(createElement(JobDetail, { job: { ...normalizeJob({ ...row, kind: "backup", status: "running", error: null, finished_at: null }), progress }, now }));
   assert.match(html, /role="progressbar"/);

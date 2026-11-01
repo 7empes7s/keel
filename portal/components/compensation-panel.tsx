@@ -81,7 +81,7 @@ function operationLabel(op: CompensationPlan["operations"][number]): string {
     const count = op.removeAssignments.ids.length;
     return `Remove its ${count} assignment${count === 1 ? "" : "s"}, then delete the policy this restore created`;
   }
-  if (op.verb === "delete") return op.undoes === "restore-soft-deleted" ? "Delete again (return to deleted items)" : "Delete the object this restore created";
+  if (op.verb === "delete") return op.undoes === "restore-soft-deleted" ? "Delete again (return to deleted items)" : "Delete the setting this restore created";
   return `Revert ${fieldList(op.revertedFields ?? []) || "changed fields"}`;
 }
 

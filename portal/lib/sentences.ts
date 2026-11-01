@@ -64,7 +64,7 @@ const KIND_WORDS: Record<string, string> = {
   baseline: "Baseline",
   "dry-run": "Dry run",
   change: "Change",
-  snapshot: "Snapshot",
+  snapshot: "Backup",
   policy: "Policy",
   channel: "Channel",
 };
@@ -140,7 +140,7 @@ function planPhrase(plan: PlanRef | null | undefined): string {
   if (!plan || !plan.readable) return "a dry run that is no longer readable";
   if (plan.complianceFix) return `a fix for a failing compliance check (${plural(plan.resources ?? 0, "setting")})`;
   if (plan.workload) return `${workloadSubject(plan.workload)} (${plural(plan.resources ?? 0, "setting")}) from the backup of ${when(plan.snapshotAt)}`;
-  return `${plural(plan.resources ?? 0, "resource")} from the snapshot of ${when(plan.snapshotAt)}`;
+  return `${plural(plan.resources ?? 0, "setting")} from the backup of ${when(plan.snapshotAt)}`;
 }
 
 /** A dry run of another Microsoft 365 service's restore, named by its service and what was chosen. */
@@ -219,7 +219,7 @@ export function jobName(job: JobLike): string {
   const params = (job.params ?? {}) as Record<string, unknown>;
   const refs = job.references ?? EMPTY_REFERENCES;
   switch (job.kind) {
-    case "collect": return "Backup of every configuration type";
+    case "collect": return "Backup of every setting type";
     case "backup": return `Backup of ${tierPhrase(params.tier)}`;
     case "restore": {
       if (typeof params.compensates === "string") return `Dry run of an undo of the restore of ${planPhrase(refs.undoes)}`;
@@ -234,7 +234,7 @@ export function jobName(job: JobLike): string {
         return typeof key === "string" && key ? `Dry run of a fix for a failing compliance check on ${namedResource(key)}` : "Dry run of a fix for a failing compliance check";
       }
       const selected = Array.isArray(params.selection) ? params.selection.length : 0;
-      return `Dry run of a restore of ${plural(selected, "selected resource")} from the snapshot of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
+      return `Dry run of a restore of ${plural(selected, "selected setting")} from the backup of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
     }
     case "remediate": return `Roll back of ${changesPhrase(refs.changes)}`;
     case "dispose": return decisionPhrase(params, refs);
@@ -265,8 +265,8 @@ export function jobStatusSentence(job: JobLike, now: string): string {
       const gaps = jobIncompleteTypes(job).length;
       const done = `${ago(job.finishedAt ?? null, now)}${took ? ` after ${took}` : ""}`;
       if (!gaps) return `Finished ${done}`;
-      if (job.kind === "content-collect") return `Partly done ${done}: ${plural(gaps, "kind")} of content not backed up in full`;
-      if (job.kind === "workload-collect") return `Partly done ${done}: ${plural(gaps, "kind")} incomplete`;
+      if (job.kind === "content-collect") return `Partly done ${done}: ${plural(gaps, "type")} of content not backed up in full`;
+      if (job.kind === "workload-collect") return `Partly done ${done}: ${plural(gaps, "type")} incomplete`;
       return `Partly done ${done}: ${plural(gaps, "type")} not backed up`;
     }
     case "failed": return `Failed ${ago(job.finishedAt ?? job.startedAt ?? null, now)}`;
@@ -320,7 +320,7 @@ export function approvalImpact(request: RequestLike): string | null {
 // job kind an approval request names. Every one must be here (test/audit-sentences.test.ts).
 export const ACTION_PHRASES: Record<string, string> = {
   // Backups
-  collect: "back up every configuration type",
+  collect: "back up every setting type",
   backup: "run a backup",
   "content-collect": "back up mail, files and Teams content",
   "workload-collect": "back up Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings",
@@ -540,7 +540,7 @@ const CHANGE_INTENT_ENDINGS: Record<string, string> = {
 const APPROVAL_CLASS_WORDS: Record<string, string> = {
   "content-restore-other-location": "restores of content to another location",
   "bulk-restore": "large restores",
-  delete: "restores that delete items",
+  delete: "restores that delete settings",
   "retention-shortening": "restores that shorten how long content is kept",
   "legal-hold-release": "restores that release a legal hold",
 };
@@ -577,7 +577,7 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
     ? `${actor} switched approval mode to Solo, so the person who asks can approve their own requests. They confirmed the risk warning`
     : `${actor} switched approval mode to Two people, so someone other than the person who asked approves`,
   "approval-policy": (s, actor) => {
-    const what = APPROVAL_CLASS_WORDS[String(s.actionClass)] ?? "a kind of restore";
+    const what = APPROVAL_CLASS_WORDS[String(s.actionClass)] ?? "a type of restore";
     return s.twoPerson === true ? `${actor} made ${what} need two approvers` : `${actor} made ${what} need one approver`;
   },
   "action-attempt": (s, actor) => {
@@ -679,7 +679,7 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
   "workload-restore": (s, actor) => `${actor} ran a restore of ${workloadRestoreSubject(s)}, which ${WORKLOAD_RESTORE_OUTCOMES[String(s.outcome)] ?? "ended"}`,
   "recovery-completion": (_s, actor) => `${actor} updated the follow-up steps of a restore`,
   "incident-recovery": (s, actor) => `${actor} updated incident recovery: ${typeof s.transition === "string" ? words(s.transition).toLowerCase() : "a change"}`,
-  "incident-recovery-check": () => "Keel checked a restore for harmful items left behind",
+  "incident-recovery-check": () => "Keel checked a restore for harmful settings left behind",
   "fidelity-drill": (s) => typeof s.resourceType === "string"
     ? `A test restore of a ${resourceTypeLabel(s.resourceType)} was measured`
     : "A test restore was measured",
@@ -689,7 +689,7 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
   // Backups and copies
   "job.started": (s, actor) => `${actor} started to ${actionPhrase(s.kind)}`,
   "collection.completed": (s) => typeof s.items === "number"
-    ? `A backup of ${plural(Number(s.types ?? 0), "type")} finished with ${plural(s.items, "item")}`
+    ? `A backup of ${plural(Number(s.types ?? 0), "type")} finished with ${plural(s.items, "setting")}`
     : "A backup finished",
   "backup-complete": () => "A backup finished",
   "chain-break-explained": (s, actor) => Array.isArray(s.breakSeqs)
@@ -722,7 +722,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
   const subject = (entry.subject && typeof entry.subject === "object" ? entry.subject : {}) as Subject;
   const sentence = EVIDENCE_SENTENCES[entry.kind];
   // A kind with no sentence yet (the test stops one from shipping) still reads as words.
-  return sentence ? sentence(subject, actorName, names) : `${actorName} recorded an entry of a kind Keel does not describe yet`;
+  return sentence ? sentence(subject, actorName, names) : `${actorName} recorded an entry of a type Keel does not describe yet`;
 }
 
 export function timeAgo(value: string | null | undefined, now: string): string {

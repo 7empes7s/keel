@@ -94,7 +94,7 @@ export function ApprovalModeCard({ setting, canChange, now }: { setting: Approva
                           <li>The person who asks for a restore, an undo, an accepted change or an emergency change can approve it straight away, with a reason.</li>
                           <li>A mistake or a stolen account is not caught by a second person.</li>
                         </ul>
-                        <p>Each self-approval is marked “Self-approved” on Approvals and in Activity. Solo has no exceptions: it also covers kinds of change set to need two approvers. Each self-approval needs a reason that says why. Lockout checks still run. The switch and your confirmation are written to the audit record. You can switch back at any time.</p>
+                        <p>Each self-approval is marked “Self-approved” on Approvals and in Activity. Solo has no exceptions: it also covers types of change set to need two approvers. Each self-approval needs a reason that says why. Lockout checks still run. The switch and your confirmation are written to the audit record. You can switch back at any time.</p>
                       </div>
                     )}
                     disabled={busy}

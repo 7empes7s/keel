@@ -45,7 +45,7 @@ const READ: BackupHealth[] = ["ok", "empty", "stale"];
 const TONE_RANK: Record<ServiceTone, number> = { urgent: 0, soon: 1, low: 2, fine: 3, neutral: 4 };
 
 function kinds(count: number): string {
-  return `${count} ${count === 1 ? "kind" : "kinds"}`;
+  return `${count} ${count === 1 ? "type" : "types"}`;
 }
 
 /** Why one kind is not backed up, in words, and where to fix it. */

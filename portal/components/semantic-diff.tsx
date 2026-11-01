@@ -41,7 +41,7 @@ export function SemanticDiff({ item, change, record }: { item: DriftRecord; chan
         <RecordField copy={false} label="Comparison rules" value={change.rules} />
         <RecordField copy={false} label="Behavioural settings" value={`${change.total}: ${change.groups.fixed} cannot be changed back in place, ${change.groups.behaviour} can be changed back, ${change.groups["unknown-before"]} with no earlier value`} />
         <RecordField copy={false} label="Server-owned settings not shown" value={change.cosmetic} />
-        <RecordCompare after={item.after} before={item.before} label="Whole item" sides={compareSides(false)} />
+        <RecordCompare after={item.after} before={item.before} label="Whole setting" sides={compareSides(false)} />
         {change.fields.map((field) => (
           <FieldRecord
             after={field.kind === "removed" ? undefined : field.after}

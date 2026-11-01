@@ -61,7 +61,7 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
           <div className="ov-card-head">
             <div>
               <h2 id="ov-coverage-heading"><Icon name="backup" />What Keel backs up</h2>
-              <p className="ov-sub" title="A restore counts as proven only after a test restore on this tenant.">{knownKinds.toLocaleString("en-GB")} kinds of settings Keel knows</p>
+              <p className="ov-sub" title="A restore counts as proven only after a test restore on this tenant.">{knownKinds.toLocaleString("en-GB")} setting types Keel knows</p>
             </div>
             <button aria-label="What Keel backs up: open full screen" className="btn btn-sm btn-ghost ov-full ov-full-icon" onClick={openChart("coverage")} type="button"><Icon name="show" /></button>
           </div>
@@ -95,8 +95,8 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
             <p className="ov-sub">A restore counts as proven only after a test restore on this tenant.</p>
             <CoverageRing big coverage={data.coverage} />
             <table className="ov-table">
-              <caption className="visually-hidden">Kinds of settings by backup state, as numbers</caption>
-              <thead><tr><th scope="col">State</th><th className="ov-num" scope="col">Kinds</th></tr></thead>
+              <caption className="visually-hidden">Setting types by backup state, as numbers</caption>
+              <thead><tr><th scope="col">State</th><th className="ov-num" scope="col">Types</th></tr></thead>
               <tbody>
                 <tr><th scope="row">Backed up</th><td className="ov-num">{data.coverage.covered}</td></tr>
                 <tr><th scope="row">Failed</th><td className="ov-num">{data.coverage.failed}</td></tr>
@@ -106,7 +106,7 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
                 <tr><th scope="row">Not backed up by Keel yet</th><td className="ov-num">{data.coverage.notCovered}</td></tr>
                 <tr><th scope="row">Not on this tenant</th><td className="ov-num">{data.coverage.unavailable}</td></tr>
               </tbody>
-              <tfoot><tr><th scope="row">All kinds</th><td className="ov-num">{knownKinds}</td></tr></tfoot>
+              <tfoot><tr><th scope="row">All types</th><td className="ov-num">{knownKinds}</td></tr></tfoot>
             </table>
             <Link className="btn btn-secondary" href="/protect">Open What&apos;s protected</Link>
           </div>

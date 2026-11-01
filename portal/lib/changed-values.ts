@@ -56,15 +56,15 @@ export const CHANGE_LABELS: Record<ChangeKind, string> = { changed: "Changed", a
 /** A value with ids read as the names Keel has for them; an id with no name is said so. */
 export function readableValue(value: unknown, names: Readonly<Record<string, string>> = {}): unknown {
   if (typeof value === "string") {
-    if (value === "<id>") return "an object Keel could not name";
+    if (value === "<id>") return "a setting Keel could not name";
     if (value === HIDDEN_VALUE) return HIDDEN_WORDS;
     const ref = /^ref:([A-Za-z]+):(.+)$/.exec(value);
     if (ref) return `${ref[2]} (${resourceTypeLabel(ref[1])})`;
-    if (value === "ref:unresolved") return "an object Keel could not name";
+    if (value === "ref:unresolved") return "a setting Keel could not name";
     // Exchange writes addresses with their type ("smtp:a@b.example"); the type reads after.
     const address = /^(smtp|sip|x500|eum):(.+)$/i.exec(value);
     if (address) return `${address[2]} (${address[1].toUpperCase()} address)`;
-    return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "an object Keel has no name for");
+    return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "a setting Keel has no name for");
   }
   if (Array.isArray(value)) return value.map((entry) => readableValue(entry, names));
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, readableValue(inner, names)]));

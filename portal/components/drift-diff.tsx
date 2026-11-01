@@ -58,7 +58,7 @@ export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactN
         <RecordField copy={false} label="Change type" value={item.changeType} />
         <RecordField copy={false} label="Blast radius" value={item.blastRadius} />
         {record}
-        <RecordCompare after={item.after} before={item.before} label="Whole item" sides={compareSides(read)} />
+        <RecordCompare after={item.after} before={item.before} label="Whole setting" sides={compareSides(read)} />
         {changes.map((change) => (
           <FieldRecord after={change.kind === "removed" ? undefined : change.after} before={change.kind === "added" ? undefined : change.before} change={change.kind} key={change.path} path={change.path} sides={compareSides(read)} />
         ))}

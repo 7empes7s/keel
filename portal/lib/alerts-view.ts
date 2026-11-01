@@ -156,7 +156,7 @@ export function alertTitle(alert: Pick<AlertItem, "resourceKey"> & Partial<Pick<
     if (name) return `${name} (${label})`;
     if (!rest || rest === "tenant" || rest === "organization") return label;
     const fromKey = rest.replaceAll(":", " · ");
-    return holdsObjectId(fromKey) ? `Unnamed item in ${label}` : `${fromKey} (${label})`;
+    return holdsObjectId(fromKey) ? `Unnamed setting in ${label}` : `${fromKey} (${label})`;
   }
   const resourceType = alert.cause?.resourceType ?? null;
   const index = key.indexOf(":");

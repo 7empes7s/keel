@@ -45,7 +45,7 @@ function agoWords(value: string | null, now: string): string {
 export function workloadBackupLine(workload: Pick<RestoreWorkload, "backup" | "lastRun">, now: string): { tone: WorkloadTone; text: string } {
   const { backup, lastRun } = workload;
   if (backup) {
-    const holds = backup.items === 0 ? "nothing to hold yet" : count(backup.items, "item");
+    const holds = backup.items === 0 ? "nothing to hold yet" : count(backup.items, "setting");
     const part = backup.partial ? ", read in part" : "";
     const failed = lastRun?.outcome === "failed" ? ". The newest backup failed, so this is the one before" : "";
     return { tone: lastRun?.outcome === "failed" || backup.partial ? "soon" : "fine", text: `Backed up ${agoWords(backup.takenAt, now)} · ${holds}${part}${failed}` };

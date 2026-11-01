@@ -31,8 +31,8 @@ export function ValueReportRecord({ report }: { report: ValueReport }) {
               <RecordField copy={false} label="Last event" value={row.lastEventAt} />
               <RecordField copy={false} label="Verified" value={row.verifiedAt} />
               <RecordField copy={false} label="Reopened" value={row.reopenedAt} />
-              <RecordField copy={false} label="Resources" value={row.resources} />
-              <RecordField copy={false} label="Resource type" value={row.resourceType} />
+              <RecordField copy={false} label="Settings" value={row.resources} />
+              <RecordField copy={false} label="Setting type" value={row.resourceType} />
               <RecordField copy={false} label="Change type" value={row.changeType} />
               <RecordField label="Plan ID" value={row.planId} />
               <RecordField label="Drift ID" value={row.driftId} />

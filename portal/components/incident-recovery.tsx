@@ -44,8 +44,8 @@ export function IncidentQualificationSummary({ context, view }: {
       <div data-layer="explanation">
         <h4 id="incident-qualification-heading">
           {context.qualification === "qualified"
-            ? `This snapshot is cleared for ${title}.`
-            : `This snapshot is ${context.status === "unsuitable" ? "marked unsafe" : "not checked"} for ${title}; an override allows it.`}
+            ? `This backup is cleared for ${title}.`
+            : `This backup is ${context.status === "unsuitable" ? "marked unsafe" : "not checked"} for ${title}; an override allows it.`}
         </h4>
         {context.override ? (
           <p className="incident-override">

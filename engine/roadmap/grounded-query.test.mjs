@@ -678,7 +678,7 @@ test('portal: the Ask page and API answer a Sales reader with Sales records only
       for (const hidden of HIDDEN) assert.equal(html.includes(hidden), false, hidden + ' in the page');
       assert.match(html, /Sales Admins/);
       assert.match(html, /href="\/changes"/);
-      assert.match(html, /Only resources owned by SALES are included/);
+      assert.match(html, /Only settings owned by SALES are included/);
       assert.match(html, /Not known from/);
       assert.match(html, /Nothing was changed/);
       assert.match(html, /<form[^>]*action="\/ask"[^>]*method="get"/);

@@ -96,7 +96,7 @@ test("section statuses come from the Overview's data, in plain words", () => {
     waiting: { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 },
   };
   const statuses = menuStatuses(base, 2);
-  assert.deepEqual(statuses.Backup, { tone: "urgent", count: 4, note: "4 kinds of settings failed to back up, and 5 more are out of date" });
+  assert.deepEqual(statuses.Backup, { tone: "urgent", count: 4, note: "4 setting types failed to back up, and 5 more are out of date" });
   assert.deepEqual(statuses.Baselines, { tone: "urgent", count: 2, note: "2 changes could lock out admins, of 7 changes since your approved setup" });
   assert.equal(statuses.Restore?.count, 1);
   assert.equal(statuses["Audit log"]?.tone, "urgent");

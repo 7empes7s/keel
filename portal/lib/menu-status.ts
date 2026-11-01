@@ -47,8 +47,8 @@ export function menuStatuses(data: Pick<DashboardData, "headline" | "coverage" |
   // amber ones (partly done and out of date). Partly done is never counted as failed.
   const amber = [partial ? `${partial} partly done` : "", late ? `${late} out of date` : ""].filter(Boolean).join(" and ");
   const more = [partial ? `${partial} more ${partial === 1 ? "was" : "were"} partly done` : "", late ? `${late} more ${late === 1 ? "is" : "are"} out of date` : ""].filter(Boolean);
-  if (failed > 0) statuses.Backup = { tone: "urgent", count: failed, note: `${plural(failed, "kind of setting", "kinds of settings")} failed to back up${more.length ? `, ${more.length === 2 ? `${more[0]}, and ${more[1]}` : `and ${more[0]}`}` : ""}` };
-  else if (partial + late > 0) statuses.Backup = { tone: "soon", count: partial + late, note: `${plural(partial + late, "kind of setting needs", "kinds of settings need")} a new backup: ${amber}` };
+  if (failed > 0) statuses.Backup = { tone: "urgent", count: failed, note: `${plural(failed, "setting type", "setting types")} failed to back up${more.length ? `, ${more.length === 2 ? `${more[0]}, and ${more[1]}` : `and ${more[0]}`}` : ""}` };
+  else if (partial + late > 0) statuses.Backup = { tone: "soon", count: partial + late, note: `${plural(partial + late, "setting type needs", "setting types need")} a new backup: ${amber}` };
 
   if (data.openDriftTotal > 0) {
     const radius = new Map(data.openDriftByBlastRadius.map((entry) => [entry.blastRadius, entry.count]));

@@ -282,7 +282,7 @@ function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key
 // Order by: name, kind of setting, risk, and when it changed.
 const SORTS: ListSort<RestoreItem>[] = [
   { key: "name", label: "Name", compare: (a, b) => byText(a.label, b.label) },
-  { key: "kind", label: "Kind of setting", compare: (a, b) => byText(resourceTypeLabel(a.resourceType), resourceTypeLabel(b.resourceType)) || byText(a.label, b.label) },
+  { key: "kind", label: "Setting type", compare: (a, b) => byText(resourceTypeLabel(a.resourceType), resourceTypeLabel(b.resourceType)) || byText(a.label, b.label) },
   { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
   { key: "changed", label: "When it changed", desc: true, compare: (a, b) => byTime(a.change?.seenAt, b.change?.seenAt) },
 ];
@@ -304,7 +304,7 @@ function kindsMatching(kinds: OtherKinds): RestoreWorkload[] {
   return [...shown].sort((a, b) => serviceOrder(a.service) - serviceOrder(b.service) || workloadOrder(a.workload) - workloadOrder(b.workload));
 }
 
-const kindsWords = (count: number) => `${count} ${count === 1 ? "kind" : "kinds"}`;
+const kindsWords = (count: number) => `${count} ${count === 1 ? "type" : "types"}`;
 
 // Every Microsoft 365 service the portal knows, in its order, so none goes missing:
 // "Keel" holds Keel's own records and has nothing to put back.
@@ -341,7 +341,7 @@ function groupingsFor(kinds: OtherKinds): Grouping<RestoreItem>[] {
           services.push({
             ...base,
             count: own.length
-              ? rows ? `${plural(rows, "setting")} · ${own.length} more ${own.length === 1 ? "kind" : "kinds"}` : kindsWords(own.length)
+              ? rows ? `${plural(rows, "setting")} · ${own.length} more ${own.length === 1 ? "type" : "types"}` : kindsWords(own.length)
               : none,
             extra: own.length
               ? kinds.render(own)
@@ -375,7 +375,7 @@ function groupingsFor(kinds: OtherKinds): Grouping<RestoreItem>[] {
             icon: service.icon,
             about: `${service.name} · put back on its own`,
             items: [],
-            count: workload.backup ? plural(workload.backup.items, "item") : "Not backed up yet",
+            count: workload.backup ? plural(workload.backup.items, "setting") : "Not backed up yet",
             extra: kinds.render([workload]),
           };
         }),
@@ -654,7 +654,7 @@ export function RestoreSelection({
       {incident ? (
         <p className="incident-restore-banner" role="note">
           Restoring for the incident <strong>{incident.title}</strong>. KEEL refuses unless an investigator cleared this
-          backup or approved an override, and checks afterwards that the harmful items are gone.
+          backup or approved an override, and checks afterwards that the harmful settings are gone.
         </p>
       ) : null}
 
@@ -953,7 +953,7 @@ export function RestoreSelection({
                   >
                     <span className="edge-action">{operation.action === "add" ? "+ Add" : "− Remove"}</span>
                     {" "}
-                    <strong>{operation.targetNaturalKey ? plainLabel(operation.targetNaturalKey, names) : "an object this restore creates"}</strong>
+                    <strong>{operation.targetNaturalKey ? plainLabel(operation.targetNaturalKey, names) : "a setting this restore creates"}</strong>
                     {` as ${operation.family} of `}
                     <strong>{plainLabel(operation.parentNaturalKey, names)}</strong>
                   </li>

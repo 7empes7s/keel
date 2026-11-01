@@ -72,7 +72,7 @@ export function OwnCheckSheet({ choices, standards, onDone, onClose }: {
         return;
       }
       const body = (await response.json()) as { verdict: string | null };
-      const result = body.verdict === "pass" ? "it passes" : body.verdict === "fail" ? "it does not pass" : body.verdict === "not-applicable" ? "there is nothing of that kind to check" : "it could not be checked yet";
+      const result = body.verdict === "pass" ? "it passes" : body.verdict === "fail" ? "it does not pass" : body.verdict === "not-applicable" ? "there is nothing of that type to check" : "it could not be checked yet";
       toast({ tone: body.verdict === "fail" ? "warning" : undefined, title: "Check saved", detail: `Checked against the newest backup: ${result}.` });
       onDone();
     } catch {
@@ -104,7 +104,7 @@ export function OwnCheckSheet({ choices, standards, onDone, onClose }: {
           </fieldset>
           <fieldset disabled={busy}>
             <legend>What to check</legend>
-            <OptionPicker label="Kind" onChange={(value) => { setResourceType(value); setField(null); setTyped(""); }} options={typeOptions} placeholder="Choose a kind of setting" value={resourceType} />
+            <OptionPicker label="Type" onChange={(value) => { setResourceType(value); setField(null); setTyped(""); }} options={typeOptions} placeholder="Choose a setting type" value={resourceType} />
             {type ? <OptionPicker label="Setting" onChange={(value) => { setField(value); setTyped(""); }} options={fieldOptions} placeholder="Choose a setting" value={field} /> : null}
           </fieldset>
           {setting ? (

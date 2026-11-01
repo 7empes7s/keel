@@ -298,7 +298,7 @@ export function groupsWords(site: SitePermissions): string | null {
 }
 
 export function backupWords(site: SitePermissions): string | null {
-  return site.backup ? `${count(site.backup.items, "item", "items")} · ${bytesWords(site.backup.bytes)}` : null;
+  return site.backup ? `${count(site.backup.items, "content item", "content items")} · ${bytesWords(site.backup.bytes)}` : null;
 }
 
 /** 0 is the most urgent. A site's rank is its worst badge. */

@@ -24,7 +24,7 @@ export function CompareForm({ tenants, input, quick }: { tenants: CompareTenant[
     value: snapshot.id,
     label: formatTimestamp(snapshot.completedAt),
     icon: tenant.own ? "backup" as const : "cloud" as const,
-    hint: `${tenant.label} · ${snapshot.resourceCount.toLocaleString("en-GB")} objects`,
+    hint: `${tenant.label} · ${snapshot.resourceCount.toLocaleString("en-GB")} settings`,
   })));
   const current = (pick: QuickPick) => pick.from === input?.from && pick.to === input?.to;
 

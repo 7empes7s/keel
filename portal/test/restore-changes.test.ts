@@ -116,7 +116,7 @@ test("changes since an older backup: what, when, newest first, and no ids in the
   assert.deepEqual(group.fields, [{ path: "visibility", before: "Private", after: "Public" }]);
   assert.equal(policy.seenAt, "2026-10-01T06:00:00.000Z");
   assert.equal(policy.sameUntil, "2026-09-30T06:00:00.000Z");
-  assert.deepEqual(policy.fields.find((field) => field.path === "conditions.users.excludeGroups"), { path: "conditions.users.excludeGroups", before: "none", after: "1 item" });
+  assert.deepEqual(policy.fields.find((field) => field.path === "conditions.users.excludeGroups"), { path: "conditions.users.excludeGroups", before: "none", after: "1 setting" });
   assert.equal(policy.service, "Entra");
   assert.equal(office.seenAt, "2026-10-01T06:00:00.000Z");
   assert.equal(group.who, null);

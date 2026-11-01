@@ -36,7 +36,7 @@ const AUDIT_LOG_PERMISSIONS: Record<string, string> = {
 };
 
 const UNKNOWN_SENTENCES: Record<string, string> = {
-  "resource-identity-unresolved": "Keel cannot tell which object this is, so it cannot match it to the audit log.",
+  "resource-identity-unresolved": "Keel cannot tell which setting this is, so it cannot match it to the audit log.",
   "audit-log-not-configured": "Keel does not read this tenant's audit log, so it cannot say who made this change.",
   "audit-retention-gap": "The audit log for that time is no longer available, so Keel cannot say who made this change.",
   "audit-read-scope-revoked": "Keel lost permission to read the audit log, so it cannot say who made this change.",
@@ -93,10 +93,10 @@ function between(attribution: ChangeAttribution): string {
 export function attributionNextStep(attribution: ChangeAttribution): string | null {
   if (attribution.verdict !== "unknown") return null;
   const log = logName(attribution);
-  const search = `search the ${log} for this item ${between(attribution)}`;
+  const search = `search the ${log} for this setting ${between(attribution)}`;
   switch (attribution.reason) {
     case "audit-source-not-read":
-      return `To find out, search the Purview audit log (purview.microsoft.com, Audit) for this item ${between(attribution)}. Keel needs the permission AuditLogsQuery.Read.All to read it.`;
+      return `To find out, search the Purview audit log (purview.microsoft.com, Audit) for this setting ${between(attribution)}. Keel needs the permission AuditLogsQuery.Read.All to read it.`;
     case "audit-log-not-configured":
     case "audit-window-not-read":
       return "Keel reads the audit log after each backup. Check again after the next backup.";
@@ -107,7 +107,7 @@ export function attributionNextStep(attribution: ChangeAttribution): string | nu
     case "audit-read-failed":
       return "Keel tries again after the next backup.";
     case "audit-in-organization-archive":
-      return `To find out, search your archive for this item ${between(attribution)}.`;
+      return `To find out, search your archive for this setting ${between(attribution)}.`;
     case "no-audit-record-names-resource":
       return `A change Microsoft or a sync makes has no person behind it. To check, ${search}.`;
     default:
@@ -132,7 +132,7 @@ export function attributionSummary(attribution: ChangeAttribution): string {
 
 const CENTRAL_BECAUSE: Record<string, string> = {
   "cross-entity": "because it touches more than one entity",
-  "shared-or-unattributed": "because this resource is shared or has no single owner",
+  "shared-or-unattributed": "because this setting is shared or has no single owner",
   "ownership-expired": "because its owner record is out of date",
   "no-entity-approver": "because its owner has no approver",
   "no-captured-scope": "because Keel could not tell who owns it",
@@ -194,7 +194,7 @@ export function ChangeAttributionPanel({ attribution, now, checking = false }: {
             value={entry.sourceEventId}
           />
         ))}
-        <RecordField label="Resource object ID" value={attribution.resourceObjectId} />
+        <RecordField label="Setting object ID" value={attribution.resourceObjectId} />
         <RecordField copy={false} label="Change window" value={`${attribution.window.from} to ${attribution.window.until}`} />
         <RecordField copy={false} label="Audit log coverage" value={`${attribution.coverage.audit} · sign-in log ${attribution.coverage.signIn}`} />
         {attribution.route ? (

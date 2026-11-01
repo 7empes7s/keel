@@ -274,7 +274,7 @@ function SetupTrack({ scope, state, canStart, primary }: {
           <RecordField label="Plan ID" usage="content hash; stays the same while the steps do" value={scope.planId} />
         ) : null}
         {scope.scope === "read" && state.firstCollection ? (
-          <RecordField label="Snapshot ID" usage="the first backup, as What's protected reports it" value={state.firstCollection.snapshotId} />
+          <RecordField label="Backup ID" usage="the first backup, as What's protected reports it" value={state.firstCollection.snapshotId} />
         ) : null}
         <RecordGroup title="Steps">
           {scope.steps.map((step) => (

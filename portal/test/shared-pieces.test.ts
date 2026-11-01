@@ -15,11 +15,11 @@ test("the search groups matches and hides items until something is typed", () =>
     command("Pages", "Schedules"),
     command("Your views", "Failed backups this week"),
     command("Actions", "Back up the critical settings now", "backup"),
-    command("Items", "Amara Okafor", "person"),
+    command("People and settings", "Amara Okafor", "person"),
   ];
   assert.deepEqual(paletteResults(commands, "").map((entry) => entry.group), ["Actions", "Pages", "Your views"]);
   assert.deepEqual(paletteResults(commands, "consent").flatMap((entry) => entry.commands.map((found) => found.label)), ["Setup"]);
-  assert.deepEqual(paletteResults(commands, "amara").map((entry) => entry.group), ["Items"]);
+  assert.deepEqual(paletteResults(commands, "amara").map((entry) => entry.group), ["People and settings"]);
   // The group holding the best match leads: a label prefix in Actions beats a loose page match.
   assert.equal(paletteResults(commands, "back")[0].group, "Actions");
   assert.equal(paletteResults(commands, "fail")[0].group, "Your views");

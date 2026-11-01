@@ -95,7 +95,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
     }), (radius) => { const index = BLAST_RADIUS_ORDER.indexOf(radius); return index === -1 ? 99 : index; }),
   },
   {
-    key: "kind", label: "Kind",
+    key: "kind", label: "Type",
     groupsOf: (items) => groupBy(items, itemKind, (type, list) => ({
       label: plainKind(type), icon: typeService(type).icon, about: `${typeService(type).name} · ${list.length === 1 ? "1 change" : `${list.length} changes`}`,
     })),
@@ -121,7 +121,7 @@ function OpenedRecord({ item }: { item: DriftRecord }) {
   if (!item.serviceRead) return <RecordField copy={false} label="Detected at" value={item.detectedAt} />;
   return (
     <>
-      <RecordField label="Resource" value={item.serviceRead.resourceKey} />
+      <RecordField label="Setting" value={item.serviceRead.resourceKey} />
       <RecordField label="Service change ID" value={item.id} />
       <RecordField copy={false} label="Service" value={item.serviceRead.workload} />
       <RecordField label="Service read ID" value={item.serviceRead.collectionId} />

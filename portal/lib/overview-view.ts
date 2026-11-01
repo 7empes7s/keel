@@ -47,8 +47,8 @@ export function overviewStatus(tone: VerdictTone): { tone: RiskWord; label: stri
 export function plainWords(sentence: string): string {
   return sentence
     .replace(/\bKEEL\b/g, "Keel")
-    .replace(/\bconfiguration type\b/g, "kind of setting")
-    .replace(/\bconfiguration types\b/g, "kinds of settings");
+    .replace(/\bconfiguration type\b/g, "setting type")
+    .replace(/\bconfiguration types\b/g, "setting types");
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -242,7 +242,7 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
   const tiles: OverviewTile[] = [{
     key: "backups", label: "Backups", icon: "backup",
     value: failed ? `${failed.toLocaleString("en-GB")} failed` : partial ? `${partial.toLocaleString("en-GB")} partly done` : late ? `${late.toLocaleString("en-GB")} out of date` : `${covered.toLocaleString("en-GB")} backed up`,
-    detail: `${covered.toLocaleString("en-GB")} of ${plural(total, "kind", "kinds")} backed up${partlyNote}`,
+    detail: `${covered.toLocaleString("en-GB")} of ${plural(total, "setting type", "setting types")} backed up${partlyNote}`,
     href: failed ? COVERAGE_LINKS.failed : partial ? COVERAGE_LINKS.partial : late ? COVERAGE_LINKS.late : "/protect",
     tone: failed ? "urgent" : partial || late ? "soon" : undefined,
     meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "soon", share: (partial + late) / total }, { tone: "neutral", share: uncovered / total }],

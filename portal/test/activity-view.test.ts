@@ -169,7 +169,7 @@ test("filters live in the address, narrow the rows, and read back as words", () 
   assert.deepEqual(chips.find((chip) => chip.label === "By Amara Okafor")?.clear, { who: MARO.id });
   assert.deepEqual(peopleIn([], PEOPLE, [AMARA.id, MARO.id]).map((person) => person.name).sort(), ["Amara Okafor", "Maro Defili"], "picked accounts stay in the list");
   const csv = activityCsv(rows.slice(0, 2));
-  assert.match(csv, /^When,What,Kind,Outcome,Who,Source,Job ID,Audit sequence,Account\n/);
+  assert.match(csv, /^When,What,Type,Outcome,Who,Source,Job ID,Audit sequence,Account\n/);
   assert.match(csv, /"Amara Okafor approved a request to restore from a backup","Approval","Recorded","Amara Okafor","Audit record","","18205"/);
   const risky = activityCsv([{ ...rows[0], title: "=HYPERLINK(\"https://example.invalid\")" }, { ...rows[1], title: "@SUM(1,1)" }]);
   assert.match(risky, /,"'=HYPERLINK\(""https:\/\/example\.invalid""\)",/, "a formula title is neutralised");

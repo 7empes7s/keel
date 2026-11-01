@@ -14,7 +14,7 @@ import { reasonMessage } from "@/lib/written-reason";
 interface Chosen { naturalKey: string; label: string; kind: string; reason: string; field: string }
 
 // Record an investigator's check on one backup: clean or unsafe, why, and for a clean
-// one the harmful items a restore must leave out, picked by name from what the backup
+// one the harmful settings a restore must leave out, picked by name from what the backup
 // holds. The engine checks each item is in this backup and keeps every version.
 export function CheckSheet({ incidentId, point, onSaved, onClose }: {
   incidentId: string;
@@ -94,7 +94,7 @@ export function CheckSheet({ incidentId, point, onSaved, onClose }: {
           <Segmented hideLabel label="Result" onChange={setVerdict} options={[{ value: "clean", label: "Clean", icon: "check-circle" }, { value: "compromised", label: "Unsafe", icon: "x-circle" }]} value={verdict} />
           <p className="ir-muted">
             {verdict === "clean"
-              ? "Clean: a restore may use this backup, leaving out the harmful items you list below."
+              ? "Clean: a restore may use this backup, leaving out the harmful settings you list below."
               : "Unsafe: a restore from this backup is refused as a whole, so nothing is left out."}
           </p>
         </fieldset>
@@ -104,11 +104,11 @@ export function CheckSheet({ incidentId, point, onSaved, onClose }: {
         </label>
         {verdict === "clean" ? (
           <fieldset disabled={busy}>
-            <legend>Harmful items to leave out</legend>
+            <legend>Harmful settings to leave out</legend>
             {items === null ? <p className="ir-muted">Reading what this backup holds…</p> : items === "unavailable" ? (
               <p className="ir-muted">What this backup holds could not be read. Save the check without leaving anything out, or close and try again.</p>
             ) : (
-              <OptionPicker label="Add a harmful item" onChange={add} options={options} placeholder={options.length ? "Find an item by name" : "Nothing more to add"} value={null} />
+              <OptionPicker label="Add a harmful setting" onChange={add} options={options} placeholder={options.length ? "Find a setting by name" : "Nothing more to add"} value={null} />
             )}
             {chosen.length ? (
               <ul className="ir-picked">

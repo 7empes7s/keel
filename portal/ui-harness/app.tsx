@@ -1449,11 +1449,11 @@ const header = (section: NavSection, title: string, description: string, marker?
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
-const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 kinds of settings are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect?health=not-backed-up" };
+const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 setting types are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 setting types are not backed up by Keel yet", detail: "Keel knows these setting types but does not read them yet, so it holds no backup of them.", href: "/protect?health=not-backed-up" };
 const ALERTS: DashboardData["alerts"][] = [
   [
-    { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
+    { key: "failed", severity: "critical", title: "4 setting types failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
     STALE_ALERT,
     UNCOVERED_ALERT,
   ],
@@ -1466,9 +1466,9 @@ const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, p
 const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
 const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
 const HEADLINES: DashboardData["headline"][] = [
-  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
-  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, proof: NOTHING_PROVEN, lastProvenRestoreAt: null, failingSince: null },
-  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 24 Sept 2026.", action: null, counts: HEADLINE_COUNTS, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
+  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 setting types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
+  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 setting types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, proof: NOTHING_PROVEN, lastProvenRestoreAt: null, failingSince: null },
+  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 setting types today. Last proven restore: 24 Sept 2026.", action: null, counts: HEADLINE_COUNTS, proof: RESTORE_PROOF, lastProvenRestoreAt: RESTORE_PROOF.lastProvenAt, failingSince: null },
 ];
 function dashboard(posture: number): DashboardData {
   return {
@@ -1507,17 +1507,17 @@ const INCIDENT: IncidentDetail = {
   overrides: [{ id: "0e710000-0000-4000-8000-000000000071", snapshotId: SNAP_ALLOWED, reason: "The only backup with last week's membership changes", authorizedBy: INVESTIGATOR, authorizedAt: "2026-10-01T09:30:00Z" }],
   points: [
     {
-      snapshotId: SNAP_NEW, snapshot: snapshotRef(SNAP_NEW, "Snapshot of 2 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-02T05:55:00Z", observedTo: "2026-10-02T06:00:00Z",
+      snapshotId: SNAP_NEW, snapshot: snapshotRef(SNAP_NEW, "Backup of 2 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-02T05:55:00Z", observedTo: "2026-10-02T06:00:00Z",
       inCompromiseWindow: true, status: "unassessed", stale: false, pinned: false, reasons: ["observed during a compromise interval", "not assessed for this incident"], assessment: null,
     },
     {
-      snapshotId: SNAP_BAD, snapshot: snapshotRef(SNAP_BAD, "Snapshot of 1 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
+      snapshotId: SNAP_BAD, snapshot: snapshotRef(SNAP_BAD, "Backup of 1 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
       inCompromiseWindow: true, status: "unsuitable", stale: false, pinned: false,
       reasons: ["observed during a compromise interval", "assessed compromised (v1)"],
       assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:00:00Z", fingerprint: "3c".repeat(32), rationale: "Holds the attacker's consent to Mail Sync Helper and two new inbox rules." },
     },
     {
-      snapshotId: SNAP_GOOD, snapshot: snapshotRef(SNAP_GOOD, "Snapshot of 30 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-30T05:55:00Z", observedTo: "2026-09-30T06:00:00Z",
+      snapshotId: SNAP_GOOD, snapshot: snapshotRef(SNAP_GOOD, "Backup of 30 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-30T05:55:00Z", observedTo: "2026-09-30T06:00:00Z",
       inCompromiseWindow: false, status: "qualified", stale: false, pinned: true,
       reasons: ["assessed clean with 1 malicious-field exclusion(s) (v2)"],
       assessment: {
@@ -1527,11 +1527,11 @@ const INCIDENT: IncidentDetail = {
       },
     },
     {
-      snapshotId: SNAP_OLD, snapshot: snapshotRef(SNAP_OLD, "Snapshot of 29 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-29T05:55:00Z", observedTo: "2026-09-29T06:00:00Z",
+      snapshotId: SNAP_OLD, snapshot: snapshotRef(SNAP_OLD, "Backup of 29 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-29T05:55:00Z", observedTo: "2026-09-29T06:00:00Z",
       inCompromiseWindow: false, status: "unassessed", stale: true, pinned: false, reasons: ["assessment v1 predates a compromise-interval change across this snapshot — reassess"], assessment: null,
     },
     {
-      snapshotId: SNAP_ALLOWED, snapshot: snapshotRef(SNAP_ALLOWED, "Snapshot of 28 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-28T05:55:00Z", observedTo: "2026-09-28T06:00:00Z",
+      snapshotId: SNAP_ALLOWED, snapshot: snapshotRef(SNAP_ALLOWED, "Backup of 28 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-28T05:55:00Z", observedTo: "2026-09-28T06:00:00Z",
       inCompromiseWindow: false, status: "unassessed", stale: false, pinned: false, reasons: ["not assessed for this incident"], assessment: null,
     },
   ],
@@ -1559,7 +1559,7 @@ const INCIDENT_CLOSED: IncidentDetail = {
   overrides: [],
   points: [
     {
-      snapshotId: DRILL_SNAP, snapshot: snapshotRef(DRILL_SNAP, "Snapshot of 12 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-12T05:55:00Z", observedTo: "2026-09-12T06:00:00Z",
+      snapshotId: DRILL_SNAP, snapshot: snapshotRef(DRILL_SNAP, "Backup of 12 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-12T05:55:00Z", observedTo: "2026-09-12T06:00:00Z",
       inCompromiseWindow: false, status: "qualified", stale: false, pinned: false, reasons: ["assessed clean (v1)"],
       assessment: { version: 1, verdict: "clean", exclusions: [], assessedBy: INVESTIGATOR, assessedAt: "2026-09-12T13:00:00Z", fingerprint: "d1".repeat(32), rationale: "Drill only: nothing changed." },
     },
@@ -2594,7 +2594,7 @@ function workloadChoicesFixture(collection: string | null) {
         rule("r3", "KEEL-RT Quarantine executables", "same"),
       ] },
       { kind: "inboundConnector", name: "Inbound connectors", restorable: true, reason: null, items: [rule("i1", "KEEL-RT Partner inbound", "same")] },
-      { kind: "acceptedDomain", name: "Accepted domains", restorable: false, reason: "KEEL does not put this kind of setting back; an admin changes it by hand from the backup.", items: [
+      { kind: "acceptedDomain", name: "Accepted domains", restorable: false, reason: "KEEL does not put this setting type back; an admin changes it by hand from the backup.", items: [
         { key: "accepteddomain:d1", name: "contoso.example", change: null, restorable: false, reason: null, tenantWide: false },
       ] },
     ],
@@ -2760,7 +2760,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
       return <>
-        <PageHeader actions={<BackUpNow disabled={false} urgent={verdict.tone !== "good"} />} description="Whether every kind of setting and content is backed up, how often, and whether Keel can put it back."
+        <PageHeader actions={<BackUpNow disabled={false} urgent={verdict.tone !== "good"} />} description="Whether every setting type and all content are backed up, how often, and whether Keel can put it back."
           generatedAt={now} section="Backup" status={protectStatus(COVERAGE)} title="What's protected" />
         <ProtectCoverage canBackup data={COVERAGE} now={now} tierStrip={<TierStrip canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />}>
           <ContentBackupsView data={CONTENT_BACKUPS} now={now} />

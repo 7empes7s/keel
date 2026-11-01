@@ -156,18 +156,35 @@ reference kind per page.
 
 ## Vocabulary
 
-Words permitted outside the record layer: backup, snapshot, baseline, change
+Words permitted outside the record layer: backup, baseline, change
 (for drift), restore, dry run, approval, undo, evidence, protected, verified,
 schedule, policy, job, principal (only on the Principals page; elsewhere
 "person" or "account"), tier (only beside its plain meaning: "Tier 1, the
 critical settings").
+
+### One word per idea
+
+Each idea has one word on screen, everywhere, including Technical details. The
+words in the last column are banned in portal copy; `portal/test/one-word-vocabulary.test.ts`
+reads this table and fails on any of them in a UI string (whole word, any case).
+
+| Idea | Word on screen | Never say |
+|---|---|---|
+| One thing Keel backs up from Microsoft 365: a policy, group, user, rule, app or setting page | setting | resource, object |
+| A group of settings with the same shape, such as "Conditional Access policies" | setting type (or "type" once it is clear) | kind, configuration type |
+| One piece of stored content: an email, file, list item, chat message or version | content item | item |
+| One run's saved copy of the tenant, the thing you restore from | backup | snapshot |
+
+Fixed phrases that keep a banned word: "content item", "list item" (SharePoint's
+name), "deleted items" (Outlook's folder), "object ID" (Microsoft's label for an
+id), "object storage" (a storage product), "JSON object" (a request error).
 
 Words that must not appear outside the record layer, with the replacement to
 use:
 
 | Internal term | On screen |
 |---|---|
-| natural key | the resource's name, with its type in words |
+| natural key | the setting's name, with its type in words |
 | disposition | decision (accept / ignore / roll back) |
 | fidelity, fidelity evidence | "restore proven on <date>" or "restore not yet proven" |
 | qualification, qualified, live-qualified, fixture-tested | "proven on this tenant" / "not yet proven on this tenant" |
@@ -183,7 +200,7 @@ use:
 | compensation | "undo" |
 | observation, observation window | "collected at" / "collected between" |
 | descriptor, adapter, serving adapter | "collector" |
-| catalog type | "configuration type" |
+| catalog type | "setting type" |
 | evidence chain, anchor, checkpoint | "audit record intact / verified against an external copy" |
 | kill switch inactive | "automation is on" |
 | tenant_ref, CIR, symbol, lineage | record layer only |
@@ -218,10 +235,10 @@ Overview leads with one sentence an executive can repeat, computed from real
 readers and honest when the data is absent:
 
 - When a drill or live restore has succeeded: "KEEL can restore 48 of 52
-  configuration types today. Last proven restore: 20 Sept 2026."
-- When none has: "KEEL backs up 52 configuration types. No restore has been
+  setting types today. Last proven restore: 20 Sept 2026."
+- When none has: "KEEL backs up 52 setting types. No restore has been
   proven on this tenant yet." with the primary action leading to the drill.
-- When collection is failing or stale: "3 configuration types have not been
+- When collection is failing or stale: "3 setting types have not been
   backed up since <time>." with the primary action leading to Protect.
 
 The dashboard's healthy state is "Protected" with the sentence above, not "No
@@ -254,7 +271,7 @@ Each existing page, what its verdict sentence is, and what moves to the record.
 | Page | Verdict (example) | Explanation | Moves to record |
 |---|---|---|---|
 | Overview | The memorable number. | Needs-attention list (existing alert copy is kept), baseline name, last backup age, open changes with impact bar, approvals waiting. | Evidence chain length, raw collection status, duplicate timestamps, "Catalog honesty" caption. |
-| Protect | "All 52 configuration types were backed up in the last 6 hours." or "3 types failed their last backup." | Tier cards with next run and last result in words; failed and stale types listed by name with a retry action; per-type drawer: protected / partially / cannot be restored / restore not yet proven, in one sentence each. | The 11-column matrix: adapter id, endpoint, pagination evidence, prerequisite diagnosis, projection, proof reference, credential mode, observation id. |
+| Protect | "All 52 setting types were backed up in the last 6 hours." or "3 types failed their last backup." | Tier cards with next run and last result in words; failed and stale types listed by name with a retry action; per-type drawer: protected / partially / cannot be restored / restore not yet proven, in one sentence each. | The 11-column matrix: adapter id, endpoint, pagination evidence, prerequisite diagnosis, projection, proof reference, credential mode, observation id. |
 | Changes | "37 changes since the baseline set 2 days ago; 2 could lock out administrators." | Table of named resources with impact and age; field diff in words; accept / ignore / roll back on selection. | Natural keys, change kind codes, payload JSON, planned verbs, waves, deferred references, guard refusal codes. |
 | Restore | Step title, e.g. "Step 3 of 5: review what will change." | Named resources, what each restore does in words (existing mechanism and content-effect labels are kept), who must approve. | Artifact and dry-run ids, credential file paths (never editable on screen), closure keys, CLI narration. |
 | Approvals | "2 requests are waiting for you." | Each request as a sentence with the requester, reason, what changes, impact, link to the dry run, expiry in words; Approve and Reject. | Request id, action code, params JSON, dry-run id. |
@@ -330,10 +347,10 @@ the engine functions they call, covered by each task's boundary test.
   - The verdict is the memorable number, computed by
     `engine/coverage/protectionHeadline.mjs` from the same coverage report the
     page reads, plus fidelity-drill evidence. It is never a constant.
-  - The three states read "N configuration types have not been backed up since
+  - The three states read "N setting types have not been backed up since
     …" (or "failed their last backup" / "have never been backed up"), "KEEL can
-    restore N of M configuration types today. Last proven restore: …" and "KEEL
-    backs up M configuration types. No restore has been proven on this tenant
+    restore N of M setting types today. Last proven restore: …" and "KEEL
+    backs up M setting types. No restore has been proven on this tenant
     yet."
   - The headline is "Protected" only when a restore has been proven. Before
     that it is "Backed up", so the page does not overclaim.
@@ -432,7 +449,7 @@ the engine functions they call, covered by each task's boundary test.
   - The verdict comes from the coverage reader (`protectVerdict` in
     `portal/lib/protect-view.ts`): "N types failed their last backup.", "… have not
     been backed up recently enough.", "… have never been backed up." or "All N
-    configuration types were backed up in the last 6 hours."
+    setting types were backed up in the last 6 hours."
   - Tier cards show the schedule reader's next run and last result in words, with
     "Back up Tier N" and, for configuration principals, "Change schedule".
   - Failed, out-of-date and never-backed-up types are listed by name, each with a

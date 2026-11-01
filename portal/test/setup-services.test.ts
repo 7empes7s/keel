@@ -48,7 +48,7 @@ test("kinds not placed in a service yet get their own line instead of being hidd
   assert.equal(statuses.filter((status) => status.name === "Other services").length, 1);
   // A partly done read is amber "Partly done", never "Failing" (decision 31 Oct 2026).
   assert.deepEqual([statuses[0].name, statuses[0].label, statuses[0].tone], ["Other services", "Partly done", "soon"]);
-  assert.match(statuses[0].backup.text, /^1 kind partly done, 1 of 2 backed up$/);
+  assert.match(statuses[0].backup.text, /^1 type partly done, 1 of 2 backed up$/);
   assert.match(statuses[0].blocker!.text, /read only part of it/);
   assert.match(statuses[0].blocker!.fix!.href, /health=partial$/);
 });
@@ -61,7 +61,7 @@ test("a service line says what backed up, what Keel can put back, the last good 
   ], NOW);
   const entra = statuses.find((status) => status.code === "Entra")!;
   assert.equal(entra.tone, "urgent");
-  assert.equal(entra.backup.text, "1 kind failed, 2 of 3 backed up");
+  assert.equal(entra.backup.text, "1 type failed, 2 of 3 backed up");
   assert.equal(entra.restore.tone, "fine");
   assert.match(entra.restore.text, /^1 of 3 can be put back, 1 proven on this tenant$/);
   // The last good read ignores the failed kind.

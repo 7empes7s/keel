@@ -119,7 +119,7 @@ export function backupHealth(item: CoverageType): BackupHealth {
 
 function items(count: number | null): string {
   if (count === null) return "";
-  return `, ${count.toLocaleString("en-GB")} ${count === 1 ? "item" : "items"}`;
+  return `, ${count.toLocaleString("en-GB")} ${count === 1 ? "setting" : "settings"}`;
 }
 
 /** What's protected lists every service: the Microsoft 365 workloads join the Entra ID
@@ -138,11 +138,11 @@ export function backupSentence(item: CoverageType, now: string): string {
     case "unavailable": return "Not available on this tenant: Microsoft needs a licence or tenant feature this tenant does not have.";
     case "never": return item.outcome === "not-requested" ? "Not part of the latest backup run." : "Never backed up yet.";
     case "partial":
-      return `Partly done: the last backup read only part of this type${item.itemCount === null ? "" : ` (${item.itemCount.toLocaleString("en-GB")} items seen)`}, so some items are missing.`;
+      return `Partly done: the last backup read only part of this type${item.itemCount === null ? "" : ` (${item.itemCount.toLocaleString("en-GB")} settings seen)`}, so some settings are missing.`;
     case "failed":
       return `The last backup failed${item.lastCollectedAt ? ` ${ago(item.lastCollectedAt, now)}` : ""}.`;
     case "stale": return `Out of date: last backed up ${ago(item.lastCollectedAt, now)}, longer ago than its tier allows.`;
-    case "empty": return `Backed up ${ago(item.lastCollectedAt, now)} with no items; an empty result counts as a successful backup.`;
+    case "empty": return `Backed up ${ago(item.lastCollectedAt, now)} with no settings; an empty result counts as a successful backup.`;
     case "ok": return `Backed up ${ago(item.lastCollectedAt, now)}${items(item.itemCount)}.`;
   }
 }
@@ -256,7 +256,7 @@ export function protectVerdict(data: CoverageData, now: string): { text: string;
     const also = partial ? ` ${plural(partial, "more was", "more were")} only partly backed up.` : "";
     return { text: `${plural(failed, "type", "types")} failed ${failed === 1 ? "its" : "their"} last backup.${also}`, tone: "critical" };
   }
-  if (partial) return { text: `${plural(partial, "type was", "types were")} only partly backed up: some items are missing.`, tone: "attention" };
+  if (partial) return { text: `${plural(partial, "type was", "types were")} only partly backed up: some settings are missing.`, tone: "attention" };
   if (stale) return { text: `${plural(stale, "type has", "types have")} not been backed up recently enough.`, tone: "attention" };
   if (never) return { text: `${plural(never, "type has", "types have")} never been backed up.`, tone: "attention" };
   const collected = data.types.filter((item) => item.lastCollectedAt && backupHealth(item) !== "unavailable");
@@ -264,7 +264,7 @@ export function protectVerdict(data: CoverageData, now: string): { text: string;
   const oldest = Math.min(...collected.map((item) => new Date(item.lastCollectedAt!).valueOf()));
   const hours = Math.max(1, Math.ceil((new Date(now).valueOf() - oldest) / 3_600_000));
   const window = hours < 48 ? plural(hours, "hour", "hours") : plural(Math.ceil(hours / 24), "day", "days");
-  const subject = collected.length === 1 ? "The one configuration type was" : `All ${collected.length} configuration types were`;
+  const subject = collected.length === 1 ? "The one setting type was" : `All ${collected.length} setting types were`;
   return { text: `${subject} backed up in the last ${window}.`, tone: "good" };
 }
 
@@ -481,7 +481,7 @@ export function coverageSentence(summary: CoverageSummary): string {
     ...(summary.notCovered ? [`${summary.notCovered.toLocaleString("en-GB")} not backed up by Keel yet`] : []),
     ...(summary.unavailable ? [`${summary.unavailable.toLocaleString("en-GB")} not on this tenant`] : []),
   ];
-  return `${plural(summary.total, "kind", "kinds")}: ${listWords(parts)}.`;
+  return `${plural(summary.total, "type", "types")}: ${listWords(parts)}.`;
 }
 
 export interface ProtectCounts extends CoverageBuckets {
@@ -523,10 +523,10 @@ function listWords(words: string[]): string {
 
 /** "Runs Tier 1 and Tier 2 in full. It only reads your tenant." */
 export function backupPlanSentence(plan: BackupPlan): string {
-  if (plan.tiers.length === 0) return "None of these kinds is in a backup tier, so there is nothing to run.";
+  if (plan.tiers.length === 0) return "None of these types is in a backup tier, so there is nothing to run.";
   const runs = `Runs ${listWords(plan.tiers.map(tierLabel))} in full. It only reads your tenant.`;
   if (!plan.untiered) return runs;
-  return `${runs} ${plan.untiered === 1 ? "1 kind has" : `${plan.untiered} kinds have`} no tier and ${plan.untiered === 1 ? "is" : "are"} left out.`;
+  return `${runs} ${plan.untiered === 1 ? "1 type has" : `${plan.untiered} types have`} no tier and ${plan.untiered === 1 ? "is" : "are"} left out.`;
 }
 
 /** The verdict's second line: where the problems are, or when everything last ran. */
@@ -546,7 +546,7 @@ export function protectScopeDetail(filters: string[], types: CoverageType[]): st
   const counts = protectCounts(types);
   const late = counts.stale + counts.never;
   const parts = [
-    `${counts.backedUp} of ${plural(counts.total, "kind", "kinds")} backed up`,
+    `${counts.backedUp} of ${plural(counts.total, "setting type", "setting types")} backed up`,
     ...(counts.failed ? [`${counts.failed} failed`] : []),
     ...(counts.partial ? [`${counts.partial} partly done`] : []),
     ...(late ? [`${late} out of date or never`] : []),

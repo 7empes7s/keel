@@ -112,7 +112,7 @@ function AnswerSummary({ answer }: { answer: GroundedAnswer }) {
   return (
     <section aria-label="Summary of every match" className="ak-summary">
       <SummaryList icon="service-keel" rows={summary.services} title="By service" total={total} />
-      <SummaryList icon="filter" rows={summary.kinds} title="By kind of setting" total={total} />
+      <SummaryList icon="filter" rows={summary.kinds} title="By setting type" total={total} />
       <SummaryList icon="alert" rows={summary.risks} title="By risk" total={total} />
       <SummaryList icon="swap" rows={summary.changes} title="By change" total={total} />
     </section>
@@ -124,7 +124,7 @@ function CoverageSummaryCards({ answer }: { answer: GroundedAnswer }) {
   const summary = coverageAnswerSummary(answer);
   if (!summary) return null;
   return (
-    <section aria-label="Summary of every kind" className="ak-summary">
+    <section aria-label="Summary of every type" className="ak-summary">
       <SummaryList icon="backup" rows={summary.states} title="By state" total={summary.total} />
       {summary.services.length ? <SummaryList icon="service-keel" rows={summary.services} title="By service" total={summary.total} /> : null}
     </section>
@@ -176,7 +176,7 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
   const chosen = askFormDefaults(data.answer, typeOptions.map(([type]) => type));
   const periods = chosen.datesOption ? [chosen.datesOption, ...ASK_PERIODS] : ASK_PERIODS;
   const kinds = [
-    { value: "", label: "Any kind" },
+    { value: "", label: "Any type" },
     ...(chosen.typeOption ? [chosen.typeOption] : []),
     ...typeOptions.map(([type, label]) => ({ value: type, label: label[0].toUpperCase() + label.slice(1) })),
   ];
@@ -221,7 +221,7 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
                 name="entity"
                 options={[{ value: "", label: data.scope.central ? "Any owner" : "Any entity you can see" }, ...data.entities.map((entity) => ({ value: entity, label: entity }))]}
               />
-              <FormOptionPicker defaultValue={chosen.type} label="Kind of resource" name="type" options={kinds} />
+              <FormOptionPicker defaultValue={chosen.type} label="Setting type" name="type" options={kinds} />
               <label className="filter-field">
                 <span>Change</span>
                 <select defaultValue={chosen.change} name="change">

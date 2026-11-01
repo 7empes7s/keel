@@ -39,12 +39,12 @@ import {
 
 const REPORT_CLI = "node cli/keel-recovery-metrics.mjs report";
 
-/** What one required item is: its key, kind and type (or parent type and relationship). */
+/** What one required setting is: its key, kind and type (or parent type and relationship). */
 function DependencyFields({ dependency }: { dependency: DependencyRef }) {
   return (
     <>
       <RecordField label="Key" value={dependency.key} />
-      <RecordField copy={false} label="Kind" value={dependency.kind} />
+      <RecordField copy={false} label="Type" value={dependency.kind} />
       {dependency.type ? <RecordField copy={false} label="Type" value={dependency.type} /> : null}
       {dependency.parentType ? <RecordField copy={false} label="Parent type" value={dependency.parentType} /> : null}
       {dependency.family ? <RecordField copy={false} label="Relationship" value={dependency.family} /> : null}
@@ -67,7 +67,7 @@ function Alerts({ alerts }: { alerts: ResilienceAlert[] }) {
     <section aria-labelledby="rs-attention-heading" className="rs-attention" id="rs-attention">
       <div className="rs-section-head">
         <h2 id="rs-attention-heading"><Icon name="alert" />Needs your attention</h2>
-        {alerts.length ? <Badge tone={urgent ? "urgent" : "soon"}>{`${alerts.length} item${alerts.length === 1 ? "" : "s"}`}</Badge> : null}
+        {alerts.length ? <Badge tone={urgent ? "urgent" : "soon"}>{`${alerts.length} alert${alerts.length === 1 ? "" : "s"}`}</Badge> : null}
       </div>
       <AlertList items={alerts} />
     </section>
@@ -214,13 +214,13 @@ function Details({ data }: { data: ResilienceData }) {
 
         <DetailCard
           chip={measured(readiness.state).chip} icon="play" id="drills" title="Recovery drills" tone={measured(readiness.state).tone}
-          value={readiness.state === "attention" ? "Test objects left" : readiness.lastCountedDrill ? `Passed ${ago(readiness.lastCountedDrill.at, now)}` : "Not measured"}
+          value={readiness.state === "attention" ? "Test settings left" : readiness.lastCountedDrill ? `Passed ${ago(readiness.lastCountedDrill.at, now)}` : "Not measured"}
         >
           <p className="rs-sentence resilience-sentence">{readinessSentence(metrics, now)}</p>
           {readiness.cleanupFailures.length ? (
             <ul className="rs-rows">
               {readiness.cleanupFailures.map((failure) => (
-                <li key={failure.at}><Icon name="alert" /><span>The drill <span title={formatTimestamp(failure.at)}>{ago(failure.at, now)}</span> left {failure.residuals.length || failure.objects.length} test object{(failure.residuals.length || failure.objects.length) === 1 ? "" : "s"} behind.</span></li>
+                <li key={failure.at}><Icon name="alert" /><span>The drill <span title={formatTimestamp(failure.at)}>{ago(failure.at, now)}</span> left {failure.residuals.length || failure.objects.length} test setting{(failure.residuals.length || failure.objects.length) === 1 ? "" : "s"} behind.</span></li>
               ))}
             </ul>
           ) : null}
@@ -282,11 +282,11 @@ function FreshnessRecord({ data }: { data: ResilienceData }) {
     <TechnicalDetails>
       <RecordField label="Achieved recovery point age (ms)" value={freshness.achievedRpoMs ?? "unmeasured"} usage={<>from <code>{REPORT_CLI}</code></>} />
       <RecordField label="Freshness state" value={freshness.state} copy={false} />
-      <RecordField label="Required items" value={freshness.required} copy={false} />
+      <RecordField label="Required settings" value={freshness.required} copy={false} />
       <RecordField copy={false} label="Report version" value={metrics.version} />
       <RecordField copy={false} label="Report generated" value={metrics.generatedAt} />
       {freshness.oldestDependency ? (
-        <RecordGroup note="oldest required item" title={freshness.oldestDependency.key}>
+        <RecordGroup note="oldest required setting" title={freshness.oldestDependency.key}>
           <DependencyFields dependency={freshness.oldestDependency} />
           <RecordField copy={false} label="Backed up since" value={freshness.oldestDependency.since} />
           <RecordField copy={false} label="Age (ms)" value={freshness.oldestDependency.ageMs} />
@@ -310,7 +310,7 @@ function FreshnessRecord({ data }: { data: ResilienceData }) {
       {configured.cadence.map((entry) => (
         <RecordGroup key={entry.id} note={entry.enabled ? "enabled" : "disabled"} title={`Schedule: ${entry.jobKind}${entry.tier ? ` ${entry.tier}` : ""}`}>
           <RecordField label="Schedule ID" usage={<><code>GET /api/schedules</code></>} value={entry.id} />
-          <RecordField copy={false} label="Job kind" value={entry.jobKind} />
+          <RecordField copy={false} label="Job type" value={entry.jobKind} />
           <RecordField copy={false} label="Tier" value={entry.tier} />
           <RecordField copy={false} label="Cron" value={entry.cron} />
           <RecordField copy={false} label="Cadence" value={entry.cadence} />
@@ -334,7 +334,7 @@ function ServicesRecord({ data }: { data: ResilienceData }) {
           <RecordField copy={false} label="Latest at" value={entry.latest?.at} />
           <RecordField label="Last good run" value={entry.lastGood?.id} />
           <RecordField copy={false} label="Last good at" value={entry.lastGood?.at} />
-          {entry.stored ? <RecordField copy={false} label="Stored" value={`${entry.stored.items} items, ${entry.stored.versions} versions, ${entry.stored.containers} containers, ${entry.stored.bytes} bytes`} /> : null}
+          {entry.stored ? <RecordField copy={false} label="Stored" value={`${entry.stored.items} content items, ${entry.stored.versions} versions, ${entry.stored.containers} containers, ${entry.stored.bytes} bytes`} /> : null}
         </RecordGroup>
       ))}
     </TechnicalDetails>
@@ -405,7 +405,7 @@ function DrillsRecord({ data }: { data: ResilienceData }) {
         <RecordGroup note="counted" title="Newest counted drill">
           <RecordField copy={false} label="At" value={readiness.lastCountedDrill.at} />
           <RecordField copy={false} label="Elapsed (ms)" value={readiness.lastCountedDrill.elapsedMs} />
-          <RecordField label="Objects" value={readiness.lastCountedDrill.objects} />
+          <RecordField label="Settings" value={readiness.lastCountedDrill.objects} />
         </RecordGroup>
       ) : null}
       {readiness.notCounted.map((entry) => (
@@ -415,9 +415,9 @@ function DrillsRecord({ data }: { data: ResilienceData }) {
         </RecordGroup>
       ))}
       {readiness.cleanupFailures.map((failure) => (
-        <RecordGroup key={failure.at} note="clean-up left objects behind" title="Drill clean-up">
+        <RecordGroup key={failure.at} note="clean-up left settings behind" title="Drill clean-up">
           <RecordField copy={false} label="At" value={failure.at} />
-          <RecordField label="Residual objects" value={failure.objects} />
+          <RecordField label="Residual settings" value={failure.objects} />
           {failure.residuals.length ? <RecordField label="Residual details" value={failure.residuals} /> : null}
         </RecordGroup>
       ))}
@@ -434,7 +434,7 @@ function IncidentsRecord({ data }: { data: ResilienceData }) {
         <RecordGroup key={summary.incident.id} note={summary.incident.status} title={summary.incident.title}>
           <RecordField label="Incident ID" usage={<><code>/incidents?incident={summary.incident.id}</code></>} value={summary.incident.id} />
           <RecordField copy={false} label="Opened" value={summary.incident.openedAt} />
-          <RecordField label="Cleared snapshot ID" usage={summary.recommended?.collectedAt ? `collected ${summary.recommended.collectedAt}` : undefined} value={summary.recommended?.snapshotId} />
+          <RecordField label="Cleared backup ID" usage={summary.recommended?.collectedAt ? `collected ${summary.recommended.collectedAt}` : undefined} value={summary.recommended?.snapshotId} />
           <RecordField copy={false} label="Retention pins" value={summary.pins} />
         </RecordGroup>
       ))}

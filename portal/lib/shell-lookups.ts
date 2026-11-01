@@ -14,7 +14,8 @@ export interface ShellLookupInputs {
 }
 
 export interface ShellLookupLoaders {
-  pendingApprovalCount(scope: EntityScope): Promise<number>;
+  // The count of requests this person can decide: their own requests are left out.
+  pendingApprovalCount(scope: EntityScope, principalId: string | null): Promise<number>;
   displayName(principalId: string): Promise<string | null>;
 }
 
@@ -38,7 +39,7 @@ export async function loadShellLookups(
   loaders: ShellLookupLoaders,
 ): Promise<ShellLookups> {
   const [pendingApprovals, displayName] = await Promise.all([
-    approverScope ? orNull(() => loaders.pendingApprovalCount(approverScope)) : Promise.resolve(null),
+    approverScope ? orNull(() => loaders.pendingApprovalCount(approverScope, principalId)) : Promise.resolve(null),
     principalId ? orNull(() => loaders.displayName(principalId)) : Promise.resolve(null),
   ]);
   return { pendingApprovals, displayName };

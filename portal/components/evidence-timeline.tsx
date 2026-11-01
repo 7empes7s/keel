@@ -2,8 +2,8 @@ import Link from "next/link";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
 import { AUDIT_CHECK_WORDS, auditCheckOf } from "@/lib/audit-check";
 
-const CHECK_CLASS = { unknown: "", intact: "evidence-intact", unchecked: "evidence-unchecked", failed: "evidence-broken" } as const;
-const CHECK_TITLE = { unknown: "Chain integrity unavailable", intact: "Evidence checkpoint verified", unchecked: AUDIT_CHECK_WORDS.unchecked.label, failed: AUDIT_CHECK_WORDS.failed.label } as const;
+const CHECK_CLASS = { unknown: "", intact: "evidence-intact", known: "evidence-unchecked", unchecked: "evidence-unchecked", failed: "evidence-broken" } as const;
+const CHECK_TITLE = { unknown: "Chain integrity unavailable", intact: "Evidence checkpoint verified", known: AUDIT_CHECK_WORDS.known.label, unchecked: AUDIT_CHECK_WORDS.unchecked.label, failed: AUDIT_CHECK_WORDS.failed.label } as const;
 
 export function ChainIndicator({ integrity }: { integrity: ChainIntegrity | null }) {
   const check = auditCheckOf(integrity);

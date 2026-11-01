@@ -187,6 +187,8 @@ export interface CoverageType {
 export interface CoverageSummary {
   covered: number;
   failed: number;
+  // Only part of the kind was read: its own amber count, never inside failed.
+  partial: number;
   stale: number;
   neverCollected: number;
   notCovered: number;
@@ -679,7 +681,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "no-offsite" | "deletable";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "partial" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -699,7 +701,9 @@ export interface DashboardData {
   coverage: CoverageSummary;
   // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
   // "unchecked" when there is none to compare with; undefined when it could not be read.
-  evidence: { ok: boolean; chainLength: number; check?: AuditCheck };
+  // "known" (an explained break) can hide "unchecked", so unanchored says there is also no
+  // off-site copy to compare with.
+  evidence: { ok: boolean; chainLength: number; check?: AuditCheck; unanchored?: boolean };
   // Whether a checked off-site copy holds every backed-up type (the Resilience page's
   // recoverable point). Undefined when it could not be read.
   offsite?: { measured: boolean };
@@ -772,7 +776,7 @@ export interface ProtectionHeadline {
   headline: string;
   sentence: string;
   action: { label: string; href: string } | null;
-  counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  counts: { backedUp: number; restorable: number; failing: number; failed: number; partial: number; stale: number; neverCollected: number };
   // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
   proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;

@@ -34,11 +34,11 @@ export default async function ApprovalsPage() {
 
   try {
     const data = await getApprovalInboxData(scope);
-    const status = approvalsStatus(approvalCounts(data, data.generatedAt));
     const anonymity = await getAnonymitySetting();
     const restoreApprovals = await getRestoreApprovalSettingsView();
     const approvalMode = await getApprovalModeView();
     const solo = (approvalMode?.mode ?? data.approvalMode) === "solo";
+    const status = approvalsStatus(approvalCounts(data, data.generatedAt, viewerId, solo ? "solo" : "two-person"));
     return (
       <>
         <PageHeader

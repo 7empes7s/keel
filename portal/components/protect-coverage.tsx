@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
-import { useBackup } from "@/components/backup-controls";
+import { runWord, useBackup } from "@/components/backup-controls";
 import { FailureLine } from "@/components/backup-failure";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -19,7 +19,7 @@ import { Verdict } from "@/components/verdict";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
-import { failureReason, retryPlan, type RetryPlan } from "@/lib/backup-failure";
+import { failureReason, needsRetry, retryPlan, type RetryPlan } from "@/lib/backup-failure";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import {
@@ -42,6 +42,8 @@ import {
   tierLabel,
   typeName,
   workloadLiveLines,
+  activeRunSentence,
+  type ActiveTierRuns,
   type BackupHealth,
   type HealthFilter,
   type RestoreStanding,
@@ -56,13 +58,13 @@ import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import { csvLine } from "@/lib/csv";
 
 // What's protected (portal audit: one grouped list on a desktop, pick A; service cards
-// first on a phone, pick B). Four tiles filter the list (`health=`), a phone's service
+// first on a phone, pick B). Five tiles filter the list (`health=`), a phone's service
 // card opens its kinds below (`service=`) or is ticked to back the whole service up, and
 // every kind opens a details panel (`open=`, so Back closes it). Ids stay in one record
 // under the list.
 
 const NOUN = { one: "kind", many: "kinds" };
-const PROBLEM: BackupHealth[] = ["failed", "stale", "never"];
+const PROBLEM: BackupHealth[] = ["failed", "partial", "stale", "never"];
 
 const serviceCode = (item: CoverageType) => typeService(item.type).code;
 // Workload kinds (exchange-mail-flow, teams-org-policies…) are named by the taxonomy;
@@ -90,6 +92,7 @@ function groupBy(items: CoverageType[], key: (item: CoverageType) => string, met
 
 const HEALTH_GROUPS: { key: string; label: string; icon: IconName; about: string; has: (health: BackupHealth) => boolean }[] = [
   { key: "failed", label: "Failed", icon: "x-circle", about: "The last backup did not finish", has: (health) => health === "failed" },
+  { key: "partial", label: "Partly done", icon: "alert", about: "The last backup read only part of these, so some items are missing", has: (health) => health === "partial" },
   { key: "out-of-date", label: "Out of date or never", icon: "clock", about: "Not backed up recently enough, or not yet", has: (health) => health === "stale" || health === "never" },
   { key: "backed-up", label: "Backed up", icon: "check-circle", about: "The last backup finished in time", has: (health) => health === "ok" || health === "empty" },
   { key: "not-backed-up", label: "Not backed up", icon: "info", about: "Keel cannot read these, or this tenant does not have them", has: (health) => health === "not-collected" || health === "unavailable" },
@@ -155,6 +158,7 @@ interface ServiceSummary {
   kinds: CoverageType[];
   backedUp: number;
   failed: number;
+  partial: number;
   outOfDate: number;
   proven: number;
 }
@@ -165,15 +169,16 @@ function serviceSummaries(types: CoverageType[]): ServiceSummary[] {
   return [...map.entries()].map(([code, kinds]) => {
     const service = serviceFor(code);
     const counts = protectCounts(kinds);
-    return { code, name: service.name, icon: service.icon, kinds, backedUp: counts.backedUp, failed: counts.failed, outOfDate: counts.stale + counts.never, proven: counts.proven };
+    return { code, name: service.name, icon: service.icon, kinds, backedUp: counts.backedUp, failed: counts.failed, partial: counts.partial, outOfDate: counts.stale + counts.never, proven: counts.proven };
   }).sort((a, b) => {
-    const rank = (entry: ServiceSummary) => (entry.failed ? 0 : entry.outOfDate ? 1 : 2);
+    const rank = (entry: ServiceSummary) => (entry.failed ? 0 : entry.partial || entry.outOfDate ? 1 : 2);
     return rank(a) - rank(b) || serviceOrder(a.code) - serviceOrder(b.code);
   });
 }
 
 function serviceBadge(service: ServiceSummary): { tone: BadgeTone; label: string } {
-  if (service.failed) return { tone: "urgent", label: `${service.failed} failed` };
+  if (service.failed) return { tone: "urgent", label: `${service.failed} failed${service.partial ? `, ${service.partial} partly done` : ""}` };
+  if (service.partial) return { tone: "soon", label: `${service.partial} partly done` };
   if (service.outOfDate) return { tone: "soon", label: `${service.outOfDate} out of date` };
   if (service.backedUp === service.kinds.length) return { tone: "fine", label: "Backed up" };
   return { tone: "neutral", label: `${service.kinds.length - service.backedUp} not backed up` };
@@ -182,6 +187,7 @@ function serviceBadge(service: ServiceSummary): { tone: BadgeTone; label: string
 function problemLine(item: CoverageType): string {
   switch (backupHealth(item)) {
     case "failed": return `${kindName(item)} failed`;
+    case "partial": return `${kindName(item)} was only partly backed up`;
     case "stale": return `${kindName(item)} is out of date`;
     case "never": return `${kindName(item)} never backed up`;
     default: return `${kindName(item)}: ${HEALTH_BADGE[backupHealth(item)].label.toLowerCase()}`;
@@ -195,9 +201,10 @@ function percent(part: number, whole: number): string {
 function Meter({ service }: { service: ServiceSummary }) {
   const total = service.kinds.length;
   return (
-    <span aria-label={`${service.backedUp} backed up, ${service.failed} failed, ${service.outOfDate} out of date or never, of ${total}`} className="pt-meter" role="img">
+    <span aria-label={`${service.backedUp} backed up, ${service.failed} failed, ${service.partial} partly done, ${service.outOfDate} out of date or never, of ${total}`} className="pt-meter" role="img">
       <i data-tone="fine" style={{ width: percent(service.backedUp, total) }} />
       <i data-tone="urgent" style={{ width: percent(service.failed, total) }} />
+      <i data-part="partial" data-tone="soon" style={{ width: percent(service.partial, total) }} />
       <i data-tone="soon" style={{ width: percent(service.outOfDate, total) }} />
     </span>
   );
@@ -219,6 +226,7 @@ function downloadCsv(types: CoverageType[], now: string) {
 const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
   { key: "backed-up", label: "Backed up", icon: "check-circle" },
   { key: "failed", label: "Failed", icon: "x-circle" },
+  { key: "partial", label: "Partly done", icon: "alert" },
   { key: "out-of-date", label: "Out of date or never", icon: "clock" },
   { key: "proven", label: "Restore proven", icon: "restore" },
 ];
@@ -232,20 +240,22 @@ function retryTitle(plan: RetryPlan): string {
   return "This kind has no tier, so this runs a full backup. It only reads your tenant.";
 }
 
-export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, tierStrip, children }: {
+export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, tierStrip, children, active }: {
   data: CoverageData;
   now: string;
   canBackup: boolean;
   // Retrying a kind with no tier runs the settings or full backup, which needs collect.
   canCollect?: boolean;
   tierStrip?: ReactNode;
+  // Each tier's backup that is queued or running, so its buttons say so and stay off.
+  active?: ActiveTierRuns;
   // The rest of the page's explanation layer (content backups, recent jobs), after the list.
   children?: ReactNode;
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
   const params = useLiveSearchParams();
-  const { backUp, retry, busy, feedback } = useBackup();
+  const { backUp, retry, busy, feedback, runOf } = useBackup(active, now);
   const canRetry = (plan: RetryPlan) => (plan.kind === "tier" ? canBackup : canCollect);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
@@ -289,18 +299,21 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
 
   const tileSmall: Record<HealthFilter, string> = {
     "backed-up": `of ${counts.total} ${counts.total === 1 ? "kind" : "kinds"}`,
-    failed: counts.failed ? "Their last backup did not finish" : "Nothing failed",
+    failed: counts.failed ? "Their last backup did not finish" : counts.partial ? `Nothing failed; ${counts.partial} partly done` : "Nothing failed",
+    partial: counts.partial ? "Read in part: some items are missing" : "Nothing partly done",
     "out-of-date": `${counts.stale} out of date, ${counts.never} never`,
     proven: counts.tested ? `${counts.tested} more pass tests, not yet run live` : "By a live test restore on this tenant",
   };
   const tileValue: Record<HealthFilter, string> = {
     "backed-up": String(counts.backedUp),
     failed: String(counts.failed),
+    partial: String(counts.partial),
     "out-of-date": String(counts.stale + counts.never),
     proven: `${counts.proven} of ${counts.restorable}`,
   };
   const tileTone: Partial<Record<HealthFilter, RiskTone>> = {
     failed: counts.failed ? "urgent" : undefined,
+    partial: counts.partial ? "soon" : undefined,
     "out-of-date": counts.stale + counts.never ? "soon" : undefined,
   };
 
@@ -377,7 +390,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                 <Meter service={entry} />
                 <ul className="pt-service-lines">
                   {ordered_problems.length ? ordered_problems.map((item) => (
-                    <li data-tone={healthRisk(item)} key={item.type}><Icon name={backupHealth(item) === "failed" ? "x-circle" : healthRisk(item) ? "clock" : "info"} />{problemLine(item)}</li>
+                    <li data-tone={healthRisk(item)} key={item.type}><Icon name={backupHealth(item) === "failed" ? "x-circle" : backupHealth(item) === "partial" ? "alert" : healthRisk(item) ? "clock" : "info"} />{problemLine(item)}</li>
                   )) : (
                     <>
                       {newest ? <li data-tone="fine"><Icon name="check-circle" />All backed up {ago(newest, now)}</li> : null}
@@ -449,9 +462,9 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
             const state = backupHealth(item);
             const badge = HEALTH_BADGE[state];
             const tier = item.criticality && TIERS.some((entry) => entry.id === item.criticality) ? item.criticality : null;
-            // Every failed kind says why and can be run again, tier or not.
-            const reason = state === "failed" ? failureReason(item) : null;
-            const plan = state === "failed" ? retryPlan(item, TIER_IDS) : null;
+            // Every failed or partly done kind says why and can be run again, tier or not.
+            const reason = failureReason(item);
+            const plan = needsRetry(item) ? retryPlan(item, TIER_IDS) : null;
             return (
               <div className={`pt-row health-${state}`}>
                 <span aria-hidden="true" className="pt-kind" data-tone={healthRisk(item)}><Icon name={typeService(item.type).icon} /></span>
@@ -465,30 +478,37 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                   {reason ? <span className="pt-row-why"><FailureLine compact reason={reason} /></span> : null}
                 </span>
                 <span className="pt-row-acts">
-                  {plan ? (
-                    <button
-                      aria-busy={busy === item.type || undefined}
-                      aria-label={`Retry ${kindName(item)}`}
-                      className="btn btn-sm"
-                      disabled={!canRetry(plan) || busy !== null}
-                      onClick={() => void retry(plan, kindName(item), item.type)}
-                      title={canRetry(plan) ? retryTitle(plan) : `You need the ${plan.kind === "tier" ? "backup" : "collect"} permission to run this again.`}
-                      type="button"
-                    >
-                      <Icon name="play" />Retry
-                    </button>
-                  ) : tier && PROBLEM.includes(state) ? (
-                    <button
-                      aria-busy={busy === item.type || undefined}
-                      className="btn btn-sm"
-                      disabled={!canBackup || busy !== null}
-                      onClick={() => void backUp([tier], item.type)}
-                      title={`Runs every ${tierLabel(tier)} kind`}
-                      type="button"
-                    >
-                      Back up {tierLabel(tier)} again
-                    </button>
-                  ) : null}
+                  {plan ? (() => {
+                    // A tier retry is that tier's backup: while it is queued or running, say so.
+                    const run = plan.kind === "tier" ? runOf(plan.tier) : null;
+                    return (
+                      <button
+                        aria-busy={busy === item.type || undefined}
+                        aria-label={run ? undefined : `Retry ${kindName(item)}`}
+                        className="btn btn-sm"
+                        disabled={!canRetry(plan) || busy !== null || run !== null}
+                        onClick={() => void retry(plan, kindName(item), item.type)}
+                        title={run ? activeRunSentence(run, now) : canRetry(plan) ? retryTitle(plan) : `You need the ${plan.kind === "tier" ? "backup" : "collect"} permission to run this again.`}
+                        type="button"
+                      >
+                        {run && plan.kind === "tier" ? <><Icon name="refresh" />{`${tierLabel(plan.tier)} ${runWord(run).toLowerCase()}`}</> : <><Icon name="play" />Retry</>}
+                      </button>
+                    );
+                  })() : tier && PROBLEM.includes(state) ? (() => {
+                    const run = runOf(tier);
+                    return (
+                      <button
+                        aria-busy={busy === item.type || undefined}
+                        className="btn btn-sm"
+                        disabled={!canBackup || busy !== null || run !== null}
+                        onClick={() => void backUp([tier], item.type)}
+                        title={run ? activeRunSentence(run, now) : `Runs every ${tierLabel(tier)} kind`}
+                        type="button"
+                      >
+                        {run ? `${tierLabel(tier)} ${runWord(run).toLowerCase()}` : `Back up ${tierLabel(tier)} again`}
+                      </button>
+                    );
+                  })() : null}
                 </span>
               </div>
             );
@@ -512,7 +532,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
       {opened ? <BaselinesStyles /> : null}
       {opened ? (
         <DetailsSheet
-          footer={backupHealth(opened) === "failed" && canRetry(retryPlan(opened, TIER_IDS)) ? (
+          footer={needsRetry(opened) && canRetry(retryPlan(opened, TIER_IDS)) && !(() => { const plan = retryPlan(opened, TIER_IDS); return plan.kind === "tier" && runOf(plan.tier) !== null; })() ? (
             <>
               <button
                 aria-busy={busy === "sheet" || undefined}
@@ -525,20 +545,28 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
               </button>
               <p className="bl-help">{retryTitle(retryPlan(opened, TIER_IDS))}</p>
             </>
-          ) : opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (
-            <>
-              <button
-                aria-busy={busy === "sheet" || undefined}
-                className="btn btn-primary"
-                disabled={busy !== null}
-                onClick={() => void backUp([opened.criticality!], "sheet")}
-                type="button"
-              >
-                <Icon name="play" />Back up {tierLabel(opened.criticality)}
-              </button>
-              <p className="bl-help">Runs every {tierLabel(opened.criticality)} kind. It only reads your tenant.</p>
-            </>
-          ) : undefined}
+          ) : opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (() => {
+            const tier = opened.criticality!;
+            const run = runOf(tier);
+            return (
+              <>
+                <button
+                  aria-busy={busy === "sheet" || undefined}
+                  className="btn btn-primary"
+                  disabled={busy !== null || run !== null}
+                  onClick={() => void backUp([tier], "sheet")}
+                  type="button"
+                >
+                  <Icon name={run ? "refresh" : "play"} />{run ? `${tierLabel(tier)} ${runWord(run).toLowerCase()}` : `Back up ${tierLabel(tier)}`}
+                </button>
+                {run ? (
+                  <p className="bl-help" role="status">{activeRunSentence(run, now)} <Link href={`/jobs/${encodeURIComponent(run.jobId)}`}>View job</Link></p>
+                ) : (
+                  <p className="bl-help">Runs every {tierLabel(tier)} kind. It only reads your tenant.</p>
+                )}
+              </>
+            );
+          })() : undefined}
           kicker={<><Badge tone={HEALTH_BADGE[backupHealth(opened)].tone}>{HEALTH_BADGE[backupHealth(opened)].label}</Badge><span>{typeService(opened.type).name}</span></>}
           onClose={() => view.set({ open: null })}
           title={kindName(opened)}

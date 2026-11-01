@@ -64,7 +64,9 @@ export function verdictAction(headline: ProtectionHeadline): { label: string; hr
   if (!action) return null;
   if (action.href === "/protect" && headline.state === "collection") {
     const { failed, stale, neverCollected } = headline.counts;
+    const partial = headline.counts.partial ?? 0;
     if (failed > 0) return { label: failed === 1 ? "See the failed one" : `See the ${failed} failed`, href: "/protect?health=failed" };
+    if (partial > 0) return { label: partial === 1 ? "See the partly done one" : `See the ${partial} partly done`, href: "/protect?health=partial" };
     if (stale + neverCollected > 0) return { label: "See the out-of-date ones", href: "/protect?health=out-of-date" };
   }
   return action;
@@ -74,6 +76,7 @@ export function verdictAction(headline: ProtectionHeadline): { label: string; hr
 export const COVERAGE_LINKS = {
   covered: "/protect?health=backed-up",
   failed: "/protect?health=failed",
+  partial: "/protect?health=partial",
   late: "/protect?health=out-of-date",
   uncovered: "/protect",
   unavailable: "/protect",
@@ -84,13 +87,15 @@ export interface CoverageSegment { key: keyof typeof COVERAGE_LINKS; label: stri
 /**
  * The ring's parts, each a link to its list. They are the coverage buckets
  * (lib/protect-view.ts coverageSummary), so they add up to every kind Keel knows.
- * "Not on this tenant" is left out when there are none.
+ * "Partly done" and "Not on this tenant" are left out when there are none.
  */
 export function coverageSegments(coverage: CoverageSummary): { segments: CoverageSegment[]; total: number; percent: number } {
   const total = Math.max(coverage.total, 1);
   const segments: CoverageSegment[] = [
     { key: "covered", label: "Backed up", value: coverage.covered, href: COVERAGE_LINKS.covered },
     { key: "failed", label: "Failed", value: coverage.failed, href: COVERAGE_LINKS.failed },
+    // Partly done is its own amber part, shown only when there is one.
+    ...(coverage.partial ? [{ key: "partial" as const, label: "Partly done", value: coverage.partial, href: COVERAGE_LINKS.partial }] : []),
     { key: "late", label: "Out of date or never", value: coverage.stale + coverage.neverCollected, href: COVERAGE_LINKS.late },
     { key: "uncovered", label: "Not backed up by Keel yet", value: coverage.notCovered, href: COVERAGE_LINKS.uncovered },
   ];
@@ -120,7 +125,7 @@ export interface AttentionRow { key: string; tone: BadgeTone; icon: IconName; ti
 const SEVERITY_TONE: Record<DashboardAlert["severity"], BadgeTone> = { critical: "urgent", warning: "soon", notice: "low" };
 const ALERT_ICONS: Record<string, IconName> = {
   "no-baseline": "baselines", "empty-baseline": "baselines", "nothing-backed-up": "backup", "backup-unfinished": "backup",
-  failed: "x-circle", stale: "clock", uncovered: "info", audit: "audit", "no-offsite": "cloud", deletable: "backup",
+  failed: "x-circle", partial: "alert", stale: "clock", uncovered: "info", audit: "audit", "audit-unchecked": "audit", "no-offsite": "cloud", deletable: "backup",
 };
 
 /** The word on a row's badge. */
@@ -134,8 +139,9 @@ export const TONE_WORDS: Record<BadgeTone, string> = { urgent: "Urgent", soon: "
 function repeatsVerdict(alert: DashboardAlert, headline: ProtectionHeadline): boolean {
   if (headline.state !== "collection") return false;
   const { failed, stale, neverCollected, backedUp } = headline.counts;
-  if (alert.key === "failed") return true;
-  if (alert.key === "stale") return failed === 0 && neverCollected === 0 && stale > 0;
+  const partial = headline.counts.partial ?? 0;
+  if (alert.key === "failed" || alert.key === "partial") return true;
+  if (alert.key === "stale") return failed === 0 && partial === 0 && neverCollected === 0 && stale > 0;
   if (alert.key === "nothing-backed-up") return backedUp === 0;
   return false;
 }
@@ -229,15 +235,17 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
   const { coverage, headline } = data;
   const { segments, total } = coverageSegments(coverage);
   const value = (key: CoverageSegment["key"]) => segments.find((segment) => segment.key === key)?.value ?? 0;
-  const [covered, failed, late] = [value("covered"), value("failed"), value("late")];
+  const [covered, failed, partial, late] = [value("covered"), value("failed"), value("partial"), value("late")];
   const uncovered = value("uncovered") + value("unavailable");
+  // Partly done is its own amber count, never inside "failed" (decision 31 Oct 2026).
+  const partlyNote = failed && partial ? `, ${partial.toLocaleString("en-GB")} partly done` : "";
   const tiles: OverviewTile[] = [{
     key: "backups", label: "Backups", icon: "backup",
-    value: failed ? `${failed.toLocaleString("en-GB")} failed` : late ? `${late.toLocaleString("en-GB")} out of date` : `${covered.toLocaleString("en-GB")} backed up`,
-    detail: `${covered.toLocaleString("en-GB")} of ${plural(total, "kind", "kinds")} backed up`,
-    href: failed ? COVERAGE_LINKS.failed : late ? COVERAGE_LINKS.late : "/protect",
-    tone: failed ? "urgent" : late ? "soon" : undefined,
-    meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "soon", share: late / total }, { tone: "neutral", share: uncovered / total }],
+    value: failed ? `${failed.toLocaleString("en-GB")} failed` : partial ? `${partial.toLocaleString("en-GB")} partly done` : late ? `${late.toLocaleString("en-GB")} out of date` : `${covered.toLocaleString("en-GB")} backed up`,
+    detail: `${covered.toLocaleString("en-GB")} of ${plural(total, "kind", "kinds")} backed up${partlyNote}`,
+    href: failed ? COVERAGE_LINKS.failed : partial ? COVERAGE_LINKS.partial : late ? COVERAGE_LINKS.late : "/protect",
+    tone: failed ? "urgent" : partial || late ? "soon" : undefined,
+    meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "soon", share: (partial + late) / total }, { tone: "neutral", share: uncovered / total }],
   }];
 
   // "Restore proven" is counted once (engine/coverage/restoreProof.mjs), so this tile,

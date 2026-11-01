@@ -1185,7 +1185,7 @@ test("a change says who made it from the audit log and where an undo goes", asyn
 // D20: a change the list did not read the audit log for is looked up when it is opened,
 // so the panel names who made it instead of "not known yet"; a failed read says so.
 test("an opened change looks up who made it when the list did not", async ({ page }) => {
-  await open(page, "/drift");
+  await open(page, "/changes");
   const sheet = await openChange(page, "Require MFA for admins");
   const glance = sheet.locator(".bl-glance");
   await expect(glance).toContainText("Sam Lee");

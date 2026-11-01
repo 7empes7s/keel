@@ -87,8 +87,7 @@ test("every old URL sends you to its page's new name, and no page links to an ol
     ...files(resolve(portal, "app"), (name) => /\.tsx?$/.test(name)),
     ...files(resolve(portal, "components"), (name) => /\.tsx?$/.test(name)),
     ...files(resolve(portal, "lib"), (name) => /\.tsx?$/.test(name) && name !== "route-names.ts"),
-    resolve(portal, "ui-harness/app.tsx"),
-    resolve(portal, "ui-harness/kit.tsx"),
+    ...files(resolve(portal, "ui-harness"), (name) => /\.tsx?$/.test(name) && !name.endsWith(".config.ts")),
   ];
   for (const file of sources) {
     readFileSync(file, "utf8").split("\n").forEach((line, index) => {

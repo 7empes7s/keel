@@ -648,7 +648,8 @@ export function fillDriftTrend(
  * that already differed at once (981 on one day in the 31 Oct audit), which read like an
  * attack: the differences first found in that comparison's backup are returned apart as
  * firstCheck, so the chart can mark them instead of drawing a spike (UI audit E2). That
- * backup is the tenant's first one to finish after the approval; if it found nothing,
+ * backup is the tenant's first complete one after the approval (a failed run compares
+ * nothing); if it found nothing,
  * there is no firstCheck and every later change counts as new.
  */
 export async function driftTrendFor(
@@ -671,6 +672,7 @@ export async function driftTrendFor(
          FROM snapshot s
          JOIN baseline b ON b.id = $2
         WHERE s.tenant_ref = $1
+          AND s.status = 'complete'
           AND s.completed_at >= b.set_at
         ORDER BY s.completed_at, s.id
         LIMIT 1

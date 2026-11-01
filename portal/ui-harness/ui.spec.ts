@@ -506,7 +506,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(groups.nth(2)).toHaveText("Wednesday 30 September");
   await expect(page.locator(".sel-group").first()).toContainText("1 failed, 1 refused");
   for (const link of await page.locator(".ac-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
-  await expect(page.locator(".ac-row-link").first()).toHaveText("Amara Okafor approved a restore");
+  await expect(page.locator(".ac-row-link").first()).toHaveText("Amara Okafor approved a request to restore from a backup");
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 
   // The panel of a failed backup: what went wrong, one amber "Run again", the job page link.

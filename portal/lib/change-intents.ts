@@ -115,15 +115,18 @@ export async function loadChangeIntents(client: Client, tenantRef: string, now =
       : personLabel({ kind: "person", id: String(person.id), name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "A person without a name"),
   }))).sort((left, right) => (namer ? left.name.localeCompare(right.name) : 0));
   const madeBy = await whoMadeThem(client, tenantRef, open, people, choices, namer);
-  return {
-    intents: intents.map((intent) => ({ ...intent, name: saved[intent.naturalKey]?.name ?? null })),
-    changes: open.map((drift) => ({
+  const changes = open.map((drift) => ({
       driftId: String(drift.id), naturalKey: String(drift.natural_key), resourceType: String(drift.resource_type),
       name: payloadName(drift.after_payload, String(drift.resource_type)) ?? payloadName(drift.before_payload, String(drift.resource_type)) ?? saved[String(drift.natural_key)]?.name ?? null,
       detectedAt: iso(drift.detected_at), transitions: readableTransitions((driftTransitions(drift) ?? []) as IntentTransition[]),
       madeBy: madeBy.get(String(drift.id)) ?? null,
-    })).filter((change) => change.transitions.length > 0),
-    openCount: Math.max(0, Number(counted?.n ?? drifts.length) - approved.size),
+  }));
+  // Changes where only empty values or list order differ are not offered, nor counted.
+  const shown = changes.filter((change) => change.transitions.length > 0);
+  return {
+    intents: intents.map((intent) => ({ ...intent, name: saved[intent.naturalKey]?.name ?? null })),
+    changes: shown,
+    openCount: Math.max(shown.length, Number(counted?.n ?? drifts.length) - approved.size - (changes.length - shown.length)),
     people: choices,
     generatedAt: now.toISOString(),
   };
@@ -172,6 +175,12 @@ async function whoMadeThem(
     for (const entry of attributed) {
       const at = entry.evidence[0]?.occurredAt ?? null;
       if (entry.verdict === "unknown" || entry.actors.length === 0) {
+        result.set(entry.changeId, { state: "unknown", principalId: null, who: null, at: null, source: entry.source ?? null });
+        continue;
+      }
+      // Only an audit record that names this resource fills anyone in. Someone who merely
+      // signed in around then (sign-in-proximity-only) is not who made the change.
+      if (entry.evidence.length === 0) {
         result.set(entry.changeId, { state: "unknown", principalId: null, who: null, at: null, source: entry.source ?? null });
         continue;
       }

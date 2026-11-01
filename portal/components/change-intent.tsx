@@ -213,7 +213,8 @@ export function madeBySentence(madeBy: IntentMadeBy | null | undefined, chosen: 
     case "not-keel-user": return { tone: "low", text: `The ${log} says ${madeBy.who ?? "an account Keel has no name for"} made the change${at}, but they have no Keel account. Choose who answers for it.` };
     case "app": return { tone: "low", text: `The ${log} says the app ${madeBy.who ?? "Keel has no name for"} made the change${at}. Choose the person who answers for it.` };
     case "several": return { tone: "low", text: `The ${log} names more than one account for this change. Choose the person who made it.` };
-    default: return { tone: "neutral", text: madeBy?.source ? `The ${log} does not say who made this change. Choose the person.` : "Keel reads no audit log for this kind of setting. Choose the person who made the change." };
+    case "unknown": return { tone: "neutral", text: madeBy.source ? `The ${log} does not say who made this change. Choose the person.` : "Keel reads no audit log for this kind of setting. Choose the person who made the change." };
+    default: return { tone: "neutral", text: "Keel could not tell who made this change. Choose the person." };
   }
 }
 

@@ -14251,8 +14251,104 @@ item that needs it stays untouched.
   (schema fragment 91), turns JIT off on portal connections, trims the compliance read, and logs portal statements of 1 s or more.
   This item gets the after-numbers for Q303. **Same read-only rules as Q303.**
 - Needs: the deployed build at or after PR #885's merge, and its schema applied (`SELECT indexname FROM pg_indexes WHERE indexname = 'resource_version_object_id_idx'` returns a row; if not, report `blocked`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-11-01 02:45 UTC, keel-operator). Build **1d890b0b** (#891, contains #885: ab328ffa is an ancestor). Schema applied (`resource_version_object_id_idx` present). Same setup as Q303: my worktree at that commit, `portal/node_modules` symlinked to live, tsx present, nothing installed, every connection `default_transaction_read_only=on`. No tenant, no writes, no restarts. Both runs **exit 0** inside `timeout 900` (02:38:14 → 02:39:19, then → 02:40:01). `read-only transaction` lines: **0**. No query was left running afterwards.
+  - **Run 1, `ONLY='changes|baselines getDriftData|compliance getComplianceData'`, verbatim** (minus the pg `DeprecationWarning` header; the `[keel-portal] slow query` lines are #885's new ≥1 s log, printed by this run's own process):
+    ```
+    ## compliance getComplianceData: 1128 / 776 / 759 ms (last run: 30 queries, 2210 ms in SQL)
+      566 ms  x1  19322 rows  SELECT br.baseline_id, rv.id, rv.natural_key, rv.resource_type, rv.payload_hash, rv.hash_version, rv.blast_rad
+      374 ms  x1  438 rows  SELECT id, workload, observed_from, observed_to FROM workload_collection WHERE tenant_ref = $1 AND workload = 
+      373 ms  x1  0 rows  SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at FROM 
+      372 ms  x1  5079 rows  WITH latest AS ( SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift WHERE tenant_ref = $1 ORDER BY ba
+      157 ms  x1  608 rows  SELECT id, tenant_ref, started_at, completed_at, CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN (SELE
+      136 ms  x13  609 rows  SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest FROM snapshot WHERE tenant_ref = $1 A
+    [keel-portal] slow query 1062 ms: WITH covered AS ( SELECT tcl.resource_type AS type, tcl.snapshot_id AS id FROM type_coverage_latest tcl JOIN snapshot s 
+    [keel-portal] slow query 3153 ms: WITH seen AS ( SELECT DISTINCT d.observed_snapshot AS id FROM drift d WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
+    [keel-portal] slow query 2957 ms: WITH seen AS ( SELECT DISTINCT d.observed_snapshot AS id FROM drift d WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
+    [keel-portal] slow query 4282 ms: WITH seen AS ( SELECT DISTINCT d.observed_snapshot AS id FROM drift d WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
+    ## baselines getDriftData: 7316 / 6110 / 7896 ms (last run: 1850 queries, 8335 ms in SQL)
+      4283 ms  x1  3223 rows  WITH seen AS ( SELECT DISTINCT d.observed_snapshot AS id FROM drift d WHERE d.tenant_ref = $1 AND d.id = ANY($
+      877 ms  x3  277 rows  WITH covered AS ( SELECT tcl.resource_type AS type, tcl.snapshot_id AS id FROM type_coverage_latest tcl JOIN s
+      417 ms  x1  438 rows  SELECT id, workload, observed_from, observed_to FROM workload_collection WHERE tenant_ref = $1 AND workload = 
+      416 ms  x1  0 rows  SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at FROM 
+      415 ms  x1  5079 rows  WITH latest AS ( SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift WHERE tenant_ref = $1 ORDER BY ba
+      385 ms  x1  8108 rows  SELECT k.id, c.completed_at, c.payload_hash, c.payload FROM unnest($2::uuid[], $3::text[], $4::text[], $5::tim
+    [keel-portal] slow query 12143 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource_type, (CA
+    [keel-portal] slow query 1498 ms: WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key, (CASE r
+    [keel-portal] slow query 11538 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource_type, (CA
+    [keel-portal] slow query 1192 ms: WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key, (CASE r
+    [keel-portal] slow query 11452 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource_type, (CA
+    [keel-portal] slow query 1209 ms: WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key, (CASE r
+    ## changes getChangeFeed30: 14075 / 13077 / 13006 ms (last run: 9 queries, 12997 ms in SQL)
+      11451 ms  x1  71 rows  WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource
+      1208 ms  x1  0 rows  WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_ke
+      326 ms  x1  501 rows  SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at, coalesce((CASE r.re
+      6 ms  x1  128 rows  SELECT d.id, d.workload, d.resource_key, d.change_type, d.blast_radius, c.observed_to, CASE WHEN cur.collectio
+      4 ms  x1  501 rows  SELECT source_event_id, occurred_at, target_type, target_id, operation, activity, actor_kind, actor_id FROM au
+      1 ms  x3  3 rows  SELECT to_regclass($1) AS name
+    ```
+  - **Run 2, `ONLY='resilience|protect|activity|alerts'`, verbatim:**
+    ```
+    [keel-portal] slow query 1856 ms: SELECT es.snapshot_id, es.parent_type, es.family, es.outcome, es.started_at, es.completed_at FROM relationship_edge_set 
+    [keel-portal] slow query 1784 ms: SELECT es.snapshot_id, es.parent_type, es.family, es.outcome, es.started_at, es.completed_at FROM relationship_edge_set 
+    [keel-portal] slow query 1924 ms: SELECT es.snapshot_id, es.parent_type, es.family, es.outcome, es.started_at, es.completed_at FROM relationship_edge_set 
+    ## resilience getResilienceData: 3962 / 3089 / 3210 ms (last run: 34 queries, 2854 ms in SQL)
+      1924 ms  x1  640681 rows  SELECT es.snapshot_id, es.parent_type, es.family, es.outcome, es.started_at, es.completed_at FROM relationship
+      247 ms  x1  2310 rows  WITH RECURSIVE parents AS ( (SELECT parent_type, parent_source_id, family FROM relationship_edge_set WHERE ten
+      211 ms  x1  352 rows  WITH entries AS ( SELECT entry.key AS resource_type, entry.value AS coverage_entry, s.id AS snapshot_id, s.sta
+      91 ms  x1  23 rows  WITH latest AS ( SELECT DISTINCT ON (workload) workload, id::text AS id, outcome, observed_from, observed_to F
+      85 ms  x1  26 rows  SELECT DISTINCT parent_type, family FROM relationship_edge_set WHERE tenant_ref = $1 AND outcome <> 'unsupport
+      64 ms  x1  6 rows  SELECT workload, count(*)::bigint AS versions, count(DISTINCT (container, item_key))::bigint AS items, count(D
+    ## protect getDiscoveryInventory: 12 / 7 / 8 ms (last run: 2 queries, 7 ms in SQL)
+      6 ms  x1  1595 rows  SELECT * FROM discovery_item WHERE run_id = $1 AND ($2::text[] IS NULL OR status = ANY($2::text[])) ORDER BY s
+      2 ms  x1  1 rows  SELECT id, started_at, finished_at, sources, summary, catalogue FROM discovery_run WHERE tenant_ref = $1 ORDER
+    ## protect getContentBackups: 198 / 175 / 149 ms (last run: 4 queries, 149 ms in SQL)
+      83 ms  x1  23 rows  WITH latest AS ( SELECT DISTINCT ON (workload) workload, id::text AS id, outcome, observed_from, observed_to F
+      64 ms  x1  6 rows  SELECT workload, count(*)::bigint AS versions, count(DISTINCT (container, item_key))::bigint AS items, count(D
+      1 ms  x1  5 rows  WITH latest AS ( SELECT DISTINCT ON (workload) workload, id::text AS id, outcome, items, bytes, reasons, skipp
+      0 ms  x1  1 rows  SELECT to_regclass('workload_collection') IS NOT NULL AS workload, to_regclass('content_run') IS NOT NULL AS c
+    ## protect getRecentJobs: 20 / 17 / 17 ms (last run: 3 queries, 17 ms in SQL)
+      16 ms  x1  10 rows  SELECT *, started_at::text AS event_started_at FROM job WHERE ($2::text[] IS NULL OR kind = ANY($2)) AND ($3::
+      0 ms  x1  0 rows  SELECT enabled, salt, changed_at, changed_by FROM people_anonymity WHERE id
+      0 ms  x1  1 rows  SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])
+    ## activity /api/jobs: 950 / 967 / 929 ms (last run: 4 queries, 332 ms in SQL)
+      330 ms  x1  100 rows  SELECT *, started_at::text AS event_started_at FROM job WHERE ($2::text[] IS NULL OR kind = ANY($2)) AND ($3::
+      1 ms  x1  25 rows  SELECT id::text AS id, started_at, completed_at FROM snapshot WHERE tenant_ref = $1 AND id::text = ANY($2::tex
+      1 ms  x1  2 rows  SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])
+      0 ms  x1  0 rows  SELECT enabled, salt, changed_at, changed_by FROM people_anonymity WHERE id
+    ## activity /api/evidence: 5 / 3 / 2 ms (last run: 1 queries, 1 ms in SQL)
+      1 ms  x1  51 rows  SELECT seq, occurred_at, kind, subject, actor FROM evidence WHERE tenant_ref = $1 AND ($2::text[] IS NULL OR k
+    ## activity /api/evidence/verify: 5657 / 73 / 71 ms (last run: 7 queries, 70 ms in SQL)
+      67 ms  x1  1 rows  SELECT count(*)::text AS count, coalesce(sum(hashtextextended(seq::text || ':' || xmin::text, 0)), 0)::text AS
+      1 ms  x1  0 rows  SELECT seq, occurred_at, subject FROM evidence WHERE tenant_ref = $1 AND kind = $2 AND ($3::bigint IS NULL OR 
+      1 ms  x1  0 rows  SELECT seq, tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash FROM evidence WHERE tenant_r
+      0 ms  x1  0 rows  BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY
+      0 ms  x1  1 rows  SELECT head_seq, head_hash, record_count FROM evidence_head WHERE tenant_ref = $1
+      0 ms  x1  1 rows  SELECT record_count FROM evidence_head WHERE tenant_ref = $1
+    [keel-portal] slow query 1716 ms: SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrandingProfile
+    [keel-portal] slow query 3592 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource_type, (CA
+    [keel-portal] slow query 1204 ms: WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key, (CASE r
+    [keel-portal] slow query 1662 ms: SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrandingProfile
+    [keel-portal] slow query 3666 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource_type, (CA
+    [keel-portal] slow query 1461 ms: WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key, (CASE r
+    [keel-portal] slow query 1674 ms: SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrandingProfile
+    [keel-portal] slow query 3611 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource_type, (CA
+    [keel-portal] slow query 1251 ms: WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key, (CASE r
+    ## alerts /api/alerts: 7015 / 7238 / 6976 ms (last run: 18 queries, 6908 ms in SQL)
+      3611 ms  x1  783 rows  WITH wanted AS (SELECT unnest($2::text[]) AS id), hits AS ( SELECT w.id AS wanted, rv.natural_key, rv.resource
+      1674 ms  x1  783 rows  SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrand
+      1251 ms  x1  0 rows  WITH latest AS ( SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_ke
+      261 ms  x1  152 rows  WITH covered AS ( SELECT tcl.resource_type AS type, tcl.snapshot_id AS id FROM type_coverage_latest tcl JOIN s
+      44 ms  x1  6768 rows  SELECT t.* FROM alert_transition t JOIN alert a ON a.id = t.alert_id WHERE a.id::text = ANY($1::text[]) AND a.
+      28 ms  x1  112 rows  SELECT DISTINCT ON (c.workload, o.resource_key) c.workload, o.resource_key, COALESCE(NULLIF(o.fields->>'displa
+    ```
+  - **Step 2, `journalctl -u keel-portal --since 02:22:33` (portal start after deploy) | grep "slow query":** **0** lines. The live portal logged no ≥1 s statement between its restart and 02:40; the slow lines above came from the profiler process.
+  - **Before (Q303) → after:**
+    - Changes feed (30 d): did not finish in 8+ min → **~13 s** (the `wanted/hits` query is now 11.5 s, still the slowest single statement).
+    - `getDriftData`: ~6.8 s → **6.1–7.9 s**, no change; still 1850 queries per call, and `WITH seen AS …` at 3–4.3 s.
+    - `getComplianceData`: ~0.7 s → **~0.77 s**.
+    - Newly timed: Alerts **~7 s** (the same `wanted/hits` query, 3.6 s); Resilience **~3.1 s** (`relationship_edge_set` read returns **640,681 rows**, 1.9 s); Activity jobs ~0.95 s; evidence verify 5.7 s cold, then 0.07 s; Protect under 0.2 s.
+  - Files cleaned up: `profile-reads.mts`, the symlink, and no `/tmp/q303.txt` (output kept only in my scratchpad).
 - Do, on Mulinux:
   1. Same as Q303 steps 1–4 at the deployed commit, with the script from Q303, but `timeout 900`. Run it twice: first with
      `ONLY='changes|baselines getDriftData|compliance getComplianceData'`, then with `ONLY='resilience|protect|activity|alerts'`.

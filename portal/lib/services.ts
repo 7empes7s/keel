@@ -23,6 +23,7 @@ export const SERVICES: readonly CloudService[] = Object.freeze([
   { code: "Power Platform", name: "Power Platform", icon: "service-power-platform", about: "Environments, flows and data rules" },
   { code: "Purview", name: "Purview", icon: "service-purview", about: "Retention, labels and data loss rules" },
   { code: "Defender", name: "Defender", icon: "service-defender", about: "Threat protection settings" },
+  { code: "Microsoft 365 apps", name: "Microsoft 365 apps", icon: "service-m365-apps", about: "Org settings for To Do, Forms and the Office apps" },
   { code: "Keel", name: "Keel: backups and recovery", icon: "service-keel", about: "Keel's own backups, restores and jobs" },
 ]);
 

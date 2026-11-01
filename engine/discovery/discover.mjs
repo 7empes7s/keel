@@ -281,17 +281,26 @@ export function reclassifyCatalogue(catalogue, items, catalog = CATALOG) {
   });
 }
 
-/** The run summary the portal reads. */
-export function summarize(items, catalogue, extraContainers = {}) {
+/**
+ * One item per type: a Graph path found in v1.0 and beta is one type, and a type
+ * readable in any version counts as readable. The summary counts these, and every
+ * list of types must show these, so the parts add up to the total.
+ */
+export function distinctItems(items) {
   const distinct = new Map();
-  for (const item of items) {
-    const id = `${item.kind === 'cmdlet' ? item.source : 'graph'}|${item.name.toLowerCase()}`;
+  for (const item of items ?? []) {
+    const id = `${item.kind === 'cmdlet' ? item.source : 'graph'}|${String(item.name).toLowerCase()}`;
     const prior = distinct.get(id);
-    // A type readable in any version counts as readable.
     if (!prior || (prior.status === 'unreadable' && item.status !== 'unreadable')) distinct.set(id, item);
   }
+  return [...distinct.values()];
+}
+
+/** The run summary the portal reads. */
+export function summarize(items, catalogue, extraContainers = {}) {
+  const distinct = distinctItems(items);
   const counts = Object.fromEntries(STATUSES.map((status) => [status, 0]));
-  for (const item of distinct.values()) counts[item.status] += 1;
+  for (const item of distinct) counts[item.status] += 1;
   const containers = {};
   for (const container of CONTAINERS) {
     const item = items.find((candidate) => candidate.source === 'graph:v1.0' && candidate.name.toLowerCase() === container.path.toLowerCase())
@@ -303,7 +312,7 @@ export function summarize(items, catalogue, extraContainers = {}) {
   }
   const coverage = {};
   for (const entry of catalogue) coverage[entry.coverage] = (coverage[entry.coverage] ?? 0) + 1;
-  return { types: distinct.size, ...counts, containers, catalogue: coverage };
+  return { types: distinct.length, ...counts, containers, catalogue: coverage };
 }
 
 /**

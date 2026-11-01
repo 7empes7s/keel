@@ -191,6 +191,26 @@ export function workloadLiveLines(data: CoverageData): string[] {
     : `${record.label}: not proven on this tenant. A live run was recorded but does not count: ${record.reason ?? "it did not pass its checks"}.`);
 }
 
+const andList = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+/**
+ * One note for every workload live record, so the top of the page carries one
+ * "proven on this tenant" line, not one per record. `lines` (dates and reasons) sit
+ * behind a click.
+ */
+export function workloadLiveNote(data: CoverageData): { summary: string; lines: string[] } | null {
+  const records = data.liveEvidence?.workloads ?? [];
+  if (!records.length) return null;
+  const live = records.filter((record) => record.live).map((record) => record.label);
+  const waiting = records.filter((record) => !record.live).map((record) => record.label);
+  const parts: string[] = [];
+  if (live.length) parts.push(`Restore proven on this tenant by a live run: ${andList(live)}.`);
+  if (waiting.length) {
+    parts.push(`${live.length ? "Not proven yet" : "Restore not proven on this tenant yet"}: ${andList(waiting)}. ${waiting.length === 1 ? "Its live run does" : "Their live runs do"} not count yet.`);
+  }
+  return { summary: parts.join(" "), lines: workloadLiveLines(data) };
+}
+
 /** The recovery decision and whether references are rewritten when an ID changes. */
 export function recoveryDecisionSentence(item: CoverageType): string | null {
   const decision = item.qualification;

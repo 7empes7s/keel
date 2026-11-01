@@ -9,6 +9,7 @@ import {
   notUsedSentence,
   containerLine,
   discoveryHeadline,
+  onePerType,
   powershellNoteSentence,
   powershellNotes,
   skippedSentence,
@@ -49,7 +50,7 @@ const DATA: DiscoveryInventoryData = {
 };
 
 test("the discovery sentences lead with the answer", () => {
-  assert.equal(discoveryHeadline(DATA), "Discovery found 53 types: 48 types backed up, 2 readable but not backed up yet, 1 not worth backing up, 1 KEEL cannot read.");
+  assert.equal(discoveryHeadline(DATA), "Discovery found 53 types: 48 types backed up, 2 readable but not backed up yet, 1 not worth backing up, 1 KEEL cannot read, 1 not checked this run.");
   assert.equal(catalogueSentence(DATA), "The one type KEEL backs up was found and read.");
   assert.equal(containerLine(DATA), "Users 1,234 · Groups at least 5,000 · Teams unknown · Sites unknown");
   // A PowerShell area that was not listed is a note, never an error line.
@@ -64,7 +65,7 @@ test("the discovery sentences lead with the answer", () => {
   assert.equal(typeLabel({ kind: "entitySet", name: "/oauth2PermissionGrants", entityType: "oAuth2PermissionGrant" }), "OAuth2 permission grant");
   assert.equal(unreadableSentence({ reason: "missing-grant", missingGrant: "Printer.Read.All", grantSource: "graph" }), "Not read: KEEL's app is not allowed to read it. It needs the Printer.Read.All permission.");
   assert.equal(unreadableSentence({ reason: "refused-with-grant", missingGrant: null, grantSource: null }), "Not read: Microsoft refused it, although KEEL's app holds the permission this area usually needs.");
-  assert.equal(discoveryHeadline({ ...DATA, summary: { ...DATA.summary, skipped: undefined } }), "Discovery found 53 types: 48 types backed up, 2 readable but not backed up yet, 1 KEEL cannot read.");
+  assert.equal(discoveryHeadline({ ...DATA, summary: { ...DATA.summary, skipped: undefined } }), "Discovery found 53 types: 48 types backed up, 2 readable but not backed up yet, 1 KEEL cannot read, 1 not checked this run.");
   assert.equal(skippedSentence({ reason: "microsoft-published" }), "Not backed up: Microsoft publishes the same list in every tenant.");
   assert.equal(skippedSentence({ reason: "holds-secrets" }), "Not backed up: it holds passwords or codes KEEL does not store, and little else.");
   assert.equal(skippedSentence({ reason: "retired" }), "Not backed up: it configures a product Microsoft retired or never shipped.");
@@ -142,4 +143,44 @@ test("backed-up types the tenant does not use are listed apart, not as unread", 
   const gapHtml = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data: withGap, now: NOW }));
   assert.match(gapHtml, /Backed-up types not found \(1\)/);
   assert.match(gapHtml, /Printer.Read.All permission/);
+});
+
+test("the headline total equals its parts, and each list holds as many types as its part says", () => {
+  // A path found in v1.0 and beta is one type; a type readable in one version is not
+  // listed as unreadable in the other. The stored run counted 1,487 types while the
+  // headline parts summed to 1,437 and the lists showed 824 unreadable for 574.
+  const both = (extra: Partial<DiscoveryInventoryData["items"][number]>) => [item(extra), item({ ...extra, source: "graph:beta" })];
+  const raw: DiscoveryInventoryData = {
+    ...DATA,
+    summary: { ...DATA.summary, types: 999, catalogued: 999, uncatalogued: 999, skipped: 999, unreadable: 999, "not-listed": 999 },
+    items: [
+      ...both({ name: "/users", entityType: "user", status: "catalogued" }),
+      // Backed up through v1.0, refused through beta: backed up, not unreadable.
+      item({ name: "/groups", entityType: "group", status: "catalogued" }),
+      item({ source: "graph:beta", name: "/groups", entityType: "group", status: "unreadable", reason: "error" }),
+      ...both({}),
+      ...both({ name: "/auditLogs/signIns", entityType: "signIn", status: "skipped", reason: "not-configuration" }),
+      ...both({ name: "/print/printers", entityType: "printer", status: "unreadable", reason: "missing-grant", missingGrant: "Printer.Read.All", grantSource: "graph" }),
+      item({ source: "powershell:MicrosoftTeams", name: "Get-CsTeamsMeetingPolicy", kind: "cmdlet", entityType: null, status: "not-listed" }),
+    ],
+  };
+  const data = onePerType(raw);
+  const { summary } = data;
+  assert.deepEqual(
+    { types: summary.types, catalogued: summary.catalogued, uncatalogued: summary.uncatalogued, skipped: summary.skipped, unreadable: summary.unreadable, notListed: summary["not-listed"] },
+    { types: 6, catalogued: 2, uncatalogued: 1, skipped: 1, unreadable: 1, notListed: 1 },
+  );
+  assert.equal(summary.catalogued + summary.uncatalogued + (summary.skipped ?? 0) + summary.unreadable + summary["not-listed"], summary.types);
+
+  // Every number in the headline adds up to the total it opens with.
+  const headline = discoveryHeadline(data);
+  const [total, ...parts] = [...headline.matchAll(/\d[\d,]*/g)].map((match) => Number(match[0].replaceAll(",", "")));
+  assert.equal(parts.reduce((sum, part) => sum + part, 0), total, headline);
+
+  // Each list's count matches its headline part.
+  const html = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data, now: NOW }));
+  assert.match(html, new RegExp(`Not backed up yet \\(${summary.uncatalogued}\\)`));
+  assert.match(html, new RegExp(`KEEL cannot read \\(${summary.unreadable}\\)`));
+  assert.match(html, new RegExp(`Not worth backing up \\(${summary.skipped}\\)`));
+  assert.equal(data.items.filter((entry) => entry.status === "unreadable").length, summary.unreadable);
 });

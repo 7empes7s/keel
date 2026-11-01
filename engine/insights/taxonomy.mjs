@@ -22,15 +22,16 @@ import defender from './taxonomy.d/defender.mjs';
 import entra from './taxonomy.d/entra.mjs';
 import exchange from './taxonomy.d/exchange.mjs';
 import intune from './taxonomy.d/intune.mjs';
+import microsoft365Apps from './taxonomy.d/microsoft-365-apps.mjs';
 import powerPlatform from './taxonomy.d/power-platform.mjs';
 import purview from './taxonomy.d/purview.mjs';
 import sharepoint from './taxonomy.d/sharepoint.mjs';
 import teams from './taxonomy.d/teams.mjs';
 
-export const SERVICE_FILES = Object.freeze([defender, entra, exchange, intune, powerPlatform, purview, sharepoint, teams]);
+export const SERVICE_FILES = Object.freeze([defender, entra, exchange, intune, microsoft365Apps, powerPlatform, purview, sharepoint, teams]);
 
 export const SERVICES = Object.freeze([
-  'Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender',
+  'Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender', 'Microsoft 365 apps',
 ]);
 
 /** Most urgent first; sort by index. */

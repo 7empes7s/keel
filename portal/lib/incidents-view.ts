@@ -306,7 +306,8 @@ export function serviceBackupLine(entry: IncidentServiceBackup, now: string): st
 
 // The services whose backups an investigator does not check: every Microsoft 365
 // service but Entra ID and Intune (their tenant backups are the list's rows) and Keel.
-const CHECKED_SERVICES = new Set(["entra", "intune"]);
+// Microsoft 365 apps org settings (To Do, Forms) are read in the same tenant backup.
+const CHECKED_SERVICES = new Set(["entra", "intune", "microsoft 365 apps"]);
 export const OTHER_SERVICES: readonly CloudService[] = SERVICES.filter((service) => service.code !== "Keel" && !CHECKED_SERVICES.has(service.code.toLowerCase()));
 
 export interface IncidentServiceGroup {

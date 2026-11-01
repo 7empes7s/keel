@@ -38,7 +38,7 @@ import { loadSymbolContext } from '../store/resourceSymbols.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
-import { templateFamilyOf } from '../insights/taxonomy.mjs';
+import { builtInOf, templateFamilyOf } from '../insights/taxonomy.mjs';
 import { diffNormal, maskCredentials, sameForDiff } from '../safety/diffHygiene.mjs';
 
 export const COMPARE_VERSION = 1;
@@ -91,10 +91,12 @@ const iso = (value) => (value == null ? null : new Date(value).toISOString());
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nameOf = (payload, resourceType) => objectName(payload, resourceType);
 // The settings catalog template family (an Intune antivirus policy is a Defender
-// endpoint security policy), so lists can file the item where it belongs.
+// endpoint security policy), so lists can file the item where it belongs, and the
+// isBuiltIn flag, so an admin role reads as built-in or custom.
 const familyOf = (...payloads) => {
   const family = payloads.map(templateFamilyOf).find(Boolean);
-  return family ? { templateFamily: family } : {};
+  const builtIn = payloads.map(builtInOf).find((flag) => flag !== null);
+  return { ...(family ? { templateFamily: family } : {}), ...(builtIn !== undefined ? { builtIn } : {}) };
 };
 
 /** A type's read outcome on one side. A side with no digest (fixtures, old rows) is 'unknown' and compared. */

@@ -8,6 +8,7 @@ import { ago, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { type EngineRef, personLabel } from "@/lib/sentences";
 import { type CloudService, serviceFor } from "@/lib/services";
+import { askServerAdmin, type Contacts } from "@/lib/who-to-ask";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -1120,7 +1121,10 @@ export function lastChecked(findings: ComplianceFinding[], now: string): string 
 }
 
 /** What to do when Keel cannot say where backups are kept. */
-export const STORAGE_UNSET_TODO = "Ask whoever runs the Keel server to record where backups are stored. Until then, this page and Resilience cannot say where they are.";
+/** Shown while Keel does not know where backups are stored: who to ask, by name when known. */
+export function storageUnsetTodo(contacts: Contacts | null | undefined): string {
+  return `${askServerAdmin(contacts, "record where backups are stored on the Keel server")} Until then, this page and Resilience cannot say where they are.`;
+}
 
 /* ------------------------------------------------------------------- score -- */
 

@@ -14,10 +14,10 @@ const DESCRIPTION = "Could KEEL get your Microsoft 365 setup back if its server 
 // the guard runs before any loader, and the engine reader is pinned to this tenant.
 export default async function ResiliencePage() {
   await connection();
-  await requireReadAccess(DATA_SURFACES.resiliencePage);
+  const access = await requireReadAccess(DATA_SURFACES.resiliencePage);
   let data: ResilienceData;
   try {
-    data = await getResilienceData();
+    data = await getResilienceData(access.principalId);
   } catch {
     return <><PageHeader description={DESCRIPTION} section="Restore" title="Resilience" /><DataUnavailable surface="Recovery measurements" /></>;
   }

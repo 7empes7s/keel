@@ -692,6 +692,9 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
     ? `A backup of ${plural(Number(s.types ?? 0), "type")} finished with ${plural(s.items, "item")}`
     : "A backup finished",
   "backup-complete": () => "A backup finished",
+  "chain-break-explained": (s, actor) => Array.isArray(s.breakSeqs)
+    ? `${actor} explained a known break in the audit record: ${s.breakSeqs.length.toLocaleString("en-GB")} ${s.breakSeqs.length === 1 ? "entry was" : "entries were"} chained wrongly by a Keel bug, since fixed`
+    : `${actor} explained a known break in the audit record`,
   "offsite-copy": (s) => (s.verification as { ok?: unknown } | undefined)?.ok === true && s.remoteSha256 === s.dumpSha256
     ? "An off-site copy of the backups was checked byte for byte"
     : "An off-site copy of the backups failed its check and does not count",

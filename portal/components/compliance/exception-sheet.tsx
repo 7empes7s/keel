@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { distinctPeople } from "@/lib/people-choices";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import type { ChoiceOption } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
@@ -55,7 +56,10 @@ export function ExceptionSheet({ findings, today, onDone, onClose }: {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = useMemo<ChoiceOption<string>[]>(() => [
-    ...(Array.isArray(people) ? people.map((person) => ({ value: person.email, label: person.display_name?.trim() || person.email.split("@")[0], hint: "In Keel" })) : []),
+    ...(Array.isArray(people)
+      ? distinctPeople(people.map((person) => ({ id: person.email, name: person.display_name?.trim() || person.email.split("@")[0], email: person.email })))
+        .map((person) => ({ value: person.id, label: person.name, hint: person.email ? `${person.email} · in Keel` : "In Keel" }))
+      : []),
     { value: OTHER, label: "Someone else or a team", hint: "Type their name or mailbox" },
   ], [people]);
   const typing = people === "unavailable" || owner === OTHER;

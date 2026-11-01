@@ -162,8 +162,12 @@ export function CommandPalette(capabilities: NavCapabilities) {
     try {
       const { payload } = await postAction("/api/actions/backup", { tier: "tier1" }, backupKey.current);
       backupKey.current = null;
-      const job = payload.job as { id: string };
-      toast({ title: "Backup started for the critical settings", detail: "It only reads your tenant; nothing changes.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "Watch it" });
+      const job = payload.job as { id: string; status: string };
+      if (payload.alreadyActive === true) {
+        toast({ tone: "info", title: `The critical settings backup is already ${job.status === "running" ? "running" : "queued"}`, detail: "Keel does not start the same tier twice.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "Watch it" });
+      } else {
+        toast({ title: "Backup queued for the critical settings", detail: "It starts when a worker is free and only reads your tenant; nothing changes.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "Watch it" });
+      }
     } catch {
       toast({ tone: "warning", title: "Backup not started", detail: "Keel could not start the backup of the critical settings. Try again from What's protected." });
     }

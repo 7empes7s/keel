@@ -89,9 +89,10 @@ import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
-import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
+import { askVerdict, type AskData, type ChangeRecord, type GroundedAnswer } from "@/lib/ask-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
+import { distinctPeople } from "@/lib/people-choices";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import type { ActivityChanges } from "@/lib/changed-values";
@@ -738,6 +739,8 @@ const INTENTS: ChangeIntent[] = [
 ];
 const INTENT_CHANGES: IntentCandidate[] = [{
   driftId: "d9300000-0000-4000-8000-000000000003", naturalKey: "group:Old project team", resourceType: "group", detectedAt: "2026-10-02T08:30:00Z",
+  // The Entra audit log names the on-call engineer, who has a Keel account: filled in.
+  madeBy: { state: "keel-user", principalId: "8c1e0000-0000-4000-8000-0000000000a2", who: "On-call engineer", at: "2026-10-02T08:21:00Z", source: "audit" },
   transitions: [
     { field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } },
     { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
@@ -746,6 +749,7 @@ const INTENT_CHANGES: IntentCandidate[] = [{
   // A change with many settings and long values: switching to it must not move the
   // fields under the settings list.
   driftId: "d9300000-0000-4000-8000-000000000004", naturalKey: "application:Sales CRM", resourceType: "application", detectedAt: "2026-10-02T09:10:00Z",
+  madeBy: { state: "unknown", principalId: null, who: null, at: null, source: "audit" },
   transitions: [
     { field: "displayName", before: { present: true, value: "Sales CRM" }, after: { present: true, value: "Sales CRM (migration)" } },
     { field: "signInAudience", before: { present: true, value: "AzureADMyOrg" }, after: { present: true, value: "AzureADMultipleOrgs" } },
@@ -1391,7 +1395,11 @@ const hiddenAlerts = (): AlertItem[] => INBOX_ALERTS.map((alert) => ({
 }));
 const hiddenIntents = (): ChangeIntentsData => ({
   intents: INTENTS.map((intent) => ({ ...intent, owner: hidePerson(intent.owner), approver: hidePerson(intent.approver), revokedBy: intent.revokedBy ? hidePerson(intent.revokedBy) : null })),
-  changes: INTENT_CHANGES,
+  // Who made a change is named as the loader names it: by the Keel user's code name.
+  changes: INTENT_CHANGES.map((change) => {
+    const person = [PERSON_AMARA, PERSON_ONCALL].find((entry) => entry.id === change.madeBy?.principalId);
+    return person && change.madeBy ? { ...change, madeBy: { ...change.madeBy, who: String(hidePerson(person).name) } } : change;
+  }),
   people: [PERSON_AMARA, PERSON_ONCALL].map((person) => ({ id: person.id, name: String(hidePerson(person).name) })),
   generatedAt: now,
 });
@@ -1432,7 +1440,7 @@ const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1,
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
 // Overview leaves it out of "Needs attention".
 const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "7 kinds of settings are out of date or never backed up", detail: "They have no backup recent enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
-const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "13 kinds of settings are not backed up by Keel yet", detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.", href: "/protect?health=not-backed-up" };
 const ALERTS: DashboardData["alerts"][] = [
   [
     { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
@@ -1443,7 +1451,7 @@ const ALERTS: DashboardData["alerts"][] = [
   [],
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
-const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, partial: 0, stale: 0, neverCollected: 0 };
 // "Restore proven" comes from the same kinds What's protected lists, so the Overview tile and that page agree.
 const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
 const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
@@ -1463,7 +1471,7 @@ function dashboard(posture: number): DashboardData {
     openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
     // The buckets add up to the total, as coverageSummary makes them.
-    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
+    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, partial: 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
     headline: HEADLINES[posture],
@@ -1804,6 +1812,17 @@ const INBOX_ALERTS: AlertItem[] = [
   },
 ];
 
+// The emergency sign-in that "Review the sign-in" on Emergency access links to. The list
+// does not hold it, so the server sends it on its own (`linked`): the link opens it, and
+// the list stays the same.
+const LINKED_ALERT: AlertItem = {
+  ...INBOX_ALERTS.find((alert) => alert.id === "a1e70000-0000-4000-8000-000000000005")!,
+  id: "a1e70000-0000-4000-8000-000000000094", resourceKey: "user:bg2@contoso.onmicrosoft.com", name: "Emergency admin 2",
+  state: "open", acknowledgedAt: null, acknowledgedByName: null, owner: null, firstOpenedAt: "2026-10-02T08:40:00Z", occurrenceStartedAt: "2026-10-02T08:40:00Z",
+  lastFiringAt: "2026-10-02T08:40:00Z", ackDeadlineAt: "2026-10-02T08:55:00Z", lastEventId: "breakglass-sign-in:si-7f21",
+  history: [alertEntry("94", 1, null, "open", "condition-firing", "2026-10-02T08:40:00Z")],
+};
+
 
 // Task-73: measured recovery point and recovery time. A newer off-site copy lacks a
 // good group backup, so the older copy still sets the point; a failed restore is
@@ -2134,6 +2153,21 @@ const ASK_ANSWERED: AskData = { generatedAt: now, entities: ["SALES"], scope: { 
     { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", resourceType: "conditionalAccessPolicy", naturalKey: "conditionalAccessPolicy:Sales VPN", name: null, changeType: "added", impact: "tenant-lockout", decision: "accept",
       seenAt: "2026-09-29T06:00:00.000Z", window: { from: null, to: "2026-09-29T06:00:00.000Z" },
       source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", href: "/drift", collectionId: "c0110000-0000-4000-8000-000000000994" } },
+  ],
+} };
+// Backlog D19: "Who changed ...?" lists who made each change from the audit log, and the
+// form's pickers start from the question.
+const ASK_WHO: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "Who changed Sales groups this week?",
+  plan: { intent: "changes", params: { ...ASK_PLAN.params, resourceType: "group" } }, period: "this-week", asksWho: true, whoChecked: 2, total: 2, shown: 2,
+  sentence: "2 matching changes found.",
+  records: [
+    { ...ASK_ANSWERED.answer!.records[0] as ChangeRecord,
+      who: { verdict: "exact", label: "Confirmed", text: "Alice Admin, confirmed by the Microsoft Entra audit log.", detail: null } },
+    { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", resourceType: "group", naturalKey: "group:Sales Readers", name: "Sales Readers", changeType: "added", impact: "scoped", decision: null,
+      seenAt: "2026-09-30T06:00:00.000Z", window: { from: "2026-09-29T06:00:00.000Z", to: "2026-09-30T06:00:00.000Z" },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", href: "/drift", collectionId: null },
+      who: { verdict: "unknown", label: "Not known", text: "No audit entry names this change, so Keel cannot say who made it.", detail: "A change Microsoft or a sync makes has no person behind it." } },
   ],
 } };
 const ASK_UNKNOWN: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
@@ -2685,7 +2719,7 @@ function IncidentsRoute({ viewer }: { viewer: boolean }) {
   const selected = id === INCIDENT_CLOSED.incident.id ? INCIDENT_CLOSED : INCIDENT;
   return <>
     <PageHeader description={INCIDENTS_DESCRIPTION} generatedAt={now} marker={viewer ? "Read-only" : undefined} section="Restore" status={incidentStatus(INCIDENTS, selected)} title="Incidents" />
-    <IncidentsPage canInvestigate={!viewer} incidents={INCIDENTS} now={now} selected={selected} />
+    <IncidentsPage canInvestigate={!viewer} contacts={viewer ? { admins: ["Amara Okafor"], investigators: ["Ines Investigator"] } : null} incidents={INCIDENTS} now={now} selected={selected} />
   </>;
 }
 
@@ -2751,6 +2785,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
+    case "/ask/who": return askPage(ASK_WHO);
     case "/ask/month": return askPage(ASK_MONTH);
     case "/ask/coverage": return askPage(ASK_COVERAGE);
     case "/readiness": return readinessPage(READINESS);
@@ -2941,7 +2976,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
-      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
+      return <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} linked={LINKED_ALERT} now={now} />;
     }
     case "/setup/anonymous": {
       const state = hiddenSetup();
@@ -2965,7 +3000,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
     case "/emergency-changes": case "/emergency-changes/none": {
       const data: ChangeIntentsData = path === "/emergency-changes"
-        ? { intents: INTENTS, changes: INTENT_CHANGES, people: [{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }], generatedAt: now }
+        ? { intents: INTENTS, changes: INTENT_CHANGES, openCount: 312, generatedAt: now,
+          // Two people share a name: each keeps their sign-in address.
+          people: distinctPeople([PERSON_AMARA, PERSON_ONCALL, { id: "8c1e0000-0000-4000-8000-0000000000a5", email: "amara.okafor@partner.example", name: "Amara Okafor" }].map((person) => ({ id: person.id, name: person.name, email: person.email }))) }
         : { intents: [], changes: [], people: [], generatedAt: now };
       const verdict = changeIntentsVerdict(data.intents, now);
       const alerts = intentAlerts(data);

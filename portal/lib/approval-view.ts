@@ -5,6 +5,7 @@ import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import type { UnnamedReference } from "@/lib/app-names";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
+import type { ApprovalModeName } from "@/lib/approval-words";
 import type { RiskTone } from "@/lib/menu-status";
 import { formatTimestamp } from "@/lib/presentation";
 import { approvalSentence, personLabel } from "@/lib/sentences";
@@ -138,7 +139,11 @@ export function outcomeBadge(request: Pick<ApprovalRequestRecord, "status">): { 
 }
 
 export interface ApprovalCounts {
+  // Requests this viewer can decide now: the "waiting for you" number everywhere.
   waiting: number;
+  // Requests that wait on someone else: the viewer already signed them, or asked for
+  // them while approvals need two people.
+  waitingOnOthers: number;
   expiringSoon: number;
   contentEffects: number;
   decidedThisWeek: { approved: number; rejected: number; expired: number };
@@ -146,14 +151,44 @@ export interface ApprovalCounts {
 
 const WEEK = 7 * 24 * HOUR;
 
-export function approvalCounts(data: { pending: ApprovalRequestRecord[]; awaitingContentEffects: ApprovalRequestRecord[]; history: ApprovalRequestRecord[] }, now: string): ApprovalCounts {
+/**
+ * Whether this viewer can decide a waiting request. One rule for the page, the badge
+ * and the Overview, so "waiting for you" means the same everywhere. It follows the
+ * tenant's approval mode (engine/govern/approvalMode.mjs): while approvals need two
+ * people the engine refuses an approver's own request, and in Solo the requester may
+ * approve it. In either mode, an approver who already signed a request that needs more
+ * than one approver waits for the next one. With no viewer known, every request counts.
+ */
+export function viewerCanDecide(
+  request: { requestedBy: string; status?: string; signoffs?: { id: string }[] },
+  viewerId: string | null,
+  approvalMode: ApprovalModeName = "two-person",
+): boolean {
+  if (viewerId === null) return true;
+  if (request.requestedBy === viewerId) return approvalMode === "solo";
+  if (request.status === "pending" && (request.signoffs ?? []).some((person) => person.id === viewerId)) return false;
+  return true;
+}
+
+/** Waiting requests split into the ones this viewer decides and the ones others do. */
+export function splitWaiting<T extends { requestedBy: string; status?: string; signoffs?: { id: string }[] }>(requests: readonly T[], viewerId: string | null, approvalMode: ApprovalModeName = "two-person"): { forYou: T[]; onOthers: T[] } {
+  const forYou: T[] = [];
+  const onOthers: T[] = [];
+  for (const request of requests) (viewerCanDecide(request, viewerId, approvalMode) ? forYou : onOthers).push(request);
+  return { forYou, onOthers };
+}
+
+export function approvalCounts(data: { pending: ApprovalRequestRecord[]; awaitingContentEffects: ApprovalRequestRecord[]; history: ApprovalRequestRecord[] }, now: string, viewerId: string | null = null, approvalMode: ApprovalModeName = "two-person"): ApprovalCounts {
   const since = new Date(now).valueOf() - WEEK;
   const decidedAt = (request: ApprovalRequestRecord) => new Date(request.decidedAt ?? request.expiresAt ?? 0).valueOf();
   const week = data.history.filter((request) => decidedAt(request) >= since);
+  const pending = splitWaiting(data.pending, viewerId, approvalMode);
+  const effects = splitWaiting(data.awaitingContentEffects, viewerId, approvalMode);
   return {
-    waiting: data.pending.length + data.awaitingContentEffects.length,
-    expiringSoon: data.pending.filter((request) => expiringSoon(request, now)).length,
-    contentEffects: data.awaitingContentEffects.length,
+    waiting: pending.forYou.length + effects.forYou.length,
+    waitingOnOthers: pending.onOthers.length + effects.onOthers.length,
+    expiringSoon: pending.forYou.filter((request) => expiringSoon(request, now)).length,
+    contentEffects: effects.forYou.length,
     decidedThisWeek: {
       approved: week.filter((request) => request.status === "approved").length,
       rejected: week.filter((request) => request.status === "rejected").length,
@@ -172,8 +207,15 @@ export function sortWaiting<T extends Pick<ApprovalRequestRecord, "expiresAt" | 
 }
 
 /** The verdict, in at most 25 words. */
-export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string, approvalMode: "two-person" | "solo" = "two-person"): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
-  if (counts.waiting === 0) return { text: "Nothing is waiting for your decision.", tone: "fine", detail: "Restores, undo changes and approved-setup switches will appear here when someone asks for one." };
+export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string, approvalMode: ApprovalModeName = "two-person"): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
+  if (counts.waiting === 0) {
+    const others = counts.waitingOnOthers;
+    const it = others === 1 ? "it" : "them";
+    const why = approvalMode === "solo" ? `you already approved ${it}, and another approver must too` : `you asked for ${it}, or already approved`;
+    return others
+      ? { text: "Nothing is waiting for your decision.", tone: "fine", detail: `${others === 1 ? "1 request waits" : `${others} requests wait`} on someone else: ${why}. See Waiting on others.` }
+      : { text: "Nothing is waiting for your decision.", tone: "fine", detail: "Restores, undo changes and approved-setup switches will appear here when someone asks for one." };
+  }
   const count = counts.waiting === 1 ? "1 request is" : `${counts.waiting} requests are`;
   const left = oldest ? hoursLeft(oldest, now) : null;
   const inWords = left === null ? "soon" : left < 1 ? `in ${Math.max(1, Math.ceil(left * 60))} minutes` : `in ${Math.round(left)} ${Math.round(left) === 1 ? "hour" : "hours"}`;

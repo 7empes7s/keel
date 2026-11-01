@@ -27,7 +27,7 @@ function catalogKind(type: string): CoverageType {
 function coverage(workloads: unknown): CoverageData {
   return {
     generatedAt: NOW, snapshot: null,
-    summary: { covered: 0, failed: 0, notCovered: CATALOG.length, neverCollected: 0, stale: 0, unavailable: 0, total: CATALOG.length },
+    summary: { covered: 0, failed: 0, partial: 0, notCovered: CATALOG.length, neverCollected: 0, stale: 0, unavailable: 0, total: CATALOG.length },
     types: CATALOG.map((entry: { type: string }) => catalogKind(entry.type)),
     workloads: workloadKinds(workloads, new Set(["exchange-mail-flow"])),
   };
@@ -61,7 +61,8 @@ test("a workload's last run reads as its backup health", () => {
   assert.equal(restoreStanding(mailFlow), "unproven");
 
   assert.equal(backupHealth(teams), "failed");
-  assert.equal(backupHealth(sharepoint), "failed");
+  // Partly done is its own state, never failed (decision 31 Oct 2026).
+  assert.equal(backupHealth(sharepoint), "partial");
   assert.equal(restoreStanding(sharepoint), "cannot-restore");
 
   for (const off of [purview, power]) {

@@ -22,7 +22,7 @@ import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBack
 import { storedTypeOf, subkindFamilies, typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { RECORDED_CHANGE_PREDICATE } from '../store/openDrift.mjs';
-import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
+import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, namedPeriod, planQuestion, validateRequest } from './intent.mjs';
 
 export const ANSWER_VERSION = 1;
 const MAX_ERROR_TEXT = 300;
@@ -172,6 +172,8 @@ const TEMPLATES = Object.freeze({
        )
        SELECT m.id::text AS id, m.natural_key, m.resource_type, m.template_family, m.change_type, m.blast_radius, m.detected_at,
               m.observed_snapshot::text AS collection_id, m.seen_at, o.window_from,
+              -- An admin role reads as built-in or custom (taxonomy objectTypeName).
+              COALESCE(d.after_payload->'isBuiltIn', d.before_payload->'isBuiltIn') AS is_built_in,
               COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name,
               CASE WHEN m.change_type = 'modified' AND jsonb_typeof(d.before_payload) = 'object' AND jsonb_typeof(d.after_payload) = 'object'
                    THEN ARRAY(SELECT k FROM (SELECT jsonb_object_keys(d.before_payload) UNION SELECT jsonb_object_keys(d.after_payload)) keys(k)
@@ -231,6 +233,7 @@ const TEMPLATES = Object.freeze({
         id: row.id,
         resourceType: row.resource_type,
         ...(row.template_family ? { templateFamily: row.template_family } : {}),
+        ...(typeof row.is_built_in === 'boolean' ? { builtIn: row.is_built_in } : {}),
         naturalKey: row.natural_key,
         name: clip(row.display_name, MAX_NAME_TEXT),
         changeType: row.change_type,
@@ -512,10 +515,17 @@ export async function answerQuestion(client, { tenantRef, scope, question = null
   assertTenantRef(tenantRef);
   const entities = await knownEntities(client, { tenantRef });
   let planned;
-  if (request) planned = { ...validateRequest(request, { now, knownEntities: entities, scope }), readBy: 'form' };
+  if (request) planned = { ...validateRequest(request, { now, knownEntities: entities, scope }), readBy: 'form', period: namedPeriod(request.params?.period) };
   else planned = await planQuestion(question, { helper, now, knownEntities: entities, scope });
   if (!planned.ok) return refusalAnswer(planned.refusal, { scope, now, readBy: planned.readBy, question });
   const answer = await executePlan(client, planned.plan, { tenantRef, scope, now });
-  // Words the reading did not use are returned, so the page can say what it ignored.
-  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], assumed: planned.assumed ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
+  // Words the reading did not use are returned, so the page can say what it ignored. The
+  // named period ("this-week") and whether the question asked who made each change let
+  // the page set its form to match the question.
+  return {
+    ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], assumed: planned.assumed ?? [],
+    period: answer.intent === 'coverage' ? null : planned.period ?? null,
+    asksWho: answer.intent === 'changes' && planned.asksWho === true,
+    question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null,
+  };
 }

@@ -59,7 +59,9 @@ interface Props<T> {
   groupings: Grouping<T>[];
   toneOf?: (item: T) => RiskTone | null | undefined;
   noun: { one: string; many: string };
-  action: ListAction;
+  // What the picked rows can have done to them. A list with none (a read-only list)
+  // shows no checkboxes and no selection bar.
+  action?: ListAction;
   more?: { label: string; run: (ids: string[]) => void }[];
   // Free-text find, kept in the URL as `q`.
   matches?: (item: T, query: string) => boolean;
@@ -117,6 +119,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
   const query = view.get("q");
   const closed = readList(view.get("closed", closedByDefault.join(",")));
+  const selectable = action !== undefined;
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
   const [touchMode, setTouchMode] = useState(false);
   // Every list can be ordered by name and, when its rows carry a risk, by risk; a list
@@ -200,7 +203,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           const selected = selection.ids.has(id);
           return (
             <li className="sel-row" data-row-id={id} data-selected={selected || undefined} data-tone={toneOf?.(item) ?? undefined} key={id} onClick={(event) => onRowClick(event, id)}>
-              <input aria-label={`Select ${rowName(item)}`} checked={selected} className="sel-check" onChange={() => {}} type="checkbox" />
+              {selectable ? <input aria-label={`Select ${rowName(item)}`} checked={selected} className="sel-check" onChange={() => {}} type="checkbox" /> : null}
               <div className="sel-row-body">{renderRow(item)}</div>
             </li>
           );
@@ -231,6 +234,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   }, [selection.ids.size]);
 
   function onRowClick(event: MouseEvent, id: string) {
+    if (!selectable) return;
     const target = event.target as HTMLElement;
     const isBox = target.closest("input[type='checkbox']");
     if (!isBox && target.closest("a, button, input, select, textarea, summary, label")) return;
@@ -249,7 +253,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const press = useRef<{ id: string; x: number; y: number; timer: number; dragging: boolean; base: Selection } | null>(null);
   useEffect(() => {
     const root = listRef.current;
-    if (!root) return;
+    if (!root || !selectable) return;
     const rowAt = (x: number, y: number) => (document.elementFromPoint(x, y) as HTMLElement | null)?.closest<HTMLElement>("[data-row-id]")?.dataset.rowId ?? null;
     function start(event: TouchEvent) {
       const touch = event.touches[0];
@@ -300,7 +304,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
       root.removeEventListener("touchend", end);
       root.removeEventListener("touchcancel", end);
     };
-  }, [visibleIds]);
+  }, [visibleIds, selectable]);
 
   const shownSet = useMemo(() => new Set(allIds), [allIds]);
   // Picks the current view hides, in the pool's order, after the shown ones.
@@ -335,7 +339,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
         <SortControl paging={paging} sorts={allSorts} />
         <SavedFilters />
       </div>
-      <div className="sel-summary">
+      {selectable ? <div className="sel-summary">
         <button
           aria-pressed={allShownPicked}
           className="btn btn-sm"
@@ -349,12 +353,12 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
         <span className="sel-help">
           Shift+click selects a range. On a phone, hold a row, then drag.
         </span>
-      </div>
+      </div> : null}
       <div
         aria-label={label}
         className="sel-groups"
         onKeyDown={(event) => {
-          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input:not([type='checkbox'])")) {
+          if (selectable && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input:not([type='checkbox'])")) {
             event.preventDefault();
             setSelection((current) => setMany(current, visibleIds, true));
           }
@@ -377,7 +381,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           return (
             <section className="sel-group" data-closed={isClosed || undefined} key={group.key}>
               <header className="sel-group-head">
-                {ids.length ? (
+                {ids.length && selectable ? (
                   <input
                     aria-label={`Select all ${plural(ids.length, noun)} in ${group.label}`}
                     checked={check === "all"}
@@ -386,7 +390,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                     ref={(element) => { if (element) element.indeterminate = check === "some"; }}
                     type="checkbox"
                   />
-                ) : <span aria-hidden="true" className="sel-check-space" />}
+                ) : selectable ? <span aria-hidden="true" className="sel-check-space" /> : null}
                 <button
                   aria-expanded={!isClosed}
                   className="sel-group-toggle"
@@ -411,14 +415,16 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                     return (
                       <section className="sel-part" data-closed={partClosed || undefined} key={part.key}>
                         <header className="sel-part-head">
-                          <input
-                            aria-label={`Select all ${plural(partIds.length, noun)} in ${group.label}: ${part.label}`}
-                            checked={partCheck === "all"}
-                            className="sel-check"
-                            onChange={() => setSelection((current) => setMany(current, partIds, partCheck !== "all"))}
-                            ref={(element) => { if (element) element.indeterminate = partCheck === "some"; }}
-                            type="checkbox"
-                          />
+                          {selectable ? (
+                            <input
+                              aria-label={`Select all ${plural(partIds.length, noun)} in ${group.label}: ${part.label}`}
+                              checked={partCheck === "all"}
+                              className="sel-check"
+                              onChange={() => setSelection((current) => setMany(current, partIds, partCheck !== "all"))}
+                              ref={(element) => { if (element) element.indeterminate = partCheck === "some"; }}
+                              type="checkbox"
+                            />
+                          ) : null}
                           <button aria-expanded={!partClosed} className="sel-part-toggle" onClick={() => toggleClosed(part.key, partClosed)} type="button">
                             <span className="sel-part-name">{part.label}</span>
                             <span className="sel-group-count">{plural(partIds.length, noun)}{start > 0 && !partClosed ? <small className="sel-group-continued">continued</small> : null}</span>
@@ -444,7 +450,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
         )) : null}
       </div>
       <ListPager label={label} noun={noun} paging={paging} total={openRows} />
-      {count ? (
+      {count && action ? (
         <div aria-label="Selection" className="sel-bar" data-tray={tray ? true : undefined} role="region">
           <span className="sel-bar-count"><b>{plural(count, noun)}</b> selected</span>
           {tray ? (

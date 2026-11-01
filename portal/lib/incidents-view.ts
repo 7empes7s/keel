@@ -13,7 +13,6 @@ import type { Ref } from "@/lib/types";
 
 export const DESCRIPTION = "During a security incident, restore from a backup an investigator has checked, not simply the newest one.";
 export const KEPT_HELP = "Being kept does not mean it is clean.";
-export const READ_ONLY_LINE = "Only investigators can change incidents.";
 export const WINDOW_HELP = "Attack windows cannot be edited, because checks are tied to them. Add a new one if you learn more.";
 export const CLOSE_EFFECT = "Closing stops new checks, keeps and permissions. Backups you kept stay kept until you let them go. The incident stays as a record.";
 export const ALLOW_EFFECT = "Someone else must still ask for the restore, and approvers see your reason.";

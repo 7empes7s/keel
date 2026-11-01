@@ -13,7 +13,8 @@ import { POST as revokeRoute } from "@/app/api/change-intents/[id]/revoke/route"
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EmergencyChangesView, intentStateSentence } from "@/components/change-intent";
-import { changeIntentsVerdict, type ChangeIntent } from "@/lib/change-intents-view";
+import { changeIntentsVerdict, endsSoon, intentAlerts, intentTiles, type ChangeIntent, type ChangeIntentsData, type IntentCandidate } from "@/lib/change-intents-view";
+import { distinctPeople } from "@/lib/people-choices";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -111,9 +112,11 @@ test("an approver approves a change field by field, sees it in force, and revoke
   const listed = await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]));
   assert.equal(listed.status, 200);
   assert.equal(listed.headers.get("cache-control"), "no-store");
-  const data = await listed.json() as { intents: ChangeIntent[]; changes: { driftId: string; transitions: { field: string }[] }[]; people: { name: string }[]; generatedAt: string };
+  const data = await listed.json() as { intents: ChangeIntent[]; changes: { driftId: string; transitions: { field: string }[] }[]; openCount: number; people: { name: string }[]; generatedAt: string };
   assert.deepEqual(data.intents.map((entry) => [entry.id, entry.state]), [[intent.id, "active"]]);
-  assert.deepEqual(data.changes.map((change) => [change.driftId, change.transitions.map((transition) => transition.field)]), [[driftId, ["visibility"]]]);
+  // Audit C7: the approval covers every changed setting, so the change is no longer open.
+  assert.deepEqual(data.changes, []);
+  assert.equal(data.openCount, 0);
   assert.deepEqual(data.people.map((person) => person.name), ["Amara Okafor", "On-call engineer"]);
   const verdict = changeIntentsVerdict(data.intents, data.generatedAt);
   assert.equal(verdict.tone, "attention");
@@ -132,8 +135,11 @@ test("an approver approves a change field by field, sees it in force, and revoke
   assert.equal(body.settlement.currentState, "unknown", "no baseline resources to compare with: nothing is rolled back");
   assert.equal((await revokeRoute(request(`/api/change-intents/${intent.id}/revoke`, "POST", APPROVER, ["approve"], { reason: "Emergency is over again" }))).status, 409);
   assert.equal((await revokeRoute(request(`/api/change-intents/${randomUUID()}/revoke`, "POST", APPROVER, ["approve"], { reason: "Emergency is over now" }))).status, 404);
-  const after = await (await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]))).json() as { intents: ChangeIntent[]; generatedAt: string };
+  const after = await (await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]))).json() as { intents: ChangeIntent[]; changes: { driftId: string; transitions: { field: string }[] }[]; openCount: number; generatedAt: string };
   assert.equal(after.intents[0].state, "revoked");
+  // Revoked: the change is open again, and can be approved again.
+  assert.deepEqual(after.changes.map((change) => [change.driftId, change.transitions.map((transition) => transition.field)]), [[driftId, ["visibility"]]]);
+  assert.equal(after.openCount, 1);
   assert.equal(changeIntentsVerdict(after.intents, after.generatedAt).text, "No emergency change is approved right now. Changes follow your automatic rules as usual.");
   assert.match(intentStateSentence(after.intents[0], after.generatedAt), /^Revoked just now by Amara Okafor: emergency over\.$/);
 });
@@ -169,4 +175,108 @@ test("the emergency change surfaces are closed around the approve guard", () => 
   for (const action of ["change-intents:list", "change-intents:approve", "change-intents:revoke"]) {
     assert.match(lib, new RegExp(`action: "${action}", capability: "approve"`));
   }
+});
+
+// Audit C7: "Who made the change" comes from Microsoft's audit log when it names a Keel
+// user, each person is listed once (two with one name keep their address), and the
+// Keel scheduler is not a person to choose.
+test("who made a change is filled in from the audit log, and each person is listed once", async () => {
+  const OPS = "5e1f0000-0000-4000-8000-000000000c71";
+  const ONCALL_USER = "5e1f0000-0000-4000-8000-000000000c72";
+  const STRANGER = "5e1f0000-0000-4000-8000-000000000c73";
+  const ref = tenantRef();
+  await client.query("INSERT INTO principal (email, display_name) VALUES ('oncall.backup@example.com', 'On-call engineer')");
+  await client.query("INSERT INTO principal (email, display_name, system_kind) VALUES ('scheduler@keel.invalid', 'Keel scheduler', 'scheduler') ON CONFLICT DO NOTHING");
+  const { rows: [baseline] } = await client.query("SELECT id FROM baseline WHERE tenant_ref = $1 AND active", [ref]);
+  // The backup that saw these changes ends a minute from now; the audit entries fall
+  // between the baseline and it, so the change window holds them.
+  const { rows: [observed] } = await client.query("INSERT INTO snapshot (tenant_ref, status, completed_at) VALUES ($1, 'complete', now() + interval '1 minute') RETURNING id", [ref]);
+  const { rows: [users] } = await client.query("INSERT INTO snapshot (tenant_ref, status, completed_at) VALUES ($1, 'complete', now()) RETURNING id, started_at, completed_at", [ref]);
+  for (const [id, upn] of [[ONCALL_USER, "OnCall@Example.com"], [STRANGER, "contractor@partner.example"]]) {
+    await client.query(
+      `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+       VALUES ($1, $2, 'user', $3::jsonb, $4, 'normal', 'cosmetic', 'full', '{}'::jsonb)`,
+      [users.id, `user:${upn}`, JSON.stringify({ id, userPrincipalName: upn }), `h-${id}`],
+    );
+  }
+  await client.query(
+    `INSERT INTO type_coverage_latest (tenant_ref, resource_type, coverage_entry, snapshot_id, started_at, completed_at) VALUES ($1, 'user', '{}'::jsonb, $2, $3, $4)
+     ON CONFLICT (tenant_ref, resource_type) DO UPDATE SET snapshot_id = EXCLUDED.snapshot_id, started_at = EXCLUDED.started_at, completed_at = EXCLUDED.completed_at`,
+    [ref, users.id, users.started_at, users.completed_at],
+  );
+  const changed = async (name: string, id: string, actor: string | null) => {
+    const { rows: [row] } = await client.query(
+      `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, before_payload, after_payload, blast_radius)
+       VALUES ($1, $2, $3, $4, 'group', 'modified', $5, $6, 'cosmetic') RETURNING id`,
+      [ref, baseline.id, observed.id, `group:${name}`, { id, displayName: name, visibility: "Private" }, { id, displayName: name, visibility: "Public" }],
+    );
+    if (actor) {
+      await client.query(
+        `INSERT INTO audit_change_fact (tenant_ref, source_event_id, occurred_at, target_type, target_id, operation, activity, fields, actor_kind, actor_id)
+         VALUES ($1, $2, now(), 'group', $3, 'update', 'Update group', '{}', 'user', $4)`,
+        [ref, `entra:${id}`, id, actor],
+      );
+    }
+    return String(row.id);
+  };
+  const ops = await changed("KEEL-RT-Ops", OPS, ONCALL_USER);
+  const partner = await changed("KEEL-RT-Partner", "5e1f0000-0000-4000-8000-000000000c74", STRANGER);
+  const quiet = await changed("KEEL-RT-Quiet", "5e1f0000-0000-4000-8000-000000000c75", null);
+
+  const data = await (await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]))).json() as ChangeIntentsData;
+  const by = (id: string) => data.changes.find((change) => change.driftId === id)?.madeBy;
+  // Matched to the Keel user by sign-in address, whatever its case.
+  assert.equal(by(ops)?.state, "keel-user");
+  assert.equal(by(ops)?.principalId, OWNER);
+  assert.equal(by(ops)?.who, "On-call engineer");
+  assert.equal(by(ops)?.source, "audit");
+  assert.equal(by(partner)?.state, "not-keel-user");
+  assert.equal(by(partner)?.principalId, null);
+  assert.equal(by(quiet)?.state, "unknown");
+  assert.equal(data.openCount, 4);
+  // Two people named "On-call engineer" keep their address; the scheduler is not listed.
+  assert.deepEqual(data.people.map((person) => [person.name, person.email ?? null]), [
+    ["Amara Okafor", null], ["On-call engineer", "oncall.backup@example.com"], ["On-call engineer", "oncall@example.com"],
+  ]);
+
+  // The page fills in who made the newest change and says where it came from.
+  const page = renderToStaticMarkup(createElement(EmergencyChangesView, { data }));
+  assert.doesNotMatch(page, /<select[^>]*>[^]*?Choose a person/, "people are chosen with a searchable picker");
+  assert.match(page, /aria-label="Change: [^"]+"/);
+});
+
+test("people with one name are told apart, and an id is listed once", () => {
+  assert.deepEqual(distinctPeople([
+    { id: "a", name: "Sam Ortiz", email: "sam@contoso.example" },
+    { id: "b", name: "sam ortiz", email: "sam.ortiz@partner.example" },
+    { id: "a", name: "Sam Ortiz", email: "sam@contoso.example" },
+    { id: "c", name: "Amara Okafor", email: "amara@contoso.example" },
+  ]), [
+    { id: "a", name: "Sam Ortiz", email: "sam@contoso.example" },
+    { id: "b", name: "sam ortiz", email: "sam.ortiz@partner.example" },
+    { id: "c", name: "Amara Okafor", email: null },
+  ]);
+});
+
+// Audit C7: an approval just given for one hour is not already "Fix soon".
+test("an approval ends soon only in its last quarter, at most its last hour", () => {
+  const start = "2026-10-31T20:00:00.000Z";
+  const oneHour = { windowStart: start, windowEnd: "2026-10-31T21:00:00.000Z" };
+  assert.equal(endsSoon(oneHour, start), false);
+  assert.equal(endsSoon(oneHour, "2026-10-31T20:40:00.000Z"), false);
+  assert.equal(endsSoon(oneHour, "2026-10-31T20:46:00.000Z"), true);
+  const day = { windowStart: start, windowEnd: "2026-11-01T20:00:00.000Z" };
+  assert.equal(endsSoon(day, "2026-11-01T18:30:00.000Z"), false);
+  assert.equal(endsSoon(day, "2026-11-01T19:30:00.000Z"), true);
+
+  const intent = {
+    id: "i1", naturalKey: "group:KEEL-RT-Sales", resourceType: "group", name: "KEEL-RT-Sales", state: "active", ...oneHour,
+    transitions: [{ field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } }],
+  } as unknown as ChangeIntent;
+  const fresh = { intents: [intent], changes: [] as IntentCandidate[], openCount: 49, people: [], generatedAt: start };
+  assert.deepEqual(intentAlerts(fresh).map((alert) => alert.tone), ["low"]);
+  assert.equal(intentTiles(fresh).find((tile) => tile.key === "next")?.tone, "low");
+  assert.equal(intentTiles(fresh).find((tile) => tile.key === "open")?.value, "49");
+  const late = { ...fresh, generatedAt: "2026-10-31T20:50:00.000Z" };
+  assert.deepEqual(intentAlerts(late).map((alert) => alert.tone), ["soon"]);
 });

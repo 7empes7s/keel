@@ -44,10 +44,12 @@ import {
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
-import { templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { builtInOf, templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
-import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
+import type { AnswerRecord, AskData, AskInput, ChangeRecord, GroundedAnswer } from "@/lib/ask-view";
+import { askWho } from "@/lib/ask-who";
+import type { Contacts } from "@/lib/who-to-ask";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { objectIds, openChangeCount, payloadName } from "@/lib/changes-view";
@@ -422,6 +424,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
     templateFamily: templateFamilyOf(raw.after_payload) ?? templateFamilyOf(raw.before_payload),
+    builtIn: builtInOf(raw.after_payload) ?? builtInOf(raw.before_payload),
   };
 }
 
@@ -839,30 +842,45 @@ async function windowStartsByContent(client: KeelClient, ref: string, rows: Reco
   return starts;
 }
 
-async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+type AttributedChange = Omit<ChangeAttribution, "route"> & { changeId: string };
+
+/** Who made each open change, from the audit logs, with the accounts KEEL backed up named
+ *  for a central reader. Names are not yet hidden: the caller applies "Hide people's
+ *  names". Throws when the read fails; the caller decides what that means. */
+export async function attributeOpenChanges(client: KeelClient, ref: string, baselineId: string, items: Pick<DriftRecord, "id" | "resourceType" | "naturalKey" | "changeType" | "before" | "after">[], scope: EntityScope): Promise<AttributedChange[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
-  if (!bounded.length) return items;
-  let byId: Map<string, Omit<ChangeAttribution, "route"> & { changeId: string }>;
-  try {
-    const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
-    const contentStarts = await windowStartsByContent(client, ref, rows);
-    const windows = new Map(rows.map((row) => [String(row.id), { from: contentStarts.get(String(row.id)) ?? iso(row.window_from), until: iso(row.window_until) }]));
-    const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
-      id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
-      fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
-      objectIds: changeObjectIds({ naturalKey: item.naturalKey, before: item.before, after: item.after }),
-    }));
-    const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as Array<Omit<ChangeAttribution, "route"> & { changeId: string }>;
-    // A central reader may see who any account is: name the ones KEEL backed up.
-    if (scope.central) {
-      const unnamed = attributed.flatMap((entry) => entry.actors.filter((actor) => !actor.name && actor.id).map((actor) => actor.id!));
-      if (unnamed.length) {
-        const lookup = await idNames(client, ref, unnamed);
-        for (const entry of attributed) {
-          entry.actors = entry.actors.map((actor) => (actor.name || !actor.id ? actor : { ...actor, name: lookup.ids[actor.id.toLowerCase()] ?? null }));
-        }
+  if (!bounded.length) return [];
+  const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
+  const contentStarts = await windowStartsByContent(client, ref, rows);
+  const windows = new Map(rows.map((row) => [String(row.id), { from: contentStarts.get(String(row.id)) ?? iso(row.window_from), until: iso(row.window_until) }]));
+  const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
+    id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
+    fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
+    objectIds: changeObjectIds({ naturalKey: item.naturalKey, before: item.before, after: item.after }),
+  }));
+  const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as AttributedChange[];
+  return nameAttributedActors(client, ref, attributed, scope);
+}
+
+/** A central reader may see who any account is: name the ones KEEL backed up. */
+async function nameAttributedActors(client: KeelClient, ref: string, attributed: AttributedChange[], scope: EntityScope): Promise<AttributedChange[]> {
+  if (scope.central) {
+    const unnamed = attributed.flatMap((entry) => entry.actors.filter((actor) => !actor.name && actor.id).map((actor) => actor.id!));
+    if (unnamed.length) {
+      const lookup = await idNames(client, ref, unnamed);
+      for (const entry of attributed) {
+        entry.actors = entry.actors.map((actor) => (actor.name || !actor.id ? actor : { ...actor, name: lookup.ids[actor.id.toLowerCase()] ?? null }));
       }
     }
+  }
+  return attributed;
+}
+
+async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+  if (!items.length) return items;
+  let byId: Map<string, AttributedChange>;
+  try {
+    const attributed = await attributeOpenChanges(client, ref, baselineId, items, scope);
     // "Hide people's names": the users the audit log names get their code names.
     const namer = await readNamer(client);
     if (namer) for (const entry of attributed) entry.actors = entry.actors.map((actor) => displayActor(actor, namer));
@@ -1221,6 +1239,43 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   return refs;
 }
 
+/** Who holds a role tenant-wide right now (enabled people, not Keel's own accounts),
+ * by name, A to Z. Pages use it to say who to ask instead of "ask an admin". The names
+ * follow "Hide people's names", like every other person the portal shows. */
+async function roleHolders(client: KeelClient, role: string): Promise<{ id: string; name: string }[]> {
+  const { rows } = await client.query(
+    `SELECT DISTINCT p.id::text AS id
+       FROM principal p JOIN role_grant g ON g.principal_id = p.id
+      WHERE g.role = $1 AND g.scope = '*' AND p.disabled_at IS NULL AND p.system_kind IS NULL
+        AND g.active_from <= now() AND (g.active_until IS NULL OR g.active_until > now())`,
+    [role],
+  );
+  const refs = await principalRefs(client, rows.map((row) => String(row.id)));
+  return [...refs.values()].filter((ref) => ref.href).map((ref) => ({ id: ref.id, name: ref.name })).sort((a, b) => a.name.localeCompare(b.name, "en-GB"));
+}
+
+/** Admins and investigators by name. The reader is left out of the lists and flagged
+ * instead, so a page never tells someone to ask themselves. */
+export async function readContacts(client: KeelClient, viewerId: string | null): Promise<Contacts> {
+  const [admins, investigators] = [await roleHolders(client, "admin"), await roleHolders(client, "investigator")];
+  const others = (list: { id: string; name: string }[]) => list.filter((person) => person.id !== viewerId).map((person) => person.name);
+  return {
+    admins: others(admins),
+    investigators: others(investigators),
+    youAreAdmin: admins.some((person) => person.id === viewerId),
+  };
+}
+
+/** The people a page names as "who to ask": Keel admins and investigators. Null when
+ * they could not be read, so the page falls back to the role's name. */
+export async function getContacts(viewerId: string | null): Promise<Contacts | null> {
+  try {
+    return await withClient((client) => readContacts(client, viewerId));
+  } catch {
+    return null;
+  }
+}
+
 /** People by principal id for a page that has no other database work (Activity). */
 export async function getPrincipalNames(ids: string[]): Promise<Record<string, Ref>> {
   return withClient(async (client) => Object.fromEntries(await principalRefs(client, ids)));
@@ -1413,6 +1468,17 @@ export function buildAlerts({
     });
   }
 
+  // Partly done is its own amber row, never inside "failed" (decision 31 Oct 2026).
+  if (coverage.partial > 0) {
+    alerts.push({
+      key: "partial",
+      severity: "warning",
+      title: `${kinds(coverage.partial, "kind of setting was", "kinds of settings were")} only partly backed up`,
+      detail: "Keel read part of each one, so some items are missing from the backup. Open each one to see what was missed.",
+      href: "/protect?health=partial",
+    });
+  }
+
   // The same buckets as the ring and What's protected: out of date and never backed up
   // share the "out-of-date" list there, so they share one row here.
   const late = coverage.stale + coverage.neverCollected;
@@ -1432,7 +1498,7 @@ export function buildAlerts({
       severity: "warning",
       title: `${kinds(coverage.notCovered, "kind of setting is", "kinds of settings are")} not backed up by Keel yet`,
       detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.",
-      href: "/protect",
+      href: "/protect?health=not-backed-up",
     });
   }
 
@@ -1465,15 +1531,26 @@ export function buildAlerts({
       });
   }
 
-  // The same two states, and words, as Activity, the menu and Integrations: a failed
-  // check is Urgent, a record with no off-site copy to compare with is Check soon.
+  // The same states, and words, as Activity, the menu and Integrations: a failed check
+  // is Urgent; a known, explained break or a record with no off-site copy to compare
+  // with is Check soon.
   const audit = dashboardAuditCheck(evidence);
-  if (audit === "failed" || audit === "unchecked") {
+  if (audit === "failed" || audit === "known" || audit === "unchecked") {
     alerts.push({
       key: "audit",
       severity: audit === "failed" ? "critical" : "warning",
       title: AUDIT_CHECK_WORDS[audit].title,
       detail: AUDIT_CHECK_WORDS[audit].detail,
+      href: AUDIT_RECORD_HREF,
+    });
+  }
+  // A known break outranks "no off-site copy", but the missing copy still needs fixing.
+  if (audit === "known" && evidence?.unanchored) {
+    alerts.push({
+      key: "audit-unchecked",
+      severity: "warning",
+      title: AUDIT_CHECK_WORDS.unchecked.title,
+      detail: AUDIT_CHECK_WORDS.unchecked.detail,
       href: AUDIT_RECORD_HREF,
     });
   }
@@ -1579,12 +1656,16 @@ export async function getDashboardData(): Promise<DashboardData> {
         chainLength: Number(evidenceRaw.chainLength),
         // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
         // A broken own chain is already a failed check: no second walk.
-        check: evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
-          .then(auditCheckOf)
+        ...(evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+          .then((integrity) => {
+            const check = auditCheckOf(integrity);
+            // Only a known break hides "no off-site copy"; say it separately then.
+            return { check, ...(check === "known" && integrity.status === "unanchored" ? { unanchored: true } : {}) };
+          })
           .catch((error) => {
             console.error("[keel-portal] overview audit record check unavailable", error);
-            return undefined;
-          }) : "failed",
+            return {};
+          }) : { check: "failed" as const }),
       },
       // The same recoverable point the Resilience page shows; a failed read shows no item.
       offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
@@ -1617,7 +1698,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 // Roadmap task-73: measured freshness, recoverable point, recovery time and the
 // recovery context around them. Every read is pinned to this portal's tenant; the
 // numbers are the engine's (engine/coverage/recoveryMetrics.mjs), never recomputed here.
-export async function getResilienceData(): Promise<ResilienceData> {
+export async function getResilienceData(viewerId: string | null = null): Promise<ResilienceData> {
   const ref = tenantRef();
   const now = new Date();
   const storage = storageFrom();
@@ -1654,7 +1735,14 @@ export async function getResilienceData(): Promise<ResilienceData> {
     }
     // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
     const kinds = resilienceKinds((await coverageFor(client, ref)).types);
-    return { generatedAt: now.toISOString(), metrics, failedRestores, kinds, incidents, storage, followUps };
+    // Who to ask for work done on the Keel server (D12); the page still loads without it.
+    let contacts: Contacts | null;
+    try {
+      contacts = await readContacts(client, viewerId);
+    } catch {
+      contacts = null;
+    }
+    return { generatedAt: now.toISOString(), metrics, failedRestores, kinds, incidents, storage, followUps, contacts };
   });
 }
 
@@ -1696,6 +1784,13 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
         return name ? { ...record, name } : record;
       });
     }
+    // "Who changed MFA?": who made each listed change, from the audit logs, as the
+    // Changes page says it. The form asks the same with its "Who made each change" box.
+    if (answer.intent === "changes" && (answer.asksWho || input.who === true)) {
+      answer.asksWho = true;
+      answer.records = await withAskWho(client, ref, answer.records, readerScope);
+      answer.whoChecked = answer.records.filter((record) => record.kind === "change" && record.who !== undefined).length;
+    }
     // "Is Intune backed up?" counts kinds the way Setup and What's protected do, from the
     // same coverage report (lib/ask-coverage.ts). Without the report the engine's answer stands.
     if (answer.intent === "coverage" && readerScope.central) {
@@ -1706,6 +1801,51 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
       if (coverage) return { generatedAt: now.toISOString(), answer: withSharedCoverage(answer, coverage, now.toISOString()), entities, scope: readerScope };
     }
     return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
+  });
+}
+
+// Who made each change an Ask answer lists (the newest MAX_ATTRIBUTED_CHANGES), from
+// the audit logs over the window the answer gives it: from the last backup that read
+// that kind completely to the backup that saw the change. The engine has already applied
+// the reader's scope to the records; it decides here only whether an account is named.
+// A failed read leaves who as null ("could not read"), never a guess.
+async function withAskWho(client: KeelClient, ref: string, records: AnswerRecord[], scope: EntityScope): Promise<AnswerRecord[]> {
+  const changes = records.filter((record): record is ChangeRecord => record.kind === "change" && Boolean(record.window.to ?? record.seenAt))
+    .slice(0, MAX_ATTRIBUTED_CHANGES);
+  if (!changes.length) return records;
+  let byId: Map<string, AttributedChange>;
+  try {
+    const { rows } = await client.query(
+      "SELECT id::text AS id, before_payload, after_payload FROM drift WHERE tenant_ref = $1 AND id = ANY($2::uuid[])",
+      [ref, changes.map((record) => record.id)],
+    );
+    const payloads = new Map(rows.map((row) => [String(row.id), { before: row.before_payload ?? null, after: row.after_payload ?? null }]));
+    const attributed = (await attributeChanges(client, {
+      tenantRef: ref, scope,
+      changes: changes.map((record) => {
+        const { before = null, after = null } = payloads.get(record.id) ?? {};
+        return {
+          id: record.id, resourceType: record.resourceType, naturalKey: record.naturalKey, changeType: record.changeType,
+          fields: changedFields(before, after), window: { from: record.window.from, until: (record.window.to ?? record.seenAt)! },
+          objectIds: changeObjectIds({ naturalKey: record.naturalKey, before, after }),
+        };
+      }),
+    })) as AttributedChange[];
+    const named = await nameAttributedActors(client, ref, attributed, scope);
+    // "Hide people's names": the users the audit log names get their code names.
+    const namer = await readNamer(client);
+    if (namer) for (const entry of named) entry.actors = entry.actors.map((actor) => displayActor(actor, namer));
+    byId = new Map(named.map((entry) => [entry.changeId, entry]));
+  } catch (error) {
+    console.error("[keel-portal] ask change attribution unavailable", error);
+    const looked = new Set(changes.map((record) => record.id));
+    return records.map((record) => (record.kind === "change" && looked.has(record.id) ? { ...record, who: null } : record));
+  }
+  return records.map((record) => {
+    const found = record.kind === "change" ? byId.get(record.id) : undefined;
+    if (!found) return record;
+    const { changeId: _changeId, ...attribution } = found;
+    return { ...record, who: askWho(attribution) };
   });
 }
 

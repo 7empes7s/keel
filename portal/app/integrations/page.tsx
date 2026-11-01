@@ -41,14 +41,19 @@ export default async function IntegrationsPage() {
   }
   // The audit record's check, as Activity reads it; if it fails to load, the page says nothing about it.
   let record: AuditCheck = "unknown";
+  let unanchored = false;
   try {
     const response = await loadIntegrity(new Request("http://localhost/api/evidence/verify", { headers: requestHeaders }));
-    if (response.ok) record = auditCheckOf(await response.json() as ChainIntegrity);
+    if (response.ok) {
+      const integrity = await response.json() as ChainIntegrity;
+      record = auditCheckOf(integrity);
+      unanchored = integrity.status === "unanchored";
+    }
   } catch {
     record = "unknown";
   }
   const verdict = integrationsPageVerdict(destinations, statuses, servicenow, record);
-  const alerts = integrationAlerts(destinations, statuses, servicenow, record);
+  const alerts = integrationAlerts(destinations, statuses, servicenow, record, unanchored);
   return <>
     <PageHeader section="Settings" title="Integrations" description={DESCRIPTION} generatedAt={generatedAt} status={integrationsStatus(alerts)} />
     <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />

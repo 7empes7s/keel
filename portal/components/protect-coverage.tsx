@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
-import { useBackup } from "@/components/backup-controls";
+import { runWord, useBackup } from "@/components/backup-controls";
 import { FailureLine } from "@/components/backup-failure";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -42,6 +42,8 @@ import {
   tierLabel,
   typeName,
   workloadLiveLines,
+  activeRunSentence,
+  type ActiveTierRuns,
   type BackupHealth,
   type HealthFilter,
   type RestoreStanding,
@@ -232,20 +234,22 @@ function retryTitle(plan: RetryPlan): string {
   return "This kind has no tier, so this runs a full backup. It only reads your tenant.";
 }
 
-export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, tierStrip, children }: {
+export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, tierStrip, children, active }: {
   data: CoverageData;
   now: string;
   canBackup: boolean;
   // Retrying a kind with no tier runs the settings or full backup, which needs collect.
   canCollect?: boolean;
   tierStrip?: ReactNode;
+  // Each tier's backup that is queued or running, so its buttons say so and stay off.
+  active?: ActiveTierRuns;
   // The rest of the page's explanation layer (content backups, recent jobs), after the list.
   children?: ReactNode;
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/protect";
   const params = useLiveSearchParams();
-  const { backUp, retry, busy, feedback } = useBackup();
+  const { backUp, retry, busy, feedback, runOf } = useBackup(active, now);
   const canRetry = (plan: RetryPlan) => (plan.kind === "tier" ? canBackup : canCollect);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
@@ -465,30 +469,37 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
                   {reason ? <span className="pt-row-why"><FailureLine compact reason={reason} /></span> : null}
                 </span>
                 <span className="pt-row-acts">
-                  {plan ? (
-                    <button
-                      aria-busy={busy === item.type || undefined}
-                      aria-label={`Retry ${kindName(item)}`}
-                      className="btn btn-sm"
-                      disabled={!canRetry(plan) || busy !== null}
-                      onClick={() => void retry(plan, kindName(item), item.type)}
-                      title={canRetry(plan) ? retryTitle(plan) : `You need the ${plan.kind === "tier" ? "backup" : "collect"} permission to run this again.`}
-                      type="button"
-                    >
-                      <Icon name="play" />Retry
-                    </button>
-                  ) : tier && PROBLEM.includes(state) ? (
-                    <button
-                      aria-busy={busy === item.type || undefined}
-                      className="btn btn-sm"
-                      disabled={!canBackup || busy !== null}
-                      onClick={() => void backUp([tier], item.type)}
-                      title={`Runs every ${tierLabel(tier)} kind`}
-                      type="button"
-                    >
-                      Back up {tierLabel(tier)} again
-                    </button>
-                  ) : null}
+                  {plan ? (() => {
+                    // A tier retry is that tier's backup: while it is queued or running, say so.
+                    const run = plan.kind === "tier" ? runOf(plan.tier) : null;
+                    return (
+                      <button
+                        aria-busy={busy === item.type || undefined}
+                        aria-label={run ? undefined : `Retry ${kindName(item)}`}
+                        className="btn btn-sm"
+                        disabled={!canRetry(plan) || busy !== null || run !== null}
+                        onClick={() => void retry(plan, kindName(item), item.type)}
+                        title={run ? activeRunSentence(run, now) : canRetry(plan) ? retryTitle(plan) : `You need the ${plan.kind === "tier" ? "backup" : "collect"} permission to run this again.`}
+                        type="button"
+                      >
+                        {run && plan.kind === "tier" ? <><Icon name="refresh" />{`${tierLabel(plan.tier)} ${runWord(run).toLowerCase()}`}</> : <><Icon name="play" />Retry</>}
+                      </button>
+                    );
+                  })() : tier && PROBLEM.includes(state) ? (() => {
+                    const run = runOf(tier);
+                    return (
+                      <button
+                        aria-busy={busy === item.type || undefined}
+                        className="btn btn-sm"
+                        disabled={!canBackup || busy !== null || run !== null}
+                        onClick={() => void backUp([tier], item.type)}
+                        title={run ? activeRunSentence(run, now) : `Runs every ${tierLabel(tier)} kind`}
+                        type="button"
+                      >
+                        {run ? `${tierLabel(tier)} ${runWord(run).toLowerCase()}` : `Back up ${tierLabel(tier)} again`}
+                      </button>
+                    );
+                  })() : null}
                 </span>
               </div>
             );
@@ -512,7 +523,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
       {opened ? <BaselinesStyles /> : null}
       {opened ? (
         <DetailsSheet
-          footer={backupHealth(opened) === "failed" && canRetry(retryPlan(opened, TIER_IDS)) ? (
+          footer={backupHealth(opened) === "failed" && canRetry(retryPlan(opened, TIER_IDS)) && !(() => { const plan = retryPlan(opened, TIER_IDS); return plan.kind === "tier" && runOf(plan.tier) !== null; })() ? (
             <>
               <button
                 aria-busy={busy === "sheet" || undefined}
@@ -525,20 +536,28 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
               </button>
               <p className="bl-help">{retryTitle(retryPlan(opened, TIER_IDS))}</p>
             </>
-          ) : opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (
-            <>
-              <button
-                aria-busy={busy === "sheet" || undefined}
-                className="btn btn-primary"
-                disabled={busy !== null}
-                onClick={() => void backUp([opened.criticality!], "sheet")}
-                type="button"
-              >
-                <Icon name="play" />Back up {tierLabel(opened.criticality)}
-              </button>
-              <p className="bl-help">Runs every {tierLabel(opened.criticality)} kind. It only reads your tenant.</p>
-            </>
-          ) : undefined}
+          ) : opened.criticality && TIERS.some((entry) => entry.id === opened.criticality) && canBackup ? (() => {
+            const tier = opened.criticality!;
+            const run = runOf(tier);
+            return (
+              <>
+                <button
+                  aria-busy={busy === "sheet" || undefined}
+                  className="btn btn-primary"
+                  disabled={busy !== null || run !== null}
+                  onClick={() => void backUp([tier], "sheet")}
+                  type="button"
+                >
+                  <Icon name={run ? "refresh" : "play"} />{run ? `${tierLabel(tier)} ${runWord(run).toLowerCase()}` : `Back up ${tierLabel(tier)}`}
+                </button>
+                {run ? (
+                  <p className="bl-help" role="status">{activeRunSentence(run, now)} <Link href={`/jobs/${encodeURIComponent(run.jobId)}`}>View job</Link></p>
+                ) : (
+                  <p className="bl-help">Runs every {tierLabel(tier)} kind. It only reads your tenant.</p>
+                )}
+              </>
+            );
+          })() : undefined}
           kicker={<><Badge tone={HEALTH_BADGE[backupHealth(opened)].tone}>{HEALTH_BADGE[backupHealth(opened)].label}</Badge><span>{typeService(opened.type).name}</span></>}
           onClose={() => view.set({ open: null })}
           title={kindName(opened)}

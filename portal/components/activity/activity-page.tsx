@@ -17,6 +17,7 @@ import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { JobRecordFields } from "@/components/job-table";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { AlertRow } from "@/components/ui/alert-list";
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
@@ -51,6 +52,7 @@ import {
   type ActivityRow,
   type Retry,
 } from "@/lib/activity-view";
+import { AUDIT_CHECK_WORDS, knownBreakLines } from "@/lib/audit-check";
 import { changesQuery, type ActivityChanges } from "@/lib/changed-values";
 import { rangeToParam, toDay, type DayRange } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
@@ -178,7 +180,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
     { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedWeek ? `${counts.failedWeek} failed in the last 7 days` : "Nothing failed in the last 7 days", changes: failedTile.changes, tone: counts.failedDay ? "urgent" : undefined, active: failedTile.active },
     { key: "partial", label: "Partly done", icon: "alert", value: String(counts.partialDay), small: counts.partialWeek ? `${counts.partialWeek} partly done in the last 7 days` : "Every backup read everything", changes: partialTile.changes, tone: counts.partialDay ? "soon" : undefined, active: partialTile.active },
     { key: "active", label: "Running or waiting", icon: "play", value: String(counts.running + counts.waiting), small: counts.running + counts.waiting ? `${counts.running} running, ${counts.waiting} waiting to start` : "Nothing is running", changes: activeTile.changes, active: activeTile.active },
-    { key: "record", label: "Audit record", icon: "audit", value: record.label, small: record.sentence, changes: { show: filters.show === "records" ? null : "records", before: null }, tone: record.state === "broken" ? "urgent" : record.state === "unchecked" ? "soon" : undefined, active: filters.show === "records" },
+    { key: "record", label: "Audit record", icon: "audit", value: record.label, small: record.sentence, changes: { show: filters.show === "records" ? null : "records", before: null }, tone: record.state === "broken" ? "urgent" : record.state === "unchecked" || record.state === "known" ? "soon" : undefined, active: filters.show === "records" },
   ];
 
   const whoOptions: ChoiceOption<string>[] = who.map((person) => ({ value: person.id, label: person.name, icon: (person.system ? "clock" : undefined) as IconName | undefined }));
@@ -234,6 +236,22 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
   return (
     <div className="ac-page">
       <Verdict action={verdictAction} detail={verdict.detail} text={verdict.text} tone={verdict.tone} />
+      {record.state === "known" && integrity?.knownBreaks?.length ? (
+        // A known, explained break: amber, in plain words, with the specifics behind "Show details".
+        <div className="ac-known-break">
+          <AlertRow
+            as="div"
+            item={{
+              key: "audit-known",
+              tone: "soon",
+              icon: "alert",
+              title: AUDIT_CHECK_WORDS.known.title,
+              todo: "Nothing. Keel explains the break in the record itself and keeps checking every other entry. A new break would show here in red.",
+              more: knownBreakLines(integrity.knownBreaks),
+            }}
+          />
+        </div>
+      ) : null}
       {notice}
       <div data-layer="explanation">
         <section aria-label="Activity at a glance" className="ac-tiles">
@@ -294,6 +312,9 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
             {integrity?.unanchoredRecords !== undefined ? <RecordField copy={false} label="Entries not yet checked off-site" value={integrity.unanchoredRecords} /> : null}
             {integrity?.brokenAtSeq ? <RecordField copy={false} label="Broken at entry" value={integrity.brokenAtSeq} /> : null}
             {integrity?.reason ? <RecordField copy={false} label="Reason" value={integrity.reason} /> : null}
+            {(integrity?.knownBreaks ?? []).map((known) => (
+              <RecordField copy={false} key={known.explainedBySeq} label="Known break (explained)" value={`entries ${known.fromSeq}–${known.throughSeq}, ${known.breakCount} breaks, explained by entry ${known.explainedBySeq}`} />
+            ))}
             <RecordField copy={false} label="Checked with" value="GET /api/evidence/verify" />
           </RecordGroup>
           {jobs.map((job) => (

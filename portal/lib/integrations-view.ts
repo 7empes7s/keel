@@ -78,7 +78,7 @@ export function integrationsPageVerdict(destinations: Destination[], statuses: D
   }
   return {
     text: integrationsVerdict(destinations, statuses),
-    tone: statuses.some((status) => status.quarantined > 0) || record === "unchecked" ? "attention" : "good",
+    tone: statuses.some((status) => status.quarantined > 0) || record === "unchecked" || record === "known" ? "attention" : "good",
   };
 }
 
@@ -122,7 +122,7 @@ export function serviceNowBadge(status: ServiceNowStatus | null): { tone: Integr
 }
 
 /** What needs the reader, worst first. */
-export function integrationAlerts(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null, record: AuditCheck = "unknown"): AlertItem[] {
+export function integrationAlerts(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null, record: AuditCheck = "unknown", unanchored = false): AlertItem[] {
   const urgent: AlertItem[] = [];
   const soon: AlertItem[] = [];
   const low: AlertItem[] = [];
@@ -135,7 +135,15 @@ export function integrationAlerts(destinations: Destination[], statuses: Destina
       todo: AUDIT_CHECK_WORDS.failed.detail,
       action: { label: "Open the audit record", href: AUDIT_RECORD_HREF },
     });
-  } else if (record === "unchecked") {
+  } else if (record === "known") {
+    soon.push({
+      key: "audit-known", tone: "soon", icon: "alert",
+      title: AUDIT_CHECK_WORDS.known.title,
+      todo: AUDIT_CHECK_WORDS.known.detail,
+      action: { label: "Open the audit record", href: AUDIT_RECORD_HREF },
+    });
+  }
+  if (record === "unchecked" || (record === "known" && unanchored)) {
     soon.push({
       key: "audit-unchecked", tone: "soon", icon: "alert",
       title: AUDIT_CHECK_WORDS.unchecked.title,

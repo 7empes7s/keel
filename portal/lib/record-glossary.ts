@@ -252,6 +252,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Entry number": support("Record number", "This entry's number in Keel's tamper-proof log."),
   "Checked off-site through entry": support("Checked off-site up to record", "The last log entry with a checked off-site copy."),
   "Broken at entry": support("Broken at record", "The first log entry that does not check out."),
+  "Known break (explained)": support("Known break, explained", "Entries a fixed Keel bug linked wrongly, named by an explanation entry. Any other break still fails."),
   "Report version": support("Report version", "Which version of the report format this is."),
   "Result version": support("Result version", "Which version of the result format this is."),
   "Assessment version": support("Assessment version", "Which version of the assessment this is."),

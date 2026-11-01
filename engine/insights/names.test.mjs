@@ -225,7 +225,78 @@ test('an app is found by its app id, and a bare id is looked up through the inde
     },
   };
   await lookupNames(explaining, { tenantRef: TENANT, ids: [SP_ID] });
-  assert.match(plans[0], /resource_version_object_id_idx/);
-  assert.match(plans[0], /resource_version_app_id_idx/);
+  assert.match(plans[0], /resource_version_object_id_snapshot_idx/);
+  assert.match(plans[0], /resource_version_app_id_snapshot_idx/);
   assert.doesNotMatch(plans[0], /Seq Scan on resource_version/);
+});
+
+// Backlog 40: the lookup read every saved version of each object in full to find the
+// newest one, so an object kept in every hourly backup cost hundreds of reads (11.5 s
+// for the Changes feed on live, operator queue Q305). It now reads the newest backup
+// that holds the object, and older ones only for a name or a rename.
+test('an object kept in many backups is named from its newest backup, not by reading every version', async () => {
+  const tenant = 'many-backups';
+  const id = '0f1a0000-0000-4000-8000-0000000000dd';
+  const appId = 'a9900000-0000-4000-8000-0000000000dd';
+  const goneId = '0f1a0000-0000-4000-8000-0000000000de';
+  const BACKUPS = 60;
+  let goneSince;
+  for (let i = BACKUPS; i >= 1; i -= 1) {
+    const rows = [
+      ['group:Kept', 'group', { id, displayName: 'Kept team' }],
+      [`application:${appId}`, 'application', { id: 'a1000000-0000-4000-8000-0000000000dd', appId, displayName: 'Payroll app' }],
+      [`servicePrincipal:${appId}`, 'servicePrincipal', { id: 'a2000000-0000-4000-8000-0000000000dd', appId, displayName: 'Payroll' }],
+    ];
+    if (i > 20) rows.push(['group:Gone', 'group', { id: goneId, displayName: 'Gone team' }]);
+    const started = await backup(tenant, new Date(Date.now() - i * 3_600_000), 'complete', rows);
+    if (i === 20) goneSince = started;
+  }
+  // Found and never-saved ids only: a deleted object is still read back through its
+  // versions after it went (to date the deletion and follow a rename), checked below.
+  const ids = [id, 'group:Kept', appId.toUpperCase(), 'group:Never', 'dead0000-0000-4000-8000-0000000000dd'];
+
+  // On live the tables are large, so the planner reads indexes; here they are small, so
+  // seq scans are switched off to read the same plan. The table's read counters (rows
+  // fetched through an index plus rows read by a scan) count the saved versions read;
+  // they are flushed before each reading so earlier statements cannot leak in.
+  const versionsRead = async () => {
+    await client.query('SELECT pg_stat_force_next_flush()');
+    await client.query('SELECT pg_stat_clear_snapshot()');
+    const { rows: [counts] } = await client.query(
+      "SELECT pg_stat_get_tuples_fetched('resource_version'::regclass) + pg_stat_get_tuples_returned('resource_version'::regclass) AS n");
+    return Number(counts.n);
+  };
+  await client.query('ANALYZE resource_version, snapshot');
+  await client.query('SET enable_seqscan = off');
+  await client.query('SET stats_fetch_consistency = none');
+  let names;
+  let read;
+  try {
+    const before = await versionsRead();
+    names = await lookupNames(client, { tenantRef: tenant, ids });
+    read = await versionsRead() - before;
+  } finally {
+    await client.query('RESET enable_seqscan');
+    await client.query('RESET stats_fetch_consistency');
+  }
+  // The old read touched every version of every found id: more than 120 here.
+  assert.ok(read <= 4 * ids.length, `read ${read} saved versions for ${ids.length} ids kept in ${BACKUPS} backups`);
+
+  for (const key of [id, 'group:Kept']) {
+    const object = names.get(key);
+    assert.equal(object.status, 'found', key);
+    assert.equal(object.name, 'Kept team');
+    assert.equal(object.objectId, id);
+  }
+  const app = names.get(appId.toUpperCase());
+  assert.equal(app.status, 'found');
+  assert.equal(app.type, 'application', 'an app and its service principal share an app id: the first key wins');
+  assert.equal(app.name, 'Payroll app');
+  assert.equal(names.get('group:Never').status, 'unknown');
+  assert.equal(names.get('dead0000-0000-4000-8000-0000000000dd').status, 'unknown');
+
+  const gone = (await lookupNames(client, { tenantRef: tenant, ids: [goneId] })).get(goneId);
+  assert.equal(gone.status, 'deleted');
+  assert.equal(gone.name, 'Gone team');
+  assert.equal(gone.deletedSince, goneSince.toISOString());
 });

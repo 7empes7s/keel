@@ -2166,7 +2166,7 @@ const ASK_WHO: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], sco
       who: { verdict: "exact", label: "Confirmed", text: "Alice Admin, confirmed by the Microsoft Entra audit log.", detail: null } },
     { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", resourceType: "group", naturalKey: "group:Sales Readers", name: "Sales Readers", changeType: "added", impact: "scoped", decision: null,
       seenAt: "2026-09-30T06:00:00.000Z", window: { from: "2026-09-29T06:00:00.000Z", to: "2026-09-30T06:00:00.000Z" },
-      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", href: "/drift", collectionId: null },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", href: "/changes", collectionId: null },
       who: { verdict: "unknown", label: "Not known", text: "No audit entry names this change, so Keel cannot say who made it.", detail: "A change Microsoft or a sync makes has no person behind it." } },
   ],
 } };

@@ -82,11 +82,13 @@ test("every old URL sends you to its page's new name, and no page links to an ol
   assert.equal(renamedPath("/changes"), null);
   assert.equal(renamedPath("/api/drift"), null);
 
-  const old = new RegExp(`["'\`(]/(${Object.keys(RENAMED_ROUTES).map((path) => path.slice(1)).join("|")})(?=["'\`/?#)]|$)`);
+  const old = new RegExp(`["'\`(#]/(${Object.keys(RENAMED_ROUTES).map((path) => path.slice(1)).join("|")})(?=["'\`/?#)]|$)`);
   const sources = [
     ...files(resolve(portal, "app"), (name) => /\.tsx?$/.test(name)),
     ...files(resolve(portal, "components"), (name) => /\.tsx?$/.test(name)),
     ...files(resolve(portal, "lib"), (name) => /\.tsx?$/.test(name) && name !== "route-names.ts"),
+    resolve(portal, "ui-harness/app.tsx"),
+    resolve(portal, "ui-harness/kit.tsx"),
   ];
   for (const file of sources) {
     readFileSync(file, "utf8").split("\n").forEach((line, index) => {

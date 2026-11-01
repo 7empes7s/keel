@@ -5527,11 +5527,23 @@ test("Compliance · ScubaGear lists: a list not set comes first, and is set from
   await expect(page.getByRole("link", { name: "Set the list" })).toHaveCount(0);
 });
 
+// The ScubaGear card sits below several text blocks whose heights are fractions of a pixel.
+// Machines with the same Chromium still differ in those fractions, so the card's top lands on a
+// different sub-pixel and its borders round to another row. Move it to the next whole pixel
+// so the screenshot shows the card alone, not the rounding of everything above it.
+async function snapToWholePixel(locator: Locator) {
+  await locator.evaluate((el: HTMLElement) => {
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    el.style.marginTop = `${parseFloat(getComputedStyle(el).marginTop) + Math.ceil(top) - top}px`;
+  });
+}
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
     test(`visual · scuba-lists · ${width} · ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
       await open(page, "/compliance/scuba", theme);
+      await snapToWholePixel(page.locator(".cp-scuba"));
       await expect(page.locator(".cp-scuba")).toHaveScreenshot(`scuba-lists-${width}-${theme}.png`);
       await open(page, "/compliance/scuba?lists=edit", theme);
       await expect(page.locator(".bl-sheet")).toHaveScreenshot(`scuba-lists-sheet-${width}-${theme}.png`);

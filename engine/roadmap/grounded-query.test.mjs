@@ -235,7 +235,10 @@ test('Microsoft cloud words, old product names and security concepts map to kind
   const mfa = read('Who changed MFA yesterday?');
   assert.ok(mfa.params.resourceTypes.includes('authenticationMethodsPolicy') && mfa.params.resourceTypes.includes('conditionalAccessPolicy'));
   assert.ok(mfa.assumed.some((line) => line.startsWith('Read “MFA” as')));
-  assert.ok(mfa.assumed.some((line) => /not who made the change/.test(line)), 'KEEL does not know who made a change, and says so');
+  // "Who changed ...?" asks for who made each change: the page reads it from the audit log.
+  assert.equal(mfa.asksWho, true);
+  assert.ok(!mfa.assumed.some((line) => /not who made the change/.test(line)), 'Ask no longer says it cannot tell who made a change');
+  assert.equal(read('What changed in MFA yesterday?').asksWho, undefined);
   assert.ok(kinds('PIM changes last week').includes('roleEligibilitySchedule'));
   const admins = read('Any new global admins this week?');
   assert.equal(admins.params.changeType, 'added');
@@ -462,6 +465,13 @@ test('a Sales reader asking about this week gets only Sales records, each with i
   const form = await answerQuestion(client, { tenantRef, scope: SALES_SCOPE, request: { intent: 'changes', params: { period: 'this-week' } } });
   assert.deepEqual(form.records.map((entry) => entry.id), [fixture.ids.sales]);
   assert.equal(form.readBy, 'form');
+  // The answer names the period it used, so the page can set its form to match.
+  assert.equal(form.period, 'this-week');
+  assert.equal(all.period, 'this-week');
+  assert.equal(all.asksWho, false);
+  const who = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'Who changed what last week?' });
+  assert.equal(who.period, 'last-week');
+  assert.equal(who.asksWho, true, 'a "who changed" question asks for who made each change');
   // A quoted name narrows to that resource; kinds named by a service and a broad word
   // narrow to the taxonomy's kinds; words the reading did not use come back by name.
   const named = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What changed on "Sales Admins" this week?' });

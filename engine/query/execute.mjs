@@ -22,7 +22,7 @@ import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBack
 import { storedTypeOf, subkindFamilies, typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { RECORDED_CHANGE_PREDICATE } from '../store/openDrift.mjs';
-import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
+import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, namedPeriod, planQuestion, validateRequest } from './intent.mjs';
 
 export const ANSWER_VERSION = 1;
 const MAX_ERROR_TEXT = 300;
@@ -515,10 +515,17 @@ export async function answerQuestion(client, { tenantRef, scope, question = null
   assertTenantRef(tenantRef);
   const entities = await knownEntities(client, { tenantRef });
   let planned;
-  if (request) planned = { ...validateRequest(request, { now, knownEntities: entities, scope }), readBy: 'form' };
+  if (request) planned = { ...validateRequest(request, { now, knownEntities: entities, scope }), readBy: 'form', period: namedPeriod(request.params?.period) };
   else planned = await planQuestion(question, { helper, now, knownEntities: entities, scope });
   if (!planned.ok) return refusalAnswer(planned.refusal, { scope, now, readBy: planned.readBy, question });
   const answer = await executePlan(client, planned.plan, { tenantRef, scope, now });
-  // Words the reading did not use are returned, so the page can say what it ignored.
-  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], assumed: planned.assumed ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
+  // Words the reading did not use are returned, so the page can say what it ignored. The
+  // named period ("this-week") and whether the question asked who made each change let
+  // the page set its form to match the question.
+  return {
+    ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], assumed: planned.assumed ?? [],
+    period: answer.intent === 'coverage' ? null : planned.period ?? null,
+    asksWho: answer.intent === 'changes' && planned.asksWho === true,
+    question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null,
+  };
 }

@@ -416,7 +416,9 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
   if (intent === 'changes') take(changeWords);
   if (notHeld.length) assumed.push(`KEEL does not back up ${listWords(notHeld)}, so this answer leaves ${notHeld.length === 1 ? 'that' : 'those'} out.`);
   for (const { label, page } of elsewhere) assumed.push(`Ask does not answer about ${label} yet: the ${page} page has them.`);
-  if (intent === 'changes' && ACTOR_WORDS.test(text)) assumed.push('KEEL compares backups, so it shows what changed and when, but not who made the change.');
+  // "Who changed it?": the answer names who made each change from Microsoft's audit log.
+  const asksWho = intent === 'changes' && ACTOR_WORDS.test(text);
+  if (asksWho) hit(ACTOR_WORDS);
 
   if (intent === 'changes') {
     // Read from the text without the name looked for ("Disabled accounts", "New Hires"),
@@ -510,7 +512,8 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
     if (FILLER.has(word) || /^\d+$/.test(word)) continue;
     if (!ignored.includes(match[0])) ignored.push(match[0]);
   }
-  return assumed.length ? { intent, params, ignored, assumed } : { intent, params, ignored };
+  const reading = assumed.length ? { intent, params, ignored, assumed } : { intent, params, ignored };
+  return asksWho ? { ...reading, asksWho } : reading;
 }
 
 /* ------------------------------------------------------------ validate -- */
@@ -669,7 +672,7 @@ export async function planQuestion(question, { helper = null, now = new Date(), 
         const checked = validateRequest(proposal, { now, knownEntities, scope });
         // A refusal from the helper's proposal is a refusal: a request with SQL or a
         // tool in it is never retried in another form.
-        return { ...checked, readBy: 'helper' };
+        return { ...checked, readBy: 'helper', period: namedPeriod(params.period), asksWho: checked.ok && proposal.intent === 'changes' && ACTOR_WORDS.test(String(question)) };
       }
     }
   }
@@ -688,8 +691,13 @@ export async function planQuestion(question, { helper = null, now = new Date(), 
     const code = builtIn.unsupported === 'ambiguous-date' || builtIn.unsupported === 'unreadable-date' ? 'malformed' : 'unsupported';
     return { ...refuse(code, message), readBy: 'rules' };
   }
-  const { ignored = [], assumed = [], ...candidate } = builtIn;
-  return { ...validateRequest(candidate, { now, knownEntities, scope }), readBy: 'rules', ignored, assumed };
+  const { ignored = [], assumed = [], asksWho = false, ...candidate } = builtIn;
+  return { ...validateRequest(candidate, { now, knownEntities, scope }), readBy: 'rules', ignored, assumed, period: namedPeriod(candidate.params?.period), asksWho };
+}
+
+/** The named period a request used ("this-week"), so a form can show it; null for dates. */
+export function namedPeriod(period) {
+  return typeof period === 'string' && PERIODS.includes(period) ? period : null;
 }
 
 /** The plan in words, for "Understood as". */

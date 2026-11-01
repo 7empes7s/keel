@@ -53,6 +53,20 @@ export interface ChangeRecord {
   moreFields?: boolean;
   window: AnswerWindow;
   source: AnswerSource;
+  // Who made it, from Microsoft's audit log (lib/ask-who.ts): set by the portal when the
+  // question asks who; null when the audit log could not be read for it.
+  who?: AskWho | null;
+}
+
+/** Who made a change, in words, as the Changes page says it (components/change-attribution.tsx). */
+export interface AskWho {
+  verdict: "exact" | "plausible" | "unknown";
+  // "Confirmed", "Likely" or "Not known".
+  label: string;
+  // "Ada Admin, confirmed by the Microsoft Entra audit log." or why it is not known.
+  text: string;
+  // What to do when it is not known.
+  detail: string | null;
 }
 
 export interface CoverageRecord {
@@ -130,6 +144,12 @@ export interface GroundedAnswer {
   refusal?: { code: string; message: string };
   readBy?: "rules" | "helper" | "form";
   question?: string | null;
+  // The named period the answer used ("this-week"); null when it used dates.
+  period?: string | null;
+  // The question asked who made each change ("Who changed MFA?"), or the form asked for it.
+  asksWho?: boolean;
+  // How many listed changes Keel looked up in the audit log (the newest first).
+  whoChecked?: number;
   sentence: string;
   generatedAt: string;
 }
@@ -145,6 +165,8 @@ export interface AskInput {
   resourceTypes?: string[];
   name?: string;
   changeType?: string;
+  // The form asked who made each change.
+  who?: boolean;
 }
 
 export interface AskData {
@@ -172,7 +194,7 @@ export const ASK_INTENTS: { value: AskIntent; label: string }[] = [
   { value: "failed-jobs", label: "Which jobs failed" },
 ];
 
-const SEARCH_KEYS = ["q", "intent", "entity", "period", "from", "to", "type", "types", "name", "change"] as const;
+const SEARCH_KEYS = ["q", "intent", "entity", "period", "from", "to", "type", "types", "name", "change", "who"] as const;
 
 /** The page's query string as an engine request: a question, or a structured form. */
 export function askInputFrom(params: Record<string, string | string[] | undefined>): AskInput | null {
@@ -185,18 +207,78 @@ export function askInputFrom(params: Record<string, string | string[] | undefine
   if (question) return { question };
   const intent = value("intent");
   if (!intent) return null;
-  const types = value("types")?.split(",").map((type) => type.trim()).filter(Boolean);
-  const from = intent === "coverage" ? undefined : value("from");
+  // The form's kind picker sends several kinds as one comma-separated value, and its
+  // period picker sends the dates a question named as "from/to".
+  const typeValue = value("type");
+  const listed = value("types") ?? (typeValue?.includes(",") ? typeValue : undefined);
+  const types = listed?.split(",").map((type) => type.trim()).filter(Boolean);
+  const periodValue = value("period");
+  const dates = periodValue?.includes("/") ? periodValue.split("/") : null;
+  const from = intent === "coverage" ? undefined : value("from") ?? (dates?.[0] || undefined);
+  const who = intent === "changes" && value("who") === "1";
   return {
     intent,
-    entity: value("entity"),
-    period: intent === "coverage" || from ? undefined : value("period"),
+    // Jobs have no owner: an owner left from a changes question is not sent with them.
+    entity: intent === "failed-jobs" ? undefined : value("entity"),
+    period: intent === "coverage" || from ? undefined : periodValue,
     from,
-    to: from ? value("to") : undefined,
-    resourceType: types?.length ? undefined : value("type"),
+    to: from ? value("to") ?? (dates?.[1] || undefined) : undefined,
+    resourceType: types?.length ? undefined : typeValue,
     resourceTypes: types?.length ? types : undefined,
     name: value("name"),
     changeType: intent === "changes" ? value("change") : undefined,
+    ...(who ? { who } : {}),
+  };
+}
+
+/** The "Or choose" form's starting values: the question just answered, so changing one
+ *  picker and pressing Answer asks the same thing with that one change. */
+export interface AskFormDefaults {
+  intent: string;
+  period: string;
+  // The dates a question named, when they are not one of the named periods.
+  datesOption: { value: string; label: string } | null;
+  entity: string;
+  type: string;
+  // Kinds the question named that the kind picker does not list on its own ("Teams policies").
+  typeOption: { value: string; label: string } | null;
+  change: string;
+  name: string;
+  who: boolean;
+}
+
+export const ASK_CHANGES: { value: string; label: string }[] = [
+  { value: "", label: "Any change" },
+  { value: "added", label: "Added" },
+  { value: "modified", label: "Changed" },
+  { value: "removed", label: "Removed" },
+];
+
+export function askFormDefaults(answer: GroundedAnswer | null, typeValues: readonly string[] = []): AskFormDefaults {
+  const fallback: AskFormDefaults = { intent: "changes", period: "this-week", datesOption: null, entity: "", type: "", typeOption: null, change: "", name: "", who: false };
+  const plan = answer?.plan;
+  if (!answer || !plan) return answer?.intent ? { ...fallback, intent: answer.intent } : fallback;
+  const { intent, params } = plan;
+  let period = fallback.period;
+  let datesOption: AskFormDefaults["datesOption"] = null;
+  if (answer.period && ASK_PERIODS.some((entry) => entry.value === answer.period)) period = answer.period;
+  else if (intent !== "coverage" && params.from && params.to) {
+    period = `${params.from}/${params.to}`;
+    datesOption = { value: period, label: `${shortTime(params.from)} to ${shortTime(params.to)}` };
+  }
+  let type = "";
+  let typeOption: AskFormDefaults["typeOption"] = null;
+  if (params.resourceTypes?.length) {
+    type = params.resourceTypes.join(",");
+    if (params.resourceTypes.length > 1 || !typeValues.includes(type)) typeOption = { value: type, label: kindsWords(params.resourceTypes) };
+  } else if (params.resourceType) {
+    type = params.resourceType;
+    if (!typeValues.includes(type)) typeOption = { value: type, label: plainKind(type) };
+  }
+  return {
+    intent, period, datesOption, entity: params.entity ?? "", type, typeOption,
+    change: intent === "changes" ? params.changeType ?? "" : "", name: params.name ?? "",
+    who: intent === "changes" && answer.asksWho === true,
   };
 }
 
@@ -401,6 +483,8 @@ export function askAlerts(answer: GroundedAnswer): AlertItem[] {
       todo: "KEEL left these words out. Name a service or kind of setting, or put a name in quotes.", action: null,
     });
   }
+  const who = whoAlert(answer);
+  if (who) items.push(who);
   if (!answer.scope.central) {
     items.push({
       key: "scope", tone: "low", icon: "info", title: `Only resources owned by ${answer.scope.entities.join(" and ")} are included`,
@@ -408,6 +492,25 @@ export function askAlerts(answer: GroundedAnswer): AlertItem[] {
     });
   }
   return items;
+}
+
+/** Who made the listed changes, counted: shown when the question asked who. */
+function whoAlert(answer: GroundedAnswer): AlertItem | null {
+  if (!answer.asksWho || answer.intent !== "changes" || answer.status === "refused") return null;
+  const changes = answer.records.filter((record): record is ChangeRecord => record.kind === "change");
+  if (!changes.length) return null;
+  const looked = changes.filter((record) => record.who !== undefined);
+  const count = (verdict: AskWho["verdict"]) => looked.filter((record) => record.who?.verdict === verdict).length;
+  const failed = looked.filter((record) => record.who === null).length;
+  const parts = [`${count("exact")} confirmed`, `${count("plausible")} likely`, `${count("unknown") + failed} not known`];
+  const rest = changes.length - looked.length;
+  const todo = [
+    "Keel reads who made each change from the Microsoft Entra and Intune audit logs, and lists it in the Who made it column.",
+    "Changes in Exchange, SharePoint, Teams, Purview, Power Platform and Defender show Not known until Keel reads the Purview audit log.",
+    rest > 0 ? `Keel looked up the newest ${looked.length.toLocaleString("en-GB")} changes; narrow the question to look up the other ${rest.toLocaleString("en-GB")}.` : null,
+    failed ? "Keel could not read the audit log for some changes just now; ask again in a moment." : null,
+  ].filter(Boolean).join(" ");
+  return { key: "who", tone: failed ? "soon" : "low", icon: "person", title: `Who made these changes: ${parts.join(", ")}`, todo, action: null };
 }
 
 function shortTime(value: string | null): string {

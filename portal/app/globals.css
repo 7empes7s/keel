@@ -11909,6 +11909,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .ak-none { color: var(--text-soft); font-size: 0.8125rem; }
 .ak-service { display: inline-flex; align-items: center; gap: var(--space-2xs); }
 .ak-service .icon { width: 1rem; height: 1rem; }
+.ak-who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs); font-size: 0.8125rem; overflow-wrap: anywhere; }
 .ak-fold { align-self: end; }
 .ak-fold .icon { width: 1rem; height: 1rem; }
 @media (prefers-reduced-motion: reduce) { .ak-group .ak-group-chevron { transition: none; } }

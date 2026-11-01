@@ -19,7 +19,7 @@ import { Verdict } from "@/components/verdict";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
-import { failureReason, retryPlan, type RetryPlan } from "@/lib/backup-failure";
+import { failureReason, needsRetry, retryPlan, type RetryPlan } from "@/lib/backup-failure";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import {
@@ -458,9 +458,9 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
             const state = backupHealth(item);
             const badge = HEALTH_BADGE[state];
             const tier = item.criticality && TIERS.some((entry) => entry.id === item.criticality) ? item.criticality : null;
-            // Every failed kind says why and can be run again, tier or not.
-            const reason = state === "failed" ? failureReason(item) : null;
-            const plan = state === "failed" ? retryPlan(item, TIER_IDS) : null;
+            // Every failed or partly done kind says why and can be run again, tier or not.
+            const reason = failureReason(item);
+            const plan = needsRetry(item) ? retryPlan(item, TIER_IDS) : null;
             return (
               <div className={`pt-row health-${state}`}>
                 <span aria-hidden="true" className="pt-kind" data-tone={healthRisk(item)}><Icon name={typeService(item.type).icon} /></span>
@@ -521,7 +521,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
       {opened ? <BaselinesStyles /> : null}
       {opened ? (
         <DetailsSheet
-          footer={backupHealth(opened) === "failed" && canRetry(retryPlan(opened, TIER_IDS)) ? (
+          footer={needsRetry(opened) && canRetry(retryPlan(opened, TIER_IDS)) ? (
             <>
               <button
                 aria-busy={busy === "sheet" || undefined}

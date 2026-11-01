@@ -37,7 +37,7 @@ function overview(evidence: DashboardData["evidence"]) {
   return buildAlerts({
     activeBaseline: { resourceCount: 3 } as DashboardData["activeBaseline"],
     lastCollection: { completedAt: "2026-10-31T10:00:00Z", status: "complete" },
-    coverage: { covered: 3, failed: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: 3 },
+    coverage: { covered: 3, failed: 0, partial: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: 3 },
     evidence,
   }).filter((alert) => alert.key === "audit").map((alert) => [alert.severity, alert.title, alert.href]);
 }
@@ -53,7 +53,7 @@ test("Overview: Urgent for a failed check, Check soon for no off-site copy, noth
 test("menu: the Audit log badge has the Overview's colour and words", () => {
   const base: Parameters<typeof menuStatuses>[0] = {
     headline: null as never,
-    coverage: { covered: 3, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 3 },
+    coverage: { covered: 3, failed: 0, partial: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 3 },
     openDriftByBlastRadius: [],
     openDriftTotal: 0,
     evidence: { ok: true, chainLength: 9, check: "unchecked" },

@@ -102,9 +102,9 @@ function needsSentence(needs: FailureNeed[], confirmed: boolean): string {
     : `Microsoft refused the read. Keel's backup app needs ${parts.join(" and ")} for it; Setup shows which one is missing.`;
 }
 
-/** Why one kind's last backup failed, or null when it did not fail. */
+/** Why one kind's last backup failed or was partly done, or null when neither. */
 export function failureReason(item: CoverageType): FailureReason | null {
-  if (backupHealth(item) !== "failed") return null;
+  if (!needsRetry(item)) return null;
   const diagnosis = item.diagnosis;
   const confirmed = diagnosis?.confirmed ?? {};
   const strings = (value: unknown) => (Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []);
@@ -153,6 +153,12 @@ export function failureReason(item: CoverageType): FailureReason | null {
   return item.outcome === "partial"
     ? { text: "Keel did not get all of it from Microsoft 365. Retrying usually finishes it.", tone: "soon", needs: [] }
     : { text: "Keel could not read it from Microsoft 365. Retry it; if it fails again, its record has the error.", tone: "soon", needs: [] };
+}
+
+/** A kind whose last backup failed or was only partly done: it says why and can be run again. */
+export function needsRetry(item: CoverageType): boolean {
+  const health = backupHealth(item);
+  return health === "failed" || health === "partial";
 }
 
 /** How to run one kind again: its tier's backup, the service settings backup, or a full read. */

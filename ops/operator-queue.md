@@ -14226,8 +14226,15 @@ item that needs it stays untouched.
   Overview 273 steps, Restore 233 (it added up only the 50 restores it lists), Resilience "25 restores need follow-up".
   PR #858 (merged) adds one engine count, `countOpenCompletionWork` in `engine/restore/completion.mjs`, that all three read.
 - Needs: nothing. **Quick.** Take it once `/opt/keel-live` is at or after the merge of #858.
-- Status: todo
-- Result:
+- Status: partial
+- Result: partial: the counts match in the engine; pages not rendered (2026-11-01 02:40 UTC, keel-operator). Build **1d890b0b** (#891). Read-only (`BEGIN READ ONLY`), no tenant, no writes.
+  - **Step 1:** `/opt/keel-live/engine/restore/completion.mjs` contains `countOpenCompletionWork`, so #858 is deployed.
+  - **Step 2:** `countOpenCompletionWork` → **steps 272, restores 62** (href `/restore#follow-up`); `listOpenCompletionWork` (limit 50) → **50** cards.
+  - **Step 3:** **not rendered.** `curl http://127.0.0.1:3600/` → **401**; the portal needs a Cloudflare Access login even locally and keel-operator has none (same as Q-items at lines ~8076 and ~12408). Instead I ran each page's own loader on live data, read-only:
+    - Overview (`portal-data.ts` → `countOpenCompletionSteps`): **272**.
+    - Restore (`getRestoreFollowUps` → `readOpenCompletionWork`): steps **272**, restores **62**, cards **50**. Since 62 > 50, `restore-follow-ups.tsx` will show "Showing the newest 50 of 62 restores."
+    - Resilience (`countOpenCompletionWork`): steps **272**, restores **62**.
+  - All three read one engine count (`countOpenCompletionSteps` and `readOpenCompletionWork` both call `countOpenCompletionWork`), so the pages should read 272 steps / 62 restores. Seeing the rendered text needs someone with an Access login (or a local auth bypass for the operator box).
 - Do, on Mulinux, read-only (`BEGIN READ ONLY`), no tenant calls, no writes:
   1. The deployed build (`/opt/keel-live` commit) and whether it contains #858 (`git merge-base --is-ancestor`, or grep
      `countOpenCompletionWork` in `/opt/keel-live/engine/restore/completion.mjs`).
@@ -14262,7 +14269,22 @@ item that needs it stays untouched.
   build with #887 but without #893:** that build would append the entry but report its number as "undefined". Check with
   `git -C <your clone> merge-base --is-ancestor <#893 merge commit> <deployed commit>`, or check that
   `engine/govern/evidence.mjs` in `/opt/keel-live` contains `({ emit } = written);`.
-- Status: todo
+- Status: done
+- Result: done, entry written (2026-11-01 02:39 UTC, keel-operator). Build **1d890b0b** (#891), which contains #887 (`explain-break` in `cli/keel-govern.mjs`) and #893 (`({ emit } = written);` in `engine/govern/evidence.mjs`). Principal: the operator's (owner's) admin principal (roles admin, approver, operator, restorer, viewer). No tenant calls. **One DB write, through Keel's CLI only**; no audit row edited, `evidence_head` not touched by hand.
+  - **Step 2, dry run, verbatim:**
+    ```
+    { "ok": true, "written": false, "records": "434254", "breaks": 903, "firstBreak": "425262", "lastBreak": "428902",
+      "headSeq": "434254", "lastSeq": "434254", "headCountShortBy": "881", "earliestPrevSeq": "425260" }
+    dry run only; pass --confirm to append the explanation record
+    ```
+    Matched every expected value, so I went on.
+  - **Step 3, `--confirm`, verbatim (summary JSON; it also printed the `keel-events` line for the new record, seq 434255, kind `chain-break-explained`, `stretchRows` 3643, `breakSeqs` listing all 903):**
+    ```
+    { "ok": true, "written": true, "explainedBySeq": "434255", "records": "434254", "breaks": 903, "firstBreak": "425262",
+      "lastBreak": "428902", "headSeq": "434254", "lastSeq": "434254", "headCountShortBy": "881", "earliestPrevSeq": "425260" }
+    ```
+  - **Step 4:** `{"ok":true,"known":[{"seq":"434255","from":"425262","through":"428902","n":903}]}`
+  - **Step 5:** **not seen.** The Overview cannot be rendered from the host (`curl 127.0.0.1:3600/` → 401, no Access login), the same as Q304. The chain now verifies `ok` with the one known break, which is what the amber "known break, explained" row reads.
 - Do, on Mulinux, from `/opt/keel-live`, with `/etc/keel/db.env` sourced. Use the Keel **admin principal** you normally use for
   CLI actions; if you have none, use the owner's admin principal.
   1. Record the deployed commit.

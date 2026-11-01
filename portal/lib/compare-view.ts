@@ -236,7 +236,9 @@ export function workloadStatus(group: WorkloadGroup): WorkloadStatus {
   if (group.state !== "compared") return "not-compared";
   const checked = (group.added ?? 0) + (group.removed ?? 0) + (group.changed ?? 0) + (group.unchanged ?? 0);
   const gaps = (group.unverified ?? 0) + (group.unmatched ?? 0);
-  if (gaps === 0) return "compared";
+  // A side read only in part with nothing checked is not "no differences".
+  const partSide = group.left?.outcome === "partial" || group.right?.outcome === "partial";
+  if (gaps === 0) return checked === 0 && partSide ? "not-compared" : "compared";
   return checked === 0 ? "not-compared" : "partly";
 }
 
@@ -323,7 +325,15 @@ export function workloadNotComparedSentence(group: WorkloadGroup): string {
     if (!group.left && !group.right) return "Never backed up on either side, so nothing is compared.";
     return !group.left ? "Never backed up for the first side, so nothing is compared." : "Never backed up for the second side, so nothing is compared.";
   }
-  if (group.state === "compared") return "Each side read only part of it, so nothing could be checked.";
+  if (group.state === "compared") {
+    const leftPart = group.left?.outcome === "partial";
+    const rightPart = group.right?.outcome === "partial";
+    if (!(group.unverified ?? 0) && (group.unmatched ?? 0)) return "None of its items could be matched between the two sides, so nothing could be checked.";
+    if (leftPart && rightPart) return "Each side read only part of it, so nothing could be checked.";
+    if (leftPart) return "The first side read only part of it, so nothing could be checked.";
+    if (rightPart) return "The second side read only part of it, so nothing could be checked.";
+    return "None of it could be checked on both sides.";
+  }
   return "A collection on one side failed or is switched off, so nothing is compared.";
 }
 

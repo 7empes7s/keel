@@ -7,7 +7,7 @@ import { MAX_ITEMS, compareSettings } from "../../engine/govern/compare.mjs";
 import { CompareView } from "@/components/compare-view";
 import { NAV_MAP, visibleNavLinks } from "@/components/nav-links";
 import {
-  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, groupKind, kindCountsWords, labelTenants, notComparedCounts, notComparedReasons, settingsByKind, workloadStatus,
+  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, groupKind, kindCountsWords, labelTenants, notComparedCounts, notComparedReasons, settingsByKind, workloadNotComparedSentence, workloadStatus,
   type CompareData, type CompareResult, type SettingsSection,
 } from "@/lib/compare-view";
 
@@ -225,4 +225,22 @@ test("parts never read say Not compared, with one count everywhere", () => {
   assert.match(teams.slice(0, 1200), /1 kind · not compared/);
   assert.match(html, /data-status="not-compared"[^]*?Not compared[^]*?Never backed up for the second side/);
   assert.match(html, /Each side read only part of it, so nothing could be checked/);
+});
+
+test("a workload not compared says which side, or that its items could not be matched", () => {
+  const at = "2026-10-30T10:00:00.000Z";
+  const base = { service: "SharePoint", workload: "sharepoint-sites", state: "compared" as const, added: 0, removed: 0, changed: 0, unchanged: 0, unverifiedFields: 0, total: 0, items: [] };
+  const full = { collectionId: ID(1), outcome: "complete", at };
+  const part = { collectionId: ID(2), outcome: "partial", at };
+  // Tenant to tenant: both read in full, but no item exists on both sides.
+  const unmatched = { ...base, left: full, right: full, unverified: 0, unmatched: 3 };
+  assert.equal(workloadStatus(unmatched), "not-compared");
+  assert.match(workloadNotComparedSentence(unmatched), /could be matched between the two sides/);
+  // Only the second side read in part.
+  const secondPart = { ...base, left: full, right: part, unverified: 1, unmatched: 0 };
+  assert.equal(workloadNotComparedSentence(secondPart), "The second side read only part of it, so nothing could be checked.");
+  // Both read in part and nothing came back: not compared, never "no differences".
+  const emptyPart = { ...base, left: part, right: part, unverified: 0, unmatched: 0 };
+  assert.equal(workloadStatus(emptyPart), "not-compared");
+  assert.equal(kindCountsWords([emptyPart]), "not compared");
 });

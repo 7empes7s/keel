@@ -291,7 +291,11 @@ export function distinctItems(items) {
   for (const item of items ?? []) {
     const id = `${item.kind === 'cmdlet' ? item.source : 'graph'}|${String(item.name).toLowerCase()}`;
     const prior = distinct.get(id);
-    if (!prior || (prior.status === 'unreadable' && item.status !== 'unreadable')) distinct.set(id, item);
+    const readable = (entry) => entry.status !== 'unreadable';
+    // Readable beats unreadable; with the same readability, v1.0 beats beta, so a row
+    // shows the stable version's count and source.
+    if (!prior || (!readable(prior) && readable(item))
+      || (readable(prior) === readable(item) && item.source === 'graph:v1.0' && prior.source !== 'graph:v1.0')) distinct.set(id, item);
   }
   return [...distinct.values()];
 }

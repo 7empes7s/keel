@@ -149,7 +149,7 @@ test("the headline total equals its parts, and each list holds as many types as 
   // A path found in v1.0 and beta is one type; a type readable in one version is not
   // listed as unreadable in the other. The stored run counted 1,487 types while the
   // headline parts summed to 1,437 and the lists showed 824 unreadable for 574.
-  const both = (extra: Partial<DiscoveryInventoryData["items"][number]>) => [item(extra), item({ ...extra, source: "graph:beta" })];
+  const both = (extra: Partial<DiscoveryInventoryData["items"][number]>) => [item({ ...extra, source: "graph:beta" }), item(extra)]; // beta first, as the store sorts them
   const raw: DiscoveryInventoryData = {
     ...DATA,
     summary: { ...DATA.summary, types: 999, catalogued: 999, uncatalogued: 999, skipped: 999, unreadable: 999, "not-listed": 999 },
@@ -183,4 +183,6 @@ test("the headline total equals its parts, and each list holds as many types as 
   assert.match(html, new RegExp(`KEEL cannot read \\(${summary.unreadable}\\)`));
   assert.match(html, new RegExp(`Not worth backing up \\(${summary.skipped}\\)`));
   assert.equal(data.items.filter((entry) => entry.status === "unreadable").length, summary.unreadable);
+  // A type found in both versions shows the v1.0 row (its count and source).
+  assert.deepEqual([...new Set(data.items.filter((entry) => entry.source.startsWith("graph:")).map((entry) => entry.source))], ["graph:v1.0"]);
 });

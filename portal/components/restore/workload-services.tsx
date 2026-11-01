@@ -128,7 +128,7 @@ export function WorkloadCard({ workload, now, onStart, open }: { workload: Resto
           <RecordGroup note={workload.backup.partial ? "partial" : "complete"} title="Newest backup with settings">
             <RecordField label="Backup (collection) ID" value={workload.backup.collectionId} />
             <RecordField copy={false} label="Taken" value={workload.backup.takenAt} />
-            <RecordField copy={false} label="Items" value={workload.backup.items} />
+            <RecordField copy={false} label="Settings" value={workload.backup.items} />
             <RecordField copy={false} label="Partial" value={workload.backup.partial} />
           </RecordGroup>
         ) : null}

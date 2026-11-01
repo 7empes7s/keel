@@ -176,7 +176,7 @@ export function KitPage({ many = false }: { many?: boolean }) {
           <Person person={{ kind: "principal", id: "scheduler", name: "scheduler", readable: true, system: true }} />
           <Person person={{ kind: "principal", id: "gone", name: null, readable: false }} />
         </div>
-        <Verdict action={{ label: "Try both again", href: "#/kit" }} detail="Authentication methods and Retention labels. Try again, or open them to see why." text="2 kinds of settings failed their last backup." tone="urgent" />
+        <Verdict action={{ label: "Try both again", href: "#/kit" }} detail="Authentication methods and Retention labels. Try again, or open them to see why." text="2 setting types failed their last backup." tone="urgent" />
         <Verdict detail="3 by people, 2 not in the audit log." text="5 settings changed since your approved setup." tone="soon" />
         <Verdict detail="Next backup in 20 minutes." text="Everything was backed up in the last 24 hours." tone="fine" />
         <Verdict detail="Differences are not good or bad on their own." text="These two backups differ in 4 settings." tone="neutral" />

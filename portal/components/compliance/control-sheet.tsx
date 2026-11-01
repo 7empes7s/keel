@@ -179,7 +179,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
             ) : null}
             {change.mismatched.length ? (
               <p className="cp-muted">
-                {change.mismatched.length === 1 ? "1 more open change to the same kind comes" : `${change.mismatched.length} more open changes to the same kind come`} from a different backup, so {change.mismatched.length === 1 ? "it is" : "they are"} not linked to this result.
+                {change.mismatched.length === 1 ? "1 more open change to the same type comes" : `${change.mismatched.length} more open changes to the same type come`} from a different backup, so {change.mismatched.length === 1 ? "it is" : "they are"} not linked to this result.
               </p>
             ) : null}
           </section>

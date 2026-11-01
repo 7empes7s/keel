@@ -10,7 +10,7 @@ export function RuleRecord({ policy, actions = [] }: { policy: Policy; actions?:
     <RecordField label="Run-as account ID" usage={runAs ? [runAs.readable ? runAs.name : "no longer readable", runAs.email].filter(Boolean).join(" · ") : undefined} value={runAs?.id ?? policy.run_as_principal_id ?? null} />
     <RecordField copy={false} label="Action code" value={policy.action} />
     <RecordField copy={false} label="Largest reach allowed" value={policy.max_blast_radius} />
-    <RecordField copy={false} label="Matches resource type" value={policy.resource_type ?? "any"} />
+    <RecordField copy={false} label="Matches setting type" value={policy.resource_type ?? "any"} />
     <RecordField copy={false} label="Matches reach" value={policy.blast_radius ?? "any"} />
     <RecordField copy={false} label="Matches key pattern" value={policy.natural_key_glob ?? "*"} />
     <RecordField copy={false} label="Matches change type" value={policy.change_type ?? "any"} />
@@ -34,7 +34,7 @@ export function RuleRecord({ policy, actions = [] }: { policy: Policy; actions?:
         <RecordField copy={false} label="Finished" value={action.finished_at} />
         <RecordField label="Change ID" value={action.drift_id} />
         <RecordField label="Key" value={action.natural_key} />
-        <RecordField copy={false} label="Resource type" value={action.resource_type} />
+        <RecordField copy={false} label="Setting type" value={action.resource_type} />
         <RecordField copy={false} label="Change type" value={action.change_type} />
         <RecordField copy={false} label="Reach" value={action.blast_radius} />
         {action.error ? <RecordField label="Error" value={action.error} /> : null}

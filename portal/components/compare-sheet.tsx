@@ -42,7 +42,7 @@ export function CompareSheet({ items, sides, restore, children }: {
               </>
             ) : undefined}
             kicker={<><ChangeChip change="changed" /><span>{opened.kind} · {opened.service}</span></>}
-            noun="item"
+            noun="setting"
             onClose={() => view.set({ item: null })}
             onStep={open}
             step={step}

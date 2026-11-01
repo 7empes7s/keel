@@ -269,7 +269,7 @@ test('coverage portal: report survives normalization, authorization and page ren
       // Protect lists the Microsoft 365 workloads beside the catalogue types.
       // A record field is found by the label the page passes (data-field), then its value.
       const field = (label, value) => new RegExp('data-field="' + label + '"[^>]*>(?:(?!</dd>)[^])*?<dd>(?:(?!</dd>)[^])*?<code>' + value);
-      assert.equal((html.match(/data-field="Configuration type"/g) || []).length, data.types.length + data.workloads.length);
+      assert.equal((html.match(/data-field="Setting type code"/g) || []).length, data.types.length + data.workloads.length);
       for (const item of data.types) {
         assert.ok(html.includes(item.type));
         if (item.observation) assert.ok(html.includes(item.observation.observationId));

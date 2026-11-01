@@ -130,7 +130,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       ) : null}
                       {replaced ? (
                         <small className="completion-evidence">
-                          A later restore of this item opened the same step, so this one no longer counts as waiting. You can still close it here.
+                          A later restore of this setting opened the same step, so this one no longer counts as waiting. You can still close it here.
                         </small>
                       ) : null}
                       {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
@@ -216,7 +216,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                 );
               })}
             </ul>
-            <TechnicalDetails summary="Technical details for this resource">
+            <TechnicalDetails summary="Technical details for this setting">
               <RecordField label="Stored key" value={resource.naturalKey} />
               <RecordField copy={false} label="Type" value={resource.resourceType} />
               <RecordField copy={false} label="Recovery mechanism" value={resource.mechanism} />
@@ -224,7 +224,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
               {resource.items.map((item) => (
                 <RecordGroup key={item.id} note={`${item.kind}, ${item.state}`} title={item.requirement}>
                   <RecordField label="Step ID" value={item.id} />
-                  <RecordField copy={false} label="Kind" value={item.kind} />
+                  <RecordField copy={false} label="Type" value={item.kind} />
                   <RecordField copy={false} label="Requirement" value={item.requirement} />
                   <RecordField copy={false} label="State" value={item.state} />
                   <RecordField label="Owner" value={item.owner} />
@@ -304,20 +304,20 @@ export function RecoveryCompletion({ restoreRef, canComplete }: { restoreRef: st
         <h2 className="job-section-head" id="completion-heading"><Icon name="check" />Follow-ups the restore could not do</h2>
       </div>
       {failed ? (
-        <p className="data-error" role="alert">Completion items are unavailable right now.</p>
+        <p className="data-error" role="alert">Completion steps are unavailable right now.</p>
       ) : resources === null ? (
-        <p className="muted-value">Loading completion items…</p>
+        <p className="muted-value">Loading completion steps…</p>
       ) : (
         <CompletionChecklist
           busyItem={busyItem}
           canComplete={canComplete}
-          onComplete={(item, reference, type) => void submit(item, { action: "complete", evidence: { type, reference } }, "Item verified")}
+          onComplete={(item, reference, type) => void submit(item, { action: "complete", evidence: { type, reference } }, "Step verified")}
           onReopen={(item) => {
-            const reason = window.prompt("Why is this item being reopened?");
+            const reason = window.prompt("Why is this step being reopened?");
             if (!reason) return;
             const weak = reasonMessage(reason);
             if (weak) { toast({ tone: "warning", title: "Not reopened", detail: weak }); return; }
-            void submit(item, { action: "reopen", reason: reason.trim() }, "Item reopened");
+            void submit(item, { action: "reopen", reason: reason.trim() }, "Step reopened");
           }}
           resources={resources}
         />

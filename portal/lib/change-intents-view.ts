@@ -125,7 +125,7 @@ export const SETTLED_BADGES: Record<string, { tone: IntentTone; label: string; a
   drifted: { tone: "soon", label: "Still changed", about: "Keel did not put it back. Review it on Changes." },
   ignored: { tone: "neutral", label: "Change ignored", about: "Nothing was undone." },
   "awaiting-detection": { tone: "low", label: "Not checked yet", about: "The next check decides." },
-  unknown: { tone: "neutral", label: "Nothing to compare", about: "No baseline or backup of this kind." },
+  unknown: { tone: "neutral", label: "Nothing to compare", about: "No baseline or backup of this type." },
 };
 
 export function settledBadge(intent: ChangeIntent): { tone: IntentTone; label: string; about: string } | null {

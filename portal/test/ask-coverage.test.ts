@@ -59,7 +59,7 @@ test("Ask counts Intune kinds as Setup does, not as the newest run did", () => {
   assert.equal(shared.records.length, INTUNE.length);
   assert.ok(shared.records.every((record) => record.kind === "coverage" && record.health === "ok"));
   // Setup's Intune line says all are backed up; so does Ask.
-  assert.equal(serviceStatus("Intune", intune, NOW).backup.text, `All ${INTUNE.length} kinds backed up`);
+  assert.equal(serviceStatus("Intune", intune, NOW).backup.text, `All ${INTUNE.length} types backed up`);
   assert.equal(askVerdict(shared).text, coverageSentence(coverageSummary(intune)));
   assert.equal(askVerdict(shared).tone, "good");
   assert.ok(!shared.records.some((record) => recordBadges(record).some((badge) => badge.label === "Not part of this backup")));
@@ -75,12 +75,12 @@ test("failed, partly read, out of date and never backed up kinds land in the sha
   const shared = withSharedCoverage(answer(), report(types), NOW);
   assert.deepEqual(shared.coverage, { covered: 1, failed: 0, partial: 1, stale: 1, neverCollected: 1, notCovered: 0, unavailable: 0, total: 4 });
   // Partly done is its own count, never inside failed (decision 31 Oct 2026).
-  assert.equal(askVerdict(shared).text, "4 kinds: 1 backed up, 1 partly done and 2 out of date or never.");
+  assert.equal(askVerdict(shared).text, "4 types: 1 backed up, 1 partly done and 2 out of date or never.");
   assert.equal(askVerdict(shared).tone, "attention");
 
   const byType = new Map(shared.records.map((record) => [record.kind === "coverage" ? record.resourceType : "", record]));
   assert.deepEqual(recordBadges(byType.get("deviceConfiguration")!), [{ label: "Partly done", tone: "soon" }]);
-  assert.match(recordNote(byType.get("deviceConfiguration")!), /read only part of this type \(7 items seen\)/);
+  assert.match(recordNote(byType.get("deviceConfiguration")!), /read only part of this type \(7 settings seen\)/);
   assert.deepEqual(recordBadges(byType.get("mobileApp")!), [{ label: "Never backed up", tone: "soon" }]);
 
   const summary = coverageAnswerSummary(shared)!;
@@ -112,7 +112,7 @@ test("service settings take the shared state and keep their settings count; cont
   // The Found tile counts the kinds the verdict counts, and names the content rows apart.
   const found = askTiles(shared).find((tile) => tile.key === "found")!;
   assert.equal(found.value, String(shared.coverage?.total));
-  assert.equal(found.about, "kinds of backup, and 1 other backup");
+  assert.equal(found.about, "types of backup, and 1 other backup");
 });
 
 test("an owner's answer, a part-only question and a refusal keep the engine's answer", () => {

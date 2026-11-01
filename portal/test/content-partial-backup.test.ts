@@ -49,7 +49,7 @@ test("a content backup with only partial workloads reads Partly done, never Fail
   assert.deepEqual(jobIncompleteTypes(partial), ["content:exchange-mail", "content:onedrive", "content:sharepoint-sites"]);
   assert.equal(jobDisplayStatus(partial), "partial");
   assert.equal(incompleteTypesLine(jobIncompleteTypes(partial)), "Not backed up: mail, OneDrive files, SharePoint sites");
-  assert.equal(jobStatusSentence(partial, now), "Partly done 1 hour ago after 47 minutes: 3 kinds of content not backed up in full");
+  assert.equal(jobStatusSentence(partial, now), "Partly done 1 hour ago after 47 minutes: 3 types of content not backed up in full");
   const row = renderToStaticMarkup(createElement(JobRow, { job: partial, now }));
   assert.match(row, /Partly done/);
   assert.doesNotMatch(row, />Failed</);
@@ -65,7 +65,7 @@ test("each item a content backup could not read gets a name and a plain cause", 
   assert.equal(contentGapItem("more sites than one run reads; the rest was not read").why, "Too many to read in one run");
   assert.equal(contentGapItem("something odd").why, "Could not be read in full");
   // An object id is never shown as a name.
-  assert.equal(contentGapItem("group 3f2c9a1e-1111-4a2b-9c3d-123456789abc: HTTP 403").name, "Unnamed item");
+  assert.equal(contentGapItem("group 3f2c9a1e-1111-4a2b-9c3d-123456789abc: HTTP 403").name, "Unnamed content item");
   // A site address reads as its last part; a name holding a status code never sets the cause.
   assert.equal(contentGapItem("https://contoso.sharepoint.com/sites/hr: 1 part(s) not fully read, first pages: failed (HTTP 404)").name, "Hr");
   assert.equal(contentGapItem("Room 403: 1 part(s) not fully read, first pages: failed (HTTP 404)").why, "Not found: deleted or moved during the backup");
@@ -98,7 +98,7 @@ test("the Job page leads with the gaps and lists every item not read, errors beh
   assert.equal(alerts[0].action?.href, "#job-gaps");
   const html = renderToStaticMarkup(createElement(JobDetail, { job: partial, now }));
   assert.match(html, /job-summary-partial/);
-  assert.match(html, /3 kinds were not backed up in full/);
+  assert.match(html, /3 types were not backed up in full/);
   assert.match(html, /What was not backed up/);
   assert.match(html, /10 OneDrives not read/);
   assert.match(html, /1 mailbox not read/);

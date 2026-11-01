@@ -124,8 +124,8 @@ test('Protect: the verdict comes from the coverage reader, the tier strip from t
       assert.ok(data.workloads.length > 0, 'the coverage reader reports the workloads');
       // A record field is found by the label the page passes (data-field), then its value.
       const field = (label, value) => new RegExp('data-field="' + label + '"[^>]*>(?:(?!</dd>)[^])*?<dd>(?:(?!</dd>)[^])*?<code>' + value);
-      assert.equal((html.match(/data-field="Configuration type"/g) || []).length, data.types.length + data.workloads.length);
-      for (const item of data.workloads) assert.match(html, field('Configuration type', item.type + '</code>'), item.type);
+      assert.equal((html.match(/data-field="Setting type code"/g) || []).length, data.types.length + data.workloads.length);
+      for (const item of data.workloads) assert.match(html, field('Setting type code', item.type + '</code>'), item.type);
       for (const item of data.types) {
         if (!item.writeCapability) continue;
         assert.ok(html.includes('data-field="Proof reference · update"'), item.type);

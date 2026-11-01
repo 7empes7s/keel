@@ -153,7 +153,7 @@ export function NewRuleSheet({ onClose, policy = null }: { onClose: () => void; 
       <form className="po-form" id="po-new-rule" onSubmit={submit}>
         <fieldset disabled={busy}>
           <legend>1. What to watch</legend>
-          <OptionPicker label="Kind of thing" onChange={setKind} options={KINDS} value={kind} />
+          <OptionPicker label="Type of thing" onChange={setKind} options={KINDS} value={kind} />
           <Segmented label="Change" onChange={setChange} options={CHANGES} value={change} />
           <Segmented label="Risk" onChange={setRisk} options={RISKS} value={risk} />
           <label className="filter-field"><span>Name like (optional)</span><input autoComplete="off" name="pattern" onChange={(event) => setPattern(event.target.value)} placeholder="Admin*" value={pattern} /></label>

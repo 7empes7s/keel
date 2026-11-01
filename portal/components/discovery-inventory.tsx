@@ -79,7 +79,7 @@ function ItemList({ items, summary, prefix, label }: { items: DiscoveryItem[]; s
       <PagedRows
         label={label}
         listClassName="activity-list"
-        noun={{ one: "kind", many: "kinds" }}
+        noun={{ one: "type", many: "types" }}
         prefix={prefix}
         rows={items.map((item) => ({
           id: `${item.source}|${item.name}`,
@@ -87,7 +87,7 @@ function ItemList({ items, summary, prefix, label }: { items: DiscoveryItem[]; s
           text: `${typeLabel(item)} ${sourceLabel(item.source)}`,
           values: { name: typeLabel(item), source: sourceLabel(item.source), objects: item.objects ?? -1 },
         }))}
-        sorts={[{ key: "name", label: "Name" }, { key: "source", label: "Found in" }, { key: "objects", label: "Objects", desc: true }]}
+        sorts={[{ key: "name", label: "Name" }, { key: "source", label: "Found in" }, { key: "objects", label: "Settings", desc: true }]}
       />
     </details>
   );

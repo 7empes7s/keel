@@ -23,7 +23,7 @@ import type { CoverageData } from "@/lib/types";
 // SharePoint, Teams, Purview, Power Platform) all read the tenant into a backup.
 export const BACKUP_JOB_KINDS = ["backup", "collect", "workload-collect"];
 const TITLE = "What's protected";
-const DESCRIPTION = "Whether every kind of setting and content is backed up, how often, and whether Keel can put it back.";
+const DESCRIPTION = "Whether every setting type and all content are backed up, how often, and whether Keel can put it back.";
 
 // Roadmap task-131: Protect merges Backups and the per-type coverage report. The
 // verdict comes from the coverage reader, the tier cards from the schedule reader.

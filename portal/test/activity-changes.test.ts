@@ -176,7 +176,7 @@ test("a rule edit shows each rule setting before and after; a delete shows the r
   assert.equal(edited?.changes[0].change, "changed");
   assert.deepEqual(edited?.changes[0].fields, [
     { path: "Name", before: "KEEL-RT Alert on groups", after: "KEEL-RT Alert on FIN users" },
-    { path: "Kind of thing", before: "Group", after: "User" },
+    { path: "Type of thing", before: "Group", after: "User" },
     { path: "Name like", before: "Any name", after: "FIN-*" },
     { path: "Change", before: "Any change", after: "Changed" },
     { path: "Most risky it may touch", before: "Low risk", after: "Affects access" },

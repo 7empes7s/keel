@@ -78,7 +78,7 @@ function IntentRecord({ intent }: { intent: ChangeIntent }) {
     <TechnicalDetails>
       <RecordField label="Emergency change ID" usage={<>use with <code>POST /api/change-intents/&lt;id&gt;/revoke</code></>} value={intent.id} />
       <RecordField label="Decision digest" usage="carried by a mirrored change record" value={intent.decisionDigest} />
-      <RecordField copy={false} label="Resource" value={`${intent.naturalKey} · ${intent.resourceType}`} />
+      <RecordField copy={false} label="Setting" value={`${intent.naturalKey} · ${intent.resourceType}`} />
       <RecordField copy={false} label="Approved transitions" value={shownTransitions(intent.transitions).map((transition) => `${transition.field}: ${sideText(transition.before)} -> ${sideText(transition.after)}`).join("\n")} />
       <RecordField copy={false} label="Window" value={`${intent.windowStart} to ${intent.windowEnd} (end excluded)`} />
       <RecordField label="Owner principal ID" value={intent.owner.id} />
@@ -87,7 +87,7 @@ function IntentRecord({ intent }: { intent: ChangeIntent }) {
       {intent.externalChangeId ? <RecordField label="External change ID" value={intent.externalChangeId} /> : null}
       <RecordField copy={false} label="State" value={intent.state} />
       {intent.revokedAt ? <RecordField copy={false} label="Revoked" value={`${intent.revokedAt} by ${intent.revokedBy?.id ?? "?"}`} /> : null}
-      {intent.settlement ? <RecordField copy={false} label="Settlement" value={`${intent.settledAt} · ${intent.settlement.currentState}${intent.settlement.driftId ? ` · drift ${intent.settlement.driftId}` : ""}${intent.settlement.snapshotId ? ` · snapshot ${intent.settlement.snapshotId}` : ""}`} /> : null}
+      {intent.settlement ? <RecordField copy={false} label="Settlement" value={`${intent.settledAt} · ${intent.settlement.currentState}${intent.settlement.driftId ? ` · drift ${intent.settlement.driftId}` : ""}${intent.settlement.snapshotId ? ` · backup ${intent.settlement.snapshotId}` : ""}`} /> : null}
       <RecordField copy={false} label="Approved at" value={intent.approvedAt} />
     </TechnicalDetails>
   );
@@ -113,7 +113,7 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
         toast({ tone: "warning", title: "Not revoked", detail: response.status === 409 ? "This approval has already ended." : "The approval could not be revoked." });
         return;
       }
-      toast({ title: "Approval revoked", detail: "KEEL checked the resource again and acted on what it found." });
+      toast({ title: "Approval revoked", detail: "KEEL checked the setting again and acted on what it found." });
       window.location.reload();
     } finally {
       setBusy(false);
@@ -213,7 +213,7 @@ export function madeBySentence(madeBy: IntentMadeBy | null | undefined, chosen: 
     case "not-keel-user": return { tone: "low", text: `The ${log} says ${madeBy.who ?? "an account Keel has no name for"} made the change${at}, but they have no Keel account. Choose who answers for it.` };
     case "app": return { tone: "low", text: `The ${log} says the app ${madeBy.who ?? "Keel has no name for"} made the change${at}. Choose the person who answers for it.` };
     case "several": return { tone: "low", text: `The ${log} names more than one account for this change. Choose the person who made it.` };
-    case "unknown": return { tone: "neutral", text: madeBy.source ? `The ${log} does not say who made this change. Choose the person.` : "Keel reads no audit log for this kind of setting. Choose the person who made the change." };
+    case "unknown": return { tone: "neutral", text: madeBy.source ? `The ${log} does not say who made this change. Choose the person.` : "Keel reads no audit log for this setting type. Choose the person who made the change." };
     default: return { tone: "neutral", text: "Keel could not tell who made this change. Choose the person." };
   }
 }

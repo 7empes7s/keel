@@ -133,5 +133,5 @@ test("a snapshot restore keeps its name", () => {
     kind: "restore", status: "succeeded", params: { snapshotId: randomUUID(), selection: ["group:Finance", "group:HR"], artifactId: randomUUID() },
     references: { people: {}, baseline: null, plan: null, undoes: null, changes: [], snapshot: { kind: "snapshot", id: "s", name: null, readable: true, takenAt: BACKUP_AT } },
   });
-  assert.match(name, /^Dry run of a restore of 2 selected resources from the snapshot of 20 Oct 2026/);
+  assert.match(name, /^Dry run of a restore of 2 selected settings from the backup of 20 Oct 2026/);
 });

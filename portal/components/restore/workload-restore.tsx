@@ -475,7 +475,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
       {step === "review" ? (
         <div className="workload-review">
           {objectCount ? (
-            <p className="workload-review-lead"><b>KEEL will put back {plural(objectCount, "object")}, {plural(settingCount, "setting")} in all{sendable.length > 1 ? `, as ${sendable.length} requests` : ""}.</b></p>
+            <p className="workload-review-lead"><b>KEEL will put back {plural(objectCount, unit, units)}, {plural(settingCount, "value")} in all{sendable.length > 1 ? `, as ${sendable.length} requests` : ""}.</b></p>
           ) : <p className="workload-review-lead"><b>Nothing to put back: the chosen settings already match the backup.</b></p>}
 
           {runs.map((run) => (
@@ -636,9 +636,9 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
         <RecordField label="Effects digest" usage="approvers bind to this exact set of content effects" value={artifact.effectsDigest} />
         {operations.map((operation, index) => (
           <RecordGroup key={`op:${operation.resourceKey ?? operation.naturalKey ?? ""}:${operation.group ?? operation.kind ?? ""}:${index}`} note={operation.group ?? operation.kind ?? "operation"} title={operation.resourceKey ?? operation.naturalKey ?? `Operation ${index + 1}`}>
-            {operation.resourceKey ? <RecordField label="Resource key" value={operation.resourceKey} /> : null}
+            {operation.resourceKey ? <RecordField label="Setting key" value={operation.resourceKey} /> : null}
             {operation.naturalKey ? <RecordField label="Stored key" value={operation.naturalKey} /> : null}
-            {operation.kind ? <RecordField copy={false} label="Kind" value={operation.kind} /> : null}
+            {operation.kind ? <RecordField copy={false} label="Type" value={operation.kind} /> : null}
             {operation.group ? <RecordField copy={false} label="Group" value={operation.group} /> : null}
             {operation.member ? <RecordField label="Member" value={operation.member} /> : null}
             {operation.before ? <RecordField label="Roles before" value={operation.before} /> : null}
@@ -649,7 +649,7 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
         ))}
         {(plan?.manual ?? []).map((item, index) => (
           <RecordGroup key={`manual:${item.resourceKey}:${item.field ?? ""}:${index}`} note="not sent; by hand" title={item.resourceKey}>
-            <RecordField label="Resource key" value={item.resourceKey} />
+            <RecordField label="Setting key" value={item.resourceKey} />
             <RecordField copy={false} label="Field path" value={item.field} />
             <RecordField copy={false} label="Reason" value={item.reason} />
             {"before" in item || "after" in item ? <RecordCompare after={"after" in item ? item.after : undefined} before={"before" in item ? item.before : undefined} label="Setting value" sides={{ before: "In the tenant now", after: "In the backup" }} /> : null}

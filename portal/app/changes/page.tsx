@@ -96,7 +96,7 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
           notice={notice}
           now={data.generatedAt}
           serviceTotal={serviceChanges.total}
-          scopeNote={data.scope ? `You see changes to resources owned by ${data.scope.entities.join(" and ")} only. A central administrator reviews the rest of this tenant.` : null}
+          scopeNote={data.scope ? `You see changes to settings owned by ${data.scope.entities.join(" and ")} only. A central administrator reviews the rest of this tenant.` : null}
           summary={data.summary}
         />
       ) : (

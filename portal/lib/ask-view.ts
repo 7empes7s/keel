@@ -299,7 +299,7 @@ export function askVerdict(answer: GroundedAnswer | null): { text: string; tone:
     const late = answer.coverage.failed + (answer.coverage.partial ?? 0) + answer.coverage.stale + answer.coverage.neverCollected;
     return { text: coverageSentence(answer.coverage), tone: late ? "attention" : "good" };
   }
-  const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of backup" : "matching change";
+  const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "type of backup" : "matching change";
   const found = answer.total === 0 ? `No ${noun}s found` : `${plural(answer.total, noun)} found`;
   if (answer.status === "partial") return { text: `${found}, but part of this period is not known yet.`, tone: "attention" };
   if (answer.intent === "failed-jobs" && answer.total > 0) return { text: `${found} in this period.`, tone: "critical" };
@@ -371,14 +371,14 @@ export function recordSentence(record: AnswerRecord): string {
       if (record.health && record.note) return `${HEALTH_BADGE[record.health].label}. ${record.note}`;
       const outcome = OUTCOME_LABEL[record.outcome] ?? "Not recorded";
       if (record.backup === "content") {
-        return record.count === null ? `${outcome}. Nothing is stored yet.` : `${outcome}. ${plural(record.count, "item")} stored.`;
+        return record.count === null ? `${outcome}. Nothing is stored yet.` : `${outcome}. ${plural(record.count, "content item")} stored.`;
       }
       if (record.backup === "service-settings") {
         if (record.count === null) return `${outcome}. No read has finished yet.`;
         const older = record.outcome !== "complete" && record.outcome !== "complete-empty" && record.lastGoodAt ? ` from the last good read, ${formatTimestamp(record.lastGoodAt)}` : "";
         return `${outcome}. ${plural(record.count, "setting")}${older}.`;
       }
-      return record.count === null ? `${outcome}. How many exist is not known.` : `${outcome}. ${plural(record.count, "resource")} you may see.`;
+      return record.count === null ? `${outcome}. How many exist is not known.` : `${outcome}. ${plural(record.count, "setting")} you may see.`;
     }
     default: return `Failed ${formatTimestamp(record.window.to)}.`;
   }
@@ -480,14 +480,14 @@ export function askAlerts(answer: GroundedAnswer): AlertItem[] {
     const quoted = answer.ignored.map((word) => `“${word}”`).join(", ");
     items.push({
       key: "ignored", tone: "soon", icon: "info", title: `Not understood: ${quoted}`,
-      todo: "KEEL left these words out. Name a service or kind of setting, or put a name in quotes.", action: null,
+      todo: "KEEL left these words out. Name a service or setting type, or put a name in quotes.", action: null,
     });
   }
   const who = whoAlert(answer);
   if (who) items.push(who);
   if (!answer.scope.central) {
     items.push({
-      key: "scope", tone: "low", icon: "info", title: `Only resources owned by ${answer.scope.entities.join(" and ")} are included`,
+      key: "scope", tone: "low", icon: "info", title: `Only settings owned by ${answer.scope.entities.join(" and ")} are included`,
       todo: "Ask a central administrator about the rest of this tenant.", action: null,
     });
   }
@@ -518,7 +518,7 @@ function shortTime(value: string | null): string {
 }
 
 export function askTiles(answer: GroundedAnswer): StatTile[] {
-  const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of backup" : "change";
+  const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "type of backup" : "change";
   const found = answer.status === "unknown" || answer.status === "refused" ? "Not known" : answer.total.toLocaleString("en-GB");
   if (answer.coverage) {
     // The kinds in the shared buckets, as the verdict counts them; content backups are rows, not kinds.
@@ -526,13 +526,13 @@ export function askTiles(answer: GroundedAnswer): StatTile[] {
     const content = answer.records.filter((record) => record.kind === "coverage" && !record.health).length;
     const [, ...rest] = askTiles({ ...answer, coverage: null });
     return [{ key: "found", label: "Found", icon: "search", value: kinds.toLocaleString("en-GB"),
-      about: `${kinds === 1 ? "kind of backup" : "kinds of backup"}${content ? `, and ${plural(content, "other backup")}` : ""}`, tone: "neutral" },
-    { ...rest[0], value: "Latest reads", about: "Each kind's newest backup" }, ...rest.slice(1)];
+      about: `${kinds === 1 ? "type of backup" : "types of backup"}${content ? `, and ${plural(content, "other backup")}` : ""}`, tone: "neutral" },
+    { ...rest[0], value: "Latest reads", about: "Each type's newest backup" }, ...rest.slice(1)];
   }
   const window = answer.plan?.params.from || answer.plan?.params.to ? { from: answer.plan.params.from, to: answer.plan.params.to } : answer.window;
   return [
     { key: "found", label: "Found", icon: "search", value: found,
-      about: found === "Not known" ? "No record covers this" : answer.total ? `${answer.intent === "coverage" ? (answer.total === 1 ? "kind of backup" : "kinds of backup") : `${noun}${answer.total === 1 ? "" : "s"}`}${answer.truncated ? `, newest ${answer.shown} shown` : ""}` : `No ${noun}s in what KEEL knows`,
+      about: found === "Not known" ? "No record covers this" : answer.total ? `${answer.intent === "coverage" ? (answer.total === 1 ? "type of backup" : "types of backup") : `${noun}${answer.total === 1 ? "" : "s"}`}${answer.truncated ? `, newest ${answer.shown} shown` : ""}` : `No ${noun}s in what KEEL knows`,
       tone: found === "Not known" ? "soon" : answer.intent === "failed-jobs" && answer.total ? "urgent" : "neutral" },
     { key: "period", label: "Period", icon: "calendar", value: window ? shortTime(window.from).split(",")[0] : "Latest backup",
       about: window ? `${shortTime(window.from)} to ${shortTime(window.to)}` : "The newest complete copy", tone: "neutral" },
@@ -583,7 +583,7 @@ export function recordNote(record: AnswerRecord): string {
 export function kindsWords(types: readonly string[]): string {
   const services = [...new Set(types.map((type) => typeService(type).name))];
   if (types.length <= 2) return types.map((type) => plainKind(type)).join(" or ");
-  return `${types.length} kinds${services.length === 1 ? ` in ${services[0]}` : ""}`;
+  return `${types.length} types${services.length === 1 ? ` in ${services[0]}` : ""}`;
 }
 
 export interface UnderstoodFilter {
@@ -620,8 +620,8 @@ export function understoodFilters(answer: GroundedAnswer): UnderstoodFilter[] {
     filters.push({ key: "period", label: "Period", value: `${formatTimestamp(params.from).replace(/ UTC$/, "")} to ${formatTimestamp(params.to).replace(/ UTC$/, "")}`, removeHref: null });
   }
   if (params.entity) filters.push({ key: "entity", label: "Owned by", value: params.entity, removeHref: planQuery(answer.plan, "entity") });
-  if (params.resourceType) filters.push({ key: "kind", label: "Kind", value: plainKind(params.resourceType), removeHref: planQuery(answer.plan, "kind") });
-  else if (params.resourceTypes?.length) filters.push({ key: "kind", label: "Kinds", value: kindsWords(params.resourceTypes), removeHref: planQuery(answer.plan, "kind") });
+  if (params.resourceType) filters.push({ key: "kind", label: "Type", value: plainKind(params.resourceType), removeHref: planQuery(answer.plan, "kind") });
+  else if (params.resourceTypes?.length) filters.push({ key: "kind", label: "Types", value: kindsWords(params.resourceTypes), removeHref: planQuery(answer.plan, "kind") });
   if (params.changeType) filters.push({ key: "change", label: "Change", value: displayEnum("changeType", params.changeType), removeHref: planQuery(answer.plan, "change") });
   if (params.name) filters.push({ key: "name", label: "Name", value: `“${params.name}”`, removeHref: planQuery(answer.plan, "name") });
   return filters;

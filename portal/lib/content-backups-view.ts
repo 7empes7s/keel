@@ -108,7 +108,7 @@ export const STATE_BADGE: Record<ContentState, { tone: BadgeTone; label: string 
 export function holdingLine(row: ContentRow): string {
   if (!row.items) return "Nothing stored yet";
   return [
-    plural(row.items, "item", "items"),
+    plural(row.items, "content item", "content items"),
     bytesWords(row.bytes),
     `in ${plural(row.containers, row.workload.container.one, row.workload.container.many)}`,
   ].join(" · ");
@@ -163,7 +163,7 @@ export function runLine(row: ContentRow): string | null {
   if (latest.outcome === "failed") return `Last run failed${reason}`;
   if (latest.outcome !== "succeeded") return `Last run could not read ${plural(latest.reasons.length || 1, "part", "parts")}${reason}`;
   if (lastGood && lastGood.id === latest.id) {
-    return lastGood.items ? `Last run stored ${plural(lastGood.items, "new item or version", "new items or versions")} (${bytesWords(lastGood.bytes)})` : "Last run found nothing new";
+    return lastGood.items ? `Last run stored ${plural(lastGood.items, "new content item or version", "new content items or versions")} (${bytesWords(lastGood.bytes)})` : "Last run found nothing new";
   }
   return null;
 }

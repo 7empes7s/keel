@@ -22,7 +22,7 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
           copy={false}
           key={`${entry.resourceType}-${entry.window.startedAt}`}
           label={`Observation window · ${entry.resourceType}`}
-          value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · ${entry.collectionId ? `service read ${entry.collectionId}` : `snapshot ${entry.snapshotId ?? "no match"}`}`}
+          value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · ${entry.collectionId ? `service read ${entry.collectionId}` : `backup ${entry.snapshotId ?? "no match"}`}`}
         />
       ))}
       {totals ? (
@@ -41,16 +41,16 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
         />
       ))}
       {links.change.linked.map((change) => (
-        <RecordField key={change.id} label="Linked drift ID" value={`${change.id} · ${change.naturalKey} · snapshot ${change.snapshotId}`} />
+        <RecordField key={change.id} label="Linked drift ID" value={`${change.id} · ${change.naturalKey} · backup ${change.snapshotId}`} />
       ))}
       {links.change.mismatched.map((change) => (
-        <RecordField key={change.id} label="Mismatched drift ID" value={`${change.id} · ${change.naturalKey} · snapshot ${change.snapshotId}`} />
+        <RecordField key={change.id} label="Mismatched drift ID" value={`${change.id} · ${change.naturalKey} · backup ${change.snapshotId}`} />
       ))}
       {[...links.restorePlan.linked.map((plan) => ["Linked", plan] as const), ...links.restorePlan.mismatched.map((plan) => ["Mismatched", plan] as const)].map(([kind, plan]) => (
         <RecordField
           key={plan.requestId}
           label={`${kind} restore dry run ID`}
-          usage={<>approval request {plan.requestId} · snapshot {plan.snapshotId}</>}
+          usage={<>approval request {plan.requestId} · backup {plan.snapshotId}</>}
           value={plan.dryRunId}
         />
       ))}

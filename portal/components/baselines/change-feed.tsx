@@ -199,7 +199,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
         <TechnicalDetails summary="Technical details: these changes">
           <RecordField copy={false} label="Read with" value="GET /api/changes/feed?by=day|type|service|priority|person&days=30" />
           {feed.rows.map((row) => (
-            <RecordField key={row.id} label={`Change feed ID · ${row.type}`} usage={`${SOURCE_WORDS[row.source].label}. Object ${row.object.key}${row.person ? `, by ${row.person.kind} ${row.person.id}` : ""}, at ${row.occurredAt}`} value={row.id} />
+            <RecordField key={row.id} label={`Change feed ID · ${row.type}`} usage={`${SOURCE_WORDS[row.source].label}. Setting ${row.object.key}${row.person ? `, by ${row.person.kind} ${row.person.id}` : ""}, at ${row.occurredAt}`} value={row.id} />
           ))}
         </TechnicalDetails>
       </section>

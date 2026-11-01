@@ -96,7 +96,7 @@ export function ContentBackupsView({ data, now }: { data: ContentBackupsData; no
         {rows.map((row) => (
           <RecordGroup key={row.workload.code} note={row.workload.holds.join(", ")} title={row.workload.name}>
             <RecordField copy={false} label="Stored as" value={row.workload.holds.join(", ")} />
-            <RecordField copy={false} label="Items · versions · containers" value={`${row.items} · ${row.versions} · ${row.containers}`} />
+            <RecordField copy={false} label="Content items · versions · containers" value={`${row.items} · ${row.versions} · ${row.containers}`} />
             <RecordField copy={false} label="Bytes held · bytes on disk" value={`${row.bytes} · ${row.storedBytes}`} />
             <RecordField label="Last run" value={row.latest ? `${row.latest.outcome} · ${row.latest.at ?? "no time"} · ${row.latest.id}` : null} />
             <RecordField label="Last good run" value={row.lastGood ? `${row.lastGood.at ?? "no time"} · ${row.lastGood.id}` : null} />

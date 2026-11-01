@@ -1330,7 +1330,7 @@ export async function getPrincipalNames(ids: string[]): Promise<Record<string, R
 
 export function snapshotName(snapshot: { id: string; observedTo?: string | null; observedFrom?: string | null }, all: { id: string; observedTo?: string | null; observedFrom?: string | null }[] = []): string {
   const when = snapshot.observedTo ?? snapshot.observedFrom ?? null;
-  const base = when ? `Snapshot of ${formatTimestamp(when)}` : "Snapshot at an unknown time";
+  const base = when ? `Backup of ${formatTimestamp(when)}` : "Backup at an unknown time";
   const sameName = all.filter((other) => (other.observedTo ?? other.observedFrom ?? null) === when && other.id !== snapshot.id);
   // A short id only as a disambiguator suffixed to the name (rule 3).
   return sameName.length ? `${base} · ${snapshot.id.slice(0, 8)}` : base;
@@ -1509,7 +1509,7 @@ export function buildAlerts({
     alerts.push({
       key: "failed",
       severity: "critical",
-      title: `${kinds(coverage.failed, "kind of setting", "kinds of settings")} failed ${coverage.failed === 1 ? "its" : "their"} last backup`,
+      title: `${kinds(coverage.failed, "setting type", "setting types")} failed ${coverage.failed === 1 ? "its" : "their"} last backup`,
       detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.",
       href: "/protect?health=failed",
     });
@@ -1520,8 +1520,8 @@ export function buildAlerts({
     alerts.push({
       key: "partial",
       severity: "warning",
-      title: `${kinds(coverage.partial, "kind of setting was", "kinds of settings were")} only partly backed up`,
-      detail: "Keel read part of each one, so some items are missing from the backup. Open each one to see what was missed.",
+      title: `${kinds(coverage.partial, "setting type was", "setting types were")} only partly backed up`,
+      detail: "Keel read part of each one, so some settings are missing from the backup. Open each one to see what was missed.",
       href: "/protect?health=partial",
     });
   }
@@ -1533,7 +1533,7 @@ export function buildAlerts({
     alerts.push({
       key: "stale",
       severity: "warning",
-      title: `${kinds(late, "kind of setting is", "kinds of settings are")} out of date or never backed up`,
+      title: `${kinds(late, "setting type is", "setting types are")} out of date or never backed up`,
       detail: "They have no backup recent enough for how critical they are. Run a backup.",
       href: "/protect?health=out-of-date",
     });
@@ -1543,8 +1543,8 @@ export function buildAlerts({
     alerts.push({
       key: "uncovered",
       severity: "warning",
-      title: `${kinds(coverage.notCovered, "kind of setting is", "kinds of settings are")} not backed up by Keel yet`,
-      detail: "Keel knows these kinds of settings but does not read them yet, so it holds no backup of them.",
+      title: `${kinds(coverage.notCovered, "setting type is", "setting types are")} not backed up by Keel yet`,
+      detail: "Keel knows these setting types but does not read them yet, so it holds no backup of them.",
       href: "/protect?health=not-backed-up",
     });
   }

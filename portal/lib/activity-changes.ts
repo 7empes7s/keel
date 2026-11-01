@@ -157,7 +157,7 @@ async function forBackup(client: Client, ref: string, job: Record<string, unknow
   const previous = (earlier as unknown as SnapshotRow[]).find((row) => sharesKinds((made as unknown as SnapshotRow).coverage_digest, row.coverage_digest));
   const base = { basis: "backup" as const, sides: { before: "Previous backup", after: "This backup" } };
   if (!previous) {
-    return { ...base, about: "This is the first backup of these kinds, so there is nothing earlier to compare it with.", changes: [], total: 0, names: {}, compare: null };
+    return { ...base, about: "This is the first backup of these types, so there is nothing earlier to compare it with.", changes: [], total: 0, names: {}, compare: null };
   }
   let result: CompareResult;
   try {

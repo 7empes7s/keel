@@ -193,12 +193,12 @@ function KindHeading<T extends { added?: number; removed?: number; changed?: num
   return (
     <h4 className="compare-kind-heading">
       {part.label}
-      <small>{part.items.length === 1 ? "1 kind" : `${part.items.length} kinds`} · {words ? words(part.items) : countsWords(sumCounts(part.items))}</small>
+      <small>{part.items.length === 1 ? "1 type" : `${part.items.length} types`} · {words ? words(part.items) : countsWords(sumCounts(part.items))}</small>
     </h4>
   );
 }
 
-const kindsWords = (count: number) => (count === 1 ? "1 kind" : `${count.toLocaleString("en-GB")} kinds`);
+const kindsWords = (count: number) => (count === 1 ? "1 type" : `${count.toLocaleString("en-GB")} types`);
 
 const GAP_TONES: Record<GapTone, BadgeTone> = { failed: "urgent", partial: "soon", neutral: "neutral" };
 
@@ -243,9 +243,9 @@ function NotCompared({ entries, sides }: { entries: SettingsSection["notCompared
     <div className="compare-gaps" data-gaps="not-compared">
       <div className="compare-gaps-head">
         <h3 id="compare-not-compared-heading">Not compared</h3>
-        <Badge tone="neutral">{entries.length === 1 ? "1 kind" : `${entries.length.toLocaleString("en-GB")} kinds`}</Badge>
+        <Badge tone="neutral">{entries.length === 1 ? "1 type" : `${entries.length.toLocaleString("en-GB")} types`}</Badge>
       </div>
-      <p className="compare-note">Keel compares a kind only when both sides read it in full, so nothing here is reported as added or removed.</p>
+      <p className="compare-note">Keel compares a type only when both sides read it in full, so nothing here is reported as added or removed.</p>
       {reasons.map((reason) => (
         <details className="compare-group compare-gap" data-reason={reason.key} key={reason.key}>
           <summary>
@@ -254,7 +254,7 @@ function NotCompared({ entries, sides }: { entries: SettingsSection["notCompared
               <span className="compare-gap-side">{sideWords[reason.side]}</span>
             </span>
             <span className="compare-gap-meta">
-              <span className="compare-group-counts">{reason.entries.length === 1 ? "1 kind" : `${reason.entries.length.toLocaleString("en-GB")} kinds`}</span>
+              <span className="compare-group-counts">{reason.entries.length === 1 ? "1 type" : `${reason.entries.length.toLocaleString("en-GB")} types`}</span>
               <span className="compare-gap-services">
                 {serviceCounts(reason.entries).map((line) => <span key={line}>{line}</span>)}
               </span>
@@ -280,7 +280,7 @@ function Unmatched({ entries }: { entries: SettingsSection["unmatched"] }) {
             <Badge tone="neutral">Cannot be matched across tenants</Badge>
           </span>
           <span className="compare-gap-meta">
-            <span className="compare-group-counts">{entries.length === 1 ? "1 kind" : `${entries.length.toLocaleString("en-GB")} kinds`}</span>
+            <span className="compare-group-counts">{entries.length === 1 ? "1 type" : `${entries.length.toLocaleString("en-GB")} types`}</span>
             <span className="compare-gap-services">
               {serviceCounts(entries).map((line) => <span key={line}>{line}</span>)}
             </span>
@@ -288,7 +288,7 @@ function Unmatched({ entries }: { entries: SettingsSection["unmatched"] }) {
           <Icon className="compare-group-chevron" name="chevron-down" />
         </summary>
         <div className="compare-gap-body">
-          <p className="compare-note">These kinds are known only by an id each tenant gives them, so the same object cannot be found in the other tenant.</p>
+          <p className="compare-note">These types are known only by an id each tenant gives them, so the same setting cannot be found in the other tenant.</p>
           <GapServices entries={entries} words={(entry) => `${plainKind(entry.resourceType)} (${entry.left} in the first, ${entry.right} in the second)`} />
         </div>
       </details>
@@ -312,10 +312,10 @@ function SettingsPanel({ settings, portable, sides, restore }: { settings: Setti
     <section aria-labelledby="compare-settings-heading" className="item-card compare-section">
       <h2 id="compare-settings-heading">Settings</h2>
       <p className="compare-help">
-        {countsWords(settings.totals)} across every kind both sides read in full; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
+        {countsWords(settings.totals)} across every type both sides read in full; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
         {settings.notCompared.length + settings.unmatched.length ? ` ${kindsWords(settings.notCompared.length + settings.unmatched.length)} not compared, listed below.` : ""}
-        {" "}Open a kind, then See what changed on an item, to see each setting before and after.
-        {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
+        {" "}Open a type, then See what changed on a setting, to see each setting before and after.
+        {portable ? " Settings are matched by name, and a difference in ids alone does not count." : ""}
       </p>
       {byService(groups, groupKind).map((block) => (
         <div className="compare-section" key={block.key}>
@@ -435,7 +435,7 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
                 <RecordField copy={false} label="Counts" value={{ added: group.added, removed: group.removed, changed: group.changed, unchanged: group.unchanged, unverified: group.unverified, unverifiedFields: group.unverifiedFields, unmatched: group.unmatched, total: group.total } as RecordValue} />
               ) : null}
               {(group.items ?? []).map((item) => (
-                <RecordField copy={false} key={item.resourceKey} label={`Resource key (${item.changeType})`} usage={item.name ?? undefined} value={item.resourceKey} />
+                <RecordField copy={false} key={item.resourceKey} label={`Setting key (${item.changeType})`} usage={item.name ?? undefined} value={item.resourceKey} />
               ))}
               {(group.items ?? []).map((item) => <FieldRecords fields={item.fields} key={`fields:${item.resourceKey}`} prefix={item.resourceKey} />)}
             </RecordGroup>
@@ -451,14 +451,14 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
   return (
     <section aria-labelledby="compare-content-heading" className="item-card compare-section">
       <h2 id="compare-content-heading">Content</h2>
-      <p className="compare-help">Mail, files, sites, Teams and plans Keel holds, item by item: {countsWords(content.totals)}.</p>
-      {changed.length === 0 ? <p className="compare-note">No stored item differs.</p> : null}
+      <p className="compare-help">Mail, files, sites, Teams and plans Keel holds, one by one: {countsWords(content.totals)}.</p>
+      {changed.length === 0 ? <p className="compare-note">No content item differs.</p> : null}
       {byService(changed, (group) => group.workload).map((block) => (
         <div className="compare-section" key={block.key}>
           <ServiceHeading service={block.heading} />
           {block.parts.flatMap((part) => part.items).map((group) => (
             <div className="compare-section" key={group.workload}>
-              <p className="compare-note">{workloadLabel(group.workload)}: {group.leftItems.toLocaleString("en-GB")} items, then {group.rightItems.toLocaleString("en-GB")}.</p>
+              <p className="compare-note">{workloadLabel(group.workload)}: {group.leftItems.toLocaleString("en-GB")} content items, then {group.rightItems.toLocaleString("en-GB")}.</p>
               {group.containers.map((container) => (
                 <details className="compare-group" key={container.container}>
                   <summary>
@@ -482,17 +482,17 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
           ))}
         </div>
       ))}
-      {content.total > content.shown ? <p className="compare-note">Showing {content.shown} of {content.total} items. The full list is in Technical details for an operator.</p> : null}
+      {content.total > content.shown ? <p className="compare-note">Showing {content.shown} of {content.total} content items. The full list is in Technical details for an operator.</p> : null}
       {changed.length ? (
         <TechnicalDetails summary="Technical details: content">
-          <RecordField copy={false} label="Items shown" usage={`of ${content.total}`} value={content.shown} />
+          <RecordField copy={false} label="Content items shown" usage={`of ${content.total}`} value={content.shown} />
           {changed.flatMap((group) => group.containers.map((container) => (
             <RecordGroup key={`${group.workload}/${container.container}`} note={`${group.workload}, ${countsWords(container)}`} title={containerWords(container.container)}>
               <RecordField label="Container" usage={group.workload} value={container.container} />
               {container.items.map((item) => (
                 <RecordField
                   key={item.itemKey}
-                  label={`Item key (${item.changeType})`}
+                  label={`Content item key (${item.changeType})`}
                   usage={item.name ?? undefined}
                   value={{ itemKey: item.itemKey, kind: item.kind, beforeSha256: item.beforeSha256, afterSha256: item.afterSha256, beforeBytes: item.beforeBytes, afterBytes: item.afterBytes }}
                 />
@@ -510,7 +510,7 @@ function ContentHoldingsPanel({ content }: { content: ContentHoldingsSection }) 
     <section aria-labelledby="compare-content-heading" className="item-card compare-section">
       <h2 id="compare-content-heading">Content</h2>
       <p className="compare-help">
-        Items in two tenants have different ids, so content is compared by what each tenant holds: {content.totals.inBoth.toLocaleString("en-GB")} items in both,
+        Content items in two tenants have different ids, so content is compared by what each tenant holds: {content.totals.inBoth.toLocaleString("en-GB")} content items in both,
         {" "}{content.totals.onlyLeft.toLocaleString("en-GB")} only in the first, {content.totals.onlyRight.toLocaleString("en-GB")} only in the second.
       </p>
       {content.groups.length ? (
@@ -521,8 +521,8 @@ function ContentHoldingsPanel({ content }: { content: ContentHoldingsSection }) 
               {content.groups.map((group) => (
                 <tr key={group.workload}>
                   <th data-label="Workload" scope="row">{workloadLabel(group.workload)} ({group.service})</th>
-                  <td data-label="First">{group.leftItems.toLocaleString("en-GB")} items, {bytesWords(group.leftBytes)}</td>
-                  <td data-label="Second">{group.rightItems.toLocaleString("en-GB")} items, {bytesWords(group.rightBytes)}</td>
+                  <td data-label="First">{group.leftItems.toLocaleString("en-GB")} content items, {bytesWords(group.leftBytes)}</td>
+                  <td data-label="Second">{group.rightItems.toLocaleString("en-GB")} content items, {bytesWords(group.rightBytes)}</td>
                   <td data-label="In both">{group.inBoth.toLocaleString("en-GB")}</td>
                   <td data-label="Only first">{group.onlyLeft.toLocaleString("en-GB")}</td>
                   <td data-label="Only second">{group.onlyRight.toLocaleString("en-GB")}</td>
@@ -549,8 +549,8 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
   const tiles = [
     { key: "settings", label: "Settings", count: totals.settings, note: totals.settings === 1 ? "difference" : "differences", href: "#compare-settings-heading", shown: Boolean(result.settings) },
     { key: "workloads", label: "App settings", count: totals.workloads, note: totals.workloads === 1 ? "difference" : "differences", href: "#compare-workloads-heading", shown: Boolean(result.workloads) },
-    { key: "content", label: "Content", count: totals.content, note: result.content?.by === "holdings" ? (totals.content === 1 ? "item in one tenant only" : "items in one tenant only") : (totals.content === 1 ? "item differs" : "items differ"), href: "#compare-content-heading", shown: Boolean(result.content) },
-    ...(gaps.total ? [{ key: "not-compared", label: "Not compared", count: gaps.total, note: `${gaps.total === 1 ? "kind" : "kinds"} (${gapParts})`, href: gaps.settings ? "#compare-settings-heading" : "#compare-workloads-heading", shown: true }] : []),
+    { key: "content", label: "Content", count: totals.content, note: result.content?.by === "holdings" ? (totals.content === 1 ? "content item in one tenant only" : "content items in one tenant only") : (totals.content === 1 ? "content item differs" : "content items differ"), href: "#compare-content-heading", shown: Boolean(result.content) },
+    ...(gaps.total ? [{ key: "not-compared", label: "Not compared", count: gaps.total, note: `${gaps.total === 1 ? "type" : "types"} (${gapParts})`, href: gaps.settings ? "#compare-settings-heading" : "#compare-workloads-heading", shown: true }] : []),
   ];
   return (
     <section aria-labelledby="compare-summary-heading" className="bl-section compare-section">
@@ -582,7 +582,7 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
         <RecordField label="Compared at" value={result.generatedAt} copy={false} />
         {([["Before", result.left], ["After", result.right]] as const).map(([label, side]) => (
           <RecordGroup key={label} note={side.kind} title={label}>
-            <RecordField label="Snapshot ID" value={side.snapshotId} />
+            <RecordField label="Backup ID" value={side.snapshotId} />
             <RecordField label="Tenant reference" value={side.tenantRef} />
             <RecordField copy={false} label="Completed" value={side.at} />
             {side.latestStored?.length ? <RecordField label="Newest stored collection IDs" value={side.latestStored} /> : null}

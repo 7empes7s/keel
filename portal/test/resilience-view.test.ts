@@ -111,7 +111,7 @@ test("reasons and names are words, not codes", () => {
   assert.equal(formatDuration(125 * 60_000), "2 hours 5 minutes");
   const gaps = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z")] });
   assert.equal(gaps.freshness.state, "gaps");
-  assert.equal(freshnessSentence(gaps), "Not measured: 1 item has no good backup yet.");
+  assert.equal(freshnessSentence(gaps), "Not measured: 1 setting has no good backup yet.");
 });
 
 test("a service backup failure is reported once, by its service, never against Entra ID and Intune", () => {
@@ -321,7 +321,7 @@ test("alerts that need work on the Keel server name the Keel admins (D12)", () =
   const todo = (alerts: ReturnType<typeof resilienceAlerts>, key: string) => String(alerts.find((alert) => alert.key === key)?.todo);
   const named = resilienceAlerts({ ...data, contacts: { admins: ["Ana Admin", "Ben Admin"], investigators: [] } });
   assert.equal(todo(named, "no-offsite"), "Ask Ana Admin or Ben Admin (Keel admins) to fix the daily off-site copy on the Keel server.");
-  assert.equal(todo(named, "no-drill"), "Ask Ana Admin or Ben Admin (Keel admins) to run one from the Keel server. It uses test objects only.");
+  assert.equal(todo(named, "no-drill"), "Ask Ana Admin or Ben Admin (Keel admins) to run one from the Keel server. It uses test settings only.");
   assert.equal(todo(named, "storage"), "Ask Ana Admin or Ben Admin (Keel admins) to record where backups are stored on the Keel server.");
   const mine = resilienceAlerts({ ...data, contacts: { admins: [], investigators: [], youAreAdmin: true } });
   assert.equal(todo(mine, "no-offsite"), "As the Keel admin, fix the daily off-site copy on the Keel server.");

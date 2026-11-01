@@ -225,11 +225,11 @@ export function offsiteReason(copy: OffsiteCopy): string {
 const ATTEMPT_REASONS: Record<string, string> = {
   "outcome-failed": "it failed",
   "outcome-exceeded-bound": "it ran past its time limit",
-  "outcome-cleanup-failed": "it left test objects behind",
+  "outcome-cleanup-failed": "it left test settings behind",
   "exceeded-bound": "it ran past its time limit",
   "offline-validation": "it was a plan check, not a drill",
-  "cleanup-failed": "it left test objects behind",
-  "unbounded-scope": "it was not limited to test objects",
+  "cleanup-failed": "it left test settings behind",
+  "unbounded-scope": "it was not limited to test settings",
   "elapsed-not-observed": "its timing was not observed",
   "timing-not-observed": "its timing was not observed",
   "restore-failed": "it failed",
@@ -293,8 +293,8 @@ export function resilienceVerdict(metrics: RecoveryMetrics, now: string): Resili
   if (metrics.readiness.state === "attention") {
     return {
       tone: "critical",
-      headline: "Test objects left behind",
-      text: "A recovery drill left test objects in the tenant. Remove them before trusting the next drill.",
+      headline: "Test settings left behind",
+      text: "A recovery drill left test settings in the tenant. Remove them before trusting the next drill.",
     };
   }
   const point = metrics.recoverablePoint;
@@ -331,7 +331,7 @@ export function freshnessSentence(metrics: RecoveryMetrics): string {
   if (freshness.state === "gaps") {
     const count = freshness.gaps.length;
     // No good copy ever, which is not the "never backed up" bucket on What's protected.
-    return `Not measured: ${count} item${count === 1 ? " has" : "s have"} no good backup yet.`;
+    return `Not measured: ${count} setting${count === 1 ? " has" : "s have"} no good backup yet.`;
   }
   return "Not measured: no backup has finished yet.";
 }
@@ -368,7 +368,7 @@ export function formatBytes(bytes: number | null | undefined): string {
 export function serviceBackupSentence(entry: ServiceBackup, now: string): string {
   if (!entry.switchedOn) return "Switched off until a live check on this tenant passes.";
   const holds = entry.kind === "content"
-    ? (entry.stored ? ` Holds ${entry.stored.items} item${entry.stored.items === 1 ? "" : "s"} (${formatBytes(entry.stored.bytes)}).` : "")
+    ? (entry.stored ? ` Holds ${entry.stored.items} content item${entry.stored.items === 1 ? "" : "s"} (${formatBytes(entry.stored.bytes)}).` : "")
     : (typeof entry.lastGood?.settings === "number" ? ` ${entry.lastGood.settings} setting${entry.lastGood.settings === 1 ? "" : "s"} read.` : "");
   const scope = entry.kind === "content" && entry.latest?.namePrefix ? ` Limited to names starting ${entry.latest.namePrefix}.` : "";
   if (!entry.lastGood) {
@@ -400,7 +400,7 @@ export function recoveryTimeSentence(metrics: RecoveryMetrics): string {
 export function readinessSentence(metrics: RecoveryMetrics, now: string): string {
   const readiness = metrics.readiness;
   if (readiness.state === "attention") {
-    return `${readiness.cleanupFailures.length} drill${readiness.cleanupFailures.length === 1 ? "" : "s"} left test objects in the tenant.`;
+    return `${readiness.cleanupFailures.length} drill${readiness.cleanupFailures.length === 1 ? "" : "s"} left test settings in the tenant.`;
   }
   if (readiness.state === "drilled" && readiness.lastCountedDrill) {
     return `Passed ${ago(readiness.lastCountedDrill.at, now)} and cleaned up after itself.`;
@@ -409,9 +409,9 @@ export function readinessSentence(metrics: RecoveryMetrics, now: string): string
 }
 
 export function incidentSentence(summary: IncidentPointSummary, now: string): string {
-  const pins = summary.pins ? ` ${summary.pins} snapshot${summary.pins === 1 ? " is" : "s are"} kept from clean-up.` : "";
-  if (!summary.recommended) return `No snapshot has been cleared for this incident yet.${pins}`;
-  return `Restore from the snapshot collected ${ago(summary.recommended.collectedAt, now)}, which an investigator cleared.${pins}`;
+  const pins = summary.pins ? ` ${summary.pins} backup${summary.pins === 1 ? " is" : "s are"} kept from clean-up.` : "";
+  if (!summary.recommended) return `No backup has been cleared for this incident yet.${pins}`;
+  return `Restore from the backup collected ${ago(summary.recommended.collectedAt, now)}, which an investigator cleared.${pins}`;
 }
 
 export { formatTimestamp };
@@ -481,7 +481,7 @@ export function serviceState(entry: ServiceBackup, now: string): { tone: Resilie
 
 function holdsWords(entry: ServiceBackup): string {
   if (entry.kind === "content") {
-    return entry.stored ? `${entry.stored.items.toLocaleString("en-GB")} item${entry.stored.items === 1 ? "" : "s"}, ${formatBytes(entry.stored.bytes)}` : "";
+    return entry.stored ? `${entry.stored.items.toLocaleString("en-GB")} content item${entry.stored.items === 1 ? "" : "s"}, ${formatBytes(entry.stored.bytes)}` : "";
   }
   return typeof entry.lastGood?.settings === "number" ? plural(entry.lastGood.settings, "setting") : "";
 }
@@ -558,7 +558,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     const objects = readiness.cleanupFailures.flatMap((failure) => failure.objects);
     alerts.push({
       key: "drill-left-objects", tone: "urgent", icon: "alert",
-      title: "A drill left test objects behind",
+      title: "A drill left test settings behind",
       todo: "Remove them before the next drill.",
       more: objects.map((key) => `Still in the tenant: ${key.split(":").slice(1).join(":") || key}`),
       action: { label: "Find them", href: "/restore" },
@@ -581,7 +581,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
   if (summary.failed) {
     alerts.push({
       key: "kinds-failed", tone: "urgent", icon: "x-circle",
-      title: summary.failed === 1 ? `${failed[0] ?? "1 kind of setting"} failed its last backup` : `${summary.failed} setting types failed their last backup`,
+      title: summary.failed === 1 ? `${failed[0] ?? "1 setting type"} failed its last backup` : `${summary.failed} setting types failed their last backup`,
       todo: "Run the backup again. Older copies are kept where there is one.",
       more: failed,
       action: { label: "See failures", href: "/protect?health=failed" },
@@ -591,7 +591,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
   if (summary.partial) {
     alerts.push({
       key: "kinds-partial", tone: "soon", icon: "alert",
-      title: summary.partial === 1 ? `${partial[0] ?? "1 kind of setting"} was only partly backed up` : `${summary.partial} setting types were only partly backed up`,
+      title: summary.partial === 1 ? `${partial[0] ?? "1 setting type"} was only partly backed up` : `${summary.partial} setting types were only partly backed up`,
       todo: "Open each one to see what was missed, then run the backup again.",
       more: partial,
       action: { label: "See them", href: "/protect?health=partial" },
@@ -601,7 +601,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
   if (lateCount) {
     alerts.push({
       key: "kinds-late", tone: "soon", icon: "clock",
-      title: lateCount === 1 ? `${late[0] ?? "1 kind of setting"} is out of date or never backed up` : `${lateCount} setting types are out of date or never backed up`,
+      title: lateCount === 1 ? `${late[0] ?? "1 setting type"} is out of date or never backed up` : `${lateCount} setting types are out of date or never backed up`,
       todo: "Run a backup. KEEL has no copy recent enough for how critical they are.",
       more: late,
       action: { label: "See them", href: "/protect?health=out-of-date" },
@@ -716,7 +716,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "no-drill", tone: "soon", icon: "play",
       title: "No recovery drill yet",
-      todo: `${askServerAdmin(data.contacts, "run one from the Keel server")} It uses test objects only.`,
+      todo: `${askServerAdmin(data.contacts, "run one from the Keel server")} It uses test settings only.`,
       more: [],
       action: null,
     });
@@ -770,7 +770,7 @@ export function resilienceTiles(data: ResilienceData, groups: ServiceGroup[]): R
       tone: counts.worst, href: "#rs-services",
     },
     readiness.state === "attention"
-      ? { key: "drill", label: "Last drill", icon: "play", value: "Left objects", about: "Test objects are still in the tenant.", tone: "urgent", href: "#rs-drills" }
+      ? { key: "drill", label: "Last drill", icon: "play", value: "Settings left", about: "Test settings are still in the tenant.", tone: "urgent", href: "#rs-drills" }
       : readiness.lastCountedDrill
         ? { key: "drill", label: "Last drill", icon: "play", value: ago(readiness.lastCountedDrill.at, now), about: "Passed and cleaned up after itself.", tone: "fine", href: "#rs-drills" }
         : { key: "drill", label: "Last drill", icon: "play", value: "None yet", about: "No drill has run on this tenant.", tone: "soon", href: "#rs-drills" },
@@ -779,7 +779,7 @@ export function resilienceTiles(data: ResilienceData, groups: ServiceGroup[]): R
 
 /** The status pill beside the title: the worst thing on the page, in two words. */
 export function resilienceStatus(metrics: RecoveryMetrics, alerts: ResilienceAlert[]): { tone: "urgent" | "soon" | "low" | "fine"; label: string } {
-  if (metrics.readiness.state === "attention") return { tone: "urgent", label: "Test objects left" };
+  if (metrics.readiness.state === "attention") return { tone: "urgent", label: "Test settings left" };
   if (alerts.some((alert) => alert.tone === "urgent")) return { tone: "urgent", label: "Needs attention" };
   if (metrics.recoverablePoint.state !== "measured") return { tone: "soon", label: "Not measured" };
   if (alerts.some((alert) => alert.tone === "soon")) return { tone: "soon", label: "Check soon" };

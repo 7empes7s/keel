@@ -83,7 +83,7 @@ export function serviceUndo(
     return { possible: false, reason: "The newest read already matches the active baseline, so there is nothing to put back. The next read settles this change." };
   }
   if (!choice) return { possible: false, reason: "The read that holds the earlier value no longer has this setting, so Keel cannot put it back." };
-  if (!choice.restorable) return { possible: false, reason: choice.reason ?? "Keel does not write this kind of setting back. Accept the change, or change it back by hand." };
+  if (!choice.restorable) return { possible: false, reason: choice.reason ?? "Keel does not write this setting type back. Accept the change, or change it back by hand." };
   return { possible: true, reason: null };
 }
 

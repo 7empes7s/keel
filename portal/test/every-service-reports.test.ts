@@ -37,7 +37,7 @@ test("each service backup says when it last backed up well and what it holds", (
     stored: { items: 23, versions: 30, containers: 3, bytes: 15468, storedBytes: 15000, newestAt: null },
   };
   const line = serviceBackupSentence(mail, NOW);
-  assert.match(line, /^Last good backup .*\. The latest try failed\. Holds 23 items \(15 KB\)\. Limited to names starting KEEL-RT-\.$/);
+  assert.match(line, /^Last good backup .*\. The latest try failed\. Holds 23 content items \(15 KB\)\. Limited to names starting KEEL-RT-\.$/);
   const off: ServiceBackup = { ...mail, kind: "service-settings", switchedOn: false };
   assert.equal(serviceBackupSentence(off, NOW), "Switched off until a live check on this tenant passes.");
   assert.equal(servicesSentence({ services: { settings: [off], content: [mail] } } as unknown as RecoveryMetrics),
@@ -53,7 +53,7 @@ test("Ask names service settings and content records, never by their codes", () 
   assert.equal(recordTitle(settings), "Teams organization policy (settings)");
   assert.equal(recordSentence(settings), "Read completely. 9 settings.");
   assert.equal(recordTitle(content), "Teams, channels and tabs (content)");
-  assert.equal(recordSentence(content), "Backed up. 11 items stored.");
+  assert.equal(recordSentence(content), "Backed up. 11 content items stored.");
   assert.equal(recordSentence(off), "Switched off until a live check passes. No read has finished yet.");
 });
 
@@ -73,7 +73,7 @@ test("the value report shows what was backed up per family as tiles and areas, p
   ]);
   assert.equal(view.tiles[1].detail, "areas backed up · 300 good runs");
   assert.equal(view.tiles[1].problem, "1 did not run", "an older report without areas still names the gap");
-  assert.equal(view.tiles[2].detail, "areas backed up · 932 new items stored (7.7 MB)");
+  assert.equal(view.tiles[2].detail, "areas backed up · 932 new content items stored (7.7 MB)");
   assert.deepEqual(view.headline, { text: "1 area needs a look", tone: "soon" });
   assert.deepEqual(view.groups, [], "an older report without areas has no table");
   assert.equal(backupView({ withheld: true }).state, "withheld");
@@ -97,8 +97,8 @@ test("a content run read only in part shows as a problem, so stored items never 
   if (view.state !== "shown") return;
   const content = view.tiles[2];
   assert.deepEqual([content.count, content.of, content.tone, content.problem], [0, 5, "urgent", "1 in part · 4 did not run"]);
-  assert.equal(content.detail, "areas backed up · 4094 new items stored (215 MB)");
-  assert.match(view.note ?? "", /including items from areas backed up only in part/);
+  assert.equal(content.detail, "areas backed up · 4094 new content items stored (215 MB)");
+  assert.match(view.note ?? "", /including content from areas backed up only in part/);
   assert.deepEqual(view.headline, { text: "6 areas need a look", tone: "urgent" });
   assert.deepEqual(view.groups.map((group) => group.label), ["Service settings", "Content"], "the group with a failure comes first");
   assert.deepEqual(view.groups[0].rows.map((row) => row.state), ["failed", "good", "good"], "problems first inside each group");
@@ -160,8 +160,8 @@ test("Incidents list every other service in the portal's order, none left out", 
   assert.equal(OTHER_SERVICES.length, 6);
   // Inside a service: settings in the portal's order (people before policies), then content.
   assert.deepEqual(groups[0].entries.map((entry) => entry.name), ["Recipients", "Mail flow", "Mail, calendars and contacts"]);
-  assert.deepEqual(serviceGroupWords(groups[0].entries), { count: "3 kinds", about: "Backed up outside the attack · check by hand" });
-  assert.deepEqual(serviceGroupWords(groups[4].entries), { count: "1 kind", about: "1 with no good backup" });
+  assert.deepEqual(serviceGroupWords(groups[0].entries), { count: "3 types", about: "Backed up outside the attack · check by hand" });
+  assert.deepEqual(serviceGroupWords(groups[4].entries), { count: "1 type", about: "1 with no good backup" });
   assert.deepEqual(serviceGroupWords([]), { count: "No backup yet", about: "Nothing to restore from" });
   // A find keeps only services with something that matches, by kind or service name.
   assert.deepEqual(incidentServiceGroups(entries, "label").map((group) => group.service?.name), ["Purview"]);

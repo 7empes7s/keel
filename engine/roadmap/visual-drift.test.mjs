@@ -461,7 +461,7 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
       const evidenceHtml = withRouter(createElement(ChangeEvidencePanel, { evidence: creos.evidence, attribution: creos.attribution, now: at }));
       assert.match(evidenceHtml, /Owned by CREOS\./);
       assert.match(evidenceHtml, /A roll-back request is waiting for a decision\. It also covers other changes\./);
-      assert.match(evidenceHtml, /A roll-back plan is ready\. It puts back the approved setup&#x27;s copy\. No result is recorded yet\. It also covers other resources\./);
+      assert.match(evidenceHtml, /A roll-back plan is ready\. It puts back the approved setup&#x27;s copy\. No result is recorded yet\. It also covers other settings\./);
       assert.match(evidenceHtml, /The backup that found this change holds exactly what it recorded\./);
       for (const hidden of HIDDEN) assert.ok(!evidenceHtml.includes(hidden), 'evidence html carries ' + hidden);
       assertPlain(visibleText(evidenceHtml), 'evidence');

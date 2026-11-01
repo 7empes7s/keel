@@ -69,7 +69,7 @@ test("every kind lands in exactly one bucket, so the buckets add up to the total
   });
   const { total, ...parts } = buckets;
   assert.equal(Object.values(parts).reduce((sum, value) => sum + value, 0), total);
-  assert.equal(coverageSentence(DATA.summary), "13 kinds: 3 backed up, 2 failed, 2 partly done, 2 out of date or never, 3 not backed up by Keel yet and 1 not on this tenant.");
+  assert.equal(coverageSentence(DATA.summary), "13 types: 3 backed up, 2 failed, 2 partly done, 2 out of date or never, 3 not backed up by Keel yet and 1 not on this tenant.");
 });
 
 test("the Overview sentence, ring, tile and menu badge count what What's protected counts", () => {
@@ -101,13 +101,13 @@ test("the Overview sentence, ring, tile and menu badge count what What's protect
   } as unknown as DashboardData;
   const tile = overviewTiles(dashboard, null).find((entry) => entry.key === "backups")!;
   assert.equal(tile.value, "2 failed");
-  assert.equal(tile.detail, "3 of 13 kinds backed up, 2 partly done");
+  assert.equal(tile.detail, "3 of 13 setting types backed up, 2 partly done");
   assert.equal(menuStatuses(dashboard).Backup?.count, protect.failed, "the menu badge is What's protected's failed count");
 });
 
 test("Setup's service lines add up to the same failed kinds", () => {
   const services = serviceStatuses(KINDS, NOW);
-  const failed = services.reduce((sum, service) => sum + (Number(/^(\d+) kinds? failed/.exec(service.backup.text)?.[1]) || 0), 0);
+  const failed = services.reduce((sum, service) => sum + (Number(/^(\d+) types? failed/.exec(service.backup.text)?.[1]) || 0), 0);
   assert.equal(failed, protectCounts(KINDS).failed);
 });
 

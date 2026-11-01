@@ -8,7 +8,7 @@ import { deletedSinceWords } from "@/lib/object-label";
 export function ObjectLabel({ name, type, className }: { name: string | null; type: string | null; className?: string }) {
   return (
     <span className={className ? `object-label ${className}` : "object-label"}>
-      {name ? <span className="object-label-name">{name}</span> : <span className="object-label-name" data-unnamed="">{type ? `Unnamed ${type}` : "Unnamed item"}</span>}
+      {name ? <span className="object-label-name">{name}</span> : <span className="object-label-name" data-unnamed="">{type ? `Unnamed ${type}` : "Unnamed setting"}</span>}
       {name && type ? <span className="object-label-type"> ({type})</span> : null}
     </span>
   );

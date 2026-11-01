@@ -65,8 +65,8 @@ test("the verdict counts differences, and says when nothing differs", () => {
 });
 
 test("values read as names, never as ids or address codes", () => {
-  assert.equal(compareValueWords(["ref:group:Break-glass admins", "<id>"]), "Break-glass admins (group), an object Keel could not name");
-  assert.equal(compareValueWords(ID(9)), "an object Keel has no name for");
+  assert.equal(compareValueWords(["ref:group:Break-glass admins", "<id>"]), "Break-glass admins (group), a setting Keel could not name");
+  assert.equal(compareValueWords(ID(9)), "a setting Keel has no name for");
   assert.equal(compareValueWords([ID(9)], { [ID(9).toLowerCase()]: "Finance approvers" }), "Finance approvers");
   assert.equal(compareValueWords("smtp:a@b.example"), "a@b.example (SMTP address)");
   assert.equal(containerWords(`mailbox/${ID(4)}/items/inbox`), "Inbox (mailbox)");
@@ -214,15 +214,15 @@ test("parts never read say Not compared, with one count everywhere", () => {
   assert.equal(kindCountsWords(withWorkloads.workloads!.groups.slice(1)), "no differences, 1 not compared");
 
   const data: CompareData = { generatedAt: at, tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: withWorkloads, problem: null };
-  assert.equal(compareVerdict(data).text, "Nothing differs in what both sides read; 4 kinds were not compared in full.");
+  assert.equal(compareVerdict(data).text, "Nothing differs in what both sides read; 4 types were not compared in full.");
   const html = renderToStaticMarkup(createElement(CompareView, { data }));
   // The summary tile carries the same count as the verdict, split by section.
-  assert.match(html, /data-tile="not-compared"[^]*?<b class="bl-tile-count">4<\/b><small>kinds \(2 settings, 2 app settings\)<\/small>/);
-  assert.match(html, /2 kinds not compared, listed below/);
-  assert.match(html, /2 kinds not compared in full, marked below/);
+  assert.match(html, /data-tile="not-compared"[^]*?<b class="bl-tile-count">4<\/b><small>types \(2 settings, 2 app settings\)<\/small>/);
+  assert.match(html, /2 types not compared, listed below/);
+  assert.match(html, /2 types not compared in full, marked below/);
   // A Teams workload never backed up reads Not compared, never "no differences".
   const teams = html.slice(html.indexOf(">Teams<"));
-  assert.match(teams.slice(0, 1200), /1 kind · not compared/);
+  assert.match(teams.slice(0, 1200), /1 type · not compared/);
   assert.match(html, /data-status="not-compared"[^]*?Not compared[^]*?Never backed up for the second side/);
   assert.match(html, /Each side read only part of it, so nothing could be checked/);
 });

@@ -97,9 +97,9 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
 
       <div className="rs-table-wrap">
         <table className="rs-table pv-table">
-          <caption className="visually-hidden">What turning it on would do to each item</caption>
+          <caption className="visually-hidden">What turning it on would do to each setting</caption>
           <thead>
-            <tr><th scope="col">Item</th><th scope="col">What</th><th scope="col">Impact</th><th scope="col">Outcome</th></tr>
+            <tr><th scope="col">Setting</th><th scope="col">What</th><th scope="col">Impact</th><th scope="col">Outcome</th></tr>
           </thead>
           {groups.map((group) => (
             <tbody data-group={group.key} key={group.key}>

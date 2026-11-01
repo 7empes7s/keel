@@ -49,7 +49,7 @@ export function FixPanel({ finding, canRestore, now }: { finding: ComplianceFind
         <Badge icon={null} tone="fine">Keel can fix this</Badge>
       </h3>
       {effect ? <p className="cp-muted">{effect}</p> : null}
-      <ul aria-label="Objects to fix" className="cp-fix-list">
+      <ul aria-label="Settings to fix" className="cp-fix-list">
         {candidates.map((candidate, index) => (
           <FixRow candidate={candidate} canRestore={canRestore} finding={finding} key={candidate.naturalKey} now={now} primary={index === 0} />
         ))}

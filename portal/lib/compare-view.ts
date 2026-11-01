@@ -195,7 +195,7 @@ export function defaultInput(tenants: CompareTenant[]): CompareInput | null {
 }
 
 export function snapshotWords(option: CompareSnapshotOption): string {
-  return `${formatTimestamp(option.completedAt)} · ${option.resourceCount.toLocaleString("en-GB")} objects`;
+  return `${formatTimestamp(option.completedAt)} · ${option.resourceCount.toLocaleString("en-GB")} settings`;
 }
 
 function tenantLabel(tenants: CompareTenant[], tenantRef: string): string {
@@ -226,7 +226,7 @@ export function compareVerdict(data: CompareData): { text: string; tone: "good" 
   const gaps = notComparedCounts(data.result).total;
   const two = data.result.portable ? "the two tenants" : "the two backups";
   if (total === 0 && gaps === 0) return { text: `Nothing differs between ${two}.`, tone: "good" };
-  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(gaps, "kind")} ${gaps === 1 ? "was" : "were"} not compared in full.`, tone: "attention" };
+  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(gaps, "type")} ${gaps === 1 ? "was" : "were"} not compared in full.`, tone: "attention" };
   return { text: `${plural(total, "difference")} between ${two}.`, tone: "attention" };
 }
 
@@ -330,7 +330,7 @@ export function workloadNotComparedSentence(group: WorkloadGroup): string {
   if (group.state === "compared") {
     const leftPart = group.left?.outcome === "partial";
     const rightPart = group.right?.outcome === "partial";
-    if (!(group.unverified ?? 0) && (group.unmatched ?? 0)) return "None of its items could be matched between the two sides, so nothing could be checked.";
+    if (!(group.unverified ?? 0) && (group.unmatched ?? 0)) return "None of its settings could be matched between the two sides, so nothing could be checked.";
     if (leftPart && rightPart) return "Each side read only part of it, so nothing could be checked.";
     if (leftPart) return "The first side read only part of it, so nothing could be checked.";
     if (rightPart) return "The second side read only part of it, so nothing could be checked.";
@@ -360,7 +360,7 @@ export function containerWords(container: string): string {
 
 export function contentItemWords(item: ContentItem): string {
   if (item.name) return item.name;
-  return item.kind ? `An item (${item.kind.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("-", " ").toLowerCase()})` : "An item";
+  return item.kind ? `A content item (${item.kind.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("-", " ").toLowerCase()})` : "A content item";
 }
 
 /** A value in words: a reference reads as the object's name, an id as the name Keel has for it. */

@@ -257,7 +257,7 @@ const GROUPS: Omit<DestinationGroup, "items">[] = [
   { key: "webhook", label: "Webhooks", about: "Each audit entry is posted to a web address.", icon: "link" },
   { key: "cef", label: "SIEM (CEF)", about: "Each audit entry is sent to a SIEM in CEF format.", icon: "audit" },
   { key: "sentinel", label: "Microsoft Sentinel", about: "Each audit entry is sent to a Sentinel workspace.", icon: "monitor" },
-  { key: "other", label: "Other destinations", about: "Destinations of a kind this page does not name.", icon: "info" },
+  { key: "other", label: "Other destinations", about: "Destinations of a type this page does not name.", icon: "info" },
 ];
 
 const TONE_RANK: Record<IntegrationTone, number> = { urgent: 0, soon: 1, low: 2, neutral: 3, fine: 4 };

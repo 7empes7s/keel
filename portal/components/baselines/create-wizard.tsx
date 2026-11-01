@@ -225,8 +225,8 @@ export function CreateWizard({
       </div>
       {chosen ? (
         <TechnicalDetails>
-          <RecordField label="Source snapshot ID" usage={<>use with <code>keel-baseline-create --snapshot-id</code></>} value={chosen.id} />
-          <RecordField copy={false} label="Snapshot completed at" value={chosen.completedAt ?? chosen.startedAt} />
+          <RecordField label="Source backup ID" usage={<>use with <code>keel-baseline-create --snapshot-id</code></>} value={chosen.id} />
+          <RecordField copy={false} label="Backup completed at" value={chosen.completedAt ?? chosen.startedAt} />
         </TechnicalDetails>
       ) : null}
     </section>

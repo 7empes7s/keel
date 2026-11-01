@@ -20,7 +20,7 @@ export const RESTORE_APPROVAL_RULE_INFO: Record<RestoreApprovalRule, { name: str
   "compliance-fix": { name: "Compliance fixes", phrase: "compliance fixes", detail: "Sets the value a compliance control asks for", icon: "audit" },
   "tenant-wide": { name: "Organization-wide changes", phrase: "organization-wide changes", detail: "Workload settings that apply to everyone", icon: "cloud" },
   "other-tenant": { name: "Restores into another tenant", phrase: "restores into another tenant", detail: "Writes a backup into a different Microsoft 365 tenant", icon: "swap" },
-  "unplaced": { name: "Items Keel can't place in a service", phrase: "items Keel can't place in a service", detail: "Kinds no service setting covers yet", icon: "info" },
+  "unplaced": { name: "Settings Keel can't place in a service", phrase: "settings Keel can't place in a service", detail: "Types no service setting covers yet", icon: "info" },
 };
 
 // Kinds of restore that are high risk without a person checking them first. Same list

@@ -14,7 +14,7 @@ export function BackupRecord({ point, pin, override }: {
   const assessment = point.assessment;
   return (
     <TechnicalDetails summary="Technical details for this backup">
-      <RecordField label="Snapshot ID" usage={<>use with <code>keel-restore --snapshot-id &lt;id&gt;</code></>} value={point.snapshotId} />
+      <RecordField label="Backup ID" usage={<>use with <code>keel-restore --snapshot-id &lt;id&gt;</code></>} value={point.snapshotId} />
       <RecordField copy={false} label="Collected from" value={point.observedFrom} />
       <RecordField copy={false} label="Collected to" value={point.observedTo} />
       <RecordField copy={false} label="Recovery point state" value={point.status} />
@@ -28,7 +28,7 @@ export function BackupRecord({ point, pin, override }: {
           <RecordField copy={false} label="Verdict" value={assessment.verdict} />
           <RecordField copy={false} label="Assessed at" value={assessment.assessedAt} />
           <RecordField label="Assessed by (principal ID)" usage={assessment.assessedBy?.name} value={assessment.assessedBy?.id} />
-          <RecordField label="Assessment fingerprint" usage="bound into every restore plan made from this snapshot" value={assessment.fingerprint} />
+          <RecordField label="Assessment fingerprint" usage="bound into every restore plan made from this backup" value={assessment.fingerprint} />
         </RecordGroup>
       ) : null}
       {assessment?.exclusions.map((exclusion) => (
@@ -66,7 +66,7 @@ export function IncidentRecord({ detail }: { detail: IncidentDetail }) {
       <RecordField copy={false} label="Status" value={detail.incident.status} />
       <RecordField copy={false} label="Opened" value={detail.incident.openedAt} />
       <RecordField copy={false} label="Closed" value={detail.incident.closedAt} />
-      <RecordField label="Recommended snapshot ID" value={detail.recommended} />
+      <RecordField label="Recommended backup ID" value={detail.recommended} />
       {detail.intervals.map((interval) => (
         <RecordGroup key={interval.id} note={interval.endsAt ? "ended" : "ongoing"} title="Attack window">
           <RecordField label="Interval ID" value={interval.id} />
@@ -79,14 +79,14 @@ export function IncidentRecord({ detail }: { detail: IncidentDetail }) {
       {detail.pins.map((pin) => (
         <RecordGroup key={pin.id} note="kept from pruning" title="Retention pin">
           <RecordField label="Retention pin ID" value={pin.id} />
-          <RecordField label="Snapshot ID" value={pin.snapshotId} />
+          <RecordField label="Backup ID" value={pin.snapshotId} />
           <RecordField label="Pinned by (principal ID)" usage={pin.pinnedBy?.name} value={pin.pinnedBy.id} />
           <RecordField copy={false} label="Pinned at" value={pin.pinnedAt} />
           <RecordField copy={false} label="Reason" value={pin.reason} />
         </RecordGroup>
       ))}
       <RecordField copy={false} label="Changes" value="POST /api/actions/incidents (requires investigate)" />
-      <RecordField copy={false} label="Items in a backup" value="GET /api/snapshots/<id>/items" />
+      <RecordField copy={false} label="Settings in a backup" value="GET /api/snapshots/<id>/items" />
     </TechnicalDetails>
   );
 }

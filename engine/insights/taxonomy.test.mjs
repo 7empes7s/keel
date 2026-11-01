@@ -255,11 +255,10 @@ test('an Entra admin role reads as built-in or custom by its isBuiltIn flag; the
   assert.deepEqual([builtInOf(null), builtInOf({ isBuiltIn: 'true' }), builtInOf({ isBuiltIn: 'false' }), builtInOf({ isBuiltIn: 1 })], [null, true, false, null]);
 });
 
-test('a kind named "Custom …" never holds built-in objects too', () => {
-  // A kind that holds Microsoft's built-in objects and the tenant's own names both by
-  // builtInName and customName, so a built-in object is never called custom.
+test('a kind that names built-in and custom objects apart has both names and a neutral kind name', () => {
   for (const entry of Object.values(TAXONOMY)) {
-    if (entry.customName) assert.ok(entry.builtInName && !/^custom\b/i.test(entry.name), entry.type);
+    if (!entry.builtInName && !entry.customName) continue;
+    assert.ok(entry.builtInName && entry.customName, entry.type);
+    assert.ok(!/^(custom|built-in)\b/i.test(entry.name), `${entry.type}: the kind holds both, so its name says neither`);
   }
-  assert.ok(!/^custom\b/i.test(TAXONOMY.roleDefinition.name));
 });

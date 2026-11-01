@@ -5074,6 +5074,9 @@ section.wizard-panel {
 
 /* Follow-up after restores: the list shows the newest restores; the count above is every one. */
 .follow-up-shown { margin: 0 0 var(--space-xs); color: var(--text-soft); font-size: 0.875rem; }
+.follow-up-card .activity-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.follow-up-steps { margin-top: 0.5rem; }
+.follow-up-steps > summary { cursor: pointer; font-size: 0.875rem; font-weight: 600; }
 
 .completion-hint {
   grid-column: 1 / -1;

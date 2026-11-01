@@ -44,6 +44,10 @@ export interface SnapshotOption {
   startedAt: string | null;
   completedAt: string | null;
   resourceCount: number;
+  // Types the backup read, and types it deliberately left out (an hourly or daily
+  // backup reads one tier of settings). A backup that left none out read every type.
+  typesRead?: number;
+  typesSkipped?: number;
 }
 
 async function withClient<T>(operation: (client: KeelClient) => Promise<T>): Promise<T> {
@@ -160,7 +164,11 @@ export async function getRestoreSnapshotOptions(limit = 50): Promise<SnapshotOpt
   const ref = tenantRef();
   return withClient(async (client) => {
     const { rows } = await client.query(
-      `SELECT s.id, s.started_at, s.completed_at, count(rv.id)::int AS resource_count
+      `SELECT s.id, s.started_at, s.completed_at, count(rv.id)::int AS resource_count,
+              (SELECT count(*) FILTER (WHERE e.value->>'outcome' IS DISTINCT FROM 'not-requested')
+                 FROM jsonb_each(CASE WHEN jsonb_typeof(s.coverage_digest) = 'object' THEN s.coverage_digest ELSE '{}'::jsonb END) e)::int AS types_read,
+              (SELECT count(*) FILTER (WHERE e.value->>'outcome' = 'not-requested')
+                 FROM jsonb_each(CASE WHEN jsonb_typeof(s.coverage_digest) = 'object' THEN s.coverage_digest ELSE '{}'::jsonb END) e)::int AS types_skipped
        FROM snapshot s
        LEFT JOIN resource_version rv ON rv.snapshot_id = s.id
        WHERE s.tenant_ref = $1 AND s.status = 'complete'
@@ -174,6 +182,8 @@ export async function getRestoreSnapshotOptions(limit = 50): Promise<SnapshotOpt
       startedAt: iso(row.started_at),
       completedAt: iso(row.completed_at),
       resourceCount: Number(row.resource_count ?? 0),
+      typesRead: Number(row.types_read ?? 0),
+      typesSkipped: Number(row.types_skipped ?? 0),
     }));
   });
 }

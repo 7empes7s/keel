@@ -28,7 +28,9 @@ export function JobPageBody({ job, now, capabilities }: { job: JobRecord; now: s
         // Q45: the refusal names where its content effects are approved; link straight there.
         <Link className="text-link" href={`/approvals/content-effects/${encodeURIComponent(restoreRef)}`}>Review content effects</Link>
       ) : null}
-      {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canRestore} restoreRef={restoreRef} /> : null}
+      {/* A restore that failed part way can still leave follow-up steps (a sign-in rule that
+          may be on); the Restore page links here for them, so they show here too. */}
+      {restoreRef && !compensates && (job.status === "succeeded" || enforced) ? <RecoveryCompletion canComplete={canRestore} restoreRef={restoreRef} /> : null}
       {enforced && restoreRef ? (
         <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canRestore} failed={job.status === "failed"} restoreArtifactId={restoreRef} />
       ) : null}

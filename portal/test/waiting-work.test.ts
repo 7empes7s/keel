@@ -102,6 +102,55 @@ test("open alerts, open incidents and open restore follow-up steps are counted; 
   assert.match(html, /id="follow-up"/);
 });
 
+// UI audit B10 and D13: each card is named by its restore (what it put back, from which
+// backup), links to the page where its steps close, labels its Technical details with
+// that name, and says when the restore ran, not when a step was opened.
+test("each follow-up card names and links its restore and shows when the restore ran", async () => {
+  const ref = tenantRef();
+  await client.query("DELETE FROM recovery_completion_item WHERE tenant_ref = $1", [ref]);
+  const { rows: [snapshot] } = await client.query(
+    "INSERT INTO snapshot (tenant_ref, started_at, completed_at, status) VALUES ($1, '2026-10-02T09:00:00Z', '2026-10-02T09:12:00Z', 'complete') RETURNING id",
+    [ref],
+  );
+  const plan = async (keys: string[]) => (await client.query(
+    `INSERT INTO restore_dry_run (tenant_ref, snapshot_id, selection, closure_keys, target_tenant_id, collector_config_path, target_config_path,
+       waves, patches, results, current_state_fingerprint, digest, status, requested_by)
+     VALUES ($1, $2, '[]', $3, 't', 'c', 't', '[]', '[]', '{}', 'f', 'd', 'completed', 'op') RETURNING id::text AS id`,
+    [ref, snapshot.id, JSON.stringify(keys)],
+  )).rows[0].id as string;
+  const viaPortal = await plan(["group:Finance", "group:Sales", "group:HR"]);
+  const outside = await plan(["group:Finance"]);
+  const check = (await enqueue(client, { kind: "restore", params: { artifactId: viaPortal }, requestedBy: "op", idempotencyKey: null, notBefore: null })) as { id: string };
+  const restore = (await enqueue(client, { kind: "restore", params: { artifactId: viaPortal, mode: "enforce" }, requestedBy: "op", idempotencyKey: null, notBefore: null })) as { id: string };
+  // The check was queued after the restore here, so only the enforce preference picks the restore.
+  await client.query("UPDATE job SET created_at = now() + interval '1 minute' WHERE id = $1", [check.id]);
+  // Set explicitly: the restore ran three days before "now", its steps were opened later.
+  const now = "2026-10-31T17:41:00Z";
+  await client.query("UPDATE job SET status = 'succeeded', started_at = '2026-10-28T17:30:00Z', finished_at = '2026-10-28T17:40:00Z' WHERE id = $1", [restore.id]);
+  for (const restoreRef of [viaPortal, outside]) {
+    await emitCompletionItems(client, { tenantRef: ref, restoreRef, owner: null, applied: [{ naturalKey: `group:KEEL-RT-${restoreRef}`, resourceType: "group", mechanism: "recreate" }] });
+  }
+  await client.query("UPDATE recovery_completion_item SET created_at = '2026-10-30T14:41:00Z' WHERE tenant_ref = $1", [ref]);
+
+  const work = await getRestoreFollowUps();
+  const portalCard = work.cards.find((card) => card.restoreRef === viaPortal);
+  const outsideCard = work.cards.find((card) => card.restoreRef === outside);
+  assert.equal(portalCard?.jobId, restore.id, "the enforced restore, not its check");
+  assert.equal(portalCard?.restoredAt, "2026-10-28T17:40:00.000Z");
+  assert.equal(outsideCard?.jobId, null);
+
+  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now }));
+  const name = "Restore of 3 settings from the backup of 2 Oct 2026, 09:12";
+  assert.match(html, new RegExp(`<a class="activity-title" href="/jobs/${restore.id}">${name}</a>`), "the title names and links its restore");
+  assert.match(html, /Restored 3 days ago/, "the time is when the restore ran");
+  assert.doesNotMatch(html, /From a restore 27 hours ago/);
+  assert.match(html, /Steps opened 27 hours ago/, "a restore run outside the portal says what its time is");
+  assert.match(html, /<summary>Show the steps<\/summary>/, "a restore with no job page shows its steps on the card");
+  assert.equal((html.match(new RegExp(`<span class="technical-summary-text">Technical details: ${name}</span>`, "g")) ?? []).length, 1, "the card's Technical details names its restore");
+  assert.match(html, /<span class="technical-summary-text">Technical details: Restore of 1 setting from the backup of 2 Oct 2026, 09:12<\/span>/, "every card's does");
+  assert.doesNotMatch(html, />Technical details</, "no card has the bare label");
+});
+
 test("the Overview shows a row for each kind of open work, linked to where it is done, and counts it on the Waiting tile", () => {
   const none = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: null }));
   assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore#follow-up"/, "nothing waits, so no rows");
@@ -145,13 +194,16 @@ test("Overview, Restore and Resilience show the same follow-up totals past the c
   const resilienceData = await getResilienceData();
   const resilience = resilienceData.followUps;
   assert.equal(overview, steps);
-  assert.deepEqual([work.steps, work.restores, work.cards.length], [steps, 52, 50], "the page lists 50 and counts all 52");
-  assert.ok(work.cards.reduce((sum, card) => sum + card.pending, 0) < steps, "adding up the cards would under-count");
+  // UI audit B10: every restore is listed, a page of them at a time.
+  assert.deepEqual([work.steps, work.restores, work.cards.length], [steps, 52, 52], "the page lists and counts all 52");
+  assert.equal(work.cards.reduce((sum, card) => sum + card.pending, 0), steps, "every restore's steps are on a card");
   assert.deepEqual(resilience, { steps, restores: 52, href: "/restore#follow-up" });
 
   const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now: DASHBOARD.generatedAt }));
   assert.match(html, new RegExp(`${steps} steps on 52 restores`));
-  assert.match(html, /Showing the newest 50 of 52 restores/);
+  assert.doesNotMatch(html, /Showing the newest/, "no restore is left off the list");
+  assert.match(html, /Showing 1–25 of 52 restores/, "the list pages past 25");
+  assert.equal((html.match(/class="activity-item follow-up-card"/g) ?? []).length, 25, "one page of cards");
   const dashboard = renderToStaticMarkup(createElement(DashboardView, {
     data: { ...DASHBOARD, waiting: { openAlerts: 0, openIncidents: 0, restoreFollowUps: overview } }, pendingApprovals: null,
   }));

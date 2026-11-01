@@ -323,31 +323,48 @@ export async function listCompletionItems(client, { tenantRef, restoreRef }) {
   return rows.map((row) => ({ ...normalize(row), replacedBy: row.replaced_by ?? null }));
 }
 
+/** How many restores a page lists as cards; the totals always count every one. */
+export const OPEN_COMPLETION_CARD_LIMIT = 500;
+
 /**
  * Restores that still have open follow-up steps, newest first, each with the job that
  * ran it, so the portal can list them instead of leaving them on a job page that has
  * scrolled out of every recent-jobs list. A compensation (undo) job is never the match,
  * and a step a later restore replaced is not open.
  */
-export async function listOpenCompletionWork(client, { tenantRef, limit = 50 }) {
+export async function listOpenCompletionWork(client, { tenantRef, limit = OPEN_COMPLETION_CARD_LIMIT }) {
+  // Each restore is shown with the job that ran it: the enforced restore when there is
+  // one (its page closes the steps), else its check. `restored_at` is when that
+  // restore finished, the time the Restore page shows; `since` is when the oldest
+  // open step was opened, which a later restore of the same object can move.
   const { rows } = await client.query(
-    `SELECT i.restore_ref, count(*)::int AS pending, min(i.created_at) AS since,
-            (SELECT j.id::text FROM job j
-              WHERE j.kind = 'restore' AND j.params->>'artifactId' = i.restore_ref
-                AND j.params->>'compensates' IS NULL
-              ORDER BY j.created_at DESC LIMIT 1) AS job_id
-       FROM recovery_completion_item i
-      WHERE i.tenant_ref = $1 AND ${OPEN_STEP}
-      GROUP BY i.restore_ref
-      ORDER BY min(i.created_at) DESC
+    `SELECT w.restore_ref, w.pending, w.since, j.id AS job_id, j.status AS job_status, j.enforced,
+            CASE WHEN j.enforced THEN COALESCE(j.finished_at, j.started_at) END AS restored_at
+       FROM (SELECT i.restore_ref, count(*)::int AS pending, min(i.created_at) AS since
+               FROM recovery_completion_item i
+              WHERE i.tenant_ref = $1 AND ${OPEN_STEP}
+              GROUP BY i.restore_ref) w
+       LEFT JOIN LATERAL (
+         SELECT job.id::text AS id, job.status, job.started_at, job.finished_at,
+                COALESCE(job.params->>'mode' = 'enforce', false) AS enforced
+           FROM job
+          WHERE job.kind = 'restore' AND job.params->>'artifactId' = w.restore_ref
+            AND job.params->>'compensates' IS NULL
+          ORDER BY COALESCE(job.params->>'mode' = 'enforce', false) DESC, job.created_at DESC
+          LIMIT 1) j ON true
+      ORDER BY COALESCE(CASE WHEN j.enforced THEN COALESCE(j.finished_at, j.started_at) END, w.since) DESC, w.restore_ref
       LIMIT $2`,
     [tenantRef, limit],
   );
+  const iso = (value) => (value === null || value === undefined ? null : value instanceof Date ? value.toISOString() : String(value));
   return rows.map((row) => ({
     restoreRef: row.restore_ref,
     pending: row.pending,
-    since: row.since instanceof Date ? row.since.toISOString() : String(row.since),
+    since: iso(row.since),
     jobId: row.job_id ?? null,
+    jobStatus: row.job_status ?? null,
+    enforced: row.enforced === true,
+    restoredAt: iso(row.restored_at),
   }));
 }
 
@@ -375,10 +392,10 @@ export async function countOpenCompletionSteps(client, { tenantRef }) {
 
 /**
  * Open follow-up work for a page: the totals from countOpenCompletionWork plus the
- * newest `limit` restores as cards. `cards.length` can be smaller than `restores`;
+ * newest `limit` restores as cards (500 unless asked). `cards.length` can be smaller than `restores`;
  * the page then says how many it shows.
  */
-export async function readOpenCompletionWork(client, { tenantRef, limit = 50 }) {
+export async function readOpenCompletionWork(client, { tenantRef, limit = OPEN_COMPLETION_CARD_LIMIT }) {
   const totals = await countOpenCompletionWork(client, { tenantRef });
   const cards = totals.restores ? await listOpenCompletionWork(client, { tenantRef, limit }) : [];
   return { ...totals, cards };

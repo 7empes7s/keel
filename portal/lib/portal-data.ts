@@ -18,6 +18,7 @@ import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
+import { resolveDryRuns } from "../../engine/govern/references.mjs";
 import { alertStateCounts } from "../../engine/notify/alerts.mjs";
 import {
   getActiveBaseline,
@@ -60,7 +61,7 @@ import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
 import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { countOpenServiceChanges } from "@/lib/service-changes";
-import { personLabel } from "@/lib/sentences";
+import { personLabel, type PlanRef } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
@@ -1583,7 +1584,12 @@ export async function notifyRoutesFor(client: KeelClient): Promise<NotifyRoutes>
 // plus the newest restores as cards, each with the job page its steps are closed on.
 export async function getRestoreFollowUps(): Promise<OpenFollowUpWork> {
   const ref = tenantRef();
-  return withClient(async (client) => (await readOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpWork);
+  return withClient(async (client) => {
+    const work = (await readOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpWork;
+    // Each card is named by its restore's plan: what it put back and from which backup.
+    const plans = await resolveDryRuns(client, { tenantRef: ref, ids: work.cards.map((card) => card.restoreRef) }) as Map<string, PlanRef>;
+    return { ...work, cards: work.cards.map((card) => ({ ...card, plan: plans.get(card.restoreRef) ?? null })) };
+  });
 }
 
 export async function getDashboardData(): Promise<DashboardData> {

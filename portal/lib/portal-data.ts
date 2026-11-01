@@ -640,17 +640,16 @@ export function fillDriftTrend(
   });
 }
 
-// How long after the first comparison against a new approved setup its results still
-// count as that first check, and how soon after the approval that check must run.
-const FIRST_CHECK_WINDOW = "15 minutes";
-const FIRST_CHECK_WITHIN = "2 days";
-
 /**
- * Changes found per day against the active approved setup, each counted once, on the day
- * it was first found. The first check after a new setup is approved lists everything that
- * already differed at once (981 on one day in the 31 Oct audit), which read like an
- * attack; those are returned apart as firstCheck so the chart can mark them instead of
- * drawing them as a spike (UI audit E2).
+ * Changes found per day against the active approved setup. Each difference (a setting
+ * and the value it changed to) counts once, on the day it was first found, so a run that
+ * re-records a difference still there does not count it again, while a new change to the
+ * same setting does. The first comparison after the setup was approved lists everything
+ * that already differed at once (981 on one day in the 31 Oct audit), which read like an
+ * attack: the differences first found in that comparison's backup are returned apart as
+ * firstCheck, so the chart can mark them instead of drawing a spike (UI audit E2). That
+ * backup is the tenant's first one to finish after the approval; if it found nothing,
+ * there is no firstCheck and every later change counts as new.
  */
 export async function driftTrendFor(
   client: KeelClient,
@@ -661,21 +660,24 @@ export async function driftTrendFor(
   if (!activeBaselineId) return fillDriftTrend([], end);
   const { rows } = await client.query(
     `WITH found AS (
-       SELECT d.natural_key, min(d.detected_at) AS at
+       SELECT DISTINCT ON (d.natural_key, d.change_type, d.after_hash) d.detected_at AS at, d.observed_snapshot
          FROM drift d
         WHERE d.tenant_ref = $1
           AND d.baseline_id = $2
           AND ${RECORDED_CHANGE_PREDICATE}
-        GROUP BY d.natural_key
+        ORDER BY d.natural_key, d.change_type, d.after_hash, d.detected_at, d.id
      ), first_check AS (
-       SELECT min(f.at) AS at
-         FROM found f
+       SELECT s.id
+         FROM snapshot s
          JOIN baseline b ON b.id = $2
-        HAVING min(f.at) <= max(b.set_at) + interval '${FIRST_CHECK_WITHIN}'
+        WHERE s.tenant_ref = $1
+          AND s.completed_at >= b.set_at
+        ORDER BY s.completed_at, s.id
+        LIMIT 1
      )
      SELECT to_char(date_trunc('day', f.at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-            count(*) FILTER (WHERE fc.at IS NULL OR f.at > fc.at + interval '${FIRST_CHECK_WINDOW}')::int AS count,
-            count(*) FILTER (WHERE fc.at IS NOT NULL AND f.at <= fc.at + interval '${FIRST_CHECK_WINDOW}')::int AS first_check
+            count(*) FILTER (WHERE fc.id IS NULL OR f.observed_snapshot <> fc.id)::int AS count,
+            count(*) FILTER (WHERE f.observed_snapshot = fc.id)::int AS first_check
        FROM found f
        LEFT JOIN first_check fc ON true
       WHERE f.at >= $3

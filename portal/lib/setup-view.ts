@@ -397,24 +397,29 @@ export function runSentence(run: SetupRun, when: string): string {
 
 export type PermissionStatus = "missing" | "optional" | "not-checked" | "granted" | "unused";
 
-// Most urgent first: what blocks a backup or restore, then what would add a feature.
-export const PERMISSION_STATUS_ORDER: readonly PermissionStatus[] = ["missing", "optional", "not-checked", "granted", "unused"];
+// Most urgent first: what blocks a backup or restore, then extra access an admin should
+// remove, then what would add a feature.
+export const PERMISSION_STATUS_ORDER: readonly PermissionStatus[] = ["missing", "unused", "optional", "not-checked", "granted"];
 
 export const PERMISSION_STATUS_LABELS: Record<PermissionStatus, string> = {
   missing: "Missing",
   optional: "Optional",
   "not-checked": "Not checked",
   granted: "Granted",
-  unused: "Not used by Keel",
+  unused: "Extra access",
 };
 
-export const PERMISSION_STATUS_TONES: Record<PermissionStatus, "urgent" | "low" | "neutral" | "fine"> = {
+export const PERMISSION_STATUS_TONES: Record<PermissionStatus, "urgent" | "soon" | "low" | "neutral" | "fine"> = {
   missing: "urgent",
   optional: "low",
   "not-checked": "neutral",
   granted: "fine",
-  unused: "neutral",
+  // Excess privilege: nothing breaks, but it widens what a leaked app sign-in could do.
+  unused: "soon",
 };
+
+/** Why a permission Keel never uses matters, in plain words (Setup's table and alerts). */
+export const UNUSED_WHY = "Keel gains nothing from it, but anyone who got hold of the app's sign-in could use it.";
 
 export const APP_NAMES: Record<string, string> = {
   collector: "Backup reader app",
@@ -523,9 +528,9 @@ export function permissionRows(state: SetupState): PermissionRow[] {
         id: `${identity}:${isRole ? "admin-role" : "application"}:${id}`, identity, type: isRole ? "admin-role" : "application", api, apiLabel: catalog.apis[api] ?? "Another Microsoft API", name,
         words: isRole ? name : wordsByName.get(name) ?? PERMISSION_WORDS[name] ?? name,
         usedFor: isRole
-          ? "Nothing in Keel needs this role. The app holds it anyway; you can remove it in Entra ID."
-          : "Nothing in Keel uses this. The app holds it anyway; you can remove it in Entra ID.",
-        service: "unused", serviceLabel: "Not used by Keel", serviceOrder: catalog.services.length,
+          ? `Nothing in Keel needs this role. ${UNUSED_WHY} Remove the role from the app in Entra ID.`
+          : `Nothing in Keel uses this. ${UNUSED_WHY} Remove it from the app in Entra ID.`,
+        service: "unused", serviceLabel: "Extra access Keel never uses", serviceOrder: catalog.services.length,
         kind: "", kindOrder: 0, status: "unused", templateId: null, requested: requested && !isRole ? requested.has(id) : null,
       });
     }
@@ -592,6 +597,11 @@ export function missingWords(missing: PermissionRow[]): string {
   const roles = missing.filter((row) => row.type === "admin-role").length;
   const permissions = missing.length - roles;
   return [permissions ? counted(permissions, "permission", "permissions") : "", roles ? counted(roles, "admin role", "admin roles") : ""].filter(Boolean).join(" and ");
+}
+
+/** "The backup reader app holds 3 permissions Keel never uses.", for Setup's amber alert. */
+export function unusedSentence(identity: string, unused: PermissionRow[]): string {
+  return `The ${appNameInSentence(identity)} holds ${missingWords(unused)} Keel never uses. Remove ${unused.length === 1 ? "it" : "them"}.`;
 }
 
 /** "2 permissions are missing", in plain words for the page and its alerts. */

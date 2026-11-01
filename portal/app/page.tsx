@@ -5,6 +5,7 @@ import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
+import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { getDashboardData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { DashboardData } from "@/lib/types";
@@ -34,7 +35,7 @@ export default async function Home() {
   const approverScope = approvalInboxScope(requestHeaders);
   if (approverScope) {
     try {
-      pendingApprovals = await getPendingApprovalCount(approverScope);
+      pendingApprovals = await getPendingApprovalCount(approverScope, requestHeaders.get(PRINCIPAL_ID_HEADER));
     } catch {
       pendingApprovals = null;
     }

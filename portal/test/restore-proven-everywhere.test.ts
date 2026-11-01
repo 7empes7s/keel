@@ -52,7 +52,7 @@ function dashboard(headline: ProtectionHeadline): DashboardData {
   return {
     generatedAt: NOW, activeBaseline: null, lastCollection: null, lastCompletedCollectionAt: null,
     openDriftByBlastRadius: [], openDriftTotal: 0, driftTrend: [],
-    coverage: { covered: 0, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 0 },
+    coverage: { covered: 0, failed: 0, partial: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 0 },
     evidence: { ok: true, chainLength: 0 }, alerts: [], headline,
   } as DashboardData;
 }

@@ -9,7 +9,7 @@ export const MENU_EVENT = "keel-menu-change";
 
 export const PERSONAL_GROUPS = ["pinned", "favourites"] as const;
 export type PersonalGroup = (typeof PERSONAL_GROUPS)[number];
-export type MenuGroup = PersonalGroup | "everything";
+export type MenuGroup = PersonalGroup | "everything" | "inbox";
 
 export interface MenuItem {
   href: string;
@@ -80,7 +80,7 @@ export function parseMenuPrefs(raw: string | null | undefined): MenuPrefs {
     pinned: items(record.pinned, LIMITS.pinned),
     // Older cookies had a Custom group for saved views; those now live in Favourites.
     favourites: items([...(Array.isArray(record.favourites) ? record.favourites : []), ...(Array.isArray(record.custom) ? record.custom : [])], LIMITS.favourites),
-    closed: strings(record.closed, (entry) => entry === "everything" || (PERSONAL_GROUPS as readonly string[]).includes(entry)) as MenuGroup[],
+    closed: strings(record.closed, (entry) => entry === "everything" || entry === "inbox" || (PERSONAL_GROUPS as readonly string[]).includes(entry)) as MenuGroup[],
     hidden: record.hidden === true,
   };
 }

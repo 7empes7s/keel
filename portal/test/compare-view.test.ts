@@ -7,7 +7,7 @@ import { MAX_ITEMS, compareSettings } from "../../engine/govern/compare.mjs";
 import { CompareView } from "@/components/compare-view";
 import { NAV_MAP, visibleNavLinks } from "@/components/nav-links";
 import {
-  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, groupKind, labelTenants, notComparedReasons, settingsByKind,
+  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, groupKind, kindCountsWords, labelTenants, notComparedCounts, notComparedReasons, settingsByKind, workloadNotComparedSentence, workloadStatus,
   type CompareData, type CompareResult, type SettingsSection,
 } from "@/lib/compare-view";
 
@@ -181,4 +181,66 @@ test("endpoint security policies past the list limit are counted under Defender,
   // An older result without per-family counts still counts what it lists.
   const old = settingsByKind([{ ...section.groups[0], families: undefined }]);
   assert.deepEqual(old.map(groupKind), ["configurationPolicy"]);
+});
+
+test("parts never read say Not compared, with one count everywhere", () => {
+  const settings = compareSettings(
+    { rows: [], coverage: { conditionalAccessPolicy: { outcome: "complete" }, namedLocation: { outcome: "failed" }, group: { outcome: "complete" } } },
+    { rows: [], coverage: { conditionalAccessPolicy: { outcome: "complete" }, namedLocation: { outcome: "complete" }, group: { outcome: "partial" } } },
+  ) as SettingsSection;
+  assert.equal(settings.notCompared.length, 2);
+  const at = "2026-10-01T00:00:00.000Z";
+  const base = result(settings);
+  const withWorkloads: CompareResult = {
+    ...base,
+    workloads: {
+      totals: { added: 0, removed: 0, changed: 0, unchanged: 3, notCompared: 1 },
+      groups: [
+        // Never backed up on the second side: no differences would be a false claim.
+        { service: "Teams", workload: "teams-org-policies", state: "not-compared", reason: "not-collected", left: { collectionId: ID(7), outcome: "complete", at }, right: null },
+        // Both sides read only in part, so no resource could be checked.
+        { service: "Exchange Online", workload: "exchange-mail-flow", state: "compared", left: { collectionId: ID(8), outcome: "partial", at }, right: { collectionId: ID(9), outcome: "partial", at },
+          added: 0, removed: 0, changed: 0, unchanged: 0, unverified: 4, unverifiedFields: 0, unmatched: 0, total: 0, items: [] },
+        { service: "Exchange Online", workload: "exchange-mailbox-settings", state: "compared", left: { collectionId: ID(10), outcome: "complete", at }, right: { collectionId: ID(11), outcome: "complete", at },
+          added: 0, removed: 0, changed: 0, unchanged: 3, unverified: 0, unverifiedFields: 0, unmatched: 0, total: 0, items: [] },
+      ],
+    },
+  };
+  assert.equal(workloadStatus(withWorkloads.workloads!.groups[0]), "not-compared");
+  assert.equal(workloadStatus(withWorkloads.workloads!.groups[1]), "not-compared");
+  assert.equal(workloadStatus(withWorkloads.workloads!.groups[2]), "compared");
+  assert.deepEqual(notComparedCounts(withWorkloads), { settings: 2, workloads: 2, total: 4 });
+  assert.equal(kindCountsWords(withWorkloads.workloads!.groups.slice(0, 1)), "not compared");
+  assert.equal(kindCountsWords(withWorkloads.workloads!.groups.slice(1)), "no differences, 1 not compared");
+
+  const data: CompareData = { generatedAt: at, tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: withWorkloads, problem: null };
+  assert.equal(compareVerdict(data).text, "Nothing differs in what both sides read; 4 kinds were not compared in full.");
+  const html = renderToStaticMarkup(createElement(CompareView, { data }));
+  // The summary tile carries the same count as the verdict, split by section.
+  assert.match(html, /data-tile="not-compared"[^]*?<b class="bl-tile-count">4<\/b><small>kinds \(2 settings, 2 app settings\)<\/small>/);
+  assert.match(html, /2 kinds not compared, listed below/);
+  assert.match(html, /2 kinds not compared in full, marked below/);
+  // A Teams workload never backed up reads Not compared, never "no differences".
+  const teams = html.slice(html.indexOf(">Teams<"));
+  assert.match(teams.slice(0, 1200), /1 kind · not compared/);
+  assert.match(html, /data-status="not-compared"[^]*?Not compared[^]*?Never backed up for the second side/);
+  assert.match(html, /Each side read only part of it, so nothing could be checked/);
+});
+
+test("a workload not compared says which side, or that its items could not be matched", () => {
+  const at = "2026-10-30T10:00:00.000Z";
+  const base = { service: "SharePoint", workload: "sharepoint-sites", state: "compared" as const, added: 0, removed: 0, changed: 0, unchanged: 0, unverifiedFields: 0, total: 0, items: [] };
+  const full = { collectionId: ID(1), outcome: "complete", at };
+  const part = { collectionId: ID(2), outcome: "partial", at };
+  // Tenant to tenant: both read in full, but no item exists on both sides.
+  const unmatched = { ...base, left: full, right: full, unverified: 0, unmatched: 3 };
+  assert.equal(workloadStatus(unmatched), "not-compared");
+  assert.match(workloadNotComparedSentence(unmatched), /could be matched between the two sides/);
+  // Only the second side read in part.
+  const secondPart = { ...base, left: full, right: part, unverified: 1, unmatched: 0 };
+  assert.equal(workloadNotComparedSentence(secondPart), "The second side read only part of it, so nothing could be checked.");
+  // Both read in part and nothing came back: not compared, never "no differences".
+  const emptyPart = { ...base, left: part, right: part, unverified: 0, unmatched: 0 };
+  assert.equal(workloadStatus(emptyPart), "not-compared");
+  assert.equal(kindCountsWords([emptyPart]), "not compared");
 });

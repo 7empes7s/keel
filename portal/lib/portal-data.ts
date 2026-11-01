@@ -1413,6 +1413,17 @@ export function buildAlerts({
     });
   }
 
+  // Partly done is its own amber row, never inside "failed" (decision 31 Oct 2026).
+  if (coverage.partial > 0) {
+    alerts.push({
+      key: "partial",
+      severity: "warning",
+      title: `${kinds(coverage.partial, "kind of setting was", "kinds of settings were")} only partly backed up`,
+      detail: "Keel read part of each one, so some items are missing from the backup. Open each one to see what was missed.",
+      href: "/protect?health=partial",
+    });
+  }
+
   // The same buckets as the ring and What's protected: out of date and never backed up
   // share the "out-of-date" list there, so they share one row here.
   const late = coverage.stale + coverage.neverCollected;

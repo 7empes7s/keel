@@ -208,11 +208,12 @@ export function TypeDetails({ item, now, name }: { item: CoverageType; now: stri
   const needsGrant = item.diagnosis && /grant|permission|consent|scope|role/i.test(`${item.diagnosis.diagnosis} ${item.diagnosis.reason ?? ""}`);
   // Why the last backup failed comes first, with each permission or role it needs.
   const failure = failureReason(item);
+  const whyTitle = item.outcome === "partial" ? "Why the last backup was partly done" : "Why the last backup failed";
   return (
     <div className="pt-details">
       {failure ? (
-        <section aria-label="Why the last backup failed" className="pt-details-why" data-tone={failure.tone} role={failure.tone === "urgent" ? "alert" : undefined}>
-          <h3>Why the last backup failed</h3>
+        <section aria-label={whyTitle} className="pt-details-why" data-tone={failure.tone} role={failure.tone === "urgent" ? "alert" : undefined}>
+          <h3>{whyTitle}</h3>
           <p>{failure.text}</p>
           {failure.needs.length ? (
             <ul>

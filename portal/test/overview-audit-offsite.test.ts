@@ -11,7 +11,7 @@ function data(evidence: DashboardData["evidence"], offsite?: DashboardData["offs
   return {
     activeBaseline: { resourceCount: 3 } as DashboardData["activeBaseline"],
     lastCollection: { completedAt: "2026-10-31T10:00:00Z", status: "complete" },
-    coverage: { covered, failed: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: covered },
+    coverage: { covered, failed: 0, partial: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: covered },
     evidence,
     offsite,
     backupStorage,

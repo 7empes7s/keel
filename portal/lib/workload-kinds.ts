@@ -70,7 +70,7 @@ export function workloadKinds(workloads: unknown, restorable: ReadonlySet<string
 }
 
 const HEADLINE_STATUS: Record<BackupHealth, HeadlineEntry["status"]> = {
-  ok: "covered", empty: "covered", stale: "covered", failed: "failed", never: "never-collected",
+  ok: "covered", empty: "covered", stale: "covered", failed: "failed", partial: "partial", never: "never-collected",
   "not-collected": "not-covered", unavailable: "not-covered",
 };
 
@@ -78,7 +78,7 @@ const HEADLINE_STATUS: Record<BackupHealth, HeadlineEntry["status"]> = {
  * Every kind (the report's types and workloads, as on What's protected) in the shape the
  * engine's protection headline reads, its status taken from backupHealth so the Overview
  * sentence counts exactly what the coverage buckets count (lib/protect-view.ts
- * coverageBuckets): a partly done read is failed, and a kind not switched on or not on
+ * coverageBuckets): a partly done read is its own "partial", never failed, and a kind not switched on or not on
  * this tenant is left out. Restore evidence (fidelity, writers) comes from the raw entry.
  */
 export function headlineEntries(rawTypes: readonly unknown[], kinds: readonly CoverageType[]): HeadlineEntry[] {
@@ -96,7 +96,7 @@ export function headlineEntries(rawTypes: readonly unknown[], kinds: readonly Co
 
 export interface HeadlineEntry {
   type: string;
-  status: "covered" | "failed" | "never-collected" | "not-covered";
+  status: "covered" | "failed" | "partial" | "never-collected" | "not-covered";
   outcome: CoverageType["outcome"];
   stale: boolean;
   lastCollectedAt?: unknown;

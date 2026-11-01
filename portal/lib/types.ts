@@ -187,6 +187,8 @@ export interface CoverageType {
 export interface CoverageSummary {
   covered: number;
   failed: number;
+  // Only part of the kind was read: its own amber count, never inside failed.
+  partial: number;
   stale: number;
   neverCollected: number;
   notCovered: number;
@@ -676,7 +678,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "partial" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable";
   href?: string;
 }
 
@@ -771,7 +773,7 @@ export interface ProtectionHeadline {
   headline: string;
   sentence: string;
   action: { label: string; href: string } | null;
-  counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  counts: { backedUp: number; restorable: number; failing: number; failed: number; partial: number; stale: number; neverCollected: number };
   // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
   proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;

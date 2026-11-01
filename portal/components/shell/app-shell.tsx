@@ -112,9 +112,10 @@ function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: numb
     try {
       const response = await fetch("/api/approvals", { cache: "no-store" });
       if (!response.ok) return;
-      const data = await response.json() as { pending?: unknown[]; awaitingContentEffects?: unknown[] };
-      if (!Array.isArray(data.pending)) return;
-      const count = data.pending.length + (Array.isArray(data.awaitingContentEffects) ? data.awaitingContentEffects.length : 0);
+      const data = await response.json() as { waitingForYou?: unknown };
+      // Only what this person can decide, as the page's "Waiting for you" counts it.
+      if (typeof data.waitingForYou !== "number") return;
+      const count = data.waitingForYou;
       setApprovals((current) => ({ ...current, count }));
     } catch {
       // Keep the last count.

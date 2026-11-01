@@ -38,9 +38,11 @@ interface Row {
   service: { code: string; name: string; icon: string };
   kind: string;
   fields: string;
+  // Who made it, in words, when the question asked; "" otherwise.
+  who: string;
 }
 
-type ColumnKey = "what" | "kind" | "service" | "state" | "fields" | "when" | "source";
+type ColumnKey = "what" | "kind" | "service" | "state" | "fields" | "who" | "when" | "source";
 
 interface Column { key: ColumnKey; label: string; sort?: string; optional: boolean }
 
@@ -52,6 +54,8 @@ const COLUMNS: readonly Column[] = [
   { key: "service", label: "Service", sort: "service", optional: true },
   { key: "state", label: "State", sort: "risk", optional: true },
   { key: "fields", label: "Settings changed", sort: "fields", optional: true },
+  // Shown, and not optional, when the question asked who made each change.
+  { key: "who", label: "Who made it", sort: "who", optional: false },
   { key: "when", label: "When", sort: "when", optional: true },
   { key: "source", label: "Where it comes from", optional: true },
 ];
@@ -87,10 +91,13 @@ const SORTS: readonly ListSort<Row>[] = [
   { key: "kind", label: "Kind", compare: (a, b) => byText(a.kind, b.kind) },
   { key: "service", label: "Service", compare: (a, b) => byText(a.service.name, b.service.name) },
   { key: "fields", label: "Settings changed", compare: (a, b) => byText(a.fields || "\uffff", b.fields || "\uffff") },
+  { key: "who", label: "Who made it", compare: (a, b) => byText(a.who || "\uffff", b.who || "\uffff") },
 ];
 
+const WHO_TONES: Record<string, "fine" | "soon" | "neutral"> = { exact: "fine", plausible: "soon", unknown: "neutral" };
+
 /** The columns this reader chose last time, kept in this browser only. */
-function useColumns(hasFields: boolean): [ColumnKey[], (next: ColumnKey[]) => void] {
+function useColumns(hasFields: boolean, hasWho: boolean): [ColumnKey[], (next: ColumnKey[]) => void] {
   const fallback = DEFAULT_COLUMNS.filter((key) => hasFields || key !== "fields");
   const [chosen, setChosen] = useState<ColumnKey[] | null>(null);
   useEffect(() => {
@@ -104,8 +111,8 @@ function useColumns(hasFields: boolean): [ColumnKey[], (next: ColumnKey[]) => vo
     setChosen(keys);
     try { window.localStorage.setItem(COLUMNS_KEY, JSON.stringify(keys)); } catch { /* storage off */ }
   };
-  const keys = (chosen ?? fallback).filter((key) => key !== "what");
-  return [["what", ...keys], save];
+  const keys = (chosen ?? fallback).filter((key) => key !== "what" && key !== "who");
+  return [["what", ...keys, ...(hasWho ? ["who" as const] : [])], save];
 }
 const SUGGESTED = (a: Row, b: Row) => byTime(b.time, a.time) || byText(a.title, b.title);
 
@@ -113,6 +120,7 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
   const rows = useMemo<Row[]>(() => records.map((record) => ({
     record, title: recordTitle(record), badges: recordBadges(record), tone: recordTone(record),
     time: recordTime(record), service: recordService(record), kind: recordKind(record), fields: recordFields(record),
+    who: record.kind === "change" && record.who ? record.who.text : "",
   })), [records]);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState("");
@@ -120,7 +128,8 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const paging = useListPaging<Row>({ prefix: "rec-", sorts: SORTS });
   const hasFields = rows.some((row) => row.fields);
-  const [columns, setColumns] = useColumns(hasFields);
+  const hasWho = records.some((record) => record.kind === "change" && record.who !== undefined);
+  const [columns, setColumns] = useColumns(hasFields, hasWho);
   const shownColumns = COLUMNS.filter((column) => columns.includes(column.key));
 
   // Filter tiles: one per badge label, counted over every row. Tiles of the same column
@@ -141,7 +150,7 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
     return rows.filter((row) => badgeColumns.every((column) => {
       const picked = tiles.filter((tile) => tile.column === column && chosen.has(tile.label));
       return !picked.length || picked.some((tile) => row.badges[column]?.label === tile.label);
-    }) && (!needle || `${row.title} ${row.kind} ${row.service.name} ${row.fields}`.toLowerCase().includes(needle)));
+    }) && (!needle || `${row.title} ${row.kind} ${row.service.name} ${row.fields} ${row.who}`.toLowerCase().includes(needle)));
   }, [rows, badgeColumns, tiles, chosen, query]);
 
   // Groups in order, each with its rows sorted: by the header or Order by chosen, else newest first.
@@ -199,6 +208,16 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
         </td>
       );
       case "fields": return <td data-label="Settings changed" key={key}>{row.fields ? <span className="ak-fields">{row.fields}</span> : <span className="ak-none">{record.kind === "change" && record.changeType !== "modified" ? "The whole item" : "Not recorded"}</span>}</td>;
+      case "who": {
+        if (record.kind !== "change" || record.who === undefined) return <td data-label="Who made it" key={key}><span className="ak-none">Not looked up</span></td>;
+        if (record.who === null) return <td data-label="Who made it" key={key}><Badge tone="soon">Not read</Badge><small>Keel could not read the audit log just now.</small></td>;
+        return (
+          <td data-label="Who made it" key={key}>
+            <span className="ak-who"><Badge tone={WHO_TONES[record.who.verdict] ?? "neutral"}>{record.who.label}</Badge>{record.who.verdict !== "unknown" ? <span>{record.who.text}</span> : null}</span>
+            {record.who.verdict === "unknown" ? <small title={record.who.detail ?? undefined}>{record.who.text}</small> : null}
+          </td>
+        );
+      }
       case "when": return <td data-label="When" key={key}><span className="ask-record-window">{windowSentence(record)}</span></td>;
       case "source": return <td data-label="Source" key={key}><Link href={record.source.href}>{sourceLabel(record)}</Link></td>;
       default: return null;
@@ -217,7 +236,7 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
       </div>
       <div className="ak-controls">
         <label className="filter-field ak-search"><span>Find</span>
-          <input onChange={(event) => { setQuery(event.target.value); restart(); }} placeholder="Name, kind, service or setting" type="search" value={query} />
+          <input onChange={(event) => { setQuery(event.target.value); restart(); }} placeholder={hasWho ? "Name, kind, setting or person" : "Name, kind, service or setting"} type="search" value={query} />
         </label>
         <OptionPicker label="Group by" onChange={(next) => { setGroup(next); setClosed(new Set()); restart(); }} options={GROUPS.map((option) => ({ value: option.key, label: option.label }))} value={group} />
         <SortControl paging={paging} sorts={SORTS} />

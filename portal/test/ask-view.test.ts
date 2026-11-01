@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { answerSummary, askAlerts, askInputFrom, recordFields, understoodFilters, type GroundedAnswer } from "@/lib/ask-view";
+import { answerSummary, askAlerts, askFormDefaults, askInputFrom, recordFields, understoodFilters, type GroundedAnswer } from "@/lib/ask-view";
 
 const BASE: GroundedAnswer = {
   version: 1, status: "answered", intent: "changes", understood: null, scope: { central: true, entities: [] },
@@ -31,7 +31,7 @@ test("each understood filter but the topic and period can be removed, keeping th
 });
 
 test("how an ambiguous word was read is shown before the answer", () => {
-  const assumed = ["Read “MFA” as sign-in method settings.", "KEEL compares backups, so it shows what changed and when, but not who made the change."];
+  const assumed = ["Read “MFA” as sign-in method settings.", "Ask does not answer about licences yet: the Licences page has them."];
   const alerts = askAlerts({ ...BASE, assumed: ["period", ...assumed] });
   const reading = alerts.find((alert) => alert.key === "assumed-reading")!;
   assert.equal(reading.tone, "low");
@@ -54,4 +54,34 @@ test("the settings a change touched read as words, not as Microsoft's field name
   assert.equal(recordFields({ ...record, fields: ["accountEnabled", "scheduleInfo.expiration.endDateTime"] } as never), "Account enabled, Schedule info › expiration › end date time");
   assert.equal(recordFields({ ...record, fields: ["department"], moreFields: true } as never), "Department and more");
   assert.equal(recordFields({ ...record, fields: [] } as never), "");
+});
+
+// Backlog D19: the "Or choose" pickers start from the question just answered, and send
+// it back unchanged when nothing is changed.
+test("the form's pickers follow the question, and send it back as the same request", () => {
+  const chosen = askFormDefaults({ ...BASE, asksWho: true });
+  assert.deepEqual(
+    [chosen.intent, chosen.entity, chosen.type, chosen.change, chosen.name, chosen.who],
+    ["changes", "SALES", "teams-org-policies,teams-voice-policies", "modified", "Meeting", true],
+  );
+  // Dates that are not a named period get their own choice; several kinds get one too.
+  assert.equal(chosen.period, "2026-10-19T00:00:00.000Z/2026-10-22T11:00:00.000Z");
+  assert.ok(chosen.datesOption && /19 Oct 2026/.test(chosen.datesOption.label));
+  assert.equal(chosen.typeOption?.value, chosen.type);
+  const sent = askInputFrom({
+    intent: chosen.intent, period: chosen.period, entity: chosen.entity, type: chosen.type, change: chosen.change, name: chosen.name, who: "1",
+  });
+  assert.deepEqual(sent, {
+    intent: "changes", entity: "SALES", period: undefined, from: "2026-10-19T00:00:00.000Z", to: "2026-10-22T11:00:00.000Z",
+    resourceType: undefined, resourceTypes: ["teams-org-policies", "teams-voice-policies"], name: "Meeting", changeType: "modified", who: true,
+  });
+  // A named period is chosen by name; a kind the picker lists is chosen as it is.
+  const named = askFormDefaults({ ...BASE, period: "last-week", plan: { intent: "changes", params: { ...BASE.plan!.params, resourceTypes: null, resourceType: "group", changeType: null, name: null, entity: null } } }, ["group"]);
+  assert.deepEqual([named.period, named.datesOption, named.type, named.typeOption, named.change, named.entity, named.who], ["last-week", null, "group", null, "", "", false]);
+  // Coverage has no period or change; with no answer the form starts at this week's changes.
+  const coverage = askFormDefaults({ ...BASE, intent: "coverage", plan: { intent: "coverage", params: { ...BASE.plan!.params, from: null, to: null, changeType: null } } });
+  assert.deepEqual([coverage.intent, coverage.period, coverage.change], ["coverage", "this-week", ""]);
+  assert.deepEqual(askFormDefaults(null), { intent: "changes", period: "this-week", datesOption: null, entity: "", type: "", typeOption: null, change: "", name: "", who: false });
+  // The who box only asks about changes.
+  assert.equal(askInputFrom({ intent: "failed-jobs", period: "today", who: "1" })?.who, undefined);
 });

@@ -57,6 +57,7 @@ const PAGES = [
   { name: "ask", hash: "/ask" },
   { name: "ask-unknown", hash: "/ask/unknown" },
   { name: "ask-many", hash: "/ask/many" },
+  { name: "ask-who", hash: "/ask/who" },
   { name: "emergency-changes", hash: "/emergency-changes" },
   { name: "compare", hash: "/compare" },
   { name: "compare-tenants", hash: "/compare/tenants" },
@@ -4271,6 +4272,40 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(page.locator(".ask-answer .ui-alert").first()).toContainText("This is not the same as nothing happening");
   await expect(page.locator('.ask-answer .ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("Not known");
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
+});
+
+// Backlog D19: "Who changed ...?" is answered from the audit log, one badge and name per
+// change, and the "Or choose" pickers start from the question just answered.
+test("ask says who made each change and its pickers follow the question", async ({ page }) => {
+  const shot = process.env.KEEL_SHOT_DIR;
+  for (const [width, theme] of [[1440, "dark"], [390, "light"], [1440, "light"], [390, "dark"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/ask/who", theme);
+    const answer = page.locator(".ask-answer");
+    await expect(answer).not.toContainText("not who made");
+    await expect(answer.locator(".ui-alert", { hasText: "Who made these changes: 1 confirmed, 0 likely, 1 not known" })).toBeVisible();
+    await expect(answer.locator("thead")).toContainText("Who made it");
+    const admins = answer.locator(".ask-record", { hasText: "Sales Admins" });
+    await expect(admins.locator('td[data-label="Who made it"] .badge')).toHaveText("Confirmed");
+    await expect(admins.locator('td[data-label="Who made it"]')).toContainText("Alice Admin, confirmed by the Microsoft Entra audit log.");
+    const readers = answer.locator(".ask-record", { hasText: "Sales Readers" });
+    await expect(readers.locator('td[data-label="Who made it"] .badge')).toHaveText("Not known");
+    // The form starts from the question: this week, Sales, groups, who ticked.
+    const form = page.locator("form", { has: page.getByRole("button", { name: "Answer" }) });
+    await expect(form.locator('select[name="intent"]')).toHaveValue("changes");
+    await expect(form.locator('select[name="period"]')).toHaveValue("this-week");
+    await expect(form.locator('input[name="entity"]')).toHaveValue("SALES");
+    await expect(form.locator('input[name="type"]')).toHaveValue("group");
+    await expect(form.getByRole("checkbox", { name: "Show who made each change" })).toBeChecked();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    if (shot) await page.screenshot({ path: `${shot}/ask-who-${width}-${theme}.png`, fullPage: true });
+  }
+  // A question that asked nothing about who leaves the box clear and adds no column.
+  await open(page, "/ask", "dark");
+  await expect(page.getByRole("checkbox", { name: "Show who made each change" })).not.toBeChecked();
+  await expect(page.locator(".ask-answer thead")).not.toContainText("Who made it");
+  // That answer named dates, not a period: the dates are the first choice, and chosen.
+  await expect(page.locator('form select[name="period"]').last()).toHaveValue(/^2026-09-28T00:00:00.000Z\//);
 });
 
 // Backlog G2: "Is Intune backed up?" counts the kinds Setup counts, with the shared buckets,

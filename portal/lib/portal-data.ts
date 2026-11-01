@@ -1077,7 +1077,12 @@ export async function getChangeAttribution(driftId: string, scope: EntityScope =
     const { rows } = await client.query(
       `SELECT d.* FROM drift d
         WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = $3::uuid
-          AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}`,
+          AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
+          AND NOT EXISTS (
+            SELECT 1 FROM drift n
+             WHERE n.tenant_ref = d.tenant_ref AND n.baseline_id = d.baseline_id AND n.natural_key = d.natural_key
+               AND (n.detected_at > d.detected_at OR (n.detected_at = d.detected_at AND n.id > d.id))
+          )`,
       [ref, String(active.id), driftId, ...visible.values],
     );
     if (!rows[0]) return null;

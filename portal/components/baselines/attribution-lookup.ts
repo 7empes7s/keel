@@ -6,15 +6,24 @@ import type { ChangeAttribution } from "@/lib/types";
 
 // The Changes list reads the audit log for its first 200 changes only. A change further
 // down, or one whose read failed, is looked up on its own when a person opens it.
-export type AttributionLookup = { state: "checking" } | { state: "found"; attribution: ChangeAttribution } | { state: "failed" };
+// "gone": the change is no longer open (someone decided it since the page loaded).
+export type AttributionLookup = { state: "checking" } | { state: "found"; attribution: ChangeAttribution } | { state: "failed" } | { state: "gone" };
 
 export function useAttributionLookup(id: string | null): AttributionLookup | null {
   const [result, setResult] = useState<{ id: string; lookup: AttributionLookup } | null>(null);
   useEffect(() => {
-    if (!id) return;
+    // Closing the change forgets its answer, so opening it again reads afresh.
+    if (!id) {
+      setResult(null);
+      return;
+    }
     let live = true;
     fetch(`/api/drift/attribution?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { accept: "application/json" } })
       .then(async (response) => {
+        if (response.status === 404) {
+          if (live) setResult({ id, lookup: { state: "gone" } });
+          return;
+        }
         const body = response.ok ? ((await response.json()) as { attribution?: ChangeAttribution | null }) : null;
         if (live) setResult({ id, lookup: body?.attribution ? { state: "found", attribution: body.attribution } : { state: "failed" } });
       })

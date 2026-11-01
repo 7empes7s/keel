@@ -486,7 +486,7 @@ export function ChangeList({
             <p>{whyItMatters(opened.resourceType)}</p>
           </section>
           {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={openedFacts?.attribution ?? opened.attribution} evidence={opened.evidence} gap={opened.evidenceGap} now={now} /> : null}
-          {opened.attribution !== undefined || lookup ? <ChangeAttributionPanel attribution={openedFacts?.attribution ?? opened.attribution} checking={lookupState === "checking"} now={now} /> : null}
+          {(opened.attribution !== undefined || lookup) && lookupState !== "gone" ? <ChangeAttributionPanel attribution={openedFacts?.attribution ?? opened.attribution} checking={lookupState === "checking"} now={now} /> : null}
         </DetailsSheet>
       ) : null}
 

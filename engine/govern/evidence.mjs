@@ -299,6 +299,7 @@ export async function explainChainBreaks(client, {
   if (from > through) throw new Error('fromSeq must not be after throughSeq');
   const limit = Math.max(1, Math.trunc(Number(pageSize)) || CHAIN_WALK_PAGE);
 
+  let emit = null;
   await client.query('BEGIN');
   try {
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantRef]);
@@ -396,12 +397,16 @@ export async function explainChainBreaks(client, {
         if (!write) {
           outcome = { ok: true, written: false, ...report, earliestPrevSeq };
         } else {
-          const record = await appendEvidenceInTransaction(client, { tenantRef, kind: CHAIN_BREAK_EXPLAINED, subject, actor });
+          const written = await appendEvidenceInTransaction(client, { tenantRef, kind: CHAIN_BREAK_EXPLAINED, subject, actor });
+          ({ emit } = written);
+          const { record } = written;
           outcome = { ok: true, written: true, explainedBySeq: String(record.seq), ...report, earliestPrevSeq };
         }
       }
     }
     await client.query(outcome.written ? 'COMMIT' : 'ROLLBACK');
+    // The event goes out only after the record is committed, like every other writer.
+    emit?.();
     return outcome;
   } catch (error) {
     await client.query('ROLLBACK');

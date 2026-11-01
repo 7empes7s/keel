@@ -6,6 +6,7 @@ import { GET as loadJob } from "@/app/api/jobs/[id]/route";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobPageBody } from "@/components/job-page-body";
 import { PageHeader } from "@/components/page-header";
+import { pageTrail } from "@/lib/page-trail";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
@@ -15,6 +16,7 @@ const PARENTS = [{ href: "/activity", label: "Activity" }];
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   await requireReadAccess(DATA_SURFACES.jobPage);
+  const trail = await pageTrail("Audit log", PARENTS);
   const { id } = await params;
   let job: JobRecord | null = null;
   try {
@@ -26,14 +28,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       job = (await response.json() as { job: JobRecord }).job;
     }
   } catch {
-    return <><PageHeader parents={PARENTS} section="Audit log" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
+    return <><PageHeader parents={trail.parents} section={trail.section} title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
   }
   if (!job) notFound();
   const now = new Date().toISOString();
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "").split(" ");
   return (
     <>
-      <PageHeader parents={PARENTS} section="Audit log" title="Job" description="What this job did and how it ended." generatedAt={now} />
+      <PageHeader parents={trail.parents} section={trail.section} title="Job" description="What this job did and how it ended." generatedAt={now} />
       <JobPageBody capabilities={capabilities} job={job} now={now} />
     </>
   );

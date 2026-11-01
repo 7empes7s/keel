@@ -68,7 +68,7 @@ const ENDED = finding("e1", ROLE, "fail", {
 });
 const ACCEPTED = finding("e2", LOCATION, "fail", {
   exposed: false, exceptionState: "authorized",
-  exception: { id: "x2", owner: "amara@contoso.example", reason: "Proxy", grantedBy: "p1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z", ownerRef: { kind: "person", id: "p2", name: "Amara Okafor", href: "/principals" } },
+  exception: { id: "x2", owner: "amara@contoso.example", reason: "Proxy", grantedBy: "p1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z", ownerRef: { kind: "person", id: "p2", name: "Amara Okafor", href: "/people" } },
 });
 const STALE = finding("e3", GROUP, "unknown", { reason: "group:stale-observation" });
 const PASS = finding("e4", "keel-custom.conditional-access.block-legacy", "pass");
@@ -126,13 +126,13 @@ test("Compliance words: plain titles, results, reasons, owners and the verdict",
 
 test("Compliance body: a tile sets result=, the filter shows only that result, no email or code in view", async () => {
   const all = await renderComplianceAt("", { data: DATA, canConfigure: true, now: NOW });
-  assert.match(all, /href="\/benchmarks\?result=failing"/);
+  assert.match(all, /href="\/compliance\?result=failing"/);
   for (const name of ["No more than 5 people hold the top admin role", "No trusted location trusts unknown countries", "Groups that grant admin roles are not copied from on-premises", "Old sign-in methods are blocked"]) assert.ok(all.includes(name), name);
-  assert.match(all, /href="\/benchmarks\?open=e7a10000-0000-4000-8000-0000000000e1"/);
+  assert.match(all, /href="\/compliance\?open=e7a10000-0000-4000-8000-0000000000e1"/);
   assert.match(all, /Renew exception/);
   const failing = await renderComplianceAt("result=failing", { data: DATA, canConfigure: true, now: NOW });
   assert.match(failing, /Showing <b>1<\/b> of 4 controls/);
-  assert.match(failing, /href="\/benchmarks\?result=failing%2Cpassing"/, "Passing adds to Failing");
+  assert.match(failing, /href="\/compliance\?result=failing%2Cpassing"/, "Passing adds to Failing");
   const list = failing.slice(failing.indexOf('aria-labelledby="cp-controls-heading"'));
   assert.ok(list.includes("No more than 5 people hold the top admin role"));
   assert.ok(!list.slice(0, list.indexOf("cp-storage")).includes("Old sign-in methods are blocked"));

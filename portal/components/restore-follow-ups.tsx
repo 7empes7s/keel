@@ -1,14 +1,25 @@
 import Link from "next/link";
 
+import { PagedRows } from "@/components/list/paged-rows";
+import { FollowUpSteps } from "@/components/restore/follow-up-steps";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import { ago, formatTimestamp } from "@/lib/presentation";
-import type { OpenFollowUpWork } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { formatTimestamp } from "@/lib/presentation";
+import { followUpHref, followUpName, followUpWhen } from "@/lib/restore-follow-ups-view";
+import type { OpenFollowUpWork, RestoreFollowUp } from "@/lib/types";
 
 // Every restore that still has follow-up steps open (new secrets, consent, a service
 // check), however old, so finishing one never depends on its job still being in the
 // recent list. The steps themselves are closed on the restore's job page. The totals are
-// the shared counts Overview and the menu show; the cards are only the newest restores.
-export function RestoreFollowUps({ work, now }: { work: OpenFollowUpWork; now: string }) {
+// the shared counts Overview and the menu show. UI audit B10 and D13: each card is named
+// by its restore and says when that restore ran, and the list has pages.
+const SORTS = [
+  { key: "when", label: "When", desc: true },
+  { key: "steps", label: "Open steps", desc: true },
+  { key: "name", label: "Name" },
+];
+
+export function RestoreFollowUps({ work, now, canRestore = false }: { work: OpenFollowUpWork; now: string; canRestore?: boolean }) {
   if (work.steps === 0) return null;
   const { steps, restores, cards } = work;
   return (
@@ -25,30 +36,56 @@ export function RestoreFollowUps({ work, now }: { work: OpenFollowUpWork; now: s
       {cards.length < restores ? (
         <p className="follow-up-shown" role="status">Showing the newest {cards.length} of {restores} restores.</p>
       ) : null}
-      <ul className="activity-list">
-        {cards.map((entry) => (
-          <li className="activity-item" key={entry.restoreRef}>
-            <div className="activity-main">
-              {entry.jobId ? (
-                <Link className="activity-title" href={`/jobs/${encodeURIComponent(entry.jobId)}`}>
-                  {entry.pending} follow-up {entry.pending === 1 ? "step" : "steps"} still open
-                </Link>
-              ) : (
-                <span className="activity-title">{entry.pending} follow-up {entry.pending === 1 ? "step" : "steps"} still open</span>
-              )}
-              <p className="activity-meta">
-                From a restore <time dateTime={entry.since} title={formatTimestamp(entry.since)}>{ago(entry.since, now)}</time>
-              </p>
-            </div>
-            <TechnicalDetails>
-              <RecordField label="Restore reference" value={entry.restoreRef} />
-              <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={entry.jobId} />
-              <RecordField copy={false} label="Open steps" value={entry.pending} />
-              <RecordField copy={false} label="Restore finished" value={entry.since} />
-            </TechnicalDetails>
-          </li>
-        ))}
-      </ul>
+      <PagedRows
+        label="Restores with follow-up steps"
+        listClassName="activity-list"
+        noun={{ one: "restore", many: "restores" }}
+        prefix="follow-up-"
+        rows={cards.map((card) => {
+          const name = followUpName(card);
+          const when = followUpWhen(card, now);
+          return {
+            id: card.restoreRef,
+            node: <FollowUpCard canRestore={canRestore} card={card} name={name} now={now} />,
+            text: name,
+            values: { when: when.at, steps: card.pending, name },
+          };
+        })}
+        sorts={SORTS}
+      />
     </section>
+  );
+}
+
+function FollowUpCard({ card, name, now, canRestore }: { card: RestoreFollowUp; name: string; now: string; canRestore: boolean }) {
+  const href = followUpHref(card);
+  const when = followUpWhen(card, now);
+  const open = `${card.pending} follow-up ${card.pending === 1 ? "step" : "steps"} open`;
+  return (
+    <li className="activity-item follow-up-card" data-restore={card.restoreRef}>
+      <div className="activity-main">
+        {href ? (
+          <Link className="activity-title" href={href}>{name}</Link>
+        ) : (
+          <p className="activity-title">{name}</p>
+        )}
+        <p className="activity-meta">
+          <Badge tone="soon">{open}</Badge>{" "}
+          <time dateTime={when.at} title={formatTimestamp(when.at)}>{when.words}</time>
+          {card.enforced && card.jobStatus === "failed" ? " · the restore did not finish, so check what went back" : null}
+        </p>
+      </div>
+      <TechnicalDetails summary={`Technical details: ${name}`}>
+        <RecordField label="Restore reference" value={card.restoreRef} />
+        <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={card.jobId} />
+        <RecordField copy={false} label="Open steps" value={card.pending} />
+        <RecordField copy={false} label="Restore finished" value={card.restoredAt ?? null} />
+        <RecordField copy={false} label="Oldest open step opened" value={card.since} />
+      </TechnicalDetails>
+      {href ? null : (
+        // Run outside the portal: no job page to open, so its steps open here.
+        <FollowUpSteps canComplete={canRestore} restoreRef={card.restoreRef} />
+      )}
+    </li>
   );
 }

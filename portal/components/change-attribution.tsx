@@ -146,15 +146,18 @@ export function routeSentence(route: NonNullable<ChangeAttribution["route"]>): s
   return `A roll back goes to a central approver (${people}), ${because}.`;
 }
 
-export function ChangeAttributionPanel({ attribution, now }: { attribution: ChangeAttribution | null | undefined; now: string }) {
+export function ChangeAttributionPanel({ attribution, now, checking = false }: { attribution: ChangeAttribution | null | undefined; now: string; checking?: boolean }) {
   if (!attribution) {
     return (
       <section className="change-attribution" aria-label="Who made this change">
         <DecisionStyles />
         <h3 className="decision-heading">Who made this change</h3>
-        <p className="change-attribution-headline">
-          <span className="pill pill-warn">Not checked</span>{" "}
-          Keel could not check who made this change. Reload the page; if this stays, the portal log says why.
+        <p className="change-attribution-headline" aria-live="polite">
+          {checking ? (
+            <><span className="pill pill-info">Checking</span>{" "}Keel is reading the audit log for this change now.</>
+          ) : (
+            <><span className="pill pill-warn">Not checked</span>{" "}Keel could not read the audit log for this change. Close and open it to try again; if this stays, the portal log says why.</>
+          )}
         </p>
       </section>
     );

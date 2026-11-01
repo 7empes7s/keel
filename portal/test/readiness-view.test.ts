@@ -215,7 +215,7 @@ test("the page names accounts, keeps ids in Technical details, and shows changes
   assert.match(html, />Acknowledge</);
   assert.match(html, /href="\/alerts\?open=a1e70000-0000-4000-8000-000000000094"[^>]*>Review the sign-in</);
   assert.equal(html.match(/btn-primary/g)?.length, 1, "one amber action");
-  assert.match(html, /href="\/drift\?q=Require%20MFA"/);
+  assert.match(html, /href="\/changes\?q=Require%20MFA"/);
   assert.doesNotMatch(visible, /Only people who manage configuration/);
 
   const viewer = await renderReadinessAt("", { data: page, canConfigure: false, canRespond: false });

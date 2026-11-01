@@ -28,7 +28,7 @@ import { recordValues } from "./record-fields";
 // ------------------------------------------------------------------ rendering
 
 const NOW = "2026-10-02T09:40:00Z";
-const person = (id: string, name: string) => ({ kind: "person", id, name, href: "/principals" });
+const person = (id: string, name: string) => ({ kind: "person", id, name, href: "/people" });
 const inv = person("3f9c2b1e-0000-4000-8000-0000000000aa", "Ines Investigator");
 const snap = (id: string, name: string) => ({ kind: "snapshot", id, name, href: `/restore?snapshot=${id}` });
 const NEW_ID = "bbbbbbbb-0000-4000-8000-000000000002";

@@ -317,7 +317,7 @@ for (const theme of ["dark", "light"] as const) {
     { name: "bell", viewport: desktop, hash: "/", step: async (page: Page) => { await page.locator(".rail .bell").click(); } },
     { name: "cloud", viewport: desktop, hash: "/", step: async (page: Page) => { await page.locator(".cloud-switcher").click(); } },
     { name: "date-picker", viewport: desktop, hash: "/kit", step: async (page: Page) => { await page.getByRole("button", { name: /^Changed:/ }).click(); } },
-    { name: "menu-sheet", viewport: phone, hash: "/drift", step: async (page: Page) => { await page.locator(".tabbar button.tab").click(); } },
+    { name: "menu-sheet", viewport: phone, hash: "/changes", step: async (page: Page) => { await page.locator(".tabbar button.tab").click(); } },
   ]) {
     test(`a11y · frame ${name} · ${theme}`, async ({ page }) => {
       await page.setViewportSize(viewport);
@@ -350,7 +350,7 @@ test("visual · kit · desktop", async ({ page }) => {
 
 test("buttons are outlined, with amber for the main action and red only inside a confirm step", async ({ page }) => {
   await page.setViewportSize(desktop);
-  for (const path of ["/principals", "/notifications", "/integrations", "/setup", "/kit"]) {
+  for (const path of ["/people", "/notifications", "/integrations", "/setup", "/kit"]) {
     await open(page, path);
     expect(await page.locator(".btn-danger").evaluateAll((buttons) => buttons.filter((button) => !button.closest("dialog")).length), path).toBe(0);
   }
@@ -459,17 +459,43 @@ test("breadcrumbs: every page says where it sits, and a detail page links back u
     await crumbs.getByRole("link", { name: "Sites" }).click();
     await expect(page.locator("main h1")).toHaveText("Sites");
   }
-  // A crumb that repeats the one before it is dropped: Restore's own page shows no line.
+  // No page shares its section's name, so Restore's own page has its line too.
   await open(page, "/restore");
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator("li")).toHaveText(["Restore", "Restore settings"]);
   for (const { hash, trail } of [
     { hash: "/jobs/a4", trail: ["Audit log", "Activity", "Job"] },
-    { hash: "/baselines/new", trail: ["Baselines", "Approved setups", "New approved setup"] },
+    { hash: "/approved-setups/new", trail: ["Baselines", "Approved setups", "New approved setup"] },
     { hash: "/approvals/content-effects", trail: ["Inbox", "Approvals", "Changes to kept or shared content"] },
   ]) {
     await open(page, hash);
     await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator("li")).toHaveText(trail);
   }
+});
+
+test("the browser tab, the heading and the menu name a page the same way", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  for (const { hash, menu } of [
+    { hash: "/restore", menu: "Restore settings" },
+    { hash: "/rules", menu: "Automatic rules" },
+    { hash: "/approved-setups", menu: "Approved setups" },
+    { hash: "/emergency-access", menu: "Emergency access" },
+    { hash: "/changes", menu: "Changes" },
+    { hash: "/people", menu: "People" },
+    { hash: "/compliance", menu: "Compliance" },
+    { hash: "/sites", menu: null },
+  ]) {
+    await open(page, hash);
+    const heading = (await page.locator("main h1").textContent())!.trim();
+    await expect(page).toHaveTitle(`${heading} · Keel`);
+    if (menu) {
+      expect(heading, hash).toBe(menu);
+      await expect(page.locator(".menu-sublink[aria-current='page'] .menu-label")).toHaveText(menu);
+    }
+  }
+  // A detail page's tab names the thing it shows.
+  await open(page, "/sites");
+  await page.locator("main").getByRole("link", { name: "Finance" }).click();
+  await expect(page).toHaveTitle("Finance · Keel");
 });
 
 test("brand mark: one smooth 12 s loop that moves only transform and opacity, and a still logo with reduced motion", async ({ page }) => {

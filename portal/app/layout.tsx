@@ -20,8 +20,9 @@ import { MENU_COOKIE, parseMenuPrefs } from "@/lib/menu-prefs";
 import { loadShellLookups } from "@/lib/shell-lookups";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
+// No title here: each page's header sets the tab title ("Changes · Keel"), so the tab,
+// the heading and the menu always say the same name.
 export const metadata: Metadata = {
-  title: "Keel",
   description: "Microsoft 365 disaster-recovery operator console",
 };
 
@@ -76,7 +77,7 @@ export default async function RootLayout({
             name: displayName,
             access: accessSummary(capabilities),
             accessTitle: accessInFull(capabilities),
-            href: canUsers && principalId ? `/principals#person-${encodeURIComponent(principalId)}` : undefined,
+            href: canUsers && principalId ? `/people#person-${encodeURIComponent(principalId)}` : undefined,
           }}
           theme={theme}
         >

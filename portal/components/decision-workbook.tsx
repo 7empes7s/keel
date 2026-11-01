@@ -126,7 +126,7 @@ export function ChangeEvidencePanel({ evidence, attribution, now, gap }: { evide
               {evidence.findings.map((finding) => <li key={finding.evaluationId}>{findingSentence(finding)}</li>)}
             </ul>
           ) : "No compliance check cites this change."}
-          {evidence.findings.length ? <> <a className="text-link" href="/benchmarks">Open compliance</a></> : null}
+          {evidence.findings.length ? <> <a className="text-link" href="/compliance">Open compliance</a></> : null}
         </Row>
         <Row label="Approval">
           {evidence.approvals.length ? (

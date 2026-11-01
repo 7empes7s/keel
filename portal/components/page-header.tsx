@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { PageActions } from "@/components/shell/page-actions";
 import type { RiskTone } from "@/lib/menu-status";
-import { breadcrumbTrail, SECTION_ICONS, type Crumb, type NavSection } from "@/lib/nav-sections";
+import { breadcrumbTrail, SECTION_ICONS, tabTitle, type Crumb, type NavSection } from "@/lib/nav-sections";
 import { formatTimestamp } from "@/lib/presentation";
 
 const STATUS_ICONS: Record<RiskTone, IconName> = { urgent: "alert", soon: "clock", low: "info", fine: "check" };
@@ -40,6 +40,8 @@ export function PageHeader({
   const trail = breadcrumbTrail(section, title, parents);
   return (
     <header className="page-header">
+      {/* The browser tab says which page this is; React moves it into the head. */}
+      <title>{tabTitle(title)}</title>
       {trail.length ? (
         <nav aria-label="Breadcrumb" className="breadcrumbs">
           <ol>

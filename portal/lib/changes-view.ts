@@ -124,7 +124,7 @@ export function openChangeCount(setupChanges: number, serviceChanges: number): n
   return setupChanges + serviceChanges;
 }
 
-export const OPEN_CHANGES_HREF = "/drift";
+export const OPEN_CHANGES_HREF = "/changes";
 
 /** Under the list, when it holds fewer service setting changes than are open. */
 export function serviceListNote(listed: number, total: number): string | null {

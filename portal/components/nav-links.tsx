@@ -3,32 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { MENU_SECTIONS, NAV_SECTIONS, SECTION_ICONS, type MenuSection, type NavSection } from "@/lib/nav-sections";
+import { MENU_SECTIONS, NAV_MAP, NAV_SECTIONS, SECTION_ICONS, type Gate, type MenuSection, type NavCapabilities, type NavSection } from "@/lib/nav-sections";
 
-export { MENU_SECTIONS, NAV_SECTIONS, SECTION_ICONS, type MenuSection, type NavSection };
-
-export interface NavCapabilities {
-  canRead?: boolean;
-  canPolicies?: boolean;
-  canUsers?: boolean;
-  canApprove?: boolean;
-  canConfigure?: boolean;
-  // Not a page gate: lets the search offer "Back up now" only to people who can.
-  canBackup?: boolean;
-}
-
-type Gate = keyof NavCapabilities | null;
-
-interface SectionRoute {
-  href: string;
-  label: string;
-  gate: Gate;
-  // Former page and section names, still searchable in the command palette.
-  aliases?: string;
-  // A route that belongs to the section but is not a sub-item of its own (a redirect
-  // or a detail page reached from the section's main page).
-  hidden?: boolean;
-}
+export { MENU_SECTIONS, NAV_MAP, NAV_SECTIONS, SECTION_ICONS, type MenuSection, type NavCapabilities, type NavSection };
 
 // What each section is for, in one line: the menu's tooltip and the palette's hint.
 export const SECTION_PURPOSE: Record<NavSection, string> = {
@@ -41,52 +18,6 @@ export const SECTION_PURPOSE: Record<NavSection, string> = {
   "Audit log": "Everything Keel did and who decided what",
   Settings: "People, notifications, connections and setup",
   Inbox: "Approvals and alerts waiting on someone",
-};
-
-export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
-  Dashboards: [{ href: "/", label: "Overview", gate: null, aliases: "overview dashboard home" }],
-  Backup: [
-    { href: "/protect", label: "What's protected", gate: null, aliases: "protect backups coverage setting types" },
-    { href: "/schedules", label: "Schedules", gate: "canRead" },
-    { href: "/sites", label: "Sites", gate: "canRead", aliases: "sharepoint site permissions app access grants groups roles" },
-    { href: "/backups", label: "Backups", gate: null, hidden: true },
-    { href: "/coverage", label: "Setting types", gate: null, hidden: true },
-  ],
-  Restore: [
-    { href: "/restore", label: "Restore", gate: null },
-    { href: "/incidents", label: "Incidents", gate: null },
-    { href: "/resilience", label: "Resilience", gate: "canRead", aliases: "recovery point recovery time drills off-site copy" },
-    { href: "/readiness", label: "Emergency access", gate: "canRead", aliases: "break glass emergency accounts readiness sign-in test" },
-  ],
-  Baselines: [
-    { href: "/drift", label: "Changes", gate: null, aliases: "drift changes" },
-    { href: "/baselines", label: "Approved setups", gate: null, aliases: "baselines approved setup" },
-    { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare backups tenants differences side by side" },
-    { href: "/benchmarks", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
-  ],
-  Reports: [
-    { href: "/reports", label: "Value report", gate: "canRead", aliases: "reports outcomes verified value hours saved export" },
-    { href: "/ask", label: "Ask", gate: "canRead", aliases: "question query search what changed failed jobs coverage" },
-  ],
-  "Automation center": [
-    { href: "/policies", label: "Policies", gate: "canPolicies", aliases: "automation rules automatic responses" },
-    { href: "/emergency-changes", label: "Emergency changes", gate: "canApprove", aliases: "emergency deviation change intent approved change window" },
-  ],
-  "Audit log": [
-    { href: "/activity", label: "Activity", gate: "canRead", aliases: "jobs evidence audit record history" },
-    { href: "/jobs", label: "Jobs", gate: "canRead", hidden: true },
-    { href: "/evidence", label: "Audit record", gate: "canRead", hidden: true },
-  ],
-  Settings: [
-    { href: "/principals", label: "People", gate: "canUsers", aliases: "principals users roles" },
-    { href: "/notifications", label: "Notifications", gate: "canRead" },
-    { href: "/integrations", label: "Integrations", gate: "canRead" },
-    { href: "/setup", label: "Setup", gate: "canConfigure", aliases: "onboarding prerequisites consent connect tenant" },
-  ],
-  Inbox: [
-    { href: "/approvals", label: "Approvals", gate: "canApprove", aliases: "approve reject requests waiting" },
-    { href: "/alerts", label: "Alerts", gate: "canRead", aliases: "alerts inbox acknowledge escalation" },
-  ],
 };
 
 export interface NavLink {

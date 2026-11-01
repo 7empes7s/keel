@@ -21,15 +21,15 @@ const DAY = 86_400_000;
 export type ActivityKind = "backup" | "restore" | "rollback" | "setup" | "approval" | "policy" | "drill" | "copy" | "other";
 
 export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; icon: IconName; jobs: string[]; records: string[] }> = {
-  backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started"] },
-  restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check"] },
-  rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
-  setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot"] },
-  approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting", "approval-mode"] },
-  policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "policy-change", "benchmark-evaluation", "benchmark-exception", "scuba-config-list"] },
+  backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started", "backup-complete"] },
+  restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check", "workload-restore"] },
+  rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution", "change-intent"] },
+  setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot", "baseline-reinstate", "disposition"] },
+  approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt", "restore-approval-setting", "approval-mode", "approval-policy", "itsm-mirror", "itsm-callback", "itsm-decision-conflict"] },
+  policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "policy-change", "benchmark-evaluation", "benchmark-exception", "scuba-config-list", "compliance-own-check", "policy-activation-preview", "policy-activation"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
-  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action", "chain-break-explained"] },
+  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity", "alert-action", "itsm-adapter-config", "breakglass.registered", "breakglass.retired", "breakglass.validated", "breakglass.credential-rotated", "breakglass.methods-attested", "chain-break-explained"] },
 };
 export const ACTIVITY_KIND_ORDER: ActivityKind[] = ["backup", "restore", "rollback", "setup", "approval", "policy", "drill", "copy", "other"];
 
@@ -174,36 +174,57 @@ export function recordRow(entry: EvidenceEntry, people: ActivityPeople, names: N
   };
 }
 
-/** The kind of audit entry, in the singular: "Approval decision", "Policy check". */
+/** The kind of audit entry, in the singular: "Approval decision", "Policy check". Every
+ * kind with a sentence has one (test/audit-sentences.test.ts). */
+export const RECORD_KIND_WORDS: Record<string, string> = {
+  "approval-request": "Approval request",
+  "approval-decision": "Approval decision",
+  "approval-signoff": "Approval sign-off",
+  "approval.decided": "Approval decision",
+  "approval-mode": "Approval mode change",
+  "approval-policy": "Approver count change",
+  "action-attempt": "Action started or refused",
+  "restore-approval-setting": "Restore approval setting",
+  "content-effect-approval": "Content-effect approval",
+  "itsm-mirror": "ServiceNow approval",
+  "itsm-callback": "Update from ServiceNow",
+  "itsm-decision-conflict": "ServiceNow disagreement",
+  "itsm-adapter-config": "ServiceNow connection",
+  disposition: "Change accepted or ignored",
+  "baseline-resnapshot": "Approved setup re-captured",
+  "baseline-reinstate": "Approved setup put back",
+  "change-intent": "Emergency change",
+  "automation-execution": "Automatic roll back",
+  "policy-evaluation": "Policy check",
+  "policy-change": "Automatic rule change",
+  "policy-activation-preview": "Automatic rule preview",
+  "policy-activation": "Automatic rule turned on",
+  "benchmark-evaluation": "Control check",
+  "benchmark-exception": "Control exception",
+  "compliance-own-check": "Own compliance check",
+  "scuba-config-list": "ScubaGear list",
+  "workload-restore": "Restore of another service",
+  "recovery-completion": "Restore follow-up",
+  "incident-recovery": "Incident recovery",
+  "incident-recovery-check": "Check after an incident restore",
+  "fidelity-drill": "Test restore",
+  "recovery-drill": "Recovery drill",
+  "job.started": "Job started",
+  "collection.completed": "Backup finished",
+  "backup-complete": "Backup finished",
+  "offsite-copy": "Off-site copy",
+  "alert-action": "Alert",
+  "people-anonymity": "Hide people's names",
+  "breakglass.registered": "Emergency access account added",
+  "breakglass.retired": "Emergency access account removed",
+  "breakglass.validated": "Emergency access sign-in test",
+  "breakglass.credential-rotated": "Emergency access password change",
+  "breakglass.methods-attested": "Emergency access sign-in methods",
+  "chain-break-explained": "Audit record break explained",
+};
+
 export function recordKindWords(kind: string): string {
-  const words: Record<string, string> = {
-    "approval-request": "Approval request",
-    "approval-decision": "Approval decision",
-    "approval-signoff": "Approval sign-off",
-    "approval.decided": "Approval decision",
-    "action-attempt": "Action started or refused",
-    "policy-evaluation": "Policy check",
-    "policy-change": "Automatic rule change",
-    "automation-execution": "Automatic roll back",
-    "content-effect-approval": "Content-effect approval",
-    "restore-approval-setting": "Restore approval setting",
-    "approval-mode": "Approval mode change",
-    "scuba-config-list": "ScubaGear list",
-    "recovery-completion": "Restore follow-up",
-    "incident-recovery": "Incident recovery",
-    "incident-recovery-check": "Check after an incident restore",
-    "fidelity-drill": "Test restore",
-    "recovery-drill": "Recovery drill",
-    "offsite-copy": "Off-site copy",
-    "baseline-resnapshot": "Approved setup re-captured",
-    "benchmark-evaluation": "Control check",
-    "benchmark-exception": "Control exception",
-    "collection.completed": "Backup finished",
-    "job.started": "Job started",
-    "alert-action": "Alert",
-    "chain-break-explained": "Audit record break explained",
-  };
-  return words[kind] ?? displayEnum("eventKind", kind);
+  return RECORD_KIND_WORDS[kind] ?? displayEnum("eventKind", kind);
 }
 
 /** Jobs and audit-record entries as one list, newest first. */
@@ -217,14 +238,14 @@ export function rowHref(row: ActivityRow): string | null {
   if (row.job) return `/jobs/${encodeURIComponent(row.job.id)}`;
   const subject = (row.entry?.subject ?? {}) as Record<string, unknown>;
   if (typeof subject.jobId === "string" && subject.jobId) return `/jobs/${encodeURIComponent(subject.jobId)}`;
-  if (row.entry?.kind === "policy-evaluation" && typeof subject.naturalKey === "string") return `/drift?q=${encodeURIComponent(subject.naturalKey.replace(/^[^:]+:/, ""))}`;
+  if (row.entry?.kind === "policy-evaluation" && typeof subject.naturalKey === "string") return `/changes?q=${encodeURIComponent(subject.naturalKey.replace(/^[^:]+:/, ""))}`;
   if (row.entry?.kind === "policy-change") {
-    return subject.change !== "deleted" && typeof subject.policyId === "string" && subject.policyId ? `/policies/${encodeURIComponent(subject.policyId)}` : "/policies";
+    return subject.change !== "deleted" && typeof subject.policyId === "string" && subject.policyId ? `/rules/${encodeURIComponent(subject.policyId)}` : "/rules";
   }
   if (row.entry?.kind === "approval-request" || row.entry?.kind === "approval-decision" || row.entry?.kind === "approval-signoff") return "/approvals?show=decided";
   if (row.entry?.kind === "recovery-drill" || row.entry?.kind === "fidelity-drill") return "/resilience";
   if (row.entry?.kind === "offsite-copy") return "/integrations";
-  if (row.entry?.kind === "benchmark-evaluation" || row.entry?.kind === "benchmark-exception") return "/benchmarks";
+  if (row.entry?.kind === "benchmark-evaluation" || row.entry?.kind === "benchmark-exception") return "/compliance";
   if (row.entry?.kind === "alert-action" && typeof subject.alertId === "string" && subject.alertId) return `/alerts?open=${encodeURIComponent(subject.alertId)}`;
   return null;
 }
@@ -234,13 +255,13 @@ export function rowHrefLabel(row: ActivityRow): string {
   const href = rowHref(row);
   if (!href) return "";
   if (href.startsWith("/jobs/")) return "Open the job it is about";
-  if (href.startsWith("/drift")) return "Show the change it checked";
+  if (href.startsWith("/changes")) return "Show the change it checked";
   if (href.startsWith("/approvals")) return "Show decided approvals";
   if (href.startsWith("/resilience")) return "Show recovery readiness";
   if (href.startsWith("/integrations")) return "Show off-site copy settings";
   if (href.startsWith("/alerts")) return "Open the alert";
-  if (href === "/policies") return "Show the automatic rules";
-  if (href.startsWith("/policies/")) return "Open the rule";
+  if (href === "/rules") return "Show the automatic rules";
+  if (href.startsWith("/rules/")) return "Open the rule";
   return "Show the control checks";
 }
 
@@ -253,7 +274,7 @@ export function retryOf(job: Pick<JobRecord, "kind" | "status" | "params"> | nul
   if (job.kind === "backup") return { kind: "backup", tier: typeof params.tier === "string" ? params.tier : null };
   if (job.kind === "collect") return { kind: "collect" };
   if (job.kind === "restore" || job.kind === "restore-dry-run") return { kind: "plan", href: "/restore", label: "Plan it again" };
-  if (job.kind === "remediate") return { kind: "plan", href: "/drift", label: "Plan it again" };
+  if (job.kind === "remediate") return { kind: "plan", href: "/changes", label: "Plan it again" };
   return null;
 }
 

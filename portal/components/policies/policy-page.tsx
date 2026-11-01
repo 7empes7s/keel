@@ -78,7 +78,7 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
       const result = await deleteRule(policy.id);
       if (!result.ok) { toast({ tone: "warning", title: "Not deleted", detail: result.reason }); return; }
       toast({ title: `${policy.name} deleted`, detail: "It no longer acts. Its past actions stay in Activity." });
-      router.push("/policies");
+      router.push("/rules");
       router.refresh();
     } finally {
       setBusy(null);
@@ -124,7 +124,7 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
             <dt><Icon name="settings" />Acting as</dt>
             <dd className="po-person">
               {person ? <>
-                <Link className="po-person-link" href={`/principals#person-${encodeURIComponent(person.id)}`}><Person person={person} /></Link>
+                <Link className="po-person-link" href={`/people#person-${encodeURIComponent(person.id)}`}><Person person={person} /></Link>
                 {state === "stopped" ? <small className="po-help" data-tone="urgent">Needs the restorer role, then Resume.</small> : <small className="po-help">Checked again before every undo.</small>}
               </> : <><span className="po-nobody"><Icon name="bell" />Nobody</span><small className="po-help">{kind === "alert" ? "An alert changes nothing, so no account is needed." : "Approved undos run as the approver's own access."}</small></>}
             </dd>
@@ -168,7 +168,7 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
         {canEdit ? (
           <div className="po-controls">
             {kind === "alert" ? <Link className="btn" href="/alerts"><Icon name="bell" />Open alerts</Link> : null}
-            {state === "stopped" ? <Link className="btn" href="/principals">Open People</Link> : null}
+            {state === "stopped" ? <Link className="btn" href="/people">Open People</Link> : null}
             {state === "off" && kind !== "undo" ? <button aria-busy={busy === "turn-on" || undefined} className="btn" disabled={busy !== null} onClick={() => void change("turn-on")} type="button"><Icon name="play" />Turn on</button> : null}
             {policy.enabled ? (
               <ConfirmButton confirmLabel="Turn off" description={<p>{policy.name} stops acting on new changes.{kind === "undo" ? " It needs a preview to turn back on." : ""}</p>} disabled={busy !== null} onConfirm={() => change("turn-off")} title={`Turn off ${policy.name}?`}>

@@ -29,8 +29,8 @@ export default async function IncidentsRoute({
   // adding a role needs `roles`, so only an admin gets "Give yourself the role".
   const me = access.principalId;
   const canPeople = capabilities.includes("users");
-  const grantHref = !canInvestigate && canPeople && capabilities.includes("roles") && me ? `/principals?open=${encodeURIComponent(me)}` : null;
-  const investigatorsHref = !canInvestigate && canPeople ? "/principals?role=investigator" : null;
+  const grantHref = !canInvestigate && canPeople && capabilities.includes("roles") && me ? `/people?open=${encodeURIComponent(me)}` : null;
+  const investigatorsHref = !canInvestigate && canPeople ? "/people?role=investigator" : null;
   const contacts = canInvestigate ? null : await getContacts(me);
 
   let data: IncidentRecoveryData;

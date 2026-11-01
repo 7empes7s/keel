@@ -38,6 +38,7 @@ import {
   rowImpact,
   itemName,
   nameBook,
+  partialWords,
   plainLabel,
   plainType,
   plannedWords,
@@ -619,8 +620,8 @@ export function RestoreSelection({
   const currentSnapshot = snapshots.find((snapshot) => snapshot.id === snapshotId) ?? null;
   const isNewest = snapshots[0]?.id === snapshotId;
   const reviewFailed = artifact !== null && artifact.status !== "completed";
-  const verdict = step === "select"
-    ? restoreVerdict({ chosen: currentSnapshot ? takenAt(currentSnapshot) : null, isNewest, changes })
+  const verdict: { text: string; tone: VerdictTone; detail?: string } = step === "select"
+    ? restoreVerdict({ chosen: currentSnapshot ? takenAt(currentSnapshot) : null, isNewest, changes, partial: currentSnapshot ? partialWords(currentSnapshot) : null })
     : restoreStepVerdict(step, reviewFailed, sentStarted);
   const objectResults = (entries: DryRunResourceResult[]) => entries.filter((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX));
   const changedCount = (changes?.changes ?? []).filter((change) => change.kind === "changed").length;
@@ -648,7 +649,7 @@ export function RestoreSelection({
 
   return (
     <section aria-label="Plan a restore" className="restore-page">
-      <Verdict text={verdict.text} tone={verdict.tone} />
+      <Verdict detail={verdict.detail} text={verdict.text} tone={verdict.tone} />
 
       {incident ? (
         <p className="incident-restore-banner" role="note">

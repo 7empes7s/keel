@@ -18,6 +18,7 @@ import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
+import { resolveDryRuns } from "../../engine/govern/references.mjs";
 import { alertStateCounts } from "../../engine/notify/alerts.mjs";
 import {
   getActiveBaseline,
@@ -61,7 +62,7 @@ import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
 import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { countOpenServiceChanges } from "@/lib/service-changes";
-import { personLabel } from "@/lib/sentences";
+import { personLabel, type PlanRef } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import { resilienceKinds, type IncidentPointSummary, type RecoveryMetrics, type ResilienceData } from "@/lib/resilience-view";
 import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
@@ -583,7 +584,7 @@ export async function withExceptionPeople(client: KeelClient, findings: Complian
       "SELECT id::text AS id, lower(email) AS email, display_name FROM principal WHERE lower(email) = ANY($1::text[])",
       [owners],
     );
-    for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/principals" });
+    for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/people" });
   }
   const granters = await principalRefs(client, exceptions.map((exception) => exception.grantedBy).filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)));
   // "Hide people's names": the owner by code name (a Keel user keeps theirs; a typed
@@ -599,7 +600,7 @@ export async function withExceptionPeople(client: KeelClient, findings: Complian
       exception: {
         ...finding.exception,
         ...(hidden ? { owner: null } : {}),
-        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/principals" : null, pseudonym: true } : known,
+        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/people" : null, pseudonym: true } : known,
         grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
       },
     };
@@ -686,7 +687,7 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
       : person
         ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true, system: person.system_kind != null }, namer), "an account without a name")
         : "an account that no longer exists";
-    const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
+    const setByRef: Ref = { kind: "person", id, name, href: person ? "/people" : null };
     return { ...baseline, setByRef };
   });
 }
@@ -1065,6 +1066,37 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
   });
 }
 
+// Who made one open change, looked up when a person opens it. The Changes list reads the
+// audit log for its first MAX_ATTRIBUTED_CHANGES changes only, so a change further down
+// would otherwise say "not known yet". The change must be open against the active baseline
+// and inside the reader's entities; anything else is null, the same as one that does not
+// exist. A failed audit read comes back as { attribution: null }.
+export async function getChangeAttribution(driftId: string, scope: EntityScope = CENTRAL_SCOPE): Promise<{ attribution: ChangeAttribution | null } | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(driftId)) return null;
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const active = (await getActiveBaseline(client, { tenantRef: ref })) as UnknownRecord | null;
+    if (!active) return null;
+    const visible = scopePredicate(scope, {
+      tenantRef: ref, typeExpr: "d.resource_type", keyExpr: "d.natural_key", asOfExpr: "d.detected_at", nextParam: 4,
+    }) as { sql: string; values: unknown[] };
+    const { rows } = await client.query(
+      `SELECT d.* FROM drift d
+        WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = $3::uuid
+          AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
+          AND NOT EXISTS (
+            SELECT 1 FROM drift n
+             WHERE n.tenant_ref = d.tenant_ref AND n.baseline_id = d.baseline_id AND n.natural_key = d.natural_key
+               AND (n.detected_at > d.detected_at OR (n.detected_at = d.detected_at AND n.id > d.id))
+          )`,
+      [ref, String(active.id), driftId, ...visible.values],
+    );
+    if (!rows[0]) return null;
+    const [item] = await withAttribution(client, ref, String(active.id), [normalizeDrift(rows[0])], scope);
+    return { attribution: item.attribution ?? null };
+  });
+}
+
 // Plan task 17 (portal-design §4.1): the restore surface lists the resources an
 // operator can select from one snapshot. The filter mirrors cli/keel-restore.mjs —
 // users are never written; authentication strengths are listed since roadmap
@@ -1231,7 +1263,7 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   for (const row of rows) {
     const id = String(row.id);
     const shown = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer) : null;
-    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/principals", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
+    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/people", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
   }
   for (const id of wanted) {
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });
@@ -1426,7 +1458,7 @@ export function buildAlerts({
       severity: "critical",
       title: "No setup is approved yet",
       detail: "Keel cannot tell what changed until you approve a setup.",
-      href: "/baselines/new",
+      href: "/approved-setups/new",
     });
   } else if (activeBaseline.resourceCount === 0) {
     alerts.push({
@@ -1434,7 +1466,7 @@ export function buildAlerts({
       severity: "critical",
       title: "The approved setup is empty",
       detail: "It holds no settings, so it cannot describe how the tenant should look.",
-      href: "/baselines",
+      href: "/approved-setups",
     });
   }
 
@@ -1588,7 +1620,12 @@ export async function notifyRoutesFor(client: KeelClient): Promise<NotifyRoutes>
 // plus the newest restores as cards, each with the job page its steps are closed on.
 export async function getRestoreFollowUps(): Promise<OpenFollowUpWork> {
   const ref = tenantRef();
-  return withClient(async (client) => (await readOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpWork);
+  return withClient(async (client) => {
+    const work = (await readOpenCompletionWork(client, { tenantRef: ref })) as OpenFollowUpWork;
+    // Each card is named by its restore's plan: what it put back and from which backup.
+    const plans = await resolveDryRuns(client, { tenantRef: ref, ids: work.cards.map((card) => card.restoreRef) }) as Map<string, PlanRef>;
+    return { ...work, cards: work.cards.map((card) => ({ ...card, plan: plans.get(card.restoreRef) ?? null })) };
+  });
 }
 
 export async function getDashboardData(): Promise<DashboardData> {

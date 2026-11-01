@@ -179,7 +179,7 @@ export function TypeRecordFields({ item }: { item: CoverageType }) {
           <RecordField
             label="Observation ID"
             usage={<>Benchmark comparison unavailable until a benchmark view records a matching observation. Linked views:{" "}
-              <a href={`/protect?${observationQuery(item)}`}>Backups</a> · <a href={`/drift?${observationQuery(item)}`}>Drift</a></>}
+              <a href={`/protect?${observationQuery(item)}`}>Backups</a> · <a href={`/changes?${observationQuery(item)}`}>Changes</a></>}
             value={item.observation.observationId}
           />
           <RecordField

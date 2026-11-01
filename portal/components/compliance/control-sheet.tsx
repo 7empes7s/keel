@@ -111,7 +111,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
     <DetailsSheet
       footer={(canGrant || changeCount || removable) ? <>
         {canGrant ? <Link className={(result === "failing" || result === "not-set-up") && !fixable ? "btn btn-primary" : "btn"} href={grantHref}>{grantLabel(finding)}</Link> : null}
-        {changeCount ? <Link className="btn" href="/drift">{changeCount === 1 ? "Review the change" : `Review the ${changeCount} changes`}</Link> : null}
+        {changeCount ? <Link className="btn" href="/changes">{changeCount === 1 ? "Review the change" : `Review the ${changeCount} changes`}</Link> : null}
         {removable ? <button aria-busy={removing || undefined} className="btn" disabled={removing} onClick={() => void remove()} type="button"><Icon name="close" />Remove this check</button> : null}
         {canGrant ? <p className="bl-help">{EXCEPTION_EFFECT}</p> : null}
       </> : undefined}
@@ -171,7 +171,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
               <ul className="cp-links">
                 {change.linked.map((item) => (
                   <li key={item.id}>
-                    <Link className="cp-inline-link" href={`/drift?open=${encodeURIComponent(item.id)}`}>{linkedChangeName(item)}</Link>
+                    <Link className="cp-inline-link" href={`/changes?open=${encodeURIComponent(item.id)}`}>{linkedChangeName(item)}</Link>
                     <small>{ago(item.detectedAt, now)}</small>
                   </li>
                 ))}

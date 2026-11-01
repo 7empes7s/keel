@@ -38,10 +38,10 @@ test("eight menu sections, one map, in the order Marouane set; approvals and ale
   // The plan's route map (PLAN.md section 7).
   const owner = (href: string) => sectionForPath(href);
   assert.equal(owner("/protect"), "Backup");
-  assert.equal(owner("/drift"), "Baselines");
+  assert.equal(owner("/changes"), "Baselines");
   assert.equal(owner("/compare"), "Baselines");
   assert.equal(owner("/emergency-changes"), "Automation center");
-  assert.equal(owner("/policies/p1"), "Automation center");
+  assert.equal(owner("/rules/p1"), "Automation center");
   assert.equal(owner("/reports"), "Reports");
   assert.equal(owner("/evidence"), "Audit log");
   assert.equal(owner("/approvals"), "Inbox");
@@ -131,7 +131,12 @@ test("every page below a menu page names it in its breadcrumb, and no page keeps
     if (menuPages.has(route) || /\bredirect\(/.test(source) || !/<PageHeader/.test(source)) continue;
     const declared = /const PARENTS = (\[[^\n]+\]);/.exec(source);
     assert.ok(declared, `${route} is below a menu page but has no breadcrumb parents`);
-    assert.match(source, /parents=\{PARENTS\}/, `${route} declares parents but does not pass them`);
+    // The usual trail goes through pageTrail, which swaps in the menu page the person came from.
+    const usual = /pageTrail\("([^"]+)", PARENTS\)/.exec(source);
+    assert.ok(usual, `${route} declares parents but does not pass them through pageTrail`);
+    assert.equal(usual[1], sectionForPath(route), `${route}: its usual trail starts in another section`);
+    assert.doesNotMatch(source, /parents=\{PARENTS\}/, `${route} passes its parents without asking where the person came from`);
+    assert.match(source, /parents=\{trail\.parents\}/, `${route} does not pass its trail`);
     const parents = [...declared[1].matchAll(/\{ href: "([^"]+)", label: "([^"]+)" \}/g)];
     assert.ok(parents.length > 0, `${route} has an empty breadcrumb`);
     for (const [, href, label] of parents) {
@@ -142,7 +147,7 @@ test("every page below a menu page names it in its breadcrumb, and no page keeps
     }
     checked.push(route);
   }
-  assert.deepEqual(checked.sort(), ["/approvals/content-effects/x", "/baselines/new", "/jobs/x", "/policies/x", "/sites/x"]);
+  assert.deepEqual(checked.sort(), ["/approvals/content-effects/x", "/approved-setups/new", "/jobs/x", "/rules/x", "/sites/x"]);
   const components = fileURLToPath(new URL("../components/", import.meta.url));
   for (const entry of readdirSync(components, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".tsx")) continue;

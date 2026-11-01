@@ -8,7 +8,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 import { getRestoreChanges, type RestoreChange } from "@/lib/restore-changes";
-import { backupAge, backupForDay, changeLine, lastRestoreTile, plainType, restoreVerdict, whoWords } from "@/lib/restore-view";
+import { backupAge, backupForDay, changeLine, lastRestoreTile, partialWords, plainType, restoreVerdict, whoWords } from "@/lib/restore-view";
 import { tenantRef } from "@/lib/runtime-config";
 import type { JobRecord } from "@/lib/portal-jobs";
 
@@ -149,11 +149,25 @@ test("restore words: verdict, change line, who, plain type, age", () => {
   assert.equal(plainType("conditionalAccessPolicy"), "Sign-in rule");
   assert.equal(plainType("group"), "Group");
   assert.equal(backupAge("2026-09-30T06:08:00Z", "2026-10-02T09:40:00Z"), "2 days old");
-  assert.equal(backupAge("2026-10-02T06:08:00Z", "2026-10-02T09:40:00Z"), "Taken today");
+  assert.equal(backupAge("2026-10-02T06:08:00Z", "2026-10-02T09:40:00Z"), "Taken 3 hours ago");
+  // UI audit D13: a backup from a moment ago says so, never just its clock time.
+  assert.equal(backupAge("2026-10-31T17:37:00Z", "2026-10-31T17:41:00Z"), "Taken 4 minutes ago");
+  assert.equal(backupAge("2026-10-01T22:00:00Z", "2026-10-02T09:40:00Z"), "Taken 11 hours ago");
+  assert.equal(backupAge("2026-10-01T06:00:00Z", "2026-10-02T09:40:00Z"), "Taken yesterday");
+  assert.equal(partialWords({ typesRead: 12, typesSkipped: 168 }), "Partial backup: 12 of 180 types");
+  assert.equal(partialWords({ typesRead: 180, typesSkipped: 0 }), null);
+  assert.equal(partialWords({}), null);
   const changes = { newest: null, changes: [change({})], more: 2, earlier: null };
   assert.deepEqual(restoreVerdict({ chosen: "2026-09-30T06:08:00Z", isNewest: false, changes }), { text: "3 settings changed since the backup of Wed, 30 Sept 2026. Undo the ones nobody expected.", tone: "attention" });
   assert.equal(restoreVerdict({ chosen: "2026-10-02T06:08:00Z", isNewest: true, changes: { ...changes, changes: [], more: 0, earlier: { id: "x", takenAt: null, count: 1 } } }).text, "1 setting changed just before your newest backup. Pick an earlier day to undo them.");
-  assert.equal(restoreVerdict({ chosen: "2026-10-02T06:08:00Z", isNewest: true, changes: { ...changes, changes: [], more: 0 } }).tone, "good");
+  const same = restoreVerdict({ chosen: "2026-10-02T06:08:00Z", isNewest: true, changes: { ...changes, changes: [], more: 0 } });
+  assert.equal(same.tone, "good");
+  // "Nothing has changed" names the backup's time and says why Changes can still list changes.
+  assert.equal(same.text, "Nothing has changed since the backup of Fri, 2 Oct 2026, 06:08 UTC. Choose anything you want to put back.");
+  assert.match(same.detail ?? "", /Changes page compares with your approved setup/);
+  const partial = restoreVerdict({ chosen: "2026-10-02T06:08:00Z", isNewest: true, changes: { ...changes, changes: [], more: 0 }, partial: "Partial backup: 12 of 180 types" });
+  assert.match(partial.detail ?? "", /^Partial backup: 12 of 180 types, so only those types are compared\./);
+  assert.ok(same.text.split(/\s+/).length <= 25, same.text);
   for (const verdict of [restoreVerdict({ chosen: null, isNewest: false, changes: null }), restoreVerdict({ chosen: "2026-09-30T06:08:00Z", isNewest: false, changes })]) {
     assert.ok(verdict.text.split(/\s+/).length <= 25, verdict.text);
   }

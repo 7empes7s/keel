@@ -57,10 +57,10 @@ test("Incidents without the investigator role: names investigators, and an admin
   const admin = await renderIncidentsAt("", {
     incidents: [], selected: null, now: "2026-10-02T09:40:00Z", canInvestigate: false,
     contacts: { admins: [], investigators: [], youAreAdmin: true },
-    grantHref: "/principals?open=me", investigatorsHref: "/principals?role=investigator",
+    grantHref: "/people?open=me", investigatorsHref: "/people?role=investigator",
   });
-  assert.match(admin, /href="\/principals\?open=me"[^>]*>.*Give yourself the Investigator role/);
-  assert.match(admin, /href="\/principals\?role=investigator"[^>]*>See investigators/);
+  assert.match(admin, /href="\/people\?open=me"[^>]*>.*Give yourself the Investigator role/);
+  assert.match(admin, /href="\/people\?role=investigator"[^>]*>See investigators/);
 
   const investigator = await renderIncidentsAt("", { incidents: [], selected: null, now: "2026-10-02T09:40:00Z", canInvestigate: true });
   assert.doesNotMatch(investigator, /data-who-to-ask/, "an investigator needs no one to ask");

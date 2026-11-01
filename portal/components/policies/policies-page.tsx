@@ -67,7 +67,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
 }) {
   const router = useRouter();
   const view = useViewState();
-  const pathname = usePathname() ?? "/policies";
+  const pathname = usePathname() ?? "/rules";
   const params = useLiveSearchParams();
   const get = (key: string) => params?.get(key) ?? null;
   const filters = useMemo(() => parseFilters(get), [params]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -131,7 +131,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
   const resume = verdict.resume;
   const verdictAction = creating ? null
     : resume && canEdit ? { label: "Resume", onClick: () => void change(resume, "resume"), busy: busy === resume.id }
-    : verdict.tone === "urgent" && !halted && canEdit ? { label: "Open People", href: "/principals" }
+    : verdict.tone === "urgent" && !halted && canEdit ? { label: "Open People", href: "/people" }
     : null;
 
   const tiles: { key: string; label: string; icon: IconName; value: number; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
@@ -159,7 +159,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
       <div className="po-row" data-state={state}>
         <span aria-hidden="true" className="po-kind" data-tone={riskTone(policy.max_blast_radius)}><Icon name={RULE_KINDS[kind].icon} /></span>
         <span className="po-row-name">
-          <Link className="po-row-link" href={`/policies/${encodeURIComponent(policy.id)}`}>{policy.name}</Link>
+          <Link className="po-row-link" href={`/rules/${encodeURIComponent(policy.id)}`}>{policy.name}</Link>
           <small>{ruleSentence(policy)}</small>
         </span>
         <span className="po-row-mid">
@@ -173,8 +173,8 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
         <span className="po-row-acts">
           {kind === "alert" ? <Link className="btn btn-sm" href="/alerts">Open alerts</Link> : null}
           {canEdit && state === "paused" && resume?.id !== policy.id ? <button className="btn btn-sm" disabled={rowBusy} onClick={() => void change(policy, "resume")} type="button"><Icon name="play" />Resume</button> : null}
-          {canEdit && state === "stopped" ? <Link className="btn btn-sm" href="/principals">Open People</Link> : null}
-          {canEdit && state === "off" && kind === "undo" ? <Link className="btn btn-sm" href={`/policies/${encodeURIComponent(policy.id)}`}><Icon name="show" />Preview turning on</Link> : null}
+          {canEdit && state === "stopped" ? <Link className="btn btn-sm" href="/people">Open People</Link> : null}
+          {canEdit && state === "off" && kind === "undo" ? <Link className="btn btn-sm" href={`/rules/${encodeURIComponent(policy.id)}`}><Icon name="show" />Preview turning on</Link> : null}
           {canEdit && state === "off" && kind !== "undo" ? <button className="btn btn-sm" disabled={rowBusy} onClick={() => void change(policy, "turn-on")} type="button"><Icon name="play" />Turn on</button> : null}
           {canEdit && policy.enabled ? (
             <ConfirmButton confirmLabel="Turn off" description={<p>{policy.name} stops acting on new changes.{kind === "undo" ? " It needs a preview to turn back on." : ""}</p>} disabled={rowBusy} onConfirm={() => change(policy, "turn-off")} size="sm" title={`Turn off ${policy.name}?`}>

@@ -102,7 +102,7 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
       ) : (
         <>
           <Verdict
-            action={data.baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
+            action={data.baseline ? null : { label: "Create an approved setup", href: "/approved-setups/new" }}
             text={verdict.text}
             tone={verdict.tone}
           />

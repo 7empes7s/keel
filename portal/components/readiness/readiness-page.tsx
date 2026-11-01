@@ -77,7 +77,7 @@ export function ReadinessPage({ data, canConfigure, canRespond }: {
 }) {
   const router = useRouter();
   const view = useViewState();
-  const pathname = usePathname() ?? "/readiness";
+  const pathname = usePathname() ?? "/emergency-access";
   const params = useLiveSearchParams();
   const now = data.generatedAt;
   const step = STEPS.find((value) => value === view.get("do")) ?? null;
@@ -423,7 +423,7 @@ function AccountCard({ account, index, now, canConfigure, stepHref, follow }: {
                 <small>{dimensionSentence(name, dimension, now)}</small>
                 {rules.length ? (
                   <span className="ea-row-links">
-                    {rules.map((rule) => <Link className="ea-inline-link" href={`/drift?q=${encodeURIComponent(rule)}`} key={rule}>Open {rule}</Link>)}
+                    {rules.map((rule) => <Link className="ea-inline-link" href={`/changes?q=${encodeURIComponent(rule)}`} key={rule}>Open {rule}</Link>)}
                     <small>Change the rule in Microsoft Entra, then back up again.</small>
                   </span>
                 ) : null}

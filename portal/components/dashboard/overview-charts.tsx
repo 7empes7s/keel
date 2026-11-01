@@ -51,7 +51,7 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
             </div>
             <button aria-label="Changes since your approved setup: open full screen" className="btn btn-sm btn-ghost ov-full" onClick={openChart("changes")} type="button"><Icon name="show" /><span>Full screen</span></button>
           </div>
-          <Link aria-label="Open all changes" className="ov-chart-link" href="/drift">
+          <Link aria-label="Open all changes" className="ov-chart-link" href="/changes">
             <Sparkline label="Changes found per day" points={data.driftTrend} />
           </Link>
           <RiskBar items={data.openDriftByBlastRadius} />
@@ -85,7 +85,7 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
                 ))}
               </tbody>
             </table>
-            <Link className="btn btn-secondary" href="/drift">Open all changes</Link>
+            <Link className="btn btn-secondary" href="/changes">Open all changes</Link>
           </div>
         </DetailsSheet>
       ) : null}

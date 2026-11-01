@@ -1,6 +1,6 @@
 import type { AuditCheck } from "@/lib/audit-check";
 import type { UnnamedReference } from "@/lib/app-names";
-import type { EngineRef } from "@/lib/sentences";
+import type { EngineRef, PlanRef } from "@/lib/sentences";
 
 export type ProtectionState =
   | "protected"
@@ -736,8 +736,16 @@ export interface NotifyRoutes {
 export interface RestoreFollowUp {
   restoreRef: string;
   pending: number;
+  // When the oldest open step was opened.
   since: string;
+  // The job that ran the restore (the enforced one when there is one, else its check).
   jobId: string | null;
+  jobStatus?: string | null;
+  enforced?: boolean;
+  // When the enforced restore finished: the time a card shows.
+  restoredAt?: string | null;
+  // The restore's plan, by which a card names it: what it put back and from which backup.
+  plan?: PlanRef | null;
 }
 
 // Open follow-up work across every restore: the one count every page shows, and the

@@ -12,7 +12,8 @@ import { recordLineage } from "../../engine/store/resourceLineage.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
 import { attributionNextStep, attributionSentence, attributionSummary, attributionWhen, routeSentence } from "@/components/change-attribution";
-import { getDriftData } from "@/lib/portal-data";
+import { getChangeAttribution, getDriftData } from "@/lib/portal-data";
+import { GET as attributionRoute } from "@/app/api/drift/attribution/route";
 import { tenantRef } from "@/lib/runtime-config";
 import type { ChangeAttribution, DriftRecord } from "@/lib/types";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -156,6 +157,31 @@ test("an audit entry naming the resource is exact; an entity reader is not told 
   assert.equal(mine.verdict, "exact");
   assert.deepEqual(mine.actors, [{ kind: "user", id: null, name: null }]);
   assert.equal(attributionSentence(mine), "An account outside your entities made this change, according to the audit log.");
+
+  // D20: one change opened on its own reads the same answer the list does, so a change
+  // past the list's first 200 still names who made it. An entity reader cannot look up a
+  // change outside their entities, and a change id that is not open is not found.
+  const idOf = (key: string) => central.items.find((item) => item.naturalKey === key)!.id;
+  const one = await getChangeAttribution(idOf(CREOS_KEY));
+  assert.equal(one?.attribution?.verdict, "exact");
+  assert.deepEqual(one?.attribution?.actors, [{ kind: "user", id: ALICE, name: "Alice Admin" }]);
+  assert.deepEqual(one?.attribution?.evidence.map((entry) => entry.sourceEventId), ["evt-1"]);
+  assert.deepEqual([(await getChangeAttribution(idOf(ENOVOS_KEY)))?.attribution?.reason], ["no-audit-record-names-resource"]);
+  const scopedOne = await getChangeAttribution(idOf(CREOS_KEY), { central: false, entities: ["CREOS"] });
+  assert.deepEqual(scopedOne?.attribution?.actors, [{ kind: "user", id: null, name: null }]);
+  assert.equal(await getChangeAttribution(idOf(ENOVOS_KEY), { central: false, entities: ["CREOS"] }), null);
+  assert.equal(await getChangeAttribution("00000000-0000-4000-8000-000000000000"), null);
+  assert.equal(await getChangeAttribution("not-an-id"), null);
+
+  // The route: a reader with read gets the answer, an unknown change is 404, no read is 403.
+  const ask = (id: string, capabilities: string[]) => attributionRoute(new Request(`http://localhost/api/drift/attribution?id=${id}`, {
+    headers: { "x-keel-principal-id": collector, "x-keel-capabilities": capabilities.join(" ") },
+  }));
+  const ok = await ask(idOf(CREOS_KEY), ["read"]);
+  assert.equal(ok.status, 200);
+  assert.equal(((await ok.json()) as { attribution: ChangeAttribution }).attribution.verdict, "exact");
+  assert.equal((await ask("00000000-0000-4000-8000-000000000000", ["read"])).status, 404);
+  assert.equal((await ask(idOf(CREOS_KEY), [])).status, 403);
 });
 
 test("without lineage the saved copy's object id matches, the app is named from the backup, and other services say what to do", async () => {

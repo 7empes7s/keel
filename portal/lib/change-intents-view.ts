@@ -168,7 +168,7 @@ export function intentAlerts(data: Pick<ChangeIntentsData, "intents" | "generate
           key: `still-changed-${intent.id}`, tone: "soon", icon: "alert",
           title: `${resource} is still changed after its approval ended`,
           todo: "Review it on Changes, then restore it or accept it.",
-          action: { label: "Open Changes", href: "/drift" },
+          action: { label: "Open Changes", href: "/changes" },
         });
       } else if (intent.settlement.currentState === "awaiting-detection") {
         low.push({

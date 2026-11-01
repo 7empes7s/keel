@@ -57,7 +57,7 @@ function EmergencyRow({ view }: { view: ScubaListsView }) {
       </span>
       <span className="cp-scuba-state">
         <Badge tone={accounts ? "fine" : "soon"}>{accounts ? `${accounts} from Emergency access` : "None registered"}</Badge>
-        <small><Link className="cp-inline-link" href="/readiness">Manage on Emergency access</Link></small>
+        <small><Link className="cp-inline-link" href="/emergency-access">Manage on Emergency access</Link></small>
       </span>
     </li>
   );
@@ -156,7 +156,7 @@ export function ScubaListsSheet({ view, onDone, onClose }: { view: ScubaListsVie
           ) : (
             <p className="cp-callout" data-tone="soon"><Icon name="clock" />No emergency account is registered, so a sign-in rule that leaves anyone out does not count.</p>
           )}
-          <p><Link className="cp-inline-link" href="/readiness">Manage emergency accounts</Link></p>
+          <p><Link className="cp-inline-link" href="/emergency-access">Manage emergency accounts</Link></p>
         </fieldset>
         {error ? <p className="cp-error" role="alert">{error}</p> : null}
       </form>

@@ -80,7 +80,7 @@ export function previewAlerts(preview: ActivationPreview): PreviewAlert[] {
     alerts.push({
       key: "run-as", tone: "urgent", icon: "person", title: "The account it acts as cannot undo changes",
       todo: "Give it the restorer role on the People page, then preview again.", more: [],
-      action: { label: "Open People", href: "/principals" },
+      action: { label: "Open People", href: "/people" },
     });
   }
   if (preview.unknowns.length) {

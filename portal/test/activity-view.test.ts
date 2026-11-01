@@ -69,11 +69,11 @@ test("every job and audit entry is one row with a kind, an outcome and a person,
   assert.equal(failed.kind, "backup");
   assert.equal(failed.who, MARO.id);
   const approved = rows[0];
-  assert.equal(approved.title, "Amara Okafor approved a restore");
+  assert.equal(approved.title, "Amara Okafor approved a request to restore from a backup");
   assert.equal(approved.line, "Audit record · Approval decision");
   assert.equal(rowHref(approved), "/jobs/a3000000-0000-4000-8000-000000000003");
   const refused = rows.find((row) => row.id === "record:18200")!;
-  assert.equal(refused.title, "Maro Defili was refused a restore: that account is not allowed to");
+  assert.equal(refused.title, "Maro Defili was not allowed to restore from a backup: their role does not allow it");
   assert.equal(refused.outcome, "refused");
   assert.equal(rows.find((row) => row.id === "record:18190")!.title, "Policies checked a change to Finance approvers (group), and one applied");
   for (const row of rows) {
@@ -91,11 +91,11 @@ test("every job and audit entry is one row with a kind, an outcome and a person,
 });
 
 test("audit sentences name the request and the reason, and have one per kind", () => {
-  assert.equal(evidenceSentence({ kind: "approval-decision", actor: "x", subject: { decision: "rejected", action: "remediate" } }, "Sam Ortiz"), "Sam Ortiz rejected a roll back changes");
+  assert.equal(evidenceSentence({ kind: "approval-decision", actor: "x", subject: { decision: "rejected", action: "remediate" } }, "Sam Ortiz"), "Sam Ortiz rejected a request to roll back changes");
   assert.equal(evidenceSentence({ kind: "approval-decision", actor: "x", subject: { decision: "approve" } }, "Sam Ortiz"), "Sam Ortiz approved a request");
-  assert.equal(evidenceSentence({ kind: "action-attempt", actor: "x", subject: { action: "backup", decision: "denied", reason: "no-principal" } }, "Someone"), "Someone was refused a backup: no account was signed in");
-  assert.equal(evidenceSentence({ kind: "action-attempt", actor: "x", subject: { action: "undo", decision: "attempted" } }, "Lee Chen"), "Lee Chen started an undo");
-  assert.equal(evidenceSentence({ kind: "approval-signoff", actor: "x", subject: { action: "restore" } }, "Lee Chen"), "Lee Chen signed off a restore; another approval is still needed");
+  assert.equal(evidenceSentence({ kind: "action-attempt", actor: "x", subject: { action: "backup", decision: "denied", reason: "no-principal" } }, "Someone"), "Someone was not allowed to run a backup: no account was signed in");
+  assert.equal(evidenceSentence({ kind: "action-attempt", actor: "x", subject: { action: "restore:compensate", decision: "attempted" } }, "Lee Chen"), "Lee Chen started to undo a restore");
+  assert.equal(evidenceSentence({ kind: "approval-signoff", actor: "x", subject: { action: "restore" } }, "Lee Chen"), "Lee Chen signed off a request to restore from a backup; another approval is still needed");
   assert.equal(evidenceSentence({ kind: "baseline-resnapshot", actor: "x", subject: {} }, "Lee Chen"), "Lee Chen re-captured an approved setup from a newer backup");
   assert.equal(evidenceSentence({ kind: "benchmark-evaluation", actor: "x", subject: { verdict: "fail" } }, "Keel"), "A control check failed");
   assert.equal(evidenceSentence({ kind: "benchmark-exception", actor: "x", subject: {} }, "Lee Chen"), "Lee Chen granted an exception to a control");
@@ -170,7 +170,7 @@ test("filters live in the address, narrow the rows, and read back as words", () 
   assert.deepEqual(peopleIn([], PEOPLE, [AMARA.id, MARO.id]).map((person) => person.name).sort(), ["Amara Okafor", "Maro Defili"], "picked accounts stay in the list");
   const csv = activityCsv(rows.slice(0, 2));
   assert.match(csv, /^When,What,Type,Outcome,Who,Source,Job ID,Audit sequence,Account\n/);
-  assert.match(csv, /"Amara Okafor approved a restore","Approval","Recorded","Amara Okafor","Audit record","","18205"/);
+  assert.match(csv, /"Amara Okafor approved a request to restore from a backup","Approval","Recorded","Amara Okafor","Audit record","","18205"/);
   const risky = activityCsv([{ ...rows[0], title: "=HYPERLINK(\"https://example.invalid\")" }, { ...rows[1], title: "@SUM(1,1)" }]);
   assert.match(risky, /,"'=HYPERLINK\(""https:\/\/example\.invalid""\)",/, "a formula title is neutralised");
   assert.match(risky, /,"'@SUM\(1,1\)",/);
@@ -182,7 +182,7 @@ test("the page body renders rows by day, filters by address, and keeps ids in th
   const visible = html.replace(/<details[\s\S]*?<\/details>/g, "").replace(/ title="[^"]*"/g, "").replace(/<[^>]*>/g, " ").replaceAll("&#x27;", "'");
   assert.doesNotMatch(visible, UUID);
   assert.ok(!visible.includes("@"), visible);
-  for (const text of ["Keel ran 4 jobs in the last day; the backup of Tier 1 failed, and 1 more.", "Run the Tier 1 backup again", "Today", "Yesterday", "Monday 28 September", "Amara Okafor approved a restore", "Run again"]) {
+  for (const text of ["Keel ran 4 jobs in the last day; the backup of Tier 1 failed, and 1 more.", "Run the Tier 1 backup again", "Today", "Yesterday", "Monday 28 September", "Amara Okafor approved a request to restore from a backup", "Run again"]) {
     assert.ok(visible.includes(text), text);
   }
   assert.ok(html.indexOf("Today") < html.indexOf("Yesterday") && html.indexOf("Yesterday") < html.indexOf("Monday 28 September"), "newest day first");
@@ -246,8 +246,8 @@ test("a rule edit or delete reads as who changed which rule, under policy, and o
   assert.equal(editRow.title, "Amara Okafor edited the automatic rule “Undo low risk”: 3 settings changed; it stays off until it is previewed again");
   assert.equal(deleteRow.title, "Amara Okafor deleted the automatic rule “Undo low risk”");
   assert.equal(editRow.line, "Audit record · Automatic rule change");
-  assert.equal(rowHref(editRow), "/policies/5a000000-0000-4000-8000-000000000001");
-  assert.equal(rowHref(deleteRow), "/policies", "a deleted rule has no page; the link shows the rules");
+  assert.equal(rowHref(editRow), "/rules/5a000000-0000-4000-8000-000000000001");
+  assert.equal(rowHref(deleteRow), "/rules", "a deleted rule has no page; the link shows the rules");
   assert.equal(changesQuery(editRow), "record=41");
   assert.equal(changesQuery({ entry: { kind: "policy-change", seq: "1; drop", subject: {} } }), null);
 });

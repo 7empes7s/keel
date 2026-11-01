@@ -71,7 +71,7 @@ test("policy writes and navigation retain the policies capability boundary", () 
   }
   // The Policies page is listed in navigation exactly with the policies capability.
   for (const canPolicies of [true, false]) {
-    assert.equal(visibleNavLinks({ canRead: true, canPolicies }).some((link) => link.href === "/policies"), canPolicies);
+    assert.equal(visibleNavLinks({ canRead: true, canPolicies }).some((link) => link.href === "/rules"), canPolicies);
   }
   const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
   assert.match(layout, /readAccess\(requestHeaders, DATA_SURFACES.policiesPage\)/);

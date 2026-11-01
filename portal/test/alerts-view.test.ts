@@ -71,10 +71,10 @@ test("rows count down to the deadline in short words", () => {
 
 test("titles use plain kind words, and the panel links to the change by name", () => {
   assert.equal(alertTitle(OVERDUE), "Block legacy auth (sign-in rule)");
-  assert.deepEqual(changeLink(OVERDUE), { href: "/drift?q=Block%20legacy%20auth", label: "Open the change" });
+  assert.deepEqual(changeLink(OVERDUE), { href: "/changes?q=Block%20legacy%20auth", label: "Open the change" });
   const site = alert({ resourceKey: "sharepoint-site-settings:site:contoso.sharepoint.com,1,2", name: "Finance team", cause: { changeType: "modified", resourceType: "sharepoint-site-settings", snapshotId: null } });
   assert.deepEqual(changeLink(site), { href: "/sites/contoso.sharepoint.com%2C1%2C2", label: "Open the site" });
-  assert.equal(changeLink(alert({ control: "break-glass", condition: "emergency-account-used" })).href, "/readiness");
+  assert.equal(changeLink(alert({ control: "break-glass", condition: "emergency-account-used" })).href, "/emergency-access");
   assert.equal(alertService(OVERDUE).name, "Entra ID");
   assert.equal(alertService(site).name, "SharePoint and OneDrive");
   assert.equal(escalationWords("escalation-failed-no-recipient"), "Keel could not escalate it: no channel is set to tell anyone.");

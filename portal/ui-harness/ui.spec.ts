@@ -12,10 +12,10 @@ const PAGES = [
   { name: "protect", hash: "/protect" },
   { name: "schedules", hash: "/schedules" },
   { name: "schedules-viewer", hash: "/schedules/viewer" },
-  { name: "drift", hash: "/drift" },
-  { name: "drift-services", hash: "/drift/services" },
-  { name: "drift-feed", hash: "/drift/feed" },
-  { name: "drift-feed-empty", hash: "/drift/feed-empty" },
+  { name: "drift", hash: "/changes" },
+  { name: "drift-services", hash: "/changes/services" },
+  { name: "drift-feed", hash: "/changes/feed" },
+  { name: "drift-feed-empty", hash: "/changes/feed-empty" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
@@ -24,9 +24,9 @@ const PAGES = [
   { name: "resilience-unmeasured", hash: "/resilience/unmeasured" },
   { name: "reports", hash: "/reports" },
   { name: "reports-scoped", hash: "/reports/scoped" },
-  { name: "readiness", hash: "/readiness" },
-  { name: "readiness-ready", hash: "/readiness/ready" },
-  { name: "readiness-empty", hash: "/readiness/empty" },
+  { name: "readiness", hash: "/emergency-access" },
+  { name: "readiness-ready", hash: "/emergency-access/ready" },
+  { name: "readiness-empty", hash: "/emergency-access/empty" },
   { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-backup-running", hash: "/jobs/a1" },
@@ -35,19 +35,19 @@ const PAGES = [
   { name: "job-service-partial", hash: "/jobs/w4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "job-restore-undo", hash: "/jobs/r10" },
-  { name: "policies", hash: "/policies" },
-  { name: "policy", hash: "/policies/p1" },
-  { name: "policy-activation", hash: "/policies/p2" },
+  { name: "policies", hash: "/rules" },
+  { name: "policy", hash: "/rules/p1" },
+  { name: "policy-activation", hash: "/rules/p2" },
   { name: "approvals", hash: "/approvals" },
   { name: "approvals-settings", hash: "/approvals/settings" },
   { name: "approvals-solo", hash: "/approvals/solo" },
-  { name: "baselines", hash: "/baselines" },
-  { name: "baselines-new", hash: "/baselines/new" },
-  { name: "baselines-put-back", hash: "/baselines/put-back" },
-  { name: "benchmarks", hash: "/benchmarks" },
-  { name: "benchmarks-scuba-lists", hash: "/benchmarks/scuba" },
-  { name: "benchmarks-scuba-lists-edit", hash: "/benchmarks/scuba?lists=edit" },
-  { name: "principals", hash: "/principals" },
+  { name: "baselines", hash: "/approved-setups" },
+  { name: "baselines-new", hash: "/approved-setups/new" },
+  { name: "baselines-put-back", hash: "/approved-setups/put-back" },
+  { name: "benchmarks", hash: "/compliance" },
+  { name: "benchmarks-scuba-lists", hash: "/compliance/scuba" },
+  { name: "benchmarks-scuba-lists-edit", hash: "/compliance/scuba?lists=edit" },
+  { name: "principals", hash: "/people" },
   { name: "notifications", hash: "/notifications" },
   { name: "integrations", hash: "/integrations" },
   { name: "integrations-servicenow-off", hash: "/integrations/servicenow-off" },
@@ -63,12 +63,12 @@ const PAGES = [
   { name: "compare-tenants", hash: "/compare/tenants" },
   { name: "activity-names-hidden", hash: "/activity/anonymous" },
   { name: "approvals-names-hidden", hash: "/approvals/anonymous" },
-  { name: "drift-names-hidden", hash: "/drift/anonymous" },
-  { name: "principals-names-hidden", hash: "/principals/anonymity" },
-  { name: "principals-names-shown", hash: "/principals/anonymity-off" },
+  { name: "drift-names-hidden", hash: "/changes/anonymous" },
+  { name: "principals-names-hidden", hash: "/people/anonymity" },
+  { name: "principals-names-shown", hash: "/people/anonymity-off" },
   { name: "alerts-names-hidden", hash: "/alerts/anonymous" },
-  { name: "policies-names-hidden", hash: "/policies/anonymous" },
-  { name: "benchmarks-names-hidden", hash: "/benchmarks/anonymous" },
+  { name: "policies-names-hidden", hash: "/rules/anonymous" },
+  { name: "benchmarks-names-hidden", hash: "/compliance/anonymous" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
@@ -506,7 +506,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(groups.nth(2)).toHaveText("Wednesday 30 September");
   await expect(page.locator(".sel-group").first()).toContainText("1 failed, 1 refused");
   for (const link of await page.locator(".ac-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
-  await expect(page.locator(".ac-row-link").first()).toHaveText("Amara Okafor approved a restore");
+  await expect(page.locator(".ac-row-link").first()).toHaveText("Amara Okafor approved a request to restore from a backup");
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 
   // The panel of a failed backup: what went wrong, one amber "Run again", the job page link.
@@ -574,7 +574,7 @@ for (const [viewport, theme] of [[{ width: 390, height: 844 }, "light"], [{ widt
     await expect(limit.locator('[data-side="before"]')).toContainText("No limit");
     await expect(limit.locator('[data-side="after"]')).toContainText("10 an hour");
     await expect(rule.locator(".cc-row", { hasText: "Type of thing" }).locator('[data-side="after"]')).toContainText("Group");
-    await expect(panel.getByRole("link", { name: "Open the rule" })).toHaveAttribute("href", /\/policies\/5a000000-0000-4000-8000-000000000001/);
+    await expect(panel.getByRole("link", { name: "Open the rule" })).toHaveAttribute("href", /\/rules\/5a000000-0000-4000-8000-000000000001/);
     await page.screenshot({ path: `test-results/rule-edit-${viewport.width}-${theme}.png`, fullPage: false });
 
     await open(page, "/activity?open=record:18180", theme);
@@ -584,7 +584,7 @@ for (const [viewport, theme] of [[{ width: 390, height: 844 }, "light"], [{ widt
     await expect(gone.locator(".cv-chip")).toHaveText("Removed");
     await gone.getByRole("button", { name: /Show its \d+ settings/ }).click();
     await expect(gone.locator(".cc-whole-list")).toContainText("Could lock out admins");
-    await expect(deleted.getByRole("link", { name: "Show the automatic rules" })).toHaveAttribute("href", /\/policies$/);
+    await expect(deleted.getByRole("link", { name: "Show the automatic rules" })).toHaveAttribute("href", /\/rules$/);
     // Ids stay in Technical details: the sentence and the settings never show one.
     expect(await deleted.locator(".ac-changes").evaluate((element) => element.textContent ?? "")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
     await page.screenshot({ path: `test-results/rule-delete-${viewport.width}-${theme}.png`, fullPage: false });
@@ -1086,7 +1086,7 @@ async function openChange(page: Page, name: string) {
 // Task-131: the undo preview says what Keel would do in words, keeps verbs and waves in
 // the record, and states a refusal as a sentence.
 test("the undo preview speaks in words and states a refusal as a sentence", async ({ page }) => {
-  await open(page, "/drift");
+  await open(page, "/changes");
   await page.getByLabel("Select Finance (group)").check();
   await page.getByLabel("Select Block legacy auth (sign-in rule)").check();
   await expect(page.locator(".sel-bar")).toContainText("2 changes selected");
@@ -1108,7 +1108,7 @@ test("the undo preview speaks in words and states a refusal as a sentence", asyn
 
 // Accepting chosen changes says what it does first, asks why, then takes them off the list.
 test("accepting chosen changes says what it does, asks why, and clears them from the list", async ({ page }) => {
-  await open(page, "/drift");
+  await open(page, "/changes");
   await page.getByLabel("Select Old project team (group)").check();
   await page.getByRole("checkbox", { name: /^Select Windows baseline/ }).check();
   await page.locator(".sel-bar").getByRole("button", { name: "Accept 2 changes" }).click();
@@ -1126,7 +1126,7 @@ test("accepting chosen changes says what it does, asks why, and clears them from
 // Accepting many changes goes on past one that fails: the others are saved, and the
 // panel stays open on the one that was not, saying which and why.
 test("a change that could not be accepted stays chosen and is named, the rest are saved", async ({ page }) => {
-  await open(page, "/drift");
+  await open(page, "/changes");
   await page.getByLabel("Select Old project team (group)").check();
   await page.getByRole("checkbox", { name: /^Select Windows baseline/ }).check();
   await page.locator(".sel-bar").getByRole("button", { name: "Accept 2 changes" }).click();
@@ -1149,7 +1149,7 @@ test("a change that could not be accepted stays chosen and is named, the rest ar
 // Task-91: who made a change, in words, with its evidence kept in the record; a missing
 // audit log is said plainly, and a cross-entity undo is handed to a central approver.
 test("a change says who made it from the audit log and where an undo goes", async ({ page }) => {
-  await open(page, "/drift");
+  await open(page, "/changes");
   let sheet = await openChange(page, "Block legacy auth");
   const panel = sheet.locator(".change-attribution");
   await expect(panel.locator(".change-attribution-headline")).toContainText("Confirmed by the Microsoft audit log. Amara Okafor made this change, according to the audit log.");
@@ -1182,11 +1182,37 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
+// D20: a change the list did not read the audit log for is looked up when it is opened,
+// so the panel names who made it instead of "not known yet"; a failed read says so.
+test("an opened change looks up who made it when the list did not", async ({ page }) => {
+  await open(page, "/changes");
+  const sheet = await openChange(page, "Require MFA for admins");
+  const glance = sheet.locator(".bl-glance");
+  await expect(glance).toContainText("Sam Lee");
+  await expect(glance).toContainText("When it was made");
+  await expect(glance).toContainText("1 Oct 2026, 21:05 UTC");
+  await expect(glance).not.toContainText("has not checked");
+  await expect(sheet.locator(".change-attribution-headline")).toContainText("Sam Lee made this change, according to the audit log.");
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.map((call) => call.url));
+  expect(calls).toContain("/api/drift/attribution?id=dr2");
+  // A change the list already read is not looked up again.
+  expect(calls.filter((url) => url.startsWith("/api/drift/attribution"))).toEqual(["/api/drift/attribution?id=dr2"]);
+  await sheet.getByRole("button", { name: "Close", exact: true }).click();
+
+  const failed = await openChange(page, "Branch offices");
+  await expect(failed.locator(".bl-glance")).toContainText("Not known yet");
+  await expect(failed.locator(".bl-glance")).toContainText("Keel could not read the audit log just now. Close and open this change to try again.");
+  await expect(failed.locator(".change-attribution-headline")).toContainText("Not checked");
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+});
+
 // Task-98: a change lists only the settings that change behaviour, grouped by what an
 // undo can do, links the records a decision rests on and says which ones do not match.
 // An unknown earlier value is never a removal.
 test("a change shows its behavioural settings and linked records, and flags mismatches", async ({ page }) => {
-  await open(page, "/drift");
+  await open(page, "/changes");
   const all = page.locator(".bl-tile", { hasText: "All open changes" });
   await expect(all.locator(".bl-tile-count")).toHaveText("7");
   await expect(all).toContainText("Everything that differs from the approved setup");
@@ -1240,7 +1266,7 @@ test("a change shows its behavioural settings and linked records, and flags mism
 
 test("an opened change and the counts fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/drift", "light");
+  await open(page, "/changes", "light");
   const sheet = await openChange(page, "Block legacy auth");
   await expect(sheet.locator(".decision-evidence")).toContainText("Shared by CREOS and ENOVOS.");
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -1267,7 +1293,7 @@ test("an opened change and the counts fit a phone without sideways scrolling", a
 // its service, select all picks every change, and a tile filters by risk in the address.
 test("changes · Shift+click range, select a service, select all, filter by risk", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift");
+  await open(page, "/changes");
   const rows = page.locator(".sel-row");
   await rows.nth(0).locator("input").click();
   await rows.nth(2).locator(".bl-row-who").click({ modifiers: ["Shift"] });
@@ -1292,7 +1318,7 @@ test("changes · Shift+click range, select a service, select all, filter by risk
 test("changes · phone: hold a change, then drag over others to select them", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
   const touchPage = await context.newPage();
-  await touchPage.goto(`${HARNESS}#/drift`);
+  await touchPage.goto(`${HARNESS}#/changes`);
   await touchPage.locator('.shell[data-statuses="ready"]').waitFor();
   const rows = touchPage.locator(".sel-row");
   await rows.nth(2).scrollIntoViewIfNeeded();
@@ -1821,7 +1847,7 @@ test("the value report fits 390 and 1440 in both themes, and every tile, chart a
 // Task-94: each emergency account shows its six checks separately; "Not known" is its
 // own state, checks KEEL cannot make stay listed, and a use leads the verdict.
 test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
-  await open(page, "/readiness");
+  await open(page, "/emergency-access");
   await expect(page.locator(".page-header .status-pill")).toHaveText("Account used");
   await expect(page.locator(".verdict-sentence")).toHaveText("An emergency account was used: check that the use was planned, then acknowledge the alert.");
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "Review the sign-in" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-000000000094/);
@@ -1837,7 +1863,7 @@ test("emergency access shows each check, keeps unknown and unchecked visible, an
   await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Block legacy auth" })).toHaveCount(1);
   // A day-to-day account is not kept for emergencies.
   await expect(second.locator('.ea-check[data-status="fail"]', { hasText: "Kept for emergencies only" })).toContainText("signed in on 12 separate days");
-  await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /drift\?q=Block%20legacy%20auth/);
+  await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /changes\?q=Block%20legacy%20auth/);
   await expect(second.locator('.ea-check[data-status="due"]')).toContainText("a new test has been due since");
   await expect(page.locator(".ea-alerts")).toContainText("Emergency admin 2 was used 1 hour ago, and made 2 changes after it.");
   await expect(page.locator(".ea-changes li")).toHaveCount(2);
@@ -1850,7 +1876,7 @@ test("emergency access shows each check, keeps unknown and unchecked visible, an
   await expect(page.locator(".ea-tile", { hasText: "Tests due" }).locator(".ea-tile-count")).toHaveText("1");
   await expect(page.locator(".ea-tile", { hasText: "Unplanned uses" }).locator(".ea-tile-count")).toHaveText("1");
 
-  await open(page, "/readiness/ready");
+  await open(page, "/emergency-access/ready");
   await expect(page.locator(".page-header .status-pill")).toHaveText("Ready");
   await expect(page.locator(".verdict-sentence")).toContainText("4 areas need a manual check");
   await expect(page.locator('.ea-surface[data-status="unsupported"]')).toHaveCount(4);
@@ -1861,7 +1887,7 @@ test("Emergency access · record a test sign-in, acknowledge a use, retire asks 
   type Call = { url: string; method: string; body: string | null };
   const posts = async (url: string) => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
     .filter((call) => call.url === url).map((call) => JSON.parse(call.body ?? "{}"));
-  await open(page, "/readiness");
+  await open(page, "/emergency-access");
   const second = page.locator("#ea-account-1");
   await expect(second.locator('.ea-check[data-check="lastValidation"] .badge')).toHaveText("Due");
 
@@ -1905,7 +1931,7 @@ test("Emergency access · record a test sign-in, acknowledge a use, retire asks 
 });
 
 test("Emergency access · a viewer sees the checks but no changes", async ({ page }) => {
-  await open(page, "/readiness/viewer");
+  await open(page, "/emergency-access/viewer");
   await expect(page.locator(".ea-note")).toHaveText("Only people who manage configuration can change emergency accounts.");
   await expect(page.locator(".ea-account")).toHaveCount(2);
   await expect(page.locator("main").getByRole("link", { name: /Record|Add an emergency account|Edit|Resolve/ })).toHaveCount(0);
@@ -1914,7 +1940,7 @@ test("Emergency access · a viewer sees the checks but no changes", async ({ pag
 });
 
 test("Emergency access · with no accounts, the one action adds one", async ({ page }) => {
-  await open(page, "/readiness/empty");
+  await open(page, "/emergency-access/empty");
   await expect(page.locator(".page-header .status-pill")).toHaveText("Not set up");
   await expect(page.locator(".ea-empty")).toContainText("No emergency accounts yet. Add two cloud-only accounts so one failure does not lock everyone out.");
   await page.locator('[data-layer="verdict"]').getByRole("button", { name: "Add an emergency account" }).click();
@@ -1929,7 +1955,7 @@ test("Emergency access · with no accounts, the one action adds one", async ({ p
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/readiness", "/readiness/empty", "/readiness?account=b9000000-0000-4000-8000-000000000002&do=record"]) {
+    for (const hash of ["/emergency-access", "/emergency-access/empty", "/emergency-access?account=b9000000-0000-4000-8000-000000000002&do=record"]) {
       test(`Emergency access · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles and cards`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -1942,7 +1968,7 @@ for (const theme of ["dark", "light"] as const) {
         const tiles = await page.locator(".ea-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
         expect(tiles.length).toBe(4);
         expect(new Set(tiles).size).toBe(1);
-        if (width === 1440 && hash !== "/readiness/empty") {
+        if (width === 1440 && hash !== "/emergency-access/empty") {
           const cards = await page.locator(".ea-account").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
           expect(cards.length).toBe(2);
           expect(new Set(cards).size).toBe(1);
@@ -2036,7 +2062,7 @@ test("sites list and a site's page fit a phone without sideways scrolling", asyn
 // Each service has its own approved setup, so they are accepted or undone like the rest.
 test("the Changes list groups and filters every service, and service changes can be accepted or undone", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await open(page, "/drift/services", "dark");
+  await open(page, "/changes/services", "dark");
   await expect(page.locator('[data-layer="verdict"]')).toContainText("5 service setting changes wait for review");
   const groups = page.locator(".sel-group-name");
   for (const service of ["Entra ID", "Exchange Online", "SharePoint and OneDrive", "Teams", "Purview", "Power Platform"]) {
@@ -2062,7 +2088,7 @@ test("the Changes list groups and filters every service, and service changes can
 // A kind Keel cannot write back says so plainly on the change, and offers only Accept.
 test("Changes · a service change Keel cannot undo says why", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift/services");
+  await open(page, "/changes/services");
   await page.locator(".sel-row", { hasText: "SharePoint" }).locator(".bl-row-link", { hasText: /^Finance$/ }).click();
   const sheet = page.getByRole("dialog", { name: "Finance" });
   await expect(sheet.getByRole("button", { name: "Accept this change" })).toBeVisible();
@@ -2076,7 +2102,7 @@ test("Changes · a service change Keel cannot undo says why", async ({ page }) =
 // lead with counts and filters, and settings that stayed the same fold away.
 test("a change compares each setting with its earlier value, coloured, and many changes stay short", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/drift/services", "light");
+  await open(page, "/changes/services", "light");
   await page.locator(".sel-row", { hasText: "SharePoint setting" }).locator(".bl-row-link", { hasText: /^Finance$/ }).click();
   const sheet = page.getByRole("dialog", { name: "Finance" });
   await expect(sheet.locator('.bl-glance [data-fact="what"]')).toHaveText(/App permission grants: removed App KEEL-RT-site-grant-app · Write access, and 1 more entry\./);
@@ -2090,7 +2116,7 @@ test("a change compares each setting with its earlier value, coloured, and many 
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift", "dark");
+  await open(page, "/changes", "dark");
   const windows = await openChange(page, "Windows baseline");
   await expect(windows.locator(".cc-sentence")).toHaveText("11 settings differ from the approved setup: 7 changed, 2 added and 2 removed.");
   await expect(windows.locator(".cc-row")).toHaveCount(8);
@@ -2118,7 +2144,7 @@ test("a change compares each setting with its earlier value, coloured, and many 
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 
   // A whole new item says so in one line with a green badge; its settings fold away.
-  await open(page, "/drift", "light");
+  await open(page, "/changes", "light");
   const added = await openChange(page, "Branch offices");
   const whole = added.locator('.cc[data-whole="added"]');
   await expect(whole.locator(".cc-chip")).toHaveText("Added");
@@ -2136,7 +2162,7 @@ test("Changes · acknowledge and accept service setting changes in place", async
   const posts = async (url: string) => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
     .filter((call) => call.url === url).map((call) => JSON.parse(call.body ?? "{}"));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift/services");
+  await open(page, "/changes/services");
   const tile = page.locator(".bl-tile", { hasText: "Service settings" });
   await expect(tile.locator(".bl-tile-count")).toHaveText("5");
   await tile.click();
@@ -2176,7 +2202,7 @@ test("Changes · undo a service setting change through its restore", async ({ pa
   const posts = async (url: string) => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
     .filter((call) => call.url === url).map((call) => JSON.parse(call.body ?? "{}"));
   await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/drift/services");
+  await open(page, "/changes/services");
   const details = await openChange(page, "Forward finance mail");
   await details.getByRole("button", { name: "Undo this change" }).click();
   const sheet = page.getByRole("dialog", { name: "Undo this change" });
@@ -2198,7 +2224,7 @@ test("Changes · undo a service setting change through its restore", async ({ pa
 test("Changes · the verdict follows the service filter like the tiles", async ({ page }) => {
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await open(page, "/drift/services?service=Entra");
+    await open(page, "/changes/services?service=Entra");
     const verdict = page.locator('[data-layer="verdict"]');
     const tile = (name: string) => page.locator(".bl-tile", { hasText: name }).locator(".bl-tile-count");
     await expect(tile("Service settings")).toHaveText("0");
@@ -2221,13 +2247,13 @@ test("Changes · the verdict follows the service filter like the tiles", async (
 test("Changes · the header and the verdict show one open-changes total", async ({ page }) => {
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await open(page, "/drift/services");
+    await open(page, "/changes/services");
     const verdict = page.locator('[data-layer="verdict"] .verdict-sentence');
     const all = Number(await page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count").innerText());
     await expect(page.locator(".page-header")).toContainText(`${all} changes to review`);
     await expect(verdict).toContainText(new RegExp(`^${all} open changes: \\d+ since the approved setup`));
 
-    await open(page, "/drift/services-capped");
+    await open(page, "/changes/services-capped");
     const setup = all - 5;
     await expect(page.locator(".page-header")).toContainText(`${all + 300} changes to review`);
     await expect(verdict).toContainText(new RegExp(`^${all + 300} open changes: ${setup} since the approved setup .*, and 305 service setting changes are still open`));
@@ -2245,7 +2271,7 @@ test("Changes · the header and the verdict show one open-changes total", async 
 // is never a dead end.
 test("Changes · tiles add up, other filters narrow, chips and no dead ends", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift/services");
+  await open(page, "/changes/services");
   const tile = (name: string) => page.locator(".bl-tile", { hasText: name });
   const rows = page.locator(".sel-row");
   await expect(rows).toHaveCount(12);
@@ -2282,7 +2308,7 @@ test("Changes · tiles add up, other filters narrow, chips and no dead ends", as
   await expect(page.getByPlaceholder("Find changes")).toHaveValue("");
 
   // The same view comes back from the address, and from a saved filter.
-  await open(page, "/drift/services?risk=tenant-lockout,cosmetic");
+  await open(page, "/changes/services?risk=tenant-lockout,cosmetic");
   await expect(rows).toHaveCount(5);
   await page.getByRole("button", { name: "Save filter" }).click();
   await page.getByLabel("Name for this filter").fill("Lockout and cosmetic");
@@ -2299,7 +2325,7 @@ test("Changes · tiles add up, other filters narrow, chips and no dead ends", as
 // remove button each, and the decision runs on every pick, shown or not.
 test("Changes · picks stay picked across filters and services, in a tray", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift/services");
+  await open(page, "/changes/services");
   const bar = page.locator(".sel-bar");
   await page.getByLabel("Select Finance (group)").check();
   await page.locator(".bl-tile", { hasText: "Service settings" }).click();
@@ -2345,13 +2371,13 @@ test("Changes · picks stay picked across filters and services, in a tray", asyn
 
 // Other pages link to a filtered list by kind; the filter note says so.
 test("Changes · a kind filter in the address and plain words on the page", async ({ page }) => {
-  await open(page, "/drift?kind=namedLocation");
+  await open(page, "/changes?kind=namedLocation");
   await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
   await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(1);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await expect(page.locator(".bl-context")).toContainText("Checked after every backup.");
   await expect(page.locator(".bl-context").getByRole("link", { name: "Run a backup now" })).toHaveAttribute("href", /protect/);
-  for (const hash of ["/drift", "/drift/services"]) {
+  for (const hash of ["/changes", "/changes/services"]) {
     await open(page, hash);
     const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
     expect(visible).not.toMatch(/\bKEEL\b/);
@@ -2364,7 +2390,7 @@ test("Changes · a kind filter in the address and plain words on the page", asyn
     expect(mono).toEqual([]);
   }
   // The same in an opened change: headings and labels are plain text, values are code-style.
-  await open(page, "/drift");
+  await open(page, "/changes");
   await openChange(page, "Finance");
   const sheetMono = await page.locator(".bl-sheet *").evaluateAll((elements) => elements
     .filter((element) => !element.closest('[data-layer="record"], .cv-side') && (element as HTMLElement).innerText?.trim() && getComputedStyle(element).fontFamily.toLowerCase().includes("mono"))
@@ -2513,7 +2539,7 @@ test("contract · shell: eight sections, plain words, the page's sub-pages under
   for (const { hash, section, sub } of [
     { hash: "/schedules", section: "Backup", sub: "Schedules" },
     { hash: "/incidents", section: "Restore", sub: "Incidents" },
-    { hash: "/principals", section: "Settings", sub: "People" },
+    { hash: "/people", section: "Settings", sub: "People" },
     { hash: "/compare", section: "Baselines", sub: "Compare" },
   ]) {
     await open(page, hash, "dark");
@@ -3228,7 +3254,7 @@ for (const theme of ["dark", "light"] as const) {
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
   test(`the approved setup sums up each service and fits ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await open(page, "/baselines", viewport.width < 600 ? "light" : "dark");
+    await open(page, "/approved-setups", viewport.width < 600 ? "light" : "dark");
     // Every open change, service setting changes included: 7 approved-setup changes and
     // 5 service setting changes, the same total as the Overview and the Changes page.
     await expect(page.locator(".status-pill")).toContainText("12 changes to review");
@@ -3247,9 +3273,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     // Each service has its own ring.
     await expect(entra.getByRole("img", { name: /^Entra ID: \d+% match\./ })).toBeVisible();
     // A service with changes links to them, filtered to that service.
-    await expect(entra).toHaveAttribute("href", /drift\?service=/);
+    await expect(entra).toHaveAttribute("href", /changes\?service=/);
     await entra.click();
-    await expect(page).toHaveURL(/drift\?service=/);
+    await expect(page).toHaveURL(/changes\?service=/);
     await expect(page.locator(".sel-row")).toHaveCount(6);
     await page.goBack();
     await page.locator(".bl-current").waitFor();
@@ -3262,7 +3288,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(exchange).toHaveAttribute("data-basis", "previous-backup");
     await expect(exchange).toContainText(/Changed\s*1\s*type/);
     await expect(exchange).toContainText(/In line\s*1\s*type/);
-    await expect(exchange).toHaveAttribute("href", /drift\?service=Exchange/);
+    await expect(exchange).toHaveAttribute("href", /changes\?service=Exchange/);
     await expect(page.locator(".bl-service", { hasText: "Intune" })).toHaveAttribute("data-basis", "approved-setup");
     await expect(page.locator(".bl-legend")).toContainText("Not read");
     // Service cards in one row are the same height; nothing scrolls sideways.
@@ -3281,7 +3307,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
   test(`a put-back approved setup explains its dates and why capture is off at ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await open(page, "/baselines/put-back", viewport.width < 600 ? "dark" : "light");
+    await open(page, "/approved-setups/put-back", viewport.width < 600 ? "dark" : "light");
     const current = page.locator(".bl-current");
     await expect(current.locator(".bl-fact", { hasText: "Approved by" })).toContainText("4 hours ago, on");
     await expect(current.locator(".bl-fact", { hasText: "Settings from" })).toContainText("43 days ago");
@@ -3304,7 +3330,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
 
 // The guided create: start from a backup, name it, check what happens, then create.
 test("a new approved setup is made in three steps that say what will happen", async ({ page }) => {
-  await open(page, "/baselines/new");
+  await open(page, "/approved-setups/new");
   const wizard = page.locator(".bl-wizard");
   await expect(wizard.locator(".bl-steps li[aria-current='step']")).toContainText("Start from");
   await wizard.getByRole("radio", { name: /An earlier backup/ }).click();
@@ -3329,7 +3355,7 @@ test("a new approved setup is made in three steps that say what will happen", as
 
 // Rule 12, "everything clicks": on every Baselines page, whatever looks clickable is a
 // link or a button, and each one shows a focus ring from the keyboard.
-for (const hash of ["/baselines", "/drift", "/baselines/new", "/compare"]) {
+for (const hash of ["/approved-setups", "/changes", "/approved-setups/new", "/compare"]) {
   test(`everything that looks clickable on ${hash} is a link or a button`, async ({ page }) => {
     await open(page, hash);
     const fakes = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("*")]
@@ -3350,7 +3376,7 @@ for (const hash of ["/baselines", "/drift", "/baselines/new", "/compare"]) {
 // Task-92: an automatic policy that is off shows what turning it on would do, names the
 // dependency above its limit, and a refused turn-on says what changed since the preview.
 test("policy activation preview names dependencies above the limit and refuses a stale preview", async ({ page }) => {
-  await open(page, "/policies/p2");
+  await open(page, "/rules/p2");
   const preview = page.locator("section.policy-preview");
   await expect(preview.locator(".policy-preview-text")).toHaveText("Ready to turn on. It would undo 2 changes now; Keel will refuse 1 that depends on something above its limit.");
   // What needs the reader first, worst first, each with what to do; specifics behind Show details.
@@ -3394,7 +3420,7 @@ test("policy activation preview names dependencies above the limit and refuses a
 // creates an undo rule switched off and lands on its page.
 test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/policies");
+  await open(page, "/rules");
   await expect(page.locator("main#main-content h1")).toHaveText("Automatic rules");
   await expect(page.locator(".status-pill")).toHaveText("1 stopped");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Undo mail flow changes is stopped: the account it acts as needs repair.");
@@ -3403,12 +3429,12 @@ test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page
   await expect(tiles.filter({ hasText: "Running" })).toContainText("2");
   await expect(tiles.filter({ hasText: "Paused or stopped" })).toContainText("1 hit its limit, 1 needs repair");
   await expect(tiles.filter({ hasText: "Actions this week" })).toContainText("24");
-  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/policies/);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/rules/);
   // Grouped by what the rule does, undo first; every name links to the rule's page.
   const groups = page.locator(".sel-group .sel-group-name b");
   await expect(groups).toHaveText(["Undo automatically", "Ask for approval", "Alert only"]);
   await expect(page.locator(".sel-group").first()).toContainText("3 rules");
-  for (const link of await page.locator(".po-row-link").all()) expect(await link.getAttribute("href")).toMatch(/#\/policies\/[^/]+$/);
+  for (const link of await page.locator(".po-row-link").all()) expect(await link.getAttribute("href")).toMatch(/#\/rules\/[^/]+$/);
   const rows = page.locator(".sel-row");
   await expect(rows).toHaveCount(5);
   await expect(rows.filter({ hasText: "Undo low-risk changes" })).toContainText("Last undid Branch offices 2 hours ago");
@@ -3462,7 +3488,7 @@ test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page
   const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/policies");
   expect(created.length).toBe(1);
   expect(JSON.parse(created[0].body ?? "{}")).toMatchObject({ name: "Undo changes to admin groups", action: "auto_remediate", maxBlastRadius: "cosmetic", runAsPrincipalId: "8c1e0000-0000-4000-8000-0000000000a1" });
-  await expect(page).toHaveURL(/#\/policies\/p2$/);
+  await expect(page).toHaveURL(/#\/rules\/p2$/);
   await expect(page.locator("main#main-content h1")).toHaveText("Undo changes to admin groups");
   // Its page opens on the preview step (the harness shows p2 with a preview already made).
   await expect(page.locator(".po-activation h2")).toHaveText("Before it turns on");
@@ -3472,12 +3498,12 @@ test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page
 
 test("Policies · a rule's page: the sentence once, actions open their jobs, Resume or Turn off as the controls", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/policies/p1");
+  await open(page, "/rules/p1");
   await expect(page.locator(".status-pill")).toHaveText("Running");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Undoes low-risk changes to anything, up to 50 an hour.");
   await expect(page.locator(".po-chip")).toHaveText(["Anything", "Changed", "Low risk"]);
   await expect(page.locator(".po-person-link")).toContainText("Policy service account");
-  expect(await page.locator(".po-person-link").getAttribute("href")).toMatch(/principals/);
+  expect(await page.locator(".po-person-link").getAttribute("href")).toMatch(/people/);
   const actions = page.locator(".po-action");
   await expect(actions).toHaveCount(3);
   await expect(actions.nth(0).locator(".badge")).toHaveText("Waiting");
@@ -3491,7 +3517,7 @@ test("Policies · a rule's page: the sentence once, actions open their jobs, Res
   await page.locator("dialog[open]").getByRole("button", { name: "Cancel" }).click();
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
   // A paused rule: Resume is the one amber action, and it posts to clear-pause.
-  await open(page, "/policies/p3");
+  await open(page, "/rules/p3");
   await expect(page.locator(".status-pill")).toHaveText("Paused");
   const amber = page.locator("main .btn-primary:visible");
   await expect(amber).toHaveText("Resume");
@@ -3507,7 +3533,7 @@ test("Policies · a rule is edited in its sheet and deleted after a confirm; a n
   type Call = { url: string; method: string; body?: string };
   const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
   // Edit: the sheet opens filled in with the rule; what it does is fixed; an undo rule that is on is turned off by saving.
-  await open(page, "/policies/p1");
+  await open(page, "/rules/p1");
   await page.getByRole("button", { name: "Edit" }).click();
   const sheet = page.getByRole("dialog", { name: "Edit Undo low-risk changes" });
   await expect(sheet).toBeVisible();
@@ -3536,7 +3562,7 @@ test("Policies · a rule is edited in its sheet and deleted after a confirm; a n
   await confirm.click();
   await expect(page.locator(".toast", { hasText: "Undo low-risk changes deleted" })).toBeVisible();
   expect((await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/delete")).map((call) => call.url)).toEqual(["/api/policies/7a1d0f3e-0000-4000-8000-000000000001/delete"]);
-  await expect(page).toHaveURL(/#\/policies$/);
+  await expect(page).toHaveURL(/#\/rules$/);
 
   // New rule: the hourly limit is a real 50, so the saved body says 50.
   await page.getByRole("link", { name: "New rule" }).click();
@@ -3550,7 +3576,7 @@ test("Policies · a rule is edited in its sheet and deleted after a confirm; a n
 });
 
 test("Policies · a viewer sees the rules and no controls", async ({ page }) => {
-  await open(page, "/policies/viewer");
+  await open(page, "/rules/viewer");
   await expect(page.locator(".po-tile")).toHaveCount(4);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Turn off|Resume|Turn on/ })).toHaveCount(0);
@@ -3564,7 +3590,7 @@ test("Policies · a viewer sees the rules and no controls", async ({ page }) => 
 for (const width of [375, 390, 1278]) {
   test(`Policies · ${width} · New rule and Edit open as a styled sheet with every choice inside it`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 600 ? 812 : 900 });
-    for (const [hash, opener, name] of [["/policies", "New rule", "New rule"], ["/policies/p1", "Edit", "Edit Undo low-risk changes"]] as const) {
+    for (const [hash, opener, name] of [["/rules", "New rule", "New rule"], ["/rules/p1", "Edit", "Edit Undo low-risk changes"]] as const) {
       await open(page, hash);
       await page.getByRole(opener === "Edit" ? "button" : "link", { name: opener, exact: true }).click();
       const sheet = page.getByRole("dialog", { name });
@@ -3589,7 +3615,7 @@ for (const width of [375, 390, 1278]) {
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/policies", "/policies?group=state", "/policies/p1", "/policies/p2"]) {
+    for (const hash of ["/rules", "/rules?group=state", "/rules/p1", "/rules/p2"]) {
       test(`Policies · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -3599,7 +3625,7 @@ for (const theme of ["dark", "light"] as const) {
           .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
-        if (hash.startsWith("/policies?") || hash === "/policies") {
+        if (hash.startsWith("/rules?") || hash === "/rules") {
           const tiles = await page.locator(".po-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
           expect(tiles.length).toBe(4);
           expect(new Set(tiles).size).toBe(1);
@@ -3610,7 +3636,7 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.outerHTML.slice(0, 80)));
         expect(dead).toEqual([]);
         expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
-        if (width === 390 && hash === "/policies") {
+        if (width === 390 && hash === "/rules") {
           // The New rule sheet fits a phone with its action in view.
           await page.getByRole("link", { name: "New rule" }).click();
           const sheet = page.getByRole("dialog", { name: "New rule" });
@@ -3620,7 +3646,7 @@ for (const theme of ["dark", "light"] as const) {
           await page.keyboard.press("Escape");
           await expect(sheet).toBeHidden();
         }
-        if (width === 1440 && hash === "/policies") {
+        if (width === 1440 && hash === "/rules") {
           await page.getByRole("button", { name: /Select all 5 rules/ }).click();
           await expect(page.locator(".sel-bar-count")).toContainText("5 rules");
           await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Turn off 5 rules");
@@ -3633,13 +3659,13 @@ for (const theme of ["dark", "light"] as const) {
 
 test("People · tiles, groups, Add person, Add Viewer to several, the last admin, Keel's accounts", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/principals");
+  await open(page, "/people");
   await expect(page.locator("main#main-content h1")).toHaveText("People");
   await expect(page.locator(".status-pill")).toHaveText("Only 1 admin");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 people can use Keel; 2 can approve.");
   const tiles = page.locator(".pe-tile");
   await expect(tiles).toHaveCount(4);
-  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/principals/);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/people/);
   await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Admins", "Approvers", "Operators", "Starting later", "Disabled"]);
   const rows = page.locator(".sel-row");
   await expect(rows).toHaveCount(6);
@@ -3731,7 +3757,7 @@ test("People · tiles, groups, Add person, Add Viewer to several, the last admin
 });
 
 test("People · someone who may disable but not grant sees no role controls", async ({ page }) => {
-  await open(page, "/principals/viewer");
+  await open(page, "/people/viewer");
   await expect(page.getByRole("link", { name: "Add person" })).toHaveCount(0);
   await page.locator(".pe-row-link", { hasText: "Amara Okafor" }).click();
   const panel = page.getByRole("dialog", { name: "Amara Okafor" });
@@ -3745,7 +3771,7 @@ test("People · someone who may disable but not grant sees no role controls", as
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/principals", "/principals?group=state", "/principals?open=8c1e0000-0000-4000-8000-0000000000b3", "/principals?new=1"]) {
+    for (const hash of ["/people", "/people?group=state", "/people?open=8c1e0000-0000-4000-8000-0000000000b3", "/people?new=1"]) {
       test(`People · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -3779,7 +3805,7 @@ for (const theme of ["dark", "light"] as const) {
 // ("2 of N"), stops at the ends, keeps its address in step, and keeps the decision
 // buttons pinned in view at the foot however far the panel scrolls.
 for (const width of [390, 1440]) {
-  for (const [hash, link, noun] of [["/drift", ".sel-row .bl-row-link", "change"], ["/benchmarks", ".sel-row .cp-row-link", "control"]] as const) {
+  for (const [hash, link, noun] of [["/changes", ".sel-row .bl-row-link", "change"], ["/compliance", ".sel-row .cp-row-link", "control"]] as const) {
     test(`details panel · previous and next · ${hash} · ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 844 });
       await open(page, hash, width === 390 ? "light" : "dark");
@@ -3815,7 +3841,7 @@ for (const width of [390, 1440]) {
 
 test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks");
+  await open(page, "/compliance");
   await expect(page.locator("main#main-content h1")).toHaveText("Compliance");
   await expect(page.locator(".status-pill")).toHaveText("1 failing");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago; 1 control is not set up yet.");
@@ -3866,7 +3892,7 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("Two break-glass accounts during the migration");
   await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("granted by Marouane Defili");
   // (4) A linked change links to the Changes page, opened on that change.
-  expect(await panel.getByRole("link", { name: /Global Administrator · Adele added/ }).getAttribute("href")).toMatch(/\/drift\?open=d7100000-0000-4000-8000-0000000000d1/);
+  expect(await panel.getByRole("link", { name: /Global Administrator · Adele added/ }).getAttribute("href")).toMatch(/\/changes\?open=d7100000-0000-4000-8000-0000000000d1/);
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(name).toBeFocused();
@@ -3907,7 +3933,7 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
 
 test("Compliance · score overall, per standard and per service; not set up yet explained", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks");
+  await open(page, "/compliance");
   const score = page.locator(".cp-score");
   // Judged: 1 pass, 1 fail, 1 not set up yet, 1 accepted exception; the stale one is left out.
   await expect(score.locator(".cp-score-main .score-ring")).toHaveAttribute("aria-label", "Overall: 25% pass. 1 of 4 checked controls passes · 1 accepted exception.");
@@ -3929,7 +3955,7 @@ test("Compliance · score overall, per standard and per service; not set up yet 
 
 test("Compliance · make it pass: the panel shows the one setting, plans it, and sends it to the approvers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks");
+  await open(page, "/compliance");
   const row = page.locator(".sel-row", { hasText: "No trusted location" });
   await expect(row).toContainText("Keel can fix it for you, after an approval.");
   await row.getByRole("link", { name: "Make it pass" }).click();
@@ -3968,7 +3994,7 @@ test("Compliance · make it pass: the panel shows the one setting, plans it, and
 });
 
 test("Compliance · a reader sees results and no exception controls", async ({ page }) => {
-  await open(page, "/benchmarks/viewer");
+  await open(page, "/compliance/viewer");
   await expect(page.locator(".sel-row")).toHaveCount(5);
   await expect(page.getByRole("link", { name: /^(Grant|Renew|Extend)/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Make it pass" })).toHaveCount(0);
@@ -3979,7 +4005,7 @@ test("Compliance · a reader sees results and no exception controls", async ({ p
 
 test("Compliance · nothing checked yet: Check now runs the checks; storage not known links to it", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks/empty");
+  await open(page, "/compliance/empty");
   await expect(page.locator(".status-pill")).toHaveText("Not checked yet");
   const verdict = page.locator('[data-layer="verdict"]');
   await expect(verdict.locator(".verdict-sentence")).toHaveText("No control has been checked on this tenant yet.");
@@ -4002,7 +4028,7 @@ test("Compliance · nothing checked yet: Check now runs the checks; storage not 
 });
 
 test("Compliance · nothing checked yet, reader: no Check now, a link to when backups run", async ({ page }) => {
-  await open(page, "/benchmarks/empty-viewer");
+  await open(page, "/compliance/empty-viewer");
   await expect(page.getByRole("button", { name: "Check now" })).toHaveCount(0);
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See when backups run" })).toHaveAttribute("href", /\/schedules$/);
   await expect(page.locator(".cp-empty").getByRole("link", { name: "See when backups run" })).toBeVisible();
@@ -4010,12 +4036,12 @@ test("Compliance · nothing checked yet, reader: no Check now, a link to when ba
 
 test("Compliance · Defender email controls sit under Defender; a failing one lists each policy and setting, now and should be", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks/defender");
+  await open(page, "/compliance/defender");
   const main = page.locator("main");
   await expect(main).toContainText("Phishing mail goes to quarantine");
   await expect(main).toContainText("Risky attachment types are blocked");
   await expect(main).toContainText("Links in email are checked when clicked");
-  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  await page.goto(`${HARNESS}#/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
   const sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText("Control · Defender");
@@ -4053,7 +4079,7 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
 
 test("Compliance · Defender make it pass: one row per failing setting, in plain words, planned and sent to the approvers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  await page.goto(`${HARNESS}#/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
   const panel = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
   const fix = panel.locator(".cp-fix");
   await expect(fix.locator("h3")).toContainText("Quarantine phishing");
@@ -4089,7 +4115,7 @@ test("Compliance · a control that checked more than 50 settings counts them all
   for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
     await page.setViewportSize({ width, height: 900 });
     // Failing: 60 trusted locations checked, 3 fail, 50 lines kept.
-    await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000e2", theme);
+    await open(page, "/compliance/many?open=e7a10000-0000-4000-8000-0000000000e2", theme);
     let sheet = page.getByRole("dialog", { name: /unknown countries/i });
     const heading = sheet.locator("#cp-checks-heading");
     await expect(heading).toContainText("3 settings");
@@ -4105,7 +4131,7 @@ test("Compliance · a control that checked more than 50 settings counts them all
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
     // More than 50 fail: all 50 kept lines fail, so no switch; the note says the list is cut.
-    await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000f1", theme);
+    await open(page, "/compliance/many?open=e7a10000-0000-4000-8000-0000000000f1", theme);
     sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
     await expect(sheet.locator("#cp-checks-heading")).toContainText("55 settings");
     await expect(sheet.locator("#cp-checks-heading")).toContainText("25 meet the standard");
@@ -4114,7 +4140,7 @@ test("Compliance · a control that checked more than 50 settings counts them all
     await expect(sheet.locator('[data-cut="true"]')).toHaveText("The list shows the first 50 of the 80 settings checked, failing ones first. The counts above cover them all.");
 
     // Passing: 70 policies checked, 50 lines kept.
-    await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000f2", theme);
+    await open(page, "/compliance/many?open=e7a10000-0000-4000-8000-0000000000f2", theme);
     sheet = page.getByRole("dialog", { name: "Risky attachment types are blocked" });
     await expect(sheet.locator("#cp-checks-heading")).toContainText("All 70 meet the standard");
     await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(50);
@@ -4127,7 +4153,7 @@ test("Compliance · a control that checked more than 50 settings counts them all
 test("Compliance · a passing control shows expected against current for each setting it checked", async ({ page }) => {
   for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
     await page.setViewportSize({ width, height: 900 });
-    await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f2", theme);
+    await open(page, "/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f2", theme);
     const sheet = page.getByRole("dialog", { name: "Risky attachment types are blocked" });
     await expect(sheet.locator("#cp-checks-heading")).toContainText("Settings checked");
     await expect(sheet.locator("#cp-checks-heading")).toContainText("All 2 meet the standard");
@@ -4144,7 +4170,7 @@ test("Compliance · a passing control shows expected against current for each se
 
 test("Compliance · Entra ID controls show their values: the admin count against its limit, each trusted location", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1");
+  await open(page, "/compliance?open=e7a10000-0000-4000-8000-0000000000e1");
   const admins = page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" });
   const row = admins.locator(".cp-misses tbody tr");
   await expect(row).toHaveCount(1);
@@ -4154,7 +4180,7 @@ test("Compliance · Entra ID controls show their values: the admin count against
   await expect(row.locator(".cp-miss-now")).toHaveText("7");
   await expect(row.locator(".cp-miss-want")).toHaveText("5 or fewer");
 
-  await open(page, "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2");
+  await open(page, "/compliance?open=e7a10000-0000-4000-8000-0000000000e2");
   const location = page.getByRole("dialog", { name: "No trusted location trusts unknown countries" });
   await expect(location.locator(".cp-misses thead th").first()).toHaveText("Location");
   await expect(location.locator(".cp-misses tbody tr")).toHaveCount(1);
@@ -4169,7 +4195,7 @@ test("Compliance · Entra ID controls show their values: the admin count against
 
 test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
+  await open(page, "/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
   const sheet = page.getByRole("dialog");
   await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(3);
   await expect(sheet.locator(".cp-misses thead")).toHaveCSS("position", "absolute");
@@ -4180,7 +4206,7 @@ test("Compliance · phone: the failing settings stack, one card per setting, wit
 
 test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/benchmarks");
+  await open(page, "/compliance");
   const card = page.locator(".cp-by-service .cp-service");
   await expect(card).toHaveCount(1);
   await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
@@ -4197,7 +4223,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new", "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks/scuba", "/benchmarks/scuba?lists=edit"]) {
+    for (const hash of ["/compliance", "/compliance/empty", "/compliance?group=result", "/compliance?open=e7a10000-0000-4000-8000-0000000000e1", "/compliance?open=e7a10000-0000-4000-8000-0000000000e2", "/compliance?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/compliance/defender", "/compliance/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/compliance/own", "/compliance/own?open=e7a10000-0000-4000-8000-0000000000a7", "/compliance/own?own=new", "/compliance/many?open=e7a10000-0000-4000-8000-0000000000e2", "/compliance/scuba", "/compliance/scuba?lists=edit"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -4209,9 +4235,9 @@ for (const theme of ["dark", "light"] as const) {
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
         // The own-check page holds a CISA check to do by hand, so it has that sixth tile.
-        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : hash.startsWith("/benchmarks/own") ? 6 : 5);
+        expect(tiles.length).toBe(hash === "/compliance/empty" ? 4 : hash.startsWith("/compliance/own") ? 6 : 5);
         expect(new Set(tiles).size).toBe(1);
-        if (width === 390 && hash !== "/benchmarks/empty") {
+        if (width === 390 && hash !== "/compliance/empty") {
           // Tiles are equal within each service's scorecard (each service is its own grid).
           const scorecards = await page.locator(".cp-ctiles").evaluateAll((grids) => grids.map((grid) => [...grid.querySelectorAll(".cp-ctile")].map((item) => Math.round(item.getBoundingClientRect().height))));
           expect(scorecards.length).toBeGreaterThan(0);
@@ -4257,7 +4283,7 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(records.nth(0)).toContainText("Sales Admins (group)");
   await expect(records.nth(0)).toContainText("Happened between");
   await expect(records.nth(0).locator(".badge").first()).toHaveText("Changed");
-  await expect(records.nth(0).getByRole("link", { name: "Open the Changes page" })).toHaveAttribute("href", /drift/);
+  await expect(records.nth(0).getByRole("link", { name: "Open the Changes page" })).toHaveAttribute("href", /changes/);
   await expect(records.nth(1)).toContainText("the earlier backup is not known");
   await expect(records.nth(1)).toHaveAttribute("data-tone", "urgent");
   await expect(records.nth(1).locator(".badge", { hasText: "Could lock out admins" })).toHaveAttribute("data-tone", "urgent");
@@ -4364,7 +4390,7 @@ test("ask month answer names changed settings in words and lists no empty change
 test("Compliance · legacy sign-in lists each rule it read, failing first, and numbers same-name rules", async ({ page }) => {
   for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
     await page.setViewportSize({ width, height: 900 });
-    await open(page, "/benchmarks/live?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    await open(page, "/compliance/live?open=e7a10000-0000-4000-8000-0000000000b1", theme);
     let sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
     await expect(sheet.locator("#cp-checks-heading")).toContainText("2 settings");
     await expect(sheet.locator("#cp-checks-heading")).toContainText("6 meet the standard");
@@ -4378,7 +4404,7 @@ test("Compliance · legacy sign-in lists each rule it read, failing first, and n
     await expect(sheet.locator('.cp-misses tbody tr[data-ok="true"]').first()).toContainText("All users");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
-    await open(page, "/benchmarks/same-name?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    await open(page, "/compliance/same-name?open=e7a10000-0000-4000-8000-0000000000b1", theme);
     sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
     const rows = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
     await expect(rows.nth(0)).toContainText("KEEL-RT-Block legacy sign-in (1 of 2)");
@@ -4387,7 +4413,7 @@ test("Compliance · legacy sign-in lists each rule it read, failing first, and n
     expect(axe.violations.map((violation) => violation.id)).toEqual([]);
 
     // A result stored before the counts existed, with a full list of 50 lines: "or more".
-    await open(page, "/benchmarks/old-full?open=e7a10000-0000-4000-8000-0000000000b5", theme);
+    await open(page, "/compliance/old-full?open=e7a10000-0000-4000-8000-0000000000b5", theme);
     sheet = page.getByRole("dialog", { name: "Links in email are checked when clicked" });
     await expect(sheet.locator("#cp-checks-heading")).toContainText("8 settings");
     await expect(sheet.locator("#cp-checks-heading")).toContainText("42 or more meet the standard");
@@ -4566,7 +4592,7 @@ test("emergency changes put alerts first, show each approved value, and refuse s
   await expect(alerts).toHaveCount(2);
   await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
   await expect(alerts.nth(0)).toContainText("Finance (group) is still changed after its approval ended");
-  await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /drift/);
+  await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /changes/);
   await expect(alerts.nth(1)).toContainText("Automatic rules leave Block legacy auth (Conditional Access policy) alone until");
   await expect(page.locator('.ui-tile[data-tile="active"] .ui-tile-value')).toHaveText("1");
   await expect(page.locator('.ui-tile[data-tile="next"] .ui-tile-value')).toHaveText("in 3 hours");
@@ -4794,7 +4820,7 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   await expect(page).toHaveURL(/open=a1e70000-0000-4000-8000-000000000002/);
   const sheet = page.getByRole("dialog", { name: "Finance (group)" });
   await expect(sheet).toContainText("It was removed since the approved setup was saved.");
-  await expect(sheet.getByRole("link", { name: "Open the change" })).toHaveAttribute("href", /drift\?q=Finance$/);
+  await expect(sheet.getByRole("link", { name: "Open the change" })).toHaveAttribute("href", /changes\?q=Finance$/);
   await expect(sheet).toContainText("Keel could not escalate it: no channel is set to tell anyone.");
   await expect(sheet.locator(".al-timeline > li")).toHaveCount(2);
   await expect(sheet.getByRole("button", { name: "Mute" }).or(sheet.getByRole("link", { name: "Mute" }))).toBeVisible();
@@ -4820,7 +4846,7 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   const acked = page.getByRole("dialog", { name: "Emergency admin 1 (user)" });
   await expect(acked).toContainText("This emergency account was used.");
   await expect(acked).toContainText("Planned sign-in test with the service desk");
-  await expect(acked.getByRole("link", { name: "Open emergency access" })).toHaveAttribute("href", /readiness/);
+  await expect(acked.getByRole("link", { name: "Open emergency access" })).toHaveAttribute("href", /emergency-access/);
   await acked.getByRole("link", { name: "Resolve" }).click();
   const resolve = page.getByRole("dialog", { name: "Resolve this alert?" });
   await resolve.getByRole("button", { name: "Resolve alert" }).click();
@@ -5137,7 +5163,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks", "notifications"];
+  const routes = ["protect", "resilience", "changes", "approvals", "alerts", "incidents", "approved-setups", "restore", "activity", "compliance", "notifications"];
   // Codex review: the Waiting tile never adds approvals, alerts and incidents into one
   // number; each part is its own link.
   const waiting = page.locator('.ov-tile[data-tile="waiting"]');
@@ -5168,7 +5194,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   const compliance = page.locator(".ov-score-card");
   await expect(compliance).toContainText("25% pass");
   await expect(compliance).toContainText("1 failing");
-  await expect(compliance).toHaveAttribute("href", /\/benchmarks\?result=failing$/);
+  await expect(compliance).toHaveAttribute("href", /\/compliance\?result=failing$/);
   const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
   expect(visible).not.toMatch(/Baseline|Conditional Access|CRITICAL|WARNING|KEEL|@|[0-9a-f]{8}-[0-9a-f]{4}-/);
 
@@ -5246,7 +5272,7 @@ for (const [theme, width] of [["light", 390], ["dark", 1440], ["dark", 390], ["l
 
 test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/w4", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
+  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/w4", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/rules/p2"]) {
     await open(page, hash, "light");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), hash).toBeLessThanOrEqual(0);
   }
@@ -5452,7 +5478,7 @@ test("shared list · the pager fits a phone without sideways scrolling", async (
 
 test("Compliance · ScubaGear lists: a list not set comes first, and is set from the sheet", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks/scuba");
+  await open(page, "/compliance/scuba");
   type Call = { url: string; method: string; body: string | null };
   const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
   const card = page.locator(".cp-scuba");
@@ -5465,7 +5491,7 @@ test("Compliance · ScubaGear lists: a list not set comes first, and is set from
   await expect(row("Sensitive users").locator(".badge")).toHaveText("3 people");
   await expect(row("Sensitive users")).toContainText("Amara Okafor");
   await expect(row("Emergency accounts").locator(".badge")).toHaveText("1 from Emergency access");
-  await expect(row("Emergency accounts").getByRole("link", { name: "Manage on Emergency access" })).toHaveAttribute("href", /\/readiness$/);
+  await expect(row("Emergency accounts").getByRole("link", { name: "Manage on Emergency access" })).toHaveAttribute("href", /\/emergency-access$/);
 
   // The rule waiting for the list says so, and offers to set it rather than run a backup.
   const waiting = page.locator(".sel-row", { hasText: "Domain impersonation protection" });
@@ -5495,7 +5521,7 @@ test("Compliance · ScubaGear lists: a list not set comes first, and is set from
   expect(saves.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ list: "partner-domains", entries: ["fabrikam.com", "northwind.example"] }]);
 
   // Someone who only reads sees the lists, without Edit or Set the list.
-  await open(page, "/benchmarks/scuba-viewer");
+  await open(page, "/compliance/scuba-viewer");
   await expect(page.locator(".cp-scuba .cp-scuba-row")).toHaveCount(3);
   await expect(page.getByRole("link", { name: "Edit lists" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Set the list" })).toHaveCount(0);
@@ -5505,9 +5531,9 @@ for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
     test(`visual · scuba-lists · ${width} · ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
-      await open(page, "/benchmarks/scuba", theme);
+      await open(page, "/compliance/scuba", theme);
       await expect(page.locator(".cp-scuba")).toHaveScreenshot(`scuba-lists-${width}-${theme}.png`);
-      await open(page, "/benchmarks/scuba?lists=edit", theme);
+      await open(page, "/compliance/scuba?lists=edit", theme);
       await expect(page.locator(".bl-sheet")).toHaveScreenshot(`scuba-lists-sheet-${width}-${theme}.png`);
     });
   }
@@ -5515,7 +5541,7 @@ for (const theme of ["dark", "light"] as const) {
 
 test("Compliance · measure against a known standard, write your own check, remove it", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/benchmarks/own");
+  await open(page, "/compliance/own");
   type Call = { url: string; method: string; body: string | null };
   const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
 
@@ -5559,17 +5585,17 @@ test("Compliance · measure against a known standard, write your own check, remo
   await expect(page.locator(".bl-sheet h2")).toContainText("Legacy authentication SHALL be blocked.");
   await page.keyboard.press("Escape");
   // The picked standard is kept in the address, and a result with no policy says so.
-  await open(page, "/benchmarks/own?std=nist-800-53");
+  await open(page, "/compliance/own?std=nist-800-53");
   await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
-  await open(page, "/benchmarks/own?std-result=excepted");
+  await open(page, "/compliance/own?std-result=excepted");
   await expect(known.locator(".cp-known-table")).toHaveCount(0);
   await expect(known).toContainText("No policy has these results.");
   // CISA's checks to do by hand come after those that could not be checked, and say so.
-  await open(page, "/benchmarks/own?std-result=by-hand");
+  await open(page, "/compliance/own?std-result=by-hand");
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("MS.AAD.2.2v1");
   await expect(rows.first()).toContainText("CISA lists this as a check to do by hand.");
-  await open(page, "/benchmarks/own");
+  await open(page, "/compliance/own");
 
   // CISA's check to do by hand has its own tile and links to CISA's steps, never "Run a backup".
   await expect(page.locator(".cp-tile", { hasText: "Check by hand" }).locator(".cp-tile-count")).toHaveText("1");
@@ -5631,16 +5657,16 @@ test("Compliance · measure against a known standard, write your own check, remo
 // (secops@contoso.com on Notifications) are destinations, not people, and stay.
 const REAL_PEOPLE = /Amara|Okafor|Sam Ortiz|Ortiz|Lee Chen|Marouane|Defili|marouanedefili|Dana Reyes|On-call engineer|Ops Team|Policy service account|svc-policy|\bops@contoso|@contoso\.example|@gmail\.com/i;
 for (const { hash, label } of [
-  { hash: "/drift/anonymous", label: "Changes" },
+  { hash: "/changes/anonymous", label: "Changes" },
   { hash: "/activity/anonymous", label: "Activity" },
   { hash: "/approvals/anonymous", label: "Approvals" },
   { hash: "/alerts/anonymous", label: "Alerts" },
   { hash: "/emergency-changes/anonymous", label: "Emergency changes" },
-  { hash: "/policies/anonymous", label: "Automatic rules" },
-  { hash: "/policies/p2/anonymous", label: "One automatic rule and its turn-on check" },
+  { hash: "/rules/anonymous", label: "Automatic rules" },
+  { hash: "/rules/p2/anonymous", label: "One automatic rule and its turn-on check" },
   { hash: "/schedules/anonymous", label: "Schedules" },
   { hash: "/notifications/anonymous", label: "Notifications" },
-  { hash: "/benchmarks/anonymous", label: "Compliance" },
+  { hash: "/compliance/anonymous", label: "Compliance" },
   { hash: "/setup/anonymous", label: "Setup" },
 ]) {
   test(`names hidden · ${label} shows code names and no real name anywhere`, async ({ page }) => {
@@ -5672,7 +5698,7 @@ test("names hidden · People shows the setting, its state and who changed it", a
   for (const theme of ["light", "dark"] as const) {
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await open(page, "/principals/anonymity", theme);
+      await open(page, "/people/anonymity", theme);
       const card = page.getByRole("region", { name: "Hide people's names" });
       await expect(card).toContainText("On");
       await expect(card).toContainText(/Last changed by Person [A-HJ-NP-Z2-9]{4}/);
@@ -5681,12 +5707,12 @@ test("names hidden · People shows the setting, its state and who changed it", a
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     }
   }
-  await open(page, "/principals/anonymity-off", "light");
+  await open(page, "/people/anonymity-off", "light");
   const off = page.getByRole("region", { name: "Hide people's names" });
   await expect(off).toContainText("Off");
   await expect(off.getByRole("button", { name: "Hide names" })).toBeVisible();
   // Showing names again asks first, and says the change is recorded.
-  await open(page, "/principals/anonymity", "light");
+  await open(page, "/people/anonymity", "light");
   await page.getByRole("region", { name: "Hide people's names" }).getByRole("button", { name: "Show names" }).click();
   await expect(page.getByRole("dialog", { name: "Show people's names again?" })).toContainText("audit record");
 });
@@ -5696,7 +5722,7 @@ test("names hidden · People shows the setting, its state and who changed it", a
 test("every change: grouping, priority tiles that add up, names instead of ids", async ({ page }) => {
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await open(page, "/drift/feed", width === 390 ? "light" : "dark");
+    await open(page, "/changes/feed", width === 390 ? "light" : "dark");
     await expect(page.getByRole("link", { name: "Every change" })).toHaveAttribute("aria-current", "page");
     const list = page.locator('[aria-label="Every change"]').first();
     await expect(page.getByText("10 changes, 2 critical: look at those first.")).toBeVisible();
@@ -5728,7 +5754,7 @@ test("every change: grouping, priority tiles that add up, names instead of ids",
 });
 
 test("every change: an empty period says so, with no dead end", async ({ page }) => {
-  await open(page, "/drift/feed-empty");
+  await open(page, "/changes/feed-empty");
   await expect(page.getByRole("heading", { name: "No changes in the last 7 days" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open changes" })).toBeVisible();
 });
@@ -5773,13 +5799,13 @@ for (const width of [390, 1440]) {
   for (const theme of ["light", "dark"] as const) {
     test(`Changes · undo wording follows the approval mode · ${width} · ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
-      await open(page, "/drift/solo", theme);
+      await open(page, "/changes/solo", theme);
       const main = page.locator("main");
       await expect(main).toContainText("undo puts the approved value back once it is approved (in Solo mode you can approve it yourself)");
       await expect(main).not.toContainText("someone else approves");
       await main.getByText("in Solo mode you can approve it yourself").first().scrollIntoViewIfNeeded();
       if (process.env.KEEL_SHOTS) await page.screenshot({ path: `${process.env.KEEL_SHOTS}/solo-changes-${width}-${theme}.png` });
-      await open(page, "/drift/services", theme);
+      await open(page, "/changes/services", theme);
       await expect(page.locator("main")).toContainText("undo puts the approved value back once someone else approves");
     });
   }
@@ -5790,7 +5816,7 @@ for (const width of [390, 1440]) {
 // emergency sign-in's alert even when the Alerts list does not hold it.
 test("open links: Review the sign-in opens its alert; a gone item says so; Not backed up filters", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/readiness");
+  await open(page, "/emergency-access");
   await page.locator('[data-layer="verdict"]').getByRole("link", { name: "Review the sign-in" }).click();
   await expect(page).toHaveURL(/alerts\?open=a1e70000-0000-4000-8000-000000000094/);
   const sheet = page.getByRole("dialog", { name: "Emergency admin 2 (user)" });
@@ -5806,7 +5832,7 @@ test("open links: Review the sign-in opens its alert; a gone item says so; Not b
   // clears the link from the address.
   for (const [hash, words] of [
     ["/alerts?open=a1e70000-0000-4000-8000-0000000000ff", "The alert this link points to is not here"],
-    ["/drift?open=a5c00000-0000-4000-8000-0000000000ff", "The change this link points to is not here"],
+    ["/changes?open=a5c00000-0000-4000-8000-0000000000ff", "The change this link points to is not here"],
     ["/schedules?open=5c4e0000-0000-4000-8000-0000000000ff", "The schedule this link points to is not here"],
   ] as const) {
     await open(page, hash);

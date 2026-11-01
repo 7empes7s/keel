@@ -437,7 +437,7 @@ test('a Sales reader asking about this week gets only Sales records, each with i
   assert.deepEqual(scoped.summary.map((row) => Object.keys(row).sort()), [['changeType', 'count', 'impact', 'resourceType']]);
   const [record] = scoped.records;
   assert.equal(record.source.kind, 'change');
-  assert.equal(record.source.href, '/drift');
+  assert.equal(record.source.href, '/changes');
   assert.equal(record.source.collectionId, fixture.collections.thisWeek);
   assert.equal(record.window.to, fixture.midWeek.toISOString());
   assert.equal(record.window.from, new Date(fixture.monday.getTime() - 3 * DAY).toISOString(), 'the window starts at the previous complete collection');
@@ -677,7 +677,7 @@ test('portal: the Ask page and API answer a Sales reader with Sales records only
       const html = withRouter(await render('/ask', page, headers, { searchParams: Promise.resolve({ q: 'What changed this week?' }) }));
       for (const hidden of HIDDEN) assert.equal(html.includes(hidden), false, hidden + ' in the page');
       assert.match(html, /Sales Admins/);
-      assert.match(html, /href="\/drift"/);
+      assert.match(html, /href="\/changes"/);
       assert.match(html, /Only settings owned by SALES are included/);
       assert.match(html, /Not known from/);
       assert.match(html, /Nothing was changed/);

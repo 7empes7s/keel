@@ -186,7 +186,7 @@ export const RECORD_KIND_WORDS: Record<string, string> = {
   "action-attempt": "Action started or refused",
   "restore-approval-setting": "Restore approval setting",
   "content-effect-approval": "Content-effect approval",
-  "itsm-mirror": "Sent to ServiceNow",
+  "itsm-mirror": "ServiceNow approval",
   "itsm-callback": "Update from ServiceNow",
   "itsm-decision-conflict": "ServiceNow disagreement",
   "itsm-adapter-config": "ServiceNow connection",

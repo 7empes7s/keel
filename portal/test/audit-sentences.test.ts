@@ -150,5 +150,8 @@ test("the entries the audit found read as sentences", () => {
   assert.equal(sentence("change-intent", { outcome: "settled", naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", resourceType: "group", currentState: "matches-baseline" }, "Keel"), "An emergency change to Unnamed group ended; it matches the approved setup again");
   assert.equal(sentence("workload-restore", { operationId: "exchange-mail-flow.restore", outcome: "verified" }), "Marouane Defili ran a restore of Exchange mail flow, which finished and was checked afterwards");
   assert.equal(sentence("itsm-callback", { adapter: "servicenow", outcome: "unmapped-identity" }, "Keel"), "ServiceNow sent an approval update, and Keel refused it because the ServiceNow user is not linked to a Keel account");
+  assert.equal(sentence("itsm-callback", { adapter: "servicenow", outcome: "refused-bad-signature" }, "Keel"), "ServiceNow sent an approval update, and Keel refused it because its signature did not match");
+  assert.equal(sentence("itsm-callback", { adapter: "servicenow", outcome: "refused-something-new" }, "Keel"), "ServiceNow sent an approval update, and Keel refused it");
+  assert.equal(sentence("approval-request", { action: "content-restore" }), "Marouane Defili asked for approval to restore mail, files or Teams content");
   assert.equal(sentence("breakglass.registered", { label: "Emergency Admin 1" }), "Marouane Defili added “Emergency Admin 1” as an emergency access account");
 });

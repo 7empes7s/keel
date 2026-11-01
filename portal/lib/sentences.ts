@@ -333,6 +333,7 @@ export const ACTION_PHRASES: Record<string, string> = {
   "jobs:show": "open a job",
   // Restores
   restore: "restore from a backup",
+  "content-restore": "restore mail, files or Teams content",
   "restore-dry-run": "preview a restore",
   "restore:dry-run": "preview a restore",
   "restore:dry-run-show": "open a restore preview",
@@ -505,12 +506,28 @@ const ITSM_CALLBACK_OUTCOMES: Record<string, string> = {
   "refused-promotion": "refused it because the preview could not be turned into a restore",
   "refused-reason-required": "refused it because a rejection needs a reason",
   "refused-self-approval": "refused it because people cannot approve their own requests",
+  // Refused by the ServiceNow adapter before it reached the bridge.
+  "refused-callbacks-off": "refused it because updates from ServiceNow are turned off",
+  "refused-unsigned": "refused it because it was not signed",
+  "refused-malformed": "refused it because it could not be read",
+  "refused-bad-signature": "refused it because its signature did not match",
+  "refused-stale-timestamp": "refused it because it was too old",
+  "refused-unknown-record": "refused it because it does not match any request Keel sent",
+  "refused-instance-mismatch": "refused it because it came from another ServiceNow instance",
 };
+
+function itsmCallbackWords(outcome: unknown): string {
+  const code = String(outcome ?? "");
+  return ITSM_CALLBACK_OUTCOMES[code] ?? (code.startsWith("refused") ? "refused it" : "recorded it");
+}
 
 const ACTIVATION_REFUSALS: Record<string, string> = {
   "preview-not-found": "its preview was not found",
   "preview-expired": "its preview had expired",
   "preview-blocked": "something blocks it",
+  "preview-stale": "its preview is out of date; preview it again",
+  "preview-used": "its preview was already used",
+  "already-active": "it is already on",
 };
 
 const CHANGE_INTENT_ENDINGS: Record<string, string> = {
@@ -593,7 +610,7 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
       default: return `An approval request was sent to ${service}`;
     }
   },
-  "itsm-callback": (s) => `${adapterName(s.adapter)} sent an approval update, and Keel ${ITSM_CALLBACK_OUTCOMES[String(s.outcome)] ?? "recorded it"}`,
+  "itsm-callback": (s) => `${adapterName(s.adapter)} sent an approval update, and Keel ${itsmCallbackWords(s.outcome)}`,
   "itsm-decision-conflict": (s) => `${adapterName(s.adapter)} sent a decision that differs from the one already made in Keel; Keel kept its own (${s.canonicalOutcome === "rejected" ? "rejected" : "approved"})`,
   "itsm-adapter-config": (s, actor) => {
     const problems = Array.isArray(s.problems) ? s.problems.length : 0;
@@ -638,7 +655,7 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
   "policy-activation-preview": (s, actor) => {
     const matched = typeof s.matched === "number" ? `; it would act on ${plural(s.matched, "open change")}` : "";
     const blockers = Array.isArray(s.blockers) ? s.blockers.length : 0;
-    return `${actor} previewed turning on an automatic rule${matched}${s.verdict === "blocked" || blockers > 0 ? `, but ${blockers === 1 ? "1 thing blocks" : `${Math.max(blockers, 1)} things block`} it` : ""}`;
+    return `${actor} previewed turning on an automatic rule${matched}${s.verdict === "blocked" || blockers > 0 ? `, but ${blockers <= 1 ? "something blocks" : `${blockers} things block`} it` : ""}`;
   },
   "policy-activation": (s, actor) => s.outcome === "refused"
     ? `${actor} could not turn on an automatic rule: ${ACTIVATION_REFUSALS[String(s.code)] ?? "Keel refused it"}`

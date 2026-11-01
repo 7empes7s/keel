@@ -10,6 +10,7 @@ import {
   recoverablePointSentence, recoveryTimeSentence, resilienceAlerts, resilienceVerdict, serviceGroups, serviceState,
   resilienceKinds, type RecoveryMetrics, type ResilienceData, type ServiceBackup,
 } from "@/lib/resilience-view";
+import { failedRestoresLine, type FailedRestoreCounts } from "@/lib/failed-restores";
 import { coverageBuckets, protectCounts } from "@/lib/protect-view";
 import type { CoverageType } from "@/lib/types";
 
@@ -19,6 +20,8 @@ import type { CoverageType } from "@/lib/types";
 const NOW = "2026-10-03T12:00:00.000Z";
 const TENANT = "sha256:portal-resilience";
 const required = [typeDependency("user"), typeDependency("group")];
+const FAILED_HREF = "/restore?jobs=failed#restore-jobs-heading";
+const NO_FAILED_RESTORES: FailedRestoreCounts = { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: FAILED_HREF };
 
 function metrics({ observations = [], copies = [], drills = [], restores = [], observationsById = new Map() }: {
   observations?: unknown[]; copies?: unknown[]; drills?: unknown[]; restores?: unknown[]; observationsById?: Map<string, unknown>;
@@ -126,6 +129,7 @@ test("a service backup failure is reported once, by its service, never against E
       freshness: { ...base.freshness, state: "gaps", gaps: [{ key: "content:exchange-mail", kind: "content", type: null, parentType: null, family: null, workload: "exchange-mail", lastAttempt: { at: "2026-10-03T01:00:00.000Z", outcome: "failed" } }] },
       services: { settings: [], content: [mail] },
     },
+    failedRestores: NO_FAILED_RESTORES,
     kinds: resilienceKinds([kind("user"), kind("group")]),
     incidents: [],
     storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
@@ -167,6 +171,26 @@ test("a type the tenant does not use is listed as not used, not as never backed 
   assert.equal(notUsedSentence(metrics()), null);
 });
 
+test("the failed-restores alert shows the engine's one count, not the recovery attempts it happens to hold", () => {
+  const job = (id: string, status: string, at: string) => ({ job: { id, status, params: { artifactId: `plan-${id}`, mode: "enforce" }, created_at: at, started_at: at, finished_at: at }, items: [] });
+  // The attempts list holds one failed and one cancelled restore; the engine counted 47 failed in all.
+  const base = metrics({ restores: [job("r1", "failed", "2026-10-02T10:00:00.000Z"), job("r2", "cancelled", "2026-10-02T11:00:00.000Z")] });
+  const counts: FailedRestoreCounts = { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "r1", at: "2026-10-02T10:00:00.000Z" }, href: FAILED_HREF };
+  const data = { generatedAt: NOW, metrics: base, failedRestores: counts, followUps: null, kinds: resilienceKinds([kind("user")]), incidents: [], storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null } } as ResilienceData;
+  const alert = resilienceAlerts(data).find((entry) => entry.key === "restore-failed")!;
+  assert.equal(alert.title, "47 restores failed · 3 in the last 30 days");
+  assert.equal(alert.title, failedRestoresLine(counts));
+  assert.deepEqual(alert.action, { label: "See failed restores", href: FAILED_HREF });
+  // Only the failed attempt is listed under it; the cancelled one is not a failure.
+  assert.deepEqual(alert.more.length, 1);
+
+  const one = resilienceAlerts({ ...data, failedRestores: { ...counts, total: 1, recent: { days: 30, count: 1 } } }).find((entry) => entry.key === "restore-failed")!;
+  assert.equal(one.title, "A restore failed · 1 in the last 30 days");
+  assert.deepEqual(one.action, { label: "View restore", href: "/jobs/r1" });
+
+  assert.equal(resilienceAlerts({ ...data, failedRestores: NO_FAILED_RESTORES }).some((entry) => entry.key === "restore-failed"), false);
+});
+
 // Audit 2026-10-31: Resilience said "25 restores need follow-up" while Overview said 273
 // steps. The alert now shows the shared follow-up totals, never a count of restore attempts.
 test("the follow-up alert shows the shared step and restore totals and links to the full list", () => {
@@ -182,6 +206,7 @@ test("the follow-up alert shows the shared step and restore totals and links to 
     incidents: [],
     storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
     followUps: { steps: 7, restores: 3, href: "/restore#follow-up" },
+    failedRestores: NO_FAILED_RESTORES,
   } as ResilienceData;
   const open = resilienceAlerts(base).find((alert) => alert.key === "restore-checks-open");
   assert.equal(open?.title, "3 restores have 7 follow-up steps open");
@@ -211,7 +236,7 @@ test("the Entra ID and Intune row and alerts count kinds with What's protected's
   assert.deepEqual([counts.failed, counts.stale, counts.never], [2, 1, 1]);
   // Freshness sees three items with no good copy; that is not the count the reader is shown.
   const base = metrics({ observations: [success("user", "2026-10-03T11:00:00.000Z")] });
-  const data = { generatedAt: NOW, metrics: base, kinds: resilienceKinds(types), incidents: [], storage: { configured: false } } as unknown as ResilienceData;
+  const data = { generatedAt: NOW, metrics: base, failedRestores: NO_FAILED_RESTORES, kinds: resilienceKinds(types), incidents: [], storage: { configured: false } } as unknown as ResilienceData;
   const { summary } = data.kinds;
   assert.deepEqual([summary.failed, summary.stale, summary.neverCollected, summary.covered, summary.total], [counts.failed, counts.stale, counts.never, counts.backedUp, counts.total]);
   const buckets = coverageBuckets(types);

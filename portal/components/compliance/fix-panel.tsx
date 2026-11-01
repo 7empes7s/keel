@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalMode } from "@/components/approval-mode-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -8,7 +9,7 @@ import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { askFixApproval, planFix, readFixProgress, type FixPlan } from "@/lib/compliance-change";
 import {
-  FIX_STEPS,
+  fixSteps,
   fixAction,
   fixCandidates,
   fixEffect,
@@ -37,6 +38,7 @@ type RowState =
   | { step: "sent" };
 
 export function FixPanel({ finding, canRestore, now }: { finding: ComplianceFinding; canRestore: boolean; now: string }) {
+  const approvalMode = useApprovalMode();
   const candidates = fixCandidates(finding);
   if (candidates.length === 0) return null;
   const effect = fixEffect(finding);
@@ -52,7 +54,7 @@ export function FixPanel({ finding, canRestore, now }: { finding: ComplianceFind
           <FixRow candidate={candidate} canRestore={canRestore} finding={finding} key={candidate.naturalKey} now={now} primary={index === 0} />
         ))}
       </ul>
-      <p className="cp-muted">{canRestore ? FIX_STEPS : "Ask someone with the restore permission to make this change."}</p>
+      <p className="cp-muted">{canRestore ? fixSteps(approvalMode) : "Ask someone with the restore permission to make this change."}</p>
     </section>
   );
 }

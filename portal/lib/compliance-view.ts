@@ -1,5 +1,6 @@
 import { BY_HAND_REASON, SCUBA_CONTROL_PREFIX, SCUBA_VERSION, foldTwins } from "../../engine/benchmarks/standards.mjs";
 import type { IconName } from "@/components/shell/icons";
+import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { changeName } from "@/lib/changes-view";
 import type { RiskTone } from "@/lib/menu-status";
@@ -871,7 +872,7 @@ export function exceptionRefusal(status: number, error: string | undefined): str
 
 // CoreView gap 6: a failing control that declares a fix offers "Make it pass" for each
 // object it fails on. Keel plans one setting against the live tenant; nothing changes
-// until someone else approves it, and the write can be undone like any restore.
+// until it is approved (as the approval mode says), and the write can be undone like any restore.
 
 interface FixWords {
   // The button and the panel heading.
@@ -966,7 +967,10 @@ export function fixableSentence(finding: ComplianceFinding): string | null {
   return `Keel can fix ${count === 1 ? "it" : `all ${count}`} for you, after an approval.`;
 }
 
-export const FIX_STEPS = "Keel first plans the change against the live tenant and shows it here. Nothing changes until someone else approves it, and it can be undone like any restore.";
+/** How a fix runs, in the words of the approval mode. */
+export function fixSteps(mode: ApprovalModeName = "two-person"): string {
+  return `Keel first plans the change against the live tenant and shows it here. ${approvalWords(mode).untilApproved} It can be undone like any restore.`;
+}
 
 export function fixRefusal(status: number, error: string | undefined): string {
   if (status === 403) return "You need the restore permission to fix a control.";

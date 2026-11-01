@@ -187,7 +187,7 @@ function serviceChangePhrase(params: Record<string, unknown>): string {
   return service ? `a ${verb} ${service} setting` : "a service setting change";
 }
 
-// Audit run 2, finding 3: an accept or ignore a second person approves, as what it does:
+// Audit run 2, finding 3: an accept or ignore that needs approval, as what it does:
 // "Accept into the approved setup: 1 change, including …".
 function decisionPhrase(params: Record<string, unknown>, refs: RowReferences): string {
   const what = typeof params.serviceChangeId === "string" ? serviceChangePhrase(params) : changesPhrase(refs.changes);
@@ -348,6 +348,15 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "policy-evaluation": return typeof subject.naturalKey === "string"
       ? `Policies checked a change to ${namedResource(subject.naturalKey, names)}${subject.matched ? ", and one applied" : ""}`
       : "Policies checked a change";
+    case "policy-change": {
+      const rule = typeof subject.name === "string" && subject.name.trim() ? `the automatic rule “${subject.name.trim()}”` : "an automatic rule";
+      if (subject.change === "deleted") return `${actorName} deleted ${rule}`;
+      const fields = Array.isArray(subject.fields) ? subject.fields as { field?: unknown }[] : [];
+      const turnedOff = fields.some((entry) => entry?.field === "enabled");
+      // Counted as the panel lists them: the limit's count and window are one setting.
+      const changed = new Set(fields.map((entry) => (entry?.field === "windowSeconds" ? "maxActionsPerWindow" : entry?.field))).size;
+      return `${actorName} edited ${rule}: ${changed} ${changed === 1 ? "setting" : "settings"} changed${turnedOff ? "; it stays off until it is previewed again" : ""}`;
+    }
     case "automation-execution": return `Automation ${subject.outcome === "executed" ? "rolled back a change" : "tried to roll back a change"}`;
     case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared${subject.selfApproved === true ? " they asked for themselves (self-approved: approval mode is Solo)" : ""}`;
     case "recovery-completion": return `${actorName} updated the follow-up work of a restore`;
@@ -379,7 +388,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       }
       const service = typeof subject.service === "string" ? serviceFor(subject.service).name : "a service";
       return subject.approvalRequired === false
-        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for a second person`
+        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for approval`
         : `${actorName} turned on restore approvals for ${service}`;
     }
     case "scuba-config-list": {

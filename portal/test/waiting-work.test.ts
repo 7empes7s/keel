@@ -142,7 +142,8 @@ test("Overview, Restore and Resilience show the same follow-up totals past the c
 
   const overview = (await waitingFor(client, ref)).restoreFollowUps;
   const work = await getRestoreFollowUps();
-  const resilience = (await getResilienceData()).followUps;
+  const resilienceData = await getResilienceData();
+  const resilience = resilienceData.followUps;
   assert.equal(overview, steps);
   assert.deepEqual([work.steps, work.restores, work.cards.length], [steps, 52, 50], "the page lists 50 and counts all 52");
   assert.ok(work.cards.reduce((sum, card) => sum + card.pending, 0) < steps, "adding up the cards would under-count");
@@ -156,7 +157,7 @@ test("Overview, Restore and Resilience show the same follow-up totals past the c
   }));
   assert.match(dashboard, new RegExp(`<b>${steps} restore steps are still open</b>`));
   const alert = resilienceAlerts({
-    generatedAt: DASHBOARD.generatedAt, incidents: [], followUps: resilience, kinds: resilienceKinds([]),
+    generatedAt: DASHBOARD.generatedAt, incidents: [], followUps: resilience, failedRestores: resilienceData.failedRestores, kinds: resilienceKinds([]),
     storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
     metrics: { freshness: { state: "measured", gaps: [], latestFailures: [], notUsed: [] }, recoverablePoint: { state: "measured", point: DASHBOARD.generatedAt, copies: [] },
       recoveryTime: { state: "measured", attempts: [] }, readiness: { state: "measured" }, services: { settings: [], content: [] } },

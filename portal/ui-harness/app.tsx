@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { ApprovalModeProvider } from "@/components/approval-mode-context";
 import { type NavSection } from "@/components/nav-links";
 import { AppShell } from "@/components/shell/app-shell";
 import { KitPage } from "./kit";
@@ -69,7 +70,7 @@ import type { ServiceNowStatus } from "@/lib/servicenow";
 import { serviceUndo } from "@/lib/service-changes-view";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import type { TypeProgress } from "@/lib/action";
-import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
+import { RULE_KINDS, RULE_STATES, ruleChangeFields, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { CheckAgain } from "@/components/setup/check-again";
@@ -212,7 +213,10 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/api/integrations") && init?.method === "POST") return json({ destination: { id: "de570000-0000-4000-8000-0000000000e3" } }, 201);
   if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
   // Activity: what a row changed, setting by setting.
-  if (url.includes("/api/activity/changes?")) return json({ changes: ACTIVITY_CHANGES[new URL(url, "http://harness").searchParams.get("job") ?? ""] ?? null });
+  if (url.includes("/api/activity/changes?")) {
+    const params = new URL(url, "http://harness").searchParams;
+    return json({ changes: (params.get("record") ? ACTIVITY_CHANGES[`record:${params.get("record")}`] : ACTIVITY_CHANGES[params.get("job") ?? ""]) ?? null });
+  }
   await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") || url.includes("/completion") ? 350 : 800));
   if (url.includes("/api/actions/restore/completion/")) return json({ restoreRef: "r9", resources: completionResources() });
   // Task-92: the activation preview of policy p2, and a turn-on refused because the
@@ -815,6 +819,20 @@ const SERVICENOW_OFF: ServiceNowStatus = {
   mapping: { ...SERVICENOW_ON.mapping!, rejectedValues: [], fields: { ...SERVICENOW_ON.mapping!.fields, approver: "" } },
   mirror: { records: 0, waiting: 0, pendingUpdates: 0, heldBack: 0, conflicts: 0 }, heldBack: [],
 };
+// A rule edit and a rule delete, as the engine records them (engine/policy/evaluate.mjs).
+const RULE_EDIT_FIELDS = [
+  { field: "name", before: "KEEL-RT Undo low risk", after: "KEEL-RT Undo low-risk group changes" },
+  { field: "resourceType", before: null, after: "group" },
+  { field: "maxActionsPerWindow", before: null, after: 10 }, { field: "windowSeconds", before: null, after: 3600 },
+  { field: "enabled", before: true, after: false },
+];
+const RULE_DELETE_FIELDS = [
+  { field: "action", before: "alert", after: null }, { field: "enabled", before: true, after: false },
+  { field: "name", before: "KEEL-RT Alert on lockout risk", after: null }, { field: "resourceType", before: null, after: null },
+  { field: "naturalKeyGlob", before: null, after: null }, { field: "changeType", before: null, after: null },
+  { field: "blastRadius", before: "tenant-lockout", after: null }, { field: "maxBlastRadius", before: "cosmetic", after: null },
+  { field: "maxActionsPerWindow", before: null, after: null }, { field: "windowSeconds", before: null, after: null },
+];
 const EVIDENCE = [
   { seq: "18205", occurred_at: "2026-10-02T09:39:02Z", kind: "approval-decision", actor: "amara.okafor@contoso.example", subject: { requestId: "a9e10000-0000-4000-8000-000000000100", action: "restore", decision: "approved", executor: "worker", jobId: "a3" } },
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
@@ -823,6 +841,8 @@ const EVIDENCE = [
   { seq: "18201", occurred_at: "2026-10-02T09:05:10Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: false } },
   { seq: "18200", occurred_at: "2026-10-02T08:52:30Z", kind: "action-attempt", actor: "sam.ortiz@contoso.example", subject: { action: "restore", decision: "denied", reason: "capability" } },
   { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: true } },
+  { seq: "18180", occurred_at: "2026-09-29T11:20:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "deleted", policyId: "5a000000-0000-4000-8000-000000000002", name: "KEEL-RT Alert on lockout risk", action: "alert", fields: RULE_DELETE_FIELDS } },
+  { seq: "18179", occurred_at: "2026-09-29T11:10:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "edited", policyId: "5a000000-0000-4000-8000-000000000001", name: "KEEL-RT Undo low-risk group changes", action: "auto_remediate", fields: RULE_EDIT_FIELDS } },
   { seq: "18171", occurred_at: "2026-09-28T06:10:00Z", kind: "recovery-drill", actor: "scheduler", subject: { mode: "live", outcome: "passed", cleanup: { status: "complete" } } },
   { seq: "18170", occurred_at: "2026-09-28T05:00:00Z", kind: "offsite-copy", actor: "scheduler", subject: { dumpSha256: "4c".repeat(32), remoteSha256: "4c".repeat(32), verification: { ok: true } } },
 ];
@@ -836,6 +856,16 @@ const ACTIVITY_PEOPLE = {
   "policy-automation": personRef("policy-automation", "policy-automation"),
 };
 const ACTIVITY_CHANGES: Record<string, ActivityChanges> = {
+  "record:18179": {
+    basis: "rule", sides: { before: "Before", after: "After" }, compare: null, total: 1, names: {},
+    about: "Each rule setting that changed, as it was before the edit and as the edit saved it.",
+    changes: [{ name: "KEEL-RT Undo low-risk group changes", resourceType: "automaticRule", change: "changed", fields: ruleChangeFields("edited", RULE_EDIT_FIELDS), fieldsTotal: 4 }],
+  },
+  "record:18180": {
+    basis: "rule", sides: { before: "When deleted", after: "After" }, compare: null, total: 1, names: {},
+    about: "The rule's settings when it was deleted. Keel keeps the deleted rule as history; it no longer runs.",
+    changes: [{ name: "KEEL-RT Alert on lockout risk", resourceType: "automaticRule", change: "removed", fields: ruleChangeFields("deleted", RULE_DELETE_FIELDS), fieldsTotal: 9 }],
+  },
   y2: {
     basis: "backup", sides: { before: "Previous backup", after: "This backup" },
     about: "Each setting as the backup before this one read it, and as this backup read it.",
@@ -1838,6 +1868,8 @@ const RESILIENCE: ResilienceData = {
       objectives: null,
     },
   },
+  // More failed restores than the recovery attempts list: the alert takes the engine's count.
+  failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
   incidents: [{ incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", status: "open", openedAt: "2026-10-01T08:10:00Z" }, recommended: { snapshotId: "5a2be911-0000-4000-8000-000000000002", collectedAt: "2026-09-30T05:55:00Z" }, pins: 1 }],
   storage: { configured: true, provider: "local-disk", region: "on-prem datacenter A", boundary: null, immutability: "unsupported", generatedAt: "2026-10-01T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
   followUps: { steps: 0, restores: 0, href: "/restore#follow-up" },
@@ -1860,6 +1892,7 @@ const RESILIENCE_EMPTY: ResilienceData = {
     recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
     readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
   },
+  failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: "/restore?jobs=failed#restore-jobs-heading" },
   incidents: [],
   storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null },
 };
@@ -2002,6 +2035,7 @@ const VALUE_REPORT: ValueReport = {
     recoveryTime: { state: "measured", samples: 2, medianMs: 14 * 60_000, worstMs: 20 * 60_000, notCounted: 1, drills: 1, restores: 1 },
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
+    failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: { from: "2026-09-01T00:00:00.000Z", to: now, count: 2 }, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
   },
   // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
   backups: {
@@ -2636,7 +2670,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   const data = { newest: { id: "snap-4", takenAt: RESTORE_SNAPSHOTS[0].completedAt }, changes, more: 0, earlier: isNewest ? { id: "snap-3", takenAt: RESTORE_SNAPSHOTS[1].completedAt, count: earlierCount } : null };
   const count = changes.length;
   return <>
-    <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes." generatedAt={now} section="Restore"
+    <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and nothing changes until it is approved." generatedAt={now} section="Restore"
       status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore" />
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
@@ -2733,6 +2767,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       const items = DRIFT_DECIDED.map(hideActors);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items))}
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
+    }
+    case "/drift/solo": {
+      // Approval mode Solo: the undo lines say the person who asked may approve.
+      const items = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      return <ApprovalModeProvider mode="solo">{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
+        <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={SERVICE_CHANGES.length} summary={DRIFT_SUMMARY} /></ApprovalModeProvider>;
     }
     case "/drift":
     case "/drift/services":

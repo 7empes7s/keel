@@ -77,7 +77,7 @@ function report({ estimate = null, central = true }: { estimate?: unknown; centr
     },
     findings,
     recovery: central
-      ? { withheld: false, recoveryTime: { state: "unmeasured", samples: 0, medianMs: null, worstMs: null, notCounted: 1, drills: 0, restores: 0 }, freshness: { state: "measured", achievedRpoMs: 3_600_000, gaps: 0, asOf: NOW }, recoverablePoint: { state: "unmeasured", ageMs: null, asOf: NOW } }
+      ? { withheld: false, recoveryTime: { state: "unmeasured", samples: 0, medianMs: null, worstMs: null, notCounted: 1, drills: 0, restores: 0 }, freshness: { state: "measured", achievedRpoMs: 3_600_000, gaps: 0, asOf: NOW }, recoverablePoint: { state: "unmeasured", ageMs: null, asOf: NOW }, failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: { from: NOW, to: NOW, count: 0 }, newest: null, href: "/restore?jobs=failed#restore-jobs-heading" } }
       : { withheld: true },
     backups: central
       ? {
@@ -315,6 +315,20 @@ test("no report card renders a list of plain text lines", async () => {
     if (/\.map\(\((?:line|text|sentence)\) => <li className="[^"]*(?:muted|soft)[^"]*"/.test(source)) offenders.push(file);
   }
   assert.deepEqual(offenders, []);
+});
+
+test("failed restores on the value report are the engine's one count, linked to the same list as Resilience and Restore", async () => {
+  const value = report();
+  if (value.recovery.withheld) throw new Error("fixture is tenant-wide");
+  const counts = { total: 47, recent: { days: 30, count: 3 }, period: { from: NOW, to: NOW, count: 2 }, newest: { jobId: "j1", at: NOW }, href: "/restore?jobs=failed#restore-jobs-heading" };
+  const text = visible(await render({ ...value, recovery: { ...value.recovery, failedRestores: counts } }));
+  assert.match(text, /2 failed in this period/);
+  assert.match(text, /47 restores failed · 3 in the last 30 days/);
+  const markup = await render({ ...value, recovery: { ...value.recovery, failedRestores: counts } });
+  assert.match(markup, /href="\/restore\?jobs=failed#restore-jobs-heading"/);
+  // None ever failed: no line.
+  const none = visible(await render(value));
+  assert.doesNotMatch(none, /restores failed|failed in this period/);
 });
 
 test("partly done settings backups are a warning on the value report, never counted as complete (audit issue 2)", () => {

@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import { DatePicker } from "@/components/pickers/date-picker";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { useApprovalMode } from "@/components/approval-mode-context";
+import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
 import { decisionWords, type Decision } from "@/lib/baselines-view";
 import { changeLabel, changeName, plannedActionWords, refusalSentence } from "@/lib/changes-view";
 import { addDays, type Day, type DayRange } from "@/lib/date-range";
@@ -68,7 +70,7 @@ export function notSavedMessage(total: number, failedNames: string[], retry = tr
   const saved = total - failed;
   const shown = failedNames.slice(0, 3);
   const names = failed > shown.length ? `${shown.join(", ")} and ${failed - shown.length} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown[0];
-  // "Went through": some may have gone to a second person rather than being saved.
+  // "Went through": some may have gone for approval rather than being saved.
   const lead = saved ? `${saved} of ${total} changes went through. ` : "";
   const what = failed === 1 ? "1 change could not be saved and is still chosen" : `${failed} changes could not be saved and are still chosen`;
   const next = retry ? `Try again to save ${failed === 1 ? "it" : "them"}.` : "See why below, then change or leave out what Keel refused.";
@@ -80,14 +82,14 @@ const failure = (error: unknown, fallback: string) => (error instanceof NoChange
 // The engine refuses a longer ignore (dispositionReview.mjs MAX_IGNORE_DAYS).
 const MAX_IGNORE_DAYS = 90;
 
-/** "Accepted 2 changes. 1 change to sign-in or admin access was sent to a second person." */
-export function decisionMessage(action: "accept" | "ignore", results: { sent: boolean }[]): string {
+/** "Accepted 2 changes. 1 change to sign-in or admin access was sent for approval." Follows the approval mode. */
+export function decisionMessage(action: "accept" | "ignore", results: { sent: boolean }[], mode: ApprovalModeName = "two-person"): string {
   const count = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
   const sent = results.filter((result) => result.sent).length;
   const done = results.length - sent;
   const parts: string[] = [];
   if (done) parts.push(`${action === "accept" ? "Accepted" : "Ignored"} ${count(done)}.`);
-  if (sent) parts.push(`${count(sent)} to sign-in or admin access ${sent === 1 ? "was" : "were"} sent to a second person to approve. Nothing changes until they do.`);
+  if (sent) parts.push(`${count(sent)} to sign-in or admin access ${sent === 1 ? "was" : "were"} ${approvalWords(mode).sentFor}. Nothing changes until ${sent === 1 ? "it is" : "they are"} approved.`);
   return parts.join(" ");
 }
 
@@ -95,7 +97,7 @@ const sameIds = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === 
 
 /** One decision on chosen changes: accept them into the approved setup, ignore them for a
  * while, or undo them. It says what it will do before it does it, asks why, and an undo
- * shows Keel's plan first and goes to someone else for approval. */
+ * shows Keel's plan first and goes for approval, as the approval mode says. */
 export function ChangeDecision({
   decision,
   items,
@@ -136,7 +138,8 @@ export function ChangeDecision({
     const item = byKey.get(resource.naturalKey);
     return item ? changeLabel(item) : changeLabel({ naturalKey: resource.naturalKey, resourceType: resource.resourceType ?? resource.naturalKey.split(":")[0] });
   };
-  const words = decisionWords(decision, items.length);
+  const approvalMode = useApprovalMode();
+  const words = decisionWords(decision, items.length, approvalMode);
   // A preview counts only for exactly the changes it was made for.
   const currentPreview = preview && sameIds(preview.driftIds, ids) ? preview : null;
   const refused = Boolean(currentPreview?.guardRefusals.length);
@@ -177,7 +180,7 @@ export function ChangeDecision({
     setNotSaved([]);
     setProgress({ done: 0, total: items.length });
     // A service setting change is accepted into its service's approved setup. A change
-    // to sign-in or admin access goes to a second person instead (202 with a request).
+    // to sign-in or admin access goes for approval instead (202 with a request).
     // A few at a time: one failure never stops the rest, and is named afterwards.
     const results = await sendEach(items, async (item) => {
       const result = await post("/api/actions/dispose", item.serviceRead
@@ -192,7 +195,7 @@ export function ChangeDecision({
     const failed = results.flatMap((result) => (result.ok ? [] : [{ item: result.item, error: result.error }]));
     const settled = saved.filter((result) => !result.sent).map((result) => result.id);
     if (!failed.length) {
-      onDone(settled, decisionMessage(action, saved));
+      onDone(settled, decisionMessage(action, saved, approvalMode));
       return;
     }
     if (failed.length === 1 && items.length === 1) {
@@ -201,7 +204,7 @@ export function ChangeDecision({
     }
     setNotSaved(failed.map(({ item, error }) => ({ name: changeLabel(item), why: whyNotSaved(error) })));
     setError(notSavedMessage(items.length, failed.map(({ item }) => changeLabel(item)), failed.every(({ error }) => worthRetrying(error))));
-    if (saved.length) onDone(settled, decisionMessage(action, saved), failed.map(({ item }) => item.id));
+    if (saved.length) onDone(settled, decisionMessage(action, saved, approvalMode), failed.map(({ item }) => item.id));
   }
 
   async function previewUndo() {

@@ -1,8 +1,10 @@
 import { listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { listEligibleBaselineSnapshots, newestBackupGap } from "../../engine/govern/baseline.mjs";
+import { countFailedRestores, listFailedRestores } from "../../engine/restore/failedRestores.mjs";
 import { connect } from "@/lib/db";
 
 import { normalizeJob } from "@/lib/action";
+import type { FailedRestoreCounts } from "@/lib/failed-restores";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { withSavedChangeNames } from "@/lib/saved-names";
 import type { BackupGap } from "@/lib/types";
@@ -74,6 +76,20 @@ export async function getActiveTierJobs(): Promise<JobRecord[]> {
   return withClient(async (client) => {
     const rows = (await listJobs(client, { limit: 50, kinds: ["backup", "collect"], statuses: ["queued", "running"] })) as UnknownRecord[];
     return rows.map(normalizeJob);
+  });
+}
+
+/** Failed restores: the count every page shows (engine/restore/failedRestores.mjs). */
+export async function getFailedRestoreCounts(now = new Date()): Promise<FailedRestoreCounts> {
+  return withClient(async (client) => (await countFailedRestores(client, { tenantRef: tenantRef(), now })) as FailedRestoreCounts);
+}
+
+/** The failed restores themselves, newest first: the list that count links to. */
+export async function getFailedRestoreJobs(now = new Date(), limit = 25): Promise<JobRecord[]> {
+  return withClient(async (client) => {
+    const rows = (await listFailedRestores(client, { tenantRef: tenantRef(), now, limit })) as UnknownRecord[];
+    const jobs = ((await summarizeJobs(client, { tenantRef: tenantRef(), jobs: rows })) as UnknownRecord[]).map(normalizeJob);
+    return withSavedChangeNames(client, tenantRef(), jobs);
   });
 }
 

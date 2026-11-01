@@ -1,3 +1,4 @@
+import { ApprovalText } from "@/components/approval-mode-context";
 import { resourceLabel } from "@/lib/presentation";
 
 // Roadmap task-152: a Conditional Access policy the backup had turned on is always
@@ -21,7 +22,7 @@ export function PendingSteps({ steps }: { steps?: PendingStep[] | null }) {
         {steps.map((step) => (
           <li key={`${step.step}:${step.naturalKey}`}>
             <strong>{resourceLabel(step.naturalKey)}</strong>: the backup had this policy turned on. It is restored in
-            report-only mode and protects no one until it is turned on in a separate step that a second person approves,
+            report-only mode and protects no one until it is turned on in a separate step that <ApprovalText phrase="approver" /> approves,
             after KEEL checks that every break-glass account can still sign in.
           </li>
         ))}

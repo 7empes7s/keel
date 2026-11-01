@@ -191,7 +191,7 @@ export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | 
     rows.push({
       key: "approvals", tone: "soon", icon: "inbox",
       title: `${plural(pendingApprovals, "request waits", "requests wait")} for a decision`,
-      detail: "Restores, undo changes and approved-setup changes wait for a second person.",
+      detail: "Restores, undo changes and approved-setup changes wait for approval.",
       href: "/approvals",
     });
   }

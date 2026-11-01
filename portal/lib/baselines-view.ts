@@ -2,6 +2,7 @@
 // approved setup per service, the open changes against it, and what each decision does.
 // Pure helpers, shared by the pages, the UI harness and the tests. "Approved setup" is
 // the reader's word for a baseline (redesign rule 3); ids stay in the record layer.
+import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
@@ -368,7 +369,7 @@ export function kindsWords(types: string[], limit = 3): string {
 export type Decision = "accept" | "ignore" | "undo";
 
 /** What a decision does, before it does it. */
-export function decisionWords(decision: Decision, count: number): { title: string; detail: string; confirm: string } {
+export function decisionWords(decision: Decision, count: number, mode: ApprovalModeName = "two-person"): { title: string; detail: string; confirm: string } {
   const changes = plural(count, "change");
   if (decision === "accept") {
     return {
@@ -386,7 +387,7 @@ export function decisionWords(decision: Decision, count: number): { title: strin
   }
   return {
     title: `Undo ${changes}`,
-    detail: `Keel puts the approved values back in Microsoft 365. First it shows what it would do, and nothing changes until someone else approves.`,
+    detail: `Keel puts the approved values back in Microsoft 365. First it shows what it would do, and nothing changes until ${approvalWords(mode).approves}.`,
     confirm: "Send for approval",
   };
 }

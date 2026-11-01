@@ -293,7 +293,7 @@ export function guardedPolicyUpdate(operation: "enabled" | "clear-pause", surfac
  * cleared limit is sent as null rather than left out. What it does stays as it is. An
  * undo rule that is on is turned off by the edit and needs a fresh preview. */
 export function guardedPolicyEdit(surface: DataSurface, deps: GuardDeps = {}) {
-  return guarded({ action: "policies:edit", capability: surface.capability, recordAttempt: true }, async ({ client, tenantRef, request }) => {
+  return guarded({ action: "policies:edit", capability: surface.capability, recordAttempt: true }, async ({ client, tenantRef, principalId, request }) => {
     const id = new URL(request.url).pathname.split("/").at(-2) ?? "";
     if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
     const body = await readActionParams(request);
@@ -311,7 +311,7 @@ export function guardedPolicyEdit(surface: DataSurface, deps: GuardDeps = {}) {
       const policy = await updatePolicy(client, {
         tenantRef, policyId: id, name: body.name, resourceType: body.resourceType, blastRadius: body.blastRadius,
         naturalKeyGlob: body.naturalKeyGlob, changeType: body.changeType, maxBlastRadius: body.maxBlastRadius,
-        maxActionsPerWindow: body.maxActionsPerWindow, windowSeconds: body.windowSeconds,
+        maxActionsPerWindow: body.maxActionsPerWindow, windowSeconds: body.windowSeconds, actor: principalId,
       });
       return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0] }, { headers: NO_STORE });
     } catch (error) {

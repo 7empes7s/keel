@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ApprovalText } from "@/components/approval-mode-context";
 import { ActivateBaseline } from "@/components/activate-baseline";
 import { RiskChip, SectionHead } from "@/components/baselines/parts";
 import { ScoreRing } from "@/components/compliance/score-ring";
@@ -209,9 +210,9 @@ function OtherVersions({ baselines, canBaseline, now }: { baselines: BaselineRec
   // Newest approved first. A version put back from an earlier one is approved later than
   // the version it copies, though its settings are older: each row says both.
   const ordered = [...baselines].sort((a, b) => Date.parse(b.setAt) - Date.parse(a.setAt) || (b.version ?? 1) - (a.version ?? 1));
-  const about = `Setups you approved before, newest approved first. Using one again needs someone else's approval.${notCompared
+  const about = <>Setups you approved before, newest approved first. Using one again needs <ApprovalText phrase="approval" />.{notCompared
     ? " Keel compares each one with the newest complete backup; until a backup reads every kind in full, they show Not compared yet."
-    : ""}`;
+    : ""}</>;
   return (
     <section aria-labelledby="bl-versions-heading" className="bl-section">
       <SectionHead about={about} id="bl-versions-heading" title="Other approved setups" />

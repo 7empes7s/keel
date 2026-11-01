@@ -705,7 +705,7 @@ export function guardedDispose(
       }
       // A sign-in or admin-access change is decided by two people: this request waits
       // for a different approver, and the worker applies it once approved.
-      // A change already accepted, or already waiting for a second person to accept it,
+      // A change already accepted, or already waiting for approval to accept it,
       // is not sent again: a second click or a retried send adds no second row.
       if (action === "accept" && await driftAlreadyAccepted(client, { driftId })) {
         return Response.json({ disposition: { alreadyAccepted: true } }, { headers: NO_STORE });

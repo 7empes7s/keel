@@ -8980,6 +8980,8 @@ html { scroll-padding-bottom: var(--sel-bar-space, 0px); }
   /* A badge never pokes out of its card: when the card is narrower than the words,
      they wrap inside the badge (UI audit E4, the sharing badge on a site page). */
   max-width: 100%;
+  /* Stays on one line unless the card itself is narrower than the words. */
+  min-width: min(100%, max-content);
   overflow-wrap: break-word;
 }
 .badge .icon { width: 0.875rem; height: 0.875rem; flex: none; }

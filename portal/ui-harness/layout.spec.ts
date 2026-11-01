@@ -35,12 +35,14 @@ test("the layout check finds the harness pages", () => {
 
 async function open(page: Page, hash: string) {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  // A fresh load each time: a hash change alone would keep the last width's state.
+  await page.goto("about:blank");
   await page.goto(`${HARNESS}#${hash}`);
   await page.evaluate(() => { document.documentElement.dataset.harnessCi = ""; });
   await page.locator("main#main-content h1").waitFor();
   await page.evaluate(() => document.fonts.ready);
   await page.evaluate(() => Promise.all(document.getAnimations()
-    .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+    .filter((animation) => animation.playState === "running" && animation.effect?.getComputedTiming().iterations !== Infinity)
     .map((animation) => animation.finished.catch(() => undefined))));
 }
 

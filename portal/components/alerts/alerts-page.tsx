@@ -64,6 +64,7 @@ import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
+import { MissingOpened } from "@/components/list/missing-opened";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
 import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
@@ -88,8 +89,11 @@ const ALERT_SORTS: ListSort<AlertItem>[] = [
 ];
 const plural = (count: number) => `${count} ${count === 1 ? "alert" : "alerts"}`;
 
-export function AlertsPage({ alerts, counts: serverCounts, now, canRespond, canMute, header, notice }: {
+export function AlertsPage({ alerts, linked, counts: serverCounts, now, canRespond, canMute, header, notice }: {
   alerts: AlertItem[];
+  // The alert a link opened when the list does not hold it (an old closed one): it opens,
+  // but it is not added to the list.
+  linked?: AlertItem;
   // The tenant's whole count (alertStateCounts). Without it, the list is the whole story.
   counts?: AlertCounts;
   now: string;
@@ -119,19 +123,23 @@ export function AlertsPage({ alerts, counts: serverCounts, now, canRespond, canM
 
   // What this page changed, until the server's next read says where each alert stands.
   const [changed, setChanged] = useState<Record<string, LocalChange>>({});
-  useEffect(() => { setChanged({}); }, [alerts]);
-  const items = useMemo(() => withLocalChanges(alerts, changed), [alerts, changed]);
+  useEffect(() => { setChanged({}); }, [alerts, linked]);
+  // Every alert this page holds: the list, then the linked one. The server's counts
+  // include the linked one, so local changes to it move them too.
+  const read = useMemo(() => (linked && !alerts.some((alert) => alert.id === linked.id) ? [...alerts, linked] : alerts), [alerts, linked]);
+  const known = useMemo(() => withLocalChanges(read, changed), [read, changed]);
+  const items = useMemo(() => known.slice(0, alerts.length), [known, alerts.length]);
 
   // The tiles and the verdict count every alert, as the bell and the Overview do; the
   // list may hold fewer (see listedNote).
   const listedCounts = useMemo(() => alertCounts(items, now), [items, now]);
-  const counts = useMemo(() => (serverCounts ? liveCounts(serverCounts, alerts, items, now) : listedCounts), [serverCounts, alerts, items, now, listedCounts]);
+  const counts = useMemo(() => (serverCounts ? liveCounts(serverCounts, read, known, now) : listedCounts), [serverCounts, read, known, now, listedCounts]);
   const verdict = useMemo(() => alertsVerdict(counts), [counts]);
   const listed = listedNote(counts, listedCounts, filter);
   const ordered = useMemo(() => inboxOrder(items), [items]);
   const shown = useMemo(() => applyFilters(ordered, stateTiles, filter), [ordered, stateTiles, filter]);
   const tileTotals = useMemo(() => new Map(tileCounts(ordered, stateTiles, filter).map((entry) => [entry.key, entry])), [ordered, stateTiles, filter]);
-  const opened = items.find((alert) => alert.id === openId) ?? null;
+  const opened = openId ? known.find((alert) => alert.id.toLowerCase() === openId.toLowerCase()) ?? null : null;
   const pickedAlerts = items.filter((alert) => picked.includes(alert.id));
   const overdueIds = items.filter((alert) => isOverdue(alert, now)).map((alert) => alert.id);
 
@@ -154,7 +162,7 @@ export function AlertsPage({ alerts, counts: serverCounts, now, canRespond, canM
 
   // One call per alert; one toast that names what did not change.
   async function run(action: AlertAction, ids: string[], text?: string): Promise<string | null> {
-    const chosen = items.filter((alert) => ids.includes(alert.id) && actionable(action, alert));
+    const chosen = known.filter((alert) => ids.includes(alert.id) && actionable(action, alert));
     if (chosen.length === 0) {
       toast({ tone: "warning", title: "Nothing to change", detail: action === "acknowledge" ? "The chosen alerts are already acknowledged or closed." : "The chosen alerts are already in that state." });
       return null;
@@ -252,6 +260,7 @@ export function AlertsPage({ alerts, counts: serverCounts, now, canRespond, canM
     <div className="al-page">
       <Verdict action={verdictAction} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
+        {openId && !opened ? <MissingOpened noun="alert" onDismiss={() => view.set({ open: null, do: null })} /> : null}
         <section aria-label="Alerts at a glance" className="al-tiles">
           {tiles.map((tile) => {
             const active = filter.includes(tile.key);

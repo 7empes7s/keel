@@ -44,6 +44,7 @@ import {
   workloadLiveLines,
   type BackupHealth,
   type HealthFilter,
+  type HealthTile,
   type RestoreStanding,
 } from "@/lib/protect-view";
 import { byRisk, byText, byTime } from "@/lib/paging";
@@ -216,13 +217,20 @@ function downloadCsv(types: CoverageType[], now: string) {
   URL.revokeObjectURL(url);
 }
 
-const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
+const TILES: { key: HealthTile; label: string; icon: IconName }[] = [
   { key: "backed-up", label: "Backed up", icon: "check-circle" },
   { key: "failed", label: "Failed", icon: "x-circle" },
   { key: "out-of-date", label: "Out of date or never", icon: "clock" },
   { key: "proven", label: "Restore proven", icon: "restore" },
 ];
-const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
+// No tile of their own (the sum line counts them), but a link can pick them: Overview's
+// "Not backed up by Keel yet" and "Not on this tenant". They add up with the tiles (OR).
+const LINK_FILTERS: { key: HealthFilter; label: string }[] = [
+  { key: "not-backed-up", label: "Not backed up by Keel yet" },
+  { key: "not-on-tenant", label: "Not on this tenant" },
+];
+const FILTER_LABELS = new Map<string, string>([...TILES, ...LINK_FILTERS].map((entry) => [entry.key, entry.label]));
+const HEALTH_TILES: FilterTile<CoverageType>[] = [...TILES, ...LINK_FILTERS].map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
 
 const TIER_IDS = TIERS.map((tier) => tier.id);
 
@@ -287,25 +295,25 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
     return next;
   });
 
-  const tileSmall: Record<HealthFilter, string> = {
+  const tileSmall: Record<HealthTile, string> = {
     "backed-up": `of ${counts.total} ${counts.total === 1 ? "kind" : "kinds"}`,
     failed: counts.failed ? "Their last backup did not finish" : "Nothing failed",
     "out-of-date": `${counts.stale} out of date, ${counts.never} never`,
     proven: counts.tested ? `${counts.tested} more pass tests, not yet run live` : "By a live test restore on this tenant",
   };
-  const tileValue: Record<HealthFilter, string> = {
+  const tileValue: Record<HealthTile, string> = {
     "backed-up": String(counts.backedUp),
     failed: String(counts.failed),
     "out-of-date": String(counts.stale + counts.never),
     proven: `${counts.proven} of ${counts.restorable}`,
   };
-  const tileTone: Partial<Record<HealthFilter, RiskTone>> = {
+  const tileTone: Partial<Record<HealthTile, RiskTone>> = {
     failed: counts.failed ? "urgent" : undefined,
     "out-of-date": counts.stale + counts.never ? "soon" : undefined,
   };
 
   const activeFilters: ActiveFilter[] = [
-    ...healthFilter.map((key) => ({ key: `health:${key}`, label: TILES.find((tile) => tile.key === key)!.label, clear: { health: withoutTile(healthFilter, key) } })),
+    ...healthFilter.map((key) => ({ key: `health:${key}`, label: FILTER_LABELS.get(key)!, clear: { health: withoutTile(healthFilter, key) } })),
     ...(service ? [{ key: "service", label: `In ${serviceFor(service).name}`, clear: { service: null } }] : []),
   ];
 

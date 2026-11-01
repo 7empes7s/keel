@@ -132,14 +132,22 @@ export async function alertObjects(client: QueryClient, tenantRef: string, keys:
 }
 
 export function guardedAlertInbox(deps: GuardDeps = {}) {
-  return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
+  return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef, request }) => {
     // Every alert someone still has to act on, then the most recent closed ones. The
     // tiles take their numbers from alertStateCounts, never from this list.
     const now = new Date();
     const active = await listAlerts(client, { tenantRef, actor: principalId, states: ["open", "reopened", "acknowledged"], limit: ACTIVE_LIMIT, at: now }) as Row[];
     const closed = await listAlerts(client, { tenantRef, actor: principalId, states: ["resolved", "suppressed"], limit: CLOSED_LIMIT, at: now }) as Row[];
     const counts = await alertStateCounts(client, { tenantRef, now }) as AlertCounts;
-    const rows = [...active, ...closed];
+    const listed = [...active, ...closed];
+    // A link to one alert (`?open=<id>`) opens it even when the list does not hold it (an
+    // old closed one): that alert is read on its own and sent apart as `linked`, so the
+    // list stays as it is. The counts already include it.
+    const openId = new URL(request.url).searchParams.get("open")?.toLowerCase() ?? null;
+    const extra = openId && UUID.test(openId) && !listed.some((row) => String(row.id).toLowerCase() === openId)
+      ? await listAlerts(client, { tenantRef, actor: principalId, ids: [openId], limit: 1, at: now }) as Row[]
+      : [];
+    const rows = [...listed, ...extra];
     // Every alert's history in one read, not one per alert: the page polls.
     const histories = new Map<string, Row[]>();
     const transitions = await listAlertTransitionsFor(client, { tenantRef, actor: principalId, alertIds: rows.map((row) => String(row.id)) }) as Row[];
@@ -211,7 +219,12 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
         })),
       };
     });
-    const body: AlertInboxData = { generatedAt: now.toISOString(), alerts, counts };
+    const body: AlertInboxData = {
+      generatedAt: now.toISOString(),
+      alerts: alerts.slice(0, listed.length),
+      counts,
+      ...(extra.length ? { linked: alerts[listed.length] } : {}),
+    };
     return Response.json(body, { headers: NO_STORE });
   }, deps);
 }

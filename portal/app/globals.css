@@ -9234,6 +9234,8 @@ section.wizard-panel {
 .ap-page [data-layer="explanation"] { display: grid; gap: var(--space-lg); min-width: 0; }
 .ap-section { display: grid; gap: var(--space-md); min-width: 0; }
 .ap-section > * { min-width: 0; }
+.ap-others-note { display: flex; align-items: start; gap: var(--space-xs); margin: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-left: 3px solid var(--low-risk); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--text-soft); font-size: 0.875rem; line-height: 1.45; }
+.ap-others-note .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; color: var(--low-risk); }
 .ap-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-sm) var(--space-md); }
 .ap-toolbar > * { min-width: 0; }
 .ap-toolbar .segmented { max-width: 100%; overflow-x: auto; }

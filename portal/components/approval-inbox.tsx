@@ -37,6 +37,7 @@ import {
   peopleList,
   requestTone,
   sortWaiting,
+  splitWaiting,
   subjectLinks,
   timeLeft,
   type WaitingSort,
@@ -271,7 +272,10 @@ export function ApprovalInbox({
   const view = useViewState();
   const pathname = usePathname() ?? "/approvals";
   const params = useLiveSearchParams();
-  const show = view.get("show") === "decided" ? "decided" : "waiting";
+  // Waiting splits in two: what this viewer can decide, and what waits on someone else
+  // (requests they asked for while approvals need two people, or already signed).
+  // Only the first counts as "for you".
+  const showParam = view.get("show") === "decided" ? "decided" : view.get("show") === "others" ? "others" : "waiting";
   const sort: WaitingSort = view.get("sort") === "newest" ? "newest" : "expiring";
   const soonOnly = view.get("soon") === "1";
   const effectsOnly = view.get("effects") === "1";
@@ -292,8 +296,15 @@ export function ApprovalInbox({
   // they were asked. Waiting and decided are separate lists, so each is checked alone.
   const titles = useMemo(() => new Map([...distinctTitles([...pending, ...awaitingContentEffects]), ...distinctTitles(history)]), [pending, awaitingContentEffects, history]);
   const titleOf = (request: ApprovalRequestRecord) => titles.get(request.id) ?? approvalTitle(request);
-  const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now), [pending, awaitingContentEffects, history, now]);
-  const waiting = useMemo(() => sortWaiting([...pending, ...awaitingContentEffects], sort), [pending, awaitingContentEffects, sort]);
+  const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now, viewerId, approvalMode), [pending, awaitingContentEffects, history, now, viewerId, approvalMode]);
+  const split = useMemo(() => splitWaiting(sortWaiting([...pending, ...awaitingContentEffects], sort), viewerId, approvalMode), [pending, awaitingContentEffects, sort, viewerId, approvalMode]);
+  const waiting = split.forYou;
+  const onOthers = split.onOthers;
+  const decidable = useMemo(() => new Set(waiting.map((request) => request.id)), [waiting]);
+  // A link that opens a request (`?open=`) lands on the tab that lists it.
+  const show = showParam !== "decided" && opened
+    ? onOthers.some((request) => request.id === opened) ? "others" : waiting.some((request) => request.id === opened) ? "waiting" : showParam
+    : showParam;
   // The two waiting tiles add up: Expiring soon and Waiting on content changes show either.
   const waitTiles = useMemo<FilterTile<ApprovalRequestRecord>[]>(() => [
     { key: "soon", test: (request) => expiringSoon(request, now) },
@@ -302,7 +313,7 @@ export function ApprovalInbox({
   const waitPicked = [soonOnly ? "soon" : null, effectsOnly ? "effects" : null].filter((key): key is string => Boolean(key));
   const shown = useMemo(() => applyFilters(waiting, waitTiles, [...(soonOnly ? ["soon"] : []), ...(effectsOnly ? ["effects"] : [])]), [waiting, waitTiles, soonOnly, effectsOnly]);
   const waitCounts = new Map(tileCounts(waiting, waitTiles, waitPicked).map((entry) => [entry.key, entry]));
-  const soonest = useMemo(() => sortWaiting(pending, "expiring")[0] ?? null, [pending]);
+  const soonest = useMemo(() => sortWaiting(waiting.filter((request) => request.status === "pending"), "expiring")[0] ?? null, [waiting]);
   const decided = useMemo(() => {
     const since = new Date(now).valueOf() - 7 * 24 * 3_600_000;
     return history.filter((request) => (!outcomes.length || outcomes.includes(request.status))
@@ -367,7 +378,7 @@ export function ApprovalInbox({
   }
 
   async function rejectMany(ids: string[], reason: string) {
-    const targets = pending.filter((request) => ids.includes(request.id));
+    const targets = pending.filter((request) => ids.includes(request.id) && decidable.has(request.id));
     setBusy({ id: "bulk", decision: "reject" });
     const failed: string[] = [];
     try {
@@ -434,6 +445,8 @@ export function ApprovalInbox({
     // Two-person mode: the viewer never decides their own request. Solo: they may.
     const blockedAsRequester = mine && approvalMode !== "solo";
     const selfApproval = mine && approvalMode === "solo";
+    // Approved already, on a request that needs more than one approver.
+    const signedByMe = !mine && !awaitingEffects && !decidable.has(request.id);
     // Starts from the reason given when it was asked for; the server checks it either way.
     const selfReason = selfReasons[request.id] ?? request.justification ?? "";
     const title = titleOf(request);
@@ -470,8 +483,10 @@ export function ApprovalInbox({
     const who = personLabel(asked);
     const help = blockedAsRequester
       ? "You asked for this, so someone else must decide it. Approvals need two people."
-      : selfApproval && !awaitingEffects
-        ? `You asked for this. Approval mode is Solo, so you can approve it yourself: say why, and it is recorded as self-approved with your reason. Keel runs ${words.verb} right after.`
+      : signedByMe
+        ? `You approved this. ${required - signed === 1 ? "One more approver" : `${Math.max(1, required - signed)} more approvers`} must approve before ${words.verb} starts.`
+        : selfApproval && !awaitingEffects
+          ? `You asked for this. Approval mode is Solo, so you can approve it yourself: say why, and it is recorded as self-approved with your reason. Keel runs ${words.verb} right after.`
       : awaitingEffects
         ? "The restore is approved. It runs once its content changes are approved too."
         : required > 1 && signed + 1 >= required
@@ -526,7 +541,7 @@ export function ApprovalInbox({
                 />
               </label>
             ) : null}
-            {!blockedAsRequester ? (
+            {!blockedAsRequester && !signedByMe ? (
               <span className="ap-decide">
                 <button
                   aria-busy={(isBusy && busy?.decision === "reject") || undefined}
@@ -593,10 +608,10 @@ export function ApprovalInbox({
           <Segmented
             label="Show"
             onChange={(value) => view.set({ show: value, soon: null, effects: null, week: null, outcome: null, open: null, q: null }, { show: "waiting" })}
-            options={[{ value: "waiting", label: `Waiting · ${counts.waiting}` }, { value: "decided", label: `Decided · ${history.length}` }]}
+            options={[{ value: "waiting", label: `For you · ${counts.waiting}` }, { value: "others", label: `Waiting on others · ${counts.waitingOnOthers}` }, { value: "decided", label: `Decided · ${history.length}` }]}
             value={show}
           />
-          {show === "waiting" ? (
+          {show !== "decided" ? (
             <Segmented
               label="Sort"
               onChange={(value) => view.set({ sort: value }, { sort: "expiring" })}
@@ -632,7 +647,7 @@ export function ApprovalInbox({
                     const base = count === 1 ? "Asks you why; the person who asked sees it." : "One reason for all of them; each person who asked sees it. Approve stays one request at a time.";
                     return effects ? `${base} ${effects === 1 ? "1 approved restore waiting on content changes" : `${effects} approved restores waiting on content changes`} cannot be rejected here.` : base;
                   },
-                  run: (ids) => { const targets = ids.filter((id) => pending.some((request) => request.id === id)); if (targets.length) { setRejecting(null); setBulk(targets); } },
+                  run: (ids) => { const targets = ids.filter((id) => decidable.has(id) && pending.some((request) => request.id === id)); if (targets.length) { setRejecting(null); setBulk(targets); } },
                 }}
                 empty={waitFilters.length ? <NoMatches extra={{ open: null }} filters={waitFilters} noun={NOUN} /> : undefined}
                 getId={(item) => item.id}
@@ -647,7 +662,28 @@ export function ApprovalInbox({
                 toneOf={(item) => requestTone(item, now)}
               />
             ) : (
-              <p className="sel-empty">Nothing is waiting for a decision.</p>
+              <p className="sel-empty">{onOthers.length ? "Nothing is waiting for your decision. The rest wait on someone else: see Waiting on others." : "Nothing is waiting for a decision."}</p>
+            )}
+          </section>
+        ) : show === "others" ? (
+          <section aria-labelledby="ap-others-heading" className="ap-section">
+            <h2 className="visually-hidden" id="ap-others-heading">Waiting on others</h2>
+            <p className="ap-others-note"><Icon name="info" />{approvalMode === "solo" ? "These wait on another approver: you already approved, and each needs more than one approver." : "These wait on another approver: you asked for them, or you already approved. The person who asks never decides."}</p>
+            {onOthers.length ? (
+              <SelectableList
+                getId={(item) => item.id}
+                groupings={groupings}
+                items={onOthers}
+                label="Waiting on others"
+                matches={(item, text) => matchText(item).includes(text)}
+                noun={NOUN}
+                renderRow={renderRequest}
+                rowName={approvalTitle}
+                sorts={REQUEST_SORTS}
+                toneOf={(item) => requestTone(item, now)}
+              />
+            ) : (
+              <p className="sel-empty">{approvalMode === "solo" ? "Nothing you approved is waiting on another approver." : "Nothing you asked for is waiting on someone else."}</p>
             )}
           </section>
         ) : (
@@ -704,7 +740,7 @@ export function ApprovalInbox({
           </section>
         )}
         <TechnicalDetails summary="Technical details for these requests">
-          {[...waiting, ...history].map((request) => <RequestRecordFields key={request.id} request={request} />)}
+          {[...waiting, ...onOthers, ...history].map((request) => <RequestRecordFields key={request.id} request={request} />)}
         </TechnicalDetails>
       </div>
     </div>

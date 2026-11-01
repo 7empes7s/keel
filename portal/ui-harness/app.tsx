@@ -89,7 +89,7 @@ import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
-import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
+import { askVerdict, type AskData, type ChangeRecord, type GroundedAnswer } from "@/lib/ask-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { EmergencyChangesView } from "@/components/change-intent";
 import { distinctPeople } from "@/lib/people-choices";
@@ -2155,6 +2155,21 @@ const ASK_ANSWERED: AskData = { generatedAt: now, entities: ["SALES"], scope: { 
       source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", href: "/drift", collectionId: "c0110000-0000-4000-8000-000000000994" } },
   ],
 } };
+// Backlog D19: "Who changed ...?" lists who made each change from the audit log, and the
+// form's pickers start from the question.
+const ASK_WHO: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "Who changed Sales groups this week?",
+  plan: { intent: "changes", params: { ...ASK_PLAN.params, resourceType: "group" } }, period: "this-week", asksWho: true, whoChecked: 2, total: 2, shown: 2,
+  sentence: "2 matching changes found.",
+  records: [
+    { ...ASK_ANSWERED.answer!.records[0] as ChangeRecord,
+      who: { verdict: "exact", label: "Confirmed", text: "Alice Admin, confirmed by the Microsoft Entra audit log.", detail: null } },
+    { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", resourceType: "group", naturalKey: "group:Sales Readers", name: "Sales Readers", changeType: "added", impact: "scoped", decision: null,
+      seenAt: "2026-09-30T06:00:00.000Z", window: { from: "2026-09-29T06:00:00.000Z", to: "2026-09-30T06:00:00.000Z" },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", href: "/drift", collectionId: null },
+      who: { verdict: "unknown", label: "Not known", text: "No audit entry names this change, so Keel cannot say who made it.", detail: "A change Microsoft or a sync makes has no person behind it." } },
+  ],
+} };
 const ASK_UNKNOWN: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
   ...ASK_BASE, scope: { central: true, entities: [] }, status: "unknown", intent: "changes", question: "What changed between 2020-01-01 and 2020-01-20?",
   plan: { intent: "changes", params: { entity: null, from: "2020-01-01T00:00:00.000Z", to: "2020-01-20T00:00:00.000Z", resourceType: null, changeType: null, limit: 25 } },
@@ -2770,6 +2785,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
+    case "/ask/who": return askPage(ASK_WHO);
     case "/ask/month": return askPage(ASK_MONTH);
     case "/ask/coverage": return askPage(ASK_COVERAGE);
     case "/readiness": return readinessPage(READINESS);

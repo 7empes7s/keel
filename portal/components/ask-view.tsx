@@ -8,7 +8,7 @@ import { AlertList } from "@/components/ui/alert-list";
 import { Badge } from "@/components/ui/badge";
 import { StatTiles } from "@/components/ui/stat-tiles";
 import {
-  ASK_INTENTS, ASK_PERIODS, answerBadge, answerSummary, askAlerts, coverageAnswerSummary, askTiles, understoodAs, understoodFilters,
+  ASK_CHANGES, ASK_INTENTS, ASK_PERIODS, askFormDefaults, answerBadge, answerSummary, askAlerts, coverageAnswerSummary, askTiles, understoodAs, understoodFilters,
   type AskData, type GroundedAnswer, type SummaryRow,
 } from "@/lib/ask-view";
 import { RESOURCE_TYPE_LABELS, formatTimestamp } from "@/lib/presentation";
@@ -23,7 +23,10 @@ const CSS = `
 .ask-form-card h2 .icon { width: 1rem; height: 1rem; color: var(--text-soft); }
 .ask-form { display: grid; gap: var(--space-sm); }
 .ask-form .filter-field > span { color: var(--text-soft); font-size: 0.8125rem; font-weight: 600; letter-spacing: normal; text-transform: none; }
-.ask-form-row { display: grid; gap: var(--space-sm); grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; }
+.ask-form-row { display: grid; gap: var(--space-sm); grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+.ask-form-foot { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; justify-content: space-between; }
+.ask-who { display: inline-flex; align-items: center; gap: var(--space-xs); font-size: 0.875rem; font-weight: 600; }
+.ask-who input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent, var(--check-soon)); }
 .ask-question { display: grid; gap: var(--space-sm); grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
 .ask-examples { display: flex; flex-wrap: wrap; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; }
 .ask-examples a { display: inline-flex; padding: 0.25rem var(--space-sm); border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); font-size: 0.8125rem; text-decoration: none; }
@@ -38,6 +41,9 @@ const CSS = `
 .ask-foot { margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
 @media (max-width: 64rem) {
   .ask-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 40rem) {
+  .ask-form-foot .btn { width: 100%; }
 }
 @media (max-width: 40rem) {
   .ask-question, .ask-form-row { grid-template-columns: minmax(0, 1fr); }
@@ -165,13 +171,22 @@ export function AnswerView({ answer }: { answer: GroundedAnswer }) {
 
 export function AskView({ data, question = "" }: { data: AskData; question?: string }) {
   const typeOptions = Object.entries(RESOURCE_TYPE_LABELS).filter(([type]) => type !== "retentionLabel");
+  // The pickers start from the question just answered, so changing one asks the same
+  // question with that one change. The key starts the form afresh for each answer.
+  const chosen = askFormDefaults(data.answer, typeOptions.map(([type]) => type));
+  const periods = chosen.datesOption ? [chosen.datesOption, ...ASK_PERIODS] : ASK_PERIODS;
+  const kinds = [
+    { value: "", label: "Any kind" },
+    ...(chosen.typeOption ? [chosen.typeOption] : []),
+    ...typeOptions.map(([type, label]) => ({ value: type, label: label[0].toUpperCase() + label.slice(1) })),
+  ];
   return (
     <div className="pg-page ask-view">
       <AskStyles />
       <div className="ask-forms">
         <section aria-labelledby="ask-question-heading" className="ask-form-card">
           <h2 id="ask-question-heading"><Icon name="search" />Ask a question</h2>
-          <form action="/ask" className="ask-form" method="get" role="search">
+          <form action="/ask" className="ask-form" key={`q-${question}`} method="get" role="search">
             <div className="ask-question">
               <label className="filter-field">
                 <span>Question</span>
@@ -186,30 +201,43 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
         </section>
         <section aria-labelledby="ask-form-heading" className="ask-form-card">
           <h2 id="ask-form-heading"><Icon name="filter" />Or choose</h2>
-          <form action="/ask" className="ask-form" method="get">
+          <form action="/ask" className="ask-form" key={JSON.stringify(chosen)} method="get">
             <div className="ask-form-row">
               <label className="filter-field">
                 <span>Question</span>
-                <select defaultValue="changes" name="intent">
+                <select defaultValue={chosen.intent} name="intent">
                   {ASK_INTENTS.map((intent) => <option key={intent.value} value={intent.value}>{intent.label}</option>)}
                 </select>
               </label>
               <label className="filter-field">
                 <span>Period</span>
-                <select defaultValue="this-week" name="period">
-                  {ASK_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
+                <select defaultValue={chosen.period} name="period">
+                  {periods.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
                 </select>
               </label>
               <FormOptionPicker
+                defaultValue={chosen.entity}
                 label="Owned by"
                 name="entity"
                 options={[{ value: "", label: data.scope.central ? "Any owner" : "Any entity you can see" }, ...data.entities.map((entity) => ({ value: entity, label: entity }))]}
               />
-              <FormOptionPicker
-                label="Kind of resource"
-                name="type"
-                options={[{ value: "", label: "Any kind" }, ...typeOptions.map(([type, label]) => ({ value: type, label: label[0].toUpperCase() + label.slice(1) }))]}
-              />
+              <FormOptionPicker defaultValue={chosen.type} label="Kind of resource" name="type" options={kinds} />
+              <label className="filter-field">
+                <span>Change</span>
+                <select defaultValue={chosen.change} name="change">
+                  {ASK_CHANGES.map((change) => <option key={change.value} value={change.value}>{change.label}</option>)}
+                </select>
+              </label>
+              <label className="filter-field">
+                <span>Name contains</span>
+                <input defaultValue={chosen.name} maxLength={120} name="name" placeholder="Any name" type="search" />
+              </label>
+            </div>
+            <div className="ask-form-foot">
+              <label className="ask-who">
+                <input defaultChecked={chosen.who} name="who" type="checkbox" value="1" />
+                Show who made each change
+              </label>
               <button className="btn" type="submit">Answer</button>
             </div>
           </form>

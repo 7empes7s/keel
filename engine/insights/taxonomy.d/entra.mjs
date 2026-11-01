@@ -53,7 +53,9 @@ export default Object.freeze({
 
     // admin roles
     directoryRole: { name: 'Built-in admin role' },
-    roleDefinition: { name: 'Custom admin role' },
+    // Holds Microsoft's built-in roles and the tenant's own. The kind reads as "Admin role";
+    // one role reads as built-in or custom by its isBuiltIn flag (taxonomy objectTypeName).
+    roleDefinition: { name: 'Admin role', builtInName: 'Built-in admin role', customName: 'Custom admin role' },
     directoryRoleTemplate: { name: 'Admin role template' },
     roleAssignment: { name: 'Admin role assignment' },
     roleEligibilitySchedule: { name: 'Eligible admin role' },

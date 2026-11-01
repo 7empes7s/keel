@@ -44,7 +44,7 @@ import {
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
-import { templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { builtInOf, templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
@@ -422,6 +422,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
     templateFamily: templateFamilyOf(raw.after_payload) ?? templateFamilyOf(raw.before_payload),
+    builtIn: builtInOf(raw.after_payload) ?? builtInOf(raw.before_payload),
   };
 }
 

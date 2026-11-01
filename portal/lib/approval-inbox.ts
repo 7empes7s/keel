@@ -12,7 +12,7 @@ import { itemKindName, itemService } from "@/lib/baselines-view";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import { recordsNoChange } from "../../engine/store/openDrift.mjs";
-import { templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
+import { builtInOf, templateFamilyOf } from "../../engine/insights/taxonomy.mjs";
 import type { UnnamedReference } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
@@ -186,8 +186,8 @@ function keyType(naturalKey: string): string {
 
 /** One setting a preview lists: its stored type, and the template family its saved copy
  * carries (an Intune antivirus policy is a Defender setting). */
-function keyItem(key: string, names: NamedKeys): { resourceType: string; templateFamily: string | null } {
-  return { resourceType: names[key]?.resourceType ?? keyType(key), templateFamily: names[key]?.templateFamily ?? null };
+function keyItem(key: string, names: NamedKeys): { resourceType: string; templateFamily: string | null; builtIn: boolean | null } {
+  return { resourceType: names[key]?.resourceType ?? keyType(key), templateFamily: names[key]?.templateFamily ?? null, builtIn: names[key]?.builtIn ?? null };
 }
 
 function servicesOf(items: { resourceType: string; templateFamily?: string | null }[]): ApprovalPreview["services"] {
@@ -200,8 +200,12 @@ function servicesOf(items: { resourceType: string; templateFamily?: string | nul
 }
 
 /** A drift row as a listed setting: its type and the template family either copy carries. */
-function driftItem(row: UnknownRecord): { resourceType: string; templateFamily: string | null } {
-  return { resourceType: String(row.resource_type), templateFamily: templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload) };
+function driftItem(row: UnknownRecord): { resourceType: string; templateFamily: string | null; builtIn: boolean | null } {
+  return {
+    resourceType: String(row.resource_type),
+    templateFamily: templateFamilyOf(row.after_payload) ?? templateFamilyOf(row.before_payload),
+    builtIn: builtInOf(row.after_payload) ?? builtInOf(row.before_payload),
+  };
 }
 
 // A roll back puts each changed setting back as the approved setup holds it: "now" is

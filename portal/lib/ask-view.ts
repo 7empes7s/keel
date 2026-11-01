@@ -40,6 +40,8 @@ export interface ChangeRecord {
   // The settings catalog template family, when the change has one: an endpoint security
   // policy made in Intune is listed under Defender.
   templateFamily?: string | null;
+  // The isBuiltIn flag, when the changed object has one (an Entra admin role).
+  builtIn?: boolean | null;
   naturalKey: string;
   name: string | null;
   changeType: string;

@@ -296,7 +296,7 @@ function Unmatched({ entries }: { entries: SettingsSection["unmatched"] }) {
 function openable(groups: SettingsGroup[]): CompareOpenable[] {
   return byService(groups, groupKind).flatMap((block) => block.parts.flatMap((part) => part.items.flatMap((group) => byChange(group.items)
     .filter((item) => item.changeType === "changed" && item.fields?.length)
-    .map((item) => ({ id: compareItemId(group.resourceType, item.naturalKey), name: itemName(item, group.resourceType), kind: itemKindName({ resourceType: group.resourceType, templateFamily: item.templateFamily }), service: block.heading, fields: item.fields ?? [], fieldsTotal: item.fieldsTotal })))));
+    .map((item) => ({ id: compareItemId(group.resourceType, item.naturalKey), name: itemName(item, group.resourceType), kind: itemKindName({ resourceType: group.resourceType, templateFamily: item.templateFamily, builtIn: item.builtIn }), service: block.heading, fields: item.fields ?? [], fieldsTotal: item.fieldsTotal })))));
 }
 
 function SettingsPanel({ settings, portable, sides, restore }: { settings: SettingsSection; portable: boolean; sides: Sides; restore: { href: string; label: string } | null }) {

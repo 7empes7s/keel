@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { WORKLOADS } from '../collect/workloadContract.mjs';
-import { EDGE_TAXONOMY, OTHER_CATEGORY, PRIORITIES, SERVICES, SERVICE_FILES, SUBKIND_TAXONOMY, TAXONOMY, compareInService, compareTypes, placeUnmapped, settingArea, settingKind, templateFamilyOf, typeInfo } from './taxonomy.mjs';
+import { EDGE_TAXONOMY, OTHER_CATEGORY, PRIORITIES, SERVICES, SERVICE_FILES, SUBKIND_TAXONOMY, TAXONOMY, compareInService, compareTypes, placeUnmapped, builtInOf, objectTypeName, settingArea, settingKind, templateFamilyOf, typeInfo } from './taxonomy.mjs';
 
 const DIR = new URL('./taxonomy.d/', import.meta.url);
 
@@ -241,4 +241,25 @@ test('Intune endpoint security policies are filed under Defender, by their templ
   assert.equal(settingKind('deviceConfiguration', 'endpointSecurityAntivirus'), 'deviceConfiguration');
   assert.equal(templateFamilyOf({ templateReference: { templateFamily: '' } }), null);
   assert.equal(templateFamilyOf(null), null);
+});
+
+test('an Entra admin role reads as built-in or custom by its isBuiltIn flag; the kind is just "Admin role"', () => {
+  assert.equal(typeInfo('roleDefinition').name, 'Admin role');
+  assert.equal(objectTypeName('roleDefinition', builtInOf({ displayName: 'Global Administrator', isBuiltIn: true })), 'Built-in admin role');
+  assert.equal(objectTypeName('roleDefinition', builtInOf({ displayName: 'KEEL-RT-Role', isBuiltIn: false })), 'Custom admin role');
+  // No flag: the kind's own name, never a guess.
+  assert.equal(objectTypeName('roleDefinition', builtInOf({ displayName: 'Security Administrator' })), 'Admin role');
+  assert.equal(objectTypeName('roleDefinition'), 'Admin role');
+  // Every other kind keeps its name whatever the flag says.
+  assert.equal(objectTypeName('roleScopeTag', true), 'Scope tag');
+  assert.deepEqual([builtInOf(null), builtInOf({ isBuiltIn: 'true' }), builtInOf({ isBuiltIn: 'false' }), builtInOf({ isBuiltIn: 1 })], [null, true, false, null]);
+});
+
+test('a kind named "Custom …" never holds built-in objects too', () => {
+  // A kind that holds Microsoft's built-in objects and the tenant's own names both by
+  // builtInName and customName, so a built-in object is never called custom.
+  for (const entry of Object.values(TAXONOMY)) {
+    if (entry.customName) assert.ok(entry.builtInName && !/^custom\b/i.test(entry.name), entry.type);
+  }
+  assert.ok(!/^custom\b/i.test(TAXONOMY.roleDefinition.name));
 });

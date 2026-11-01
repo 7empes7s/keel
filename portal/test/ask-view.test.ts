@@ -82,6 +82,11 @@ test("the form's pickers follow the question, and send it back as the same reque
   const coverage = askFormDefaults({ ...BASE, intent: "coverage", plan: { intent: "coverage", params: { ...BASE.plan!.params, from: null, to: null, changeType: null } } });
   assert.deepEqual([coverage.intent, coverage.period, coverage.change], ["coverage", "this-week", ""]);
   assert.deepEqual(askFormDefaults(null), { intent: "changes", period: "this-week", datesOption: null, entity: "", type: "", typeOption: null, change: "", name: "", who: false });
+  // One kind the picker already lists is chosen as it is, not added again.
+  const one = askFormDefaults({ ...BASE, plan: { intent: "changes", params: { ...BASE.plan!.params, resourceTypes: ["group"] } } }, ["group"]);
+  assert.deepEqual([one.type, one.typeOption], ["group", null]);
+  // Jobs have no owner, so an owner left in the form is not sent with them.
+  assert.equal(askInputFrom({ intent: "failed-jobs", period: "today", entity: "SALES" })?.entity, undefined);
   // The who box only asks about changes.
   assert.equal(askInputFrom({ intent: "failed-jobs", period: "today", who: "1" })?.who, undefined);
 });

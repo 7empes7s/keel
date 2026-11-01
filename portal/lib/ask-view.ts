@@ -218,7 +218,8 @@ export function askInputFrom(params: Record<string, string | string[] | undefine
   const who = intent === "changes" && value("who") === "1";
   return {
     intent,
-    entity: value("entity"),
+    // Jobs have no owner: an owner left from a changes question is not sent with them.
+    entity: intent === "failed-jobs" ? undefined : value("entity"),
     period: intent === "coverage" || from ? undefined : periodValue,
     from,
     to: from ? value("to") ?? (dates?.[1] || undefined) : undefined,
@@ -269,7 +270,7 @@ export function askFormDefaults(answer: GroundedAnswer | null, typeValues: reado
   let typeOption: AskFormDefaults["typeOption"] = null;
   if (params.resourceTypes?.length) {
     type = params.resourceTypes.join(",");
-    typeOption = { value: type, label: kindsWords(params.resourceTypes) };
+    if (params.resourceTypes.length > 1 || !typeValues.includes(type)) typeOption = { value: type, label: kindsWords(params.resourceTypes) };
   } else if (params.resourceType) {
     type = params.resourceType;
     if (!typeValues.includes(type)) typeOption = { value: type, label: plainKind(type) };

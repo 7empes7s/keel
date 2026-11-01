@@ -7,7 +7,7 @@ import type { IconName } from "@/components/shell/icons";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
-import { failureReason } from "@/lib/backup-failure";
+import { failedNeedingFix, failureReason } from "@/lib/backup-failure";
 import { backupHealth, protectCounts, type BackupHealth } from "@/lib/protect-view";
 import { SERVICES, serviceFor, serviceOrder } from "@/lib/services";
 import type { CoverageType } from "@/lib/types";
@@ -110,8 +110,11 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
   }
   const counts = protectCounts(counted);
   const outOfDate = counts.stale + counts.never;
+  // Red only when a failure needs a person (lib/severity.ts); one Keel expects to clear on
+  // the next run is amber, so one passing Microsoft error does not paint the service red.
+  const needsFix = failedNeedingFix(counted);
   const backup: ServiceStatus["backup"] = counts.failed
-    ? { tone: "urgent", text: `${kinds(counts.failed)} failed${counts.partial ? `, ${counts.partial} partly done` : ""}, ${counts.backedUp} of ${counted.length} backed up` }
+    ? { tone: needsFix ? "urgent" : "soon", text: `${kinds(counts.failed)} failed${counts.partial ? `, ${counts.partial} partly done` : ""}, ${counts.backedUp} of ${counted.length} backed up` }
     : counts.partial
       ? { tone: "soon", text: `${kinds(counts.partial)} partly done${outOfDate ? `, ${outOfDate} out of date` : ""}, ${counts.backedUp} of ${counted.length} backed up` }
       : outOfDate
@@ -132,7 +135,7 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
   return {
     ...base,
     tone: backup.tone,
-    label: counts.failed ? "Failing" : counts.partial ? "Partly done" : outOfDate ? "Out of date" : "Working",
+    label: counts.failed ? (needsFix ? "Failing" : "Last backup failed") : counts.partial ? "Partly done" : outOfDate ? "Out of date" : "Working",
     backup,
     restore,
     lastGoodRead: reads.at(-1) ?? null,
@@ -170,8 +173,9 @@ export function servicesSummary(statuses: ServiceStatus[]): { tone: ServiceTone;
   const failing = statuses.filter((status) => status.tone === "urgent").length;
   const late = statuses.filter((status) => status.tone === "soon").length;
   const working = statuses.filter((status) => status.label === "Working").length;
-  if (failing) return { tone: "urgent", text: `${failing} of ${statuses.length} services ${failing === 1 ? "is" : "are"} failing to back up.` };
-  if (late) return { tone: "soon", text: `${late} of ${statuses.length} services ${late === 1 ? "is" : "are"} out of date.` };
+  const check = late ? `; ${late} more ${late === 1 ? "needs" : "need"} a look` : "";
+  if (failing) return { tone: "urgent", text: `${failing} of ${statuses.length} services ${failing === 1 ? "needs" : "need"} a fix to back up${check}.` };
+  if (late) return { tone: "soon", text: `${late} of ${statuses.length} services ${late === 1 ? "needs" : "need"} a look: a failed, partly done or out-of-date backup.` };
   if (working === 0) return { tone: "neutral", text: "No service has been backed up yet." };
   return { tone: "fine", text: `${working} of ${statuses.length} services are backed up and working.` };
 }

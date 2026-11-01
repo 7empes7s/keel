@@ -15,7 +15,9 @@ function formatDay(day: string): string {
 
 // One series, so no legend: the card title names it. Area + 2px line, the latest day
 // marked, and a crosshair tooltip on hover. The hidden table is the non-visual view.
-export function Sparkline({ points, label }: { points: Array<{ day: string; count: number }>; label: string }) {
+// `marker` flags one day with its own note (the first check after a new approved setup):
+// a dashed line and a labelled flag, not part of the line's scale.
+export function Sparkline({ points, label, marker = null }: { points: Array<{ day: string; count: number }>; label: string; marker?: { index: number; label: string; title: string } | null }) {
   const [hover, setHover] = useState<number | null>(null);
   if (points.length < 2) return null;
 
@@ -47,6 +49,7 @@ export function Sparkline({ points, label }: { points: Array<{ day: string; coun
           <line className="sparkline-baseline" x1={PAD_X} x2={WIDTH - PAD_X} y1={HEIGHT - PAD_BOTTOM} y2={HEIGHT - PAD_BOTTOM} />
           <path className="sparkline-area" d={area} />
           <path className="sparkline-line" d={line} />
+          {marker ? <line className="sparkline-marker" x1={x(marker.index)} x2={x(marker.index)} y1={PAD_TOP - 4} y2={HEIGHT - PAD_BOTTOM} /> : null}
           {hover !== null ? (
             <line className="sparkline-crosshair" x1={x(hover)} x2={x(hover)} y1={PAD_TOP - 4} y2={HEIGHT - PAD_BOTTOM} />
           ) : null}
@@ -57,12 +60,17 @@ export function Sparkline({ points, label }: { points: Array<{ day: string; coun
           className={`sparkline-dot${hover === null ? " sparkline-dot-latest" : ""}`}
           style={{ left: `${(x(shown) / WIDTH) * 100}%`, top: `${(y(points[shown].count) / HEIGHT) * 100}%` }}
         />
+        {marker ? (
+          <span className="sparkline-flag" data-side={x(marker.index) / WIDTH > 0.6 ? "left" : "right"} style={{ left: `${(x(marker.index) / WIDTH) * 100}%` }} title={marker.title}>
+            {marker.label}
+          </span>
+        ) : null}
         {hover !== null ? (
           <span
             className="sparkline-tooltip"
             style={{ left: `${(x(hover) / WIDTH) * 100}%` }}
           >
-            <strong>{points[hover].count}</strong> on {formatDay(points[hover].day)}
+            <strong>{points[hover].count}</strong> on {formatDay(points[hover].day)}{marker && marker.index === hover ? " · new approved setup" : ""}
           </span>
         ) : null}
       </div>

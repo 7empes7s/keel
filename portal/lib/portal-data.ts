@@ -59,6 +59,7 @@ import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, refere
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
+import { failedNeedingFix } from "@/lib/backup-failure";
 import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { countOpenServiceChanges } from "@/lib/service-changes";
@@ -69,6 +70,7 @@ import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@
 import { supportIds } from "@/lib/support-ids";
 import type {
   BaselineCapture,
+  DriftTrendPoint,
   BaselineChanges,
   BaselineRecord,
   BaselinesData,
@@ -470,7 +472,8 @@ async function coverageFor(client: KeelClient, ref: string, report?: UnknownReco
         }
       : null,
     // One count for every page: the types and workloads by backupHealth, adding up to total.
-    summary: coverageSummary([...types, ...workloads]),
+    // failedNeedsFix: the failed kinds a person must fix, the red part (lib/severity.ts).
+    summary: { ...coverageSummary([...types, ...workloads]), failedNeedsFix: failedNeedingFix([...types, ...workloads]) },
     types,
     workloads,
     liveEvidence: normalizeLiveEvidence(raw.liveEvidence),
@@ -624,38 +627,63 @@ export const DRIFT_TREND_DAYS = 30;
 // Zero-fills the window so every day is one point: a gap in detection is a real zero,
 // not a missing sample, and the x-axis stays linear in time.
 export function fillDriftTrend(
-  rows: Array<{ day: string; count: number }>,
+  rows: Array<{ day: string; count: number; firstCheck?: number }>,
   end: Date,
   days = DRIFT_TREND_DAYS,
-): Array<{ day: string; count: number }> {
-  const counts = new Map(rows.map((row) => [row.day, row.count]));
+): DriftTrendPoint[] {
+  const byDay = new Map(rows.map((row) => [row.day, row]));
   const last = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
   return Array.from({ length: days }, (_, index) => {
     const day = new Date(last - (days - 1 - index) * 86_400_000).toISOString().slice(0, 10);
-    return { day, count: counts.get(day) ?? 0 };
+    const row = byDay.get(day);
+    return row?.firstCheck ? { day, count: row.count, firstCheck: row.firstCheck } : { day, count: row?.count ?? 0 };
   });
 }
 
-async function driftTrendFor(
+// How long after the first comparison against a new approved setup its results still
+// count as that first check, and how soon after the approval that check must run.
+const FIRST_CHECK_WINDOW = "15 minutes";
+const FIRST_CHECK_WITHIN = "2 days";
+
+/**
+ * Changes found per day against the active approved setup, each counted once, on the day
+ * it was first found. The first check after a new setup is approved lists everything that
+ * already differed at once (981 on one day in the 31 Oct audit), which read like an
+ * attack; those are returned apart as firstCheck so the chart can mark them instead of
+ * drawing them as a spike (UI audit E2).
+ */
+export async function driftTrendFor(
   client: KeelClient,
   ref: string,
   activeBaselineId: string | null,
   end: Date,
-): Promise<Array<{ day: string; count: number }>> {
+): Promise<DriftTrendPoint[]> {
   if (!activeBaselineId) return fillDriftTrend([], end);
   const { rows } = await client.query(
-    `SELECT to_char(date_trunc('day', detected_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-            count(DISTINCT natural_key)::int AS count
-       FROM drift d
-      WHERE tenant_ref = $1
-        AND baseline_id = $2
-        AND detected_at >= $3
-        AND ${RECORDED_CHANGE_PREDICATE}
+    `WITH found AS (
+       SELECT d.natural_key, min(d.detected_at) AS at
+         FROM drift d
+        WHERE d.tenant_ref = $1
+          AND d.baseline_id = $2
+          AND ${RECORDED_CHANGE_PREDICATE}
+        GROUP BY d.natural_key
+     ), first_check AS (
+       SELECT min(f.at) AS at
+         FROM found f
+         JOIN baseline b ON b.id = $2
+        HAVING min(f.at) <= max(b.set_at) + interval '${FIRST_CHECK_WITHIN}'
+     )
+     SELECT to_char(date_trunc('day', f.at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+            count(*) FILTER (WHERE fc.at IS NULL OR f.at > fc.at + interval '${FIRST_CHECK_WINDOW}')::int AS count,
+            count(*) FILTER (WHERE fc.at IS NOT NULL AND f.at <= fc.at + interval '${FIRST_CHECK_WINDOW}')::int AS first_check
+       FROM found f
+       LEFT JOIN first_check fc ON true
+      WHERE f.at >= $3
       GROUP BY 1`,
     [ref, activeBaselineId, new Date(end.getTime() - DRIFT_TREND_DAYS * 86_400_000)],
   );
   return fillDriftTrend(
-    rows.map((row) => ({ day: String(row.day), count: Number(row.count) })),
+    rows.map((row) => ({ day: String(row.day), count: Number(row.count), firstCheck: Number(row.first_check) })),
     end,
   );
 }

@@ -5,6 +5,7 @@
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { ago } from "@/lib/presentation";
+import { failedSeverity } from "@/lib/severity";
 import type { CoverageSummary, DashboardAlert, DashboardData, DashboardWaiting, ProtectionHeadline } from "@/lib/types";
 
 // Portal experience contract, Overview verdict: one headline, one sentence (the memorable
@@ -230,6 +231,17 @@ export interface OverviewTile {
   parts?: OverviewTilePart[];
 }
 
+/**
+ * The backup count's colour, shared by the Backups tile, the last-backup card and the
+ * menu badge: red only when a failed kind needs a person (lib/severity.ts), amber for
+ * failures Keel expects to clear, partly done and out of date.
+ */
+export function backupsTone(coverage: Pick<CoverageSummary, "failed" | "partial" | "stale" | "neverCollected" | "failedNeedsFix">): "urgent" | "soon" | undefined {
+  const failed = failedSeverity(coverage.failed, coverage.failedNeedsFix);
+  if (failed === "urgent" || failed === "soon") return failed;
+  return (coverage.partial ?? 0) + coverage.stale + coverage.neverCollected > 0 ? "soon" : undefined;
+}
+
 /** The four count tiles; the Waiting tile is left out for viewers with nothing that can wait on them. */
 export function overviewTiles(data: DashboardData, pendingApprovals: number | null): OverviewTile[] {
   const { coverage, headline } = data;
@@ -244,8 +256,8 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
     value: failed ? `${failed.toLocaleString("en-GB")} failed` : partial ? `${partial.toLocaleString("en-GB")} partly done` : late ? `${late.toLocaleString("en-GB")} out of date` : `${covered.toLocaleString("en-GB")} backed up`,
     detail: `${covered.toLocaleString("en-GB")} of ${plural(total, "kind", "kinds")} backed up${partlyNote}`,
     href: failed ? COVERAGE_LINKS.failed : partial ? COVERAGE_LINKS.partial : late ? COVERAGE_LINKS.late : "/protect",
-    tone: failed ? "urgent" : partial || late ? "soon" : undefined,
-    meter: [{ tone: "fine", share: covered / total }, { tone: "urgent", share: failed / total }, { tone: "soon", share: (partial + late) / total }, { tone: "neutral", share: uncovered / total }],
+    tone: backupsTone(coverage),
+    meter: [{ tone: "fine", share: covered / total }, { tone: failedSeverity(failed, coverage.failedNeedsFix) ?? "urgent", share: failed / total }, { tone: "soon", share: (partial + late) / total }, { tone: "neutral", share: uncovered / total }],
   }];
 
   // "Restore proven" is counted once (engine/coverage/restoreProof.mjs), so this tile,
@@ -303,12 +315,22 @@ export function setupLine(baseline: NonNullable<DashboardData["activeBaseline"]>
   return `${plural(baseline.resourceCount, "setting", "settings")} · approved ${ago(baseline.setAt, now)}${by}`;
 }
 
-/** The last-backup card: when, and how the newest backup ended. */
-export function backupLine(data: Pick<DashboardData, "lastCollection" | "lastCompletedCollectionAt" | "generatedAt">): { when: string; state: { tone: BadgeTone; label: string } | null } {
+/**
+ * The last-backup card: when, and how the newest backup ended. A run that finished while
+ * some kinds failed or were partly done is never green: it takes the Backups tile's
+ * colour and says what is missing (UI audit E3), so the card and the tile agree.
+ */
+export function backupLine(data: Pick<DashboardData, "lastCollection" | "lastCompletedCollectionAt" | "generatedAt"> & Partial<Pick<DashboardData, "coverage">>): { when: string; state: { tone: BadgeTone; label: string } | null } {
   const when = data.lastCompletedCollectionAt ? ago(data.lastCompletedCollectionAt, data.generatedAt).replace(/^./, (c) => c.toUpperCase()) : "Never";
   const status = data.lastCollection?.status;
+  const failed = data.coverage?.failed ?? 0;
+  const partial = data.coverage?.partial ?? 0;
+  const finished = failed && data.coverage
+    ? { tone: failedSeverity(failed, data.coverage.failedNeedsFix) ?? "urgent", label: `Finished · ${plural(failed, "failed kind", "failed kinds")}` }
+    : partial ? { tone: "soon" as const, label: `Finished · ${plural(partial, "kind partly done", "kinds partly done")}` }
+      : { tone: "fine" as const, label: "Finished" };
   const state = !data.lastCollection ? null
-    : status === "complete" ? { tone: "fine" as const, label: "Finished" }
+    : status === "complete" ? finished
       : status === "running" ? { tone: "low" as const, label: "Running now" }
         : { tone: "urgent" as const, label: "Did not finish" };
   return { when, state };
@@ -317,6 +339,21 @@ export function backupLine(data: Pick<DashboardData, "lastCollection" | "lastCom
 /** A day as "3 Sept", in UTC like the trend itself. */
 export function trendDay(day: string): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
+}
+
+/**
+ * The first check after the active approved setup, when it falls inside the trend: it
+ * lists everything that already differed from the new setup at once, so the chart marks
+ * it with this sentence instead of drawing it as a spike of new changes (UI audit E2).
+ */
+export function firstCheckNote(points: DashboardData["driftTrend"]): { day: string; count: number; index: number; text: string } | null {
+  const index = points.findIndex((point) => (point.firstCheck ?? 0) > 0);
+  if (index < 0) return null;
+  const { day, firstCheck = 0 } = points[index];
+  return {
+    day, count: firstCheck, index,
+    text: `New approved setup on ${trendDay(day)}: its first check found ${plural(firstCheck, "setting that already differed", "settings that already differed")}. They are not counted as new changes.`,
+  };
 }
 
 /** The trend's sentence and its peak, for the chart card and the full-screen view. */

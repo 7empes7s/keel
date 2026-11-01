@@ -1,6 +1,7 @@
 import type { NavSection } from "@/components/nav-links";
 import { AUDIT_CHECK_WORDS, dashboardAuditCheck } from "@/lib/audit-check";
 import { overviewVerdict } from "@/lib/overview-view";
+import { failedSeverity } from "@/lib/severity";
 import type { DashboardData } from "@/lib/types";
 
 // Each menu section's count and status, so a closed section still says whether it
@@ -47,7 +48,8 @@ export function menuStatuses(data: Pick<DashboardData, "headline" | "coverage" |
   // amber ones (partly done and out of date). Partly done is never counted as failed.
   const amber = [partial ? `${partial} partly done` : "", late ? `${late} out of date` : ""].filter(Boolean).join(" and ");
   const more = [partial ? `${partial} more ${partial === 1 ? "was" : "were"} partly done` : "", late ? `${late} more ${late === 1 ? "is" : "are"} out of date` : ""].filter(Boolean);
-  if (failed > 0) statuses.Backup = { tone: "urgent", count: failed, note: `${plural(failed, "kind of setting", "kinds of settings")} failed to back up${more.length ? `, ${more.length === 2 ? `${more[0]}, and ${more[1]}` : `and ${more[0]}`}` : ""}` };
+  // Red only when a failed kind needs a person (lib/severity.ts), as on the Overview tile.
+  if (failed > 0) statuses.Backup = { tone: failedSeverity(failed, data.coverage.failedNeedsFix) === "urgent" ? "urgent" : "soon", count: failed, note: `${plural(failed, "kind of setting", "kinds of settings")} failed to back up${more.length ? `, ${more.length === 2 ? `${more[0]}, and ${more[1]}` : `and ${more[0]}`}` : ""}` };
   else if (partial + late > 0) statuses.Backup = { tone: "soon", count: partial + late, note: `${plural(partial + late, "kind of setting needs", "kinds of settings need")} a new backup: ${amber}` };
 
   if (data.openDriftTotal > 0) {

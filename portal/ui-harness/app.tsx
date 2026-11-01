@@ -1479,7 +1479,9 @@ function dashboard(posture: number): DashboardData {
     // The same open changes as the Changes page fixture (DRIFT), so tile links land on matching counts.
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 3 }, { blastRadius: "cosmetic", count: 2 }],
     openDriftTotal: posture === 0 ? 7 : 5,
-    driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
+    // 29 Sept is the day the approved setup was approved: its first check found 981
+    // settings that already differed, kept apart from the day's new changes (UI audit E2).
+    driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count, ...(index === 26 ? { firstCheck: 981 } : {}) })),
     // The buckets add up to the total, as coverageSummary makes them.
     coverage: { covered: 142, failed: posture === 0 ? 4 : 0, partial: 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
@@ -2841,7 +2843,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     // Item 5 (#548 review): a workload restore dry run that stopped on a settings file the server lacks.
     case "/jobs/r13": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r13", kind: "restore", params: { workloadRestore: { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-000000000013", targets: ["organization"] }, artifactId: "7f3c0000-0000-4000-8000-000000000013" }, error: SETTINGS_FILE_ERROR }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
-    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
+    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/settings": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" />
@@ -2851,7 +2853,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/approvals/solo": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for approval. Approval mode is Solo, so you can approve your own.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox approvalMode="solo" history={[{ ...APPROVAL_HISTORY[0], id: "a9e10000-0000-4000-8000-000000000160", requestedBy: MAROUANE.id, selfApproved: true, references: { ...APPROVAL_HISTORY[0].references!, people: { requested_by: MAROUANE, decided_by: MAROUANE } } }]} now={now} pending={[{ ...APPROVALS_PENDING[1], id: "a9e10000-0000-4000-8000-000000000161", requestedBy: MAROUANE.id, references: { ...APPROVALS_PENDING[1].references!, people: { requested_by: MAROUANE } } }]} viewerId={MAROUANE.id} />
       <ApprovalModeCard canChange now={now} setting={{ mode: "solo", changedAt: "2026-10-01T09:00:00Z", changedBy: MAROUANE }} /></>;
-    case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
+    case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "4 waiting" })}
       <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[

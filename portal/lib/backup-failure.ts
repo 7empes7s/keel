@@ -8,6 +8,7 @@ import { KEEL_PERMISSIONS } from "../../engine/bootstrap/permissionCatalog.mjs";
 import { WORKLOAD_DESCRIPTORS } from "../../engine/collect/workloadContract.mjs";
 import { missingGrant } from "../../engine/discovery/grants.mjs";
 import { backupHealth } from "@/lib/protect-view";
+import type { Severity } from "@/lib/severity";
 import type { CoverageType } from "@/lib/types";
 
 export type FailureTone = "urgent" | "soon" | "neutral";
@@ -177,4 +178,18 @@ export function retryPlan(item: CoverageType, tiers: readonly string[]): RetryPl
   if (item.criticality && tiers.includes(item.criticality)) return { kind: "tier", tier: item.criticality };
   if (isWorkload(item)) return { kind: "workloads" };
   return { kind: "full" };
+}
+
+/** One kind's colour (lib/severity.ts): red only when a person must fix it; a failure
+ * Keel expects to clear on the next run, and a partly done kind, are amber. */
+export function backupFailureSeverity(item: CoverageType): Severity | null {
+  const health = backupHealth(item);
+  if (health !== "failed" && health !== "partial") return null;
+  if (health === "partial") return "soon";
+  return failureReason(item)?.tone === "urgent" ? "urgent" : "soon";
+}
+
+/** Failed kinds that need a person to fix them: the red part of a failed count. */
+export function failedNeedingFix(types: readonly CoverageType[]): number {
+  return types.filter((item) => backupFailureSeverity(item) === "urgent").length;
 }

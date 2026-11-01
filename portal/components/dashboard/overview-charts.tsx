@@ -10,7 +10,7 @@ import { CoverageRing } from "@/components/dashboard/coverage-ring";
 import { RiskBar } from "@/components/dashboard/risk-bar";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { Icon } from "@/components/shell/icons";
-import { coverageSegments, trendDay, trendSummary } from "@/lib/overview-view";
+import { coverageSegments, firstCheckNote, trendDay, trendSummary } from "@/lib/overview-view";
 import { pushUrl } from "@/lib/url-history";
 import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 import type { DashboardData } from "@/lib/types";
@@ -38,6 +38,8 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
   };
   const { total, peak } = trendSummary(data.driftTrend);
   const days = data.driftTrend.length;
+  const first = firstCheckNote(data.driftTrend);
+  const marker = first ? { index: first.index, label: `New approved setup · ${first.count.toLocaleString("en-GB")} already different`, title: first.text } : null;
   const knownKinds = coverageSegments(data.coverage).total;
 
   return (
@@ -52,8 +54,9 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
             <button aria-label="Changes since your approved setup: open full screen" className="btn btn-sm btn-ghost ov-full" onClick={openChart("changes")} type="button"><Icon name="show" /><span>Full screen</span></button>
           </div>
           <Link aria-label="Open all changes" className="ov-chart-link" href="/changes">
-            <Sparkline label="Changes found per day" points={data.driftTrend} />
+            <Sparkline label="Changes found per day" marker={marker} points={data.driftTrend} />
           </Link>
+          {first ? <p className="ov-trend-note"><Icon name="info" />{first.text}</p> : null}
           <RiskBar items={data.openDriftByBlastRadius} />
         </section>
 
@@ -74,14 +77,15 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
         <DetailsSheet kicker="Overview" onClose={() => view.set({ chart: null })} title="Changes since your approved setup" wide>
           <div className="ov-sheet">
             <p className="ov-sub">{total.toLocaleString("en-GB")} found over the last {days} days{peak && peak.count ? `, the most on ${trendDay(peak.day)} (${peak.count})` : ""}. Times are UTC days.</p>
-            <TrendBars points={data.driftTrend} />
+            {first ? <p className="ov-trend-note"><Icon name="info" />{first.text}</p> : null}
+            <TrendBars marker={first?.index ?? null} points={data.driftTrend} />
             <RiskBar items={data.openDriftByBlastRadius} />
             <table className="ov-table">
               <caption className="visually-hidden">Changes found per day, as numbers</caption>
-              <thead><tr><th scope="col">Day</th><th className="ov-num" scope="col">Found</th></tr></thead>
+              <thead><tr><th scope="col">Day</th><th className="ov-num" scope="col">Found</th>{first ? <th className="ov-num" scope="col">Already different at the new setup&apos;s first check</th> : null}</tr></thead>
               <tbody>
                 {[...data.driftTrend].reverse().map((point) => (
-                  <tr key={point.day}><th scope="row">{trendDay(point.day)}</th><td className="ov-num">{point.count}</td></tr>
+                  <tr key={point.day}><th scope="row">{trendDay(point.day)}</th><td className="ov-num">{point.count}</td>{first ? <td className="ov-num">{point.firstCheck ?? ""}</td> : null}</tr>
                 ))}
               </tbody>
             </table>
@@ -119,7 +123,9 @@ export function OverviewCharts({ data }: { data: Pick<DashboardData, "driftTrend
 // The full-screen trend: one bar per day drawn to scale, with gridlines at 0, half and
 // the peak, and the first, middle and last day labelled. Labels are HTML so they keep
 // their size at 390 px.
-function TrendBars({ points }: { points: DashboardData["driftTrend"] }) {
+// The first check after a new approved setup gets a flagged, neutral bar of its own
+// height (not to scale) so it never reads as a burst of changes.
+function TrendBars({ points, marker }: { points: DashboardData["driftTrend"]; marker: number | null }) {
   const max = Math.max(1, ...points.map((point) => point.count));
   const top = Math.ceil(max / 2) * 2;
   const middle = Math.floor(points.length / 2);
@@ -129,8 +135,8 @@ function TrendBars({ points }: { points: DashboardData["driftTrend"] }) {
         <span>{top}</span><span>{top / 2}</span><span>0</span>
       </div>
       <div className="ov-bars-plot" role="img" aria-label={`Changes found per day: ${points.map((point) => `${trendDay(point.day)} ${point.count}`).join(", ")}`}>
-        {points.map((point) => (
-          <span className="ov-bar" key={point.day} style={{ height: `${(point.count / top) * 100}%` }} title={`${point.count} on ${trendDay(point.day)}`} />
+        {points.map((point, index) => (
+          <span className="ov-bar" data-first-check={index === marker || undefined} key={point.day} style={{ height: `${(point.count / top) * 100}%` }} title={index === marker ? `${point.count} new on ${trendDay(point.day)}; ${point.firstCheck ?? 0} already different at the new approved setup's first check` : `${point.count} on ${trendDay(point.day)}`} />
         ))}
       </div>
       <figcaption className="ov-bars-days" aria-hidden="true">

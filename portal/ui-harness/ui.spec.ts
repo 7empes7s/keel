@@ -3198,7 +3198,7 @@ test("Setup · one status tile per service, worst first, and a warning before a 
   // One tile per Microsoft 365 service; Entra ID has a failed kind, Purview a partly done one.
   await expect(tiles).toHaveCount(9);
   // Purview's only problem is a partly done kind: amber "Partly done", not failing.
-  await expect(page.locator(".su-svc-head p")).toHaveText("1 of 9 services is failing to back up.");
+  await expect(page.locator(".su-svc-head p")).toHaveText(/^1 of 9 services needs a fix to back up; \d+ more needs? a look\.$/);
   await expect(tiles.filter({ hasText: "Purview" }).locator(".badge")).toHaveText("Partly done");
   await expect(tiles.first().locator(".su-svc-name b")).toHaveText("Entra ID");
   const entra = tiles.filter({ hasText: "Entra ID" });
@@ -5199,9 +5199,22 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await page.locator(".ov-tile").first().focus();
   expect(await page.locator(".ov-tile").first().evaluate((item) => getComputedStyle(item).boxShadow)).not.toBe("none");
 
+  // UI audit E3: the last backup finished, but kinds failed: the card is never green
+  // beside the red failed count; it takes the Backups tile's colour.
+  const lastBackup = page.locator(".ov-side-card", { hasText: "Last backup" });
+  await expect(lastBackup.locator(".badge")).toHaveText("Finished · 4 failed kinds");
+  await expect(lastBackup.locator(".badge")).toHaveAttribute("data-tone", await page.locator('.ov-tile[data-tile="backups"]').getAttribute("data-tone") ?? "missing");
+  // UI audit E2: the new approved setup's first check is a flagged note, not a spike.
+  const note = page.locator(".ov-card-wide .ov-trend-note");
+  await expect(note).toHaveText("New approved setup on 29 Sept: its first check found 981 settings that already differed. They are not counted as new changes.");
+  await expect(page.locator(".ov-card-wide .sparkline-flag")).toContainText("New approved setup");
+  await expect(page.locator(".ov-card-wide .sparkline figcaption")).toContainText("Peak 12");
+
   await page.getByRole("button", { name: "Changes since your approved setup: open full screen" }).click();
   const sheet = page.getByRole("dialog", { name: "Changes since your approved setup" });
   await expect(sheet.locator(".ov-bar")).toHaveCount(30);
+  await expect(sheet.locator(".ov-bar[data-first-check]")).toHaveCount(1);
+  await expect(sheet.locator(".ov-trend-note")).toContainText("981 settings that already differed");
   await expect(sheet.locator(".ov-table tbody tr")).toHaveCount(30);
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);

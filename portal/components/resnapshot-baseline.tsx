@@ -58,7 +58,7 @@ export function ResnapshotBaseline({
         className="btn btn-secondary btn-sm"
         disabled={disabled || submitting || !snapshotId}
         onClick={() => void resnapshot()}
-        title={snapshotId ? undefined : "No newer complete backup to capture from yet."}
+        title={snapshotId ? undefined : "Needs a newer complete backup. The reason is shown below."}
         type="button"
       >
         Capture new version

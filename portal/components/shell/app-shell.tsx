@@ -4,19 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { ApprovalModeProvider } from "@/components/approval-mode-context";
 import { CommandPalette, SearchTrigger } from "@/components/command-palette";
 import { KeelMark } from "@/components/keel-mark";
 import { SectionTabs, type NavCapabilities } from "@/components/nav-links";
 import { Icon } from "@/components/shell/icons";
 import { Bell, Menu, TabBar, type Person } from "@/components/shell/menu";
 import { ShellStateProvider, useShellState } from "@/components/shell/shell-state";
+import type { ApprovalModeName } from "@/lib/approval-words";
 import type { MenuPrefs } from "@/lib/menu-prefs";
+import { loadMenuData, menuDataOf, menuRetryDelay, saveMenuData, type MenuData } from "@/lib/menu-data";
 import { menuStatuses, settingsStatus, type MenuStatuses } from "@/lib/menu-status";
 import type { ThemePreference } from "@/lib/theme";
 import type { DashboardData } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
 interface ShellProps {
+  // The tenant's approval mode; null when it could not be read (two people).
+  approvalMode?: ApprovalModeName | null;
   capabilities: NavCapabilities;
   pendingApprovals: number | null;
   person: Person;
@@ -31,9 +36,11 @@ interface ShellProps {
 // phone tab still says when something needs someone.
 export function AppShell(props: ShellProps) {
   return (
-    <ShellStateProvider initial={props.initialPrefs}>
-      <Frame {...props} />
-    </ShellStateProvider>
+    <ApprovalModeProvider mode={props.approvalMode ?? null}>
+      <ShellStateProvider initial={props.initialPrefs}>
+        <Frame {...props} />
+      </ShellStateProvider>
+    </ApprovalModeProvider>
   );
 }
 
@@ -50,22 +57,55 @@ async function readJson<T>(url: string): Promise<T | null> {
   }
 }
 
+function sessionStorageOrUndefined(): Storage | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: number | null) {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboard, setDashboard] = useState<MenuData | null>(null);
   const [settings, setSettings] = useState<SettingsInputs>({ principals: null, deliveries: null });
   const [ready, setReady] = useState(!canRead);
   const [approvals, setApprovals] = useState<{ from: number | null; count: number | null }>({ from: pendingApprovals, count: pendingApprovals });
   // A server render (navigation or refresh) brings a fresh count; it replaces the polled one.
   if (approvals.from !== pendingApprovals) setApprovals({ from: pendingApprovals, count: pendingApprovals });
+  const retry = useRef<{ attempt: number; timer: ReturnType<typeof setTimeout> | null }>({ attempt: 0, timer: null });
 
+  // A failed read (a busy server answers 503) keeps the last badges and tries again in
+  // a few seconds, rather than waiting for the next minute's poll.
   async function readDashboard() {
+    let retryAfter: string | null = null;
     try {
       const response = await fetch("/api/dashboard", { cache: "no-store" });
-      if (response.ok) setDashboard(await response.json() as DashboardData);
+      if (response.ok) {
+        const data = menuDataOf(await response.json() as DashboardData);
+        setDashboard(data);
+        saveMenuData(sessionStorageOrUndefined(), data);
+        setReady(true);
+        if (retry.current.timer) clearTimeout(retry.current.timer);
+        retry.current.attempt = 0;
+        retry.current.timer = null;
+        return;
+      }
+      retryAfter = response.headers.get("retry-after");
     } catch {
       // Keep the last statuses.
     }
     setReady(true);
+    if (retry.current.timer) return;
+    const delay = menuRetryDelay(retry.current.attempt + 1, retryAfter);
+    if (delay === null) {
+      retry.current.attempt = 0;
+      return;
+    }
+    retry.current.attempt += 1;
+    retry.current.timer = setTimeout(() => {
+      retry.current.timer = null;
+      if (document.visibilityState === "visible") void readDashboard();
+    }, delay);
   }
 
   async function readApprovals() {
@@ -93,7 +133,15 @@ function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: numb
     }));
   }
 
-  useEffect(() => { if (canRead) void readDashboard(); }, [canRead]);
+  useEffect(() => {
+    if (!canRead) return;
+    // A full page load starts from the badges this tab last showed, then reads fresh ones.
+    const kept = loadMenuData(sessionStorageOrUndefined());
+    if (kept) setDashboard((current) => current ?? kept);
+    void readDashboard();
+    const pending = retry.current;
+    return () => { if (pending.timer) clearTimeout(pending.timer); pending.timer = null; };
+  }, [canRead]);
   useEffect(() => { if (canRead || canUsers) void readSettings(); }, [canRead, canUsers]);
   usePoll(readDashboard, 60_000, canRead);
   usePoll(readSettings, 60_000, canRead || canUsers);

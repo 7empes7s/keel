@@ -13,6 +13,7 @@ import {
   approveRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
+import { setApprovalMode } from "../../engine/govern/approvalMode.mjs";
 import { verifyChain } from "../../engine/govern/evidence.mjs";
 import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { contentEffectsDigest } from "../../engine/safety/contentEffects.mjs";
@@ -276,6 +277,7 @@ test("an approver can list and decide another principal's request", async () => 
     status: "pending",
     decidedBy: null,
     decidedAt: null,
+    selfApproved: false,
     reason: null,
     createdAt: request.createdAt,
     expiresAt: request.expiresAt,
@@ -409,6 +411,25 @@ test("a self-authored request is visible but cannot be approved", async () => {
   assert.equal(await jobCount(), jobsBefore, "self approval cannot mint a job");
 });
 
+test("in Solo mode your own request counts as waiting for you, on the page and in the menu", async () => {
+  const id = await createRestoreRequest();
+  const self = { principalId: RESTORER, capabilities: ["restore", "approve"] };
+  await setApprovalMode(client, { tenantRef: tenantRef(), mode: "solo", actor: RESTORER, riskAcknowledged: true });
+  try {
+    const inbox = await (await inboxRoute(get("/api/approvals", self))).json();
+    assert.equal(inbox.approvalMode, "solo");
+    type Waiting = { id: string; requestedBy: string; signoffs: { id: string }[] };
+    const theirs = [...inbox.pending, ...inbox.awaitingContentEffects] as Waiting[];
+    assert.ok(theirs.some((candidate) => candidate.id === id && candidate.requestedBy === RESTORER));
+    // Only requests they already signed wait on someone else in Solo.
+    const decidable = theirs.filter((candidate) => !candidate.signoffs.some((person) => person.id === RESTORER));
+    assert.equal(inbox.waitingForYou, decidable.length);
+    assert.equal(await getPendingApprovalCount({ central: true, entities: [] }, RESTORER), decidable.length, "the menu badge agrees with the page");
+  } finally {
+    await setApprovalMode(client, { tenantRef: tenantRef(), mode: "two-person", actor: RESTORER });
+  }
+});
+
 test("an expired inbox row is history and cannot mint a job", async () => {
   const id = await createRestoreRequest();
   const jobsBefore = await jobCount();
@@ -459,6 +480,21 @@ test("rejection requires an operator-visible reason", async () => {
   assert.equal((await requestRow(id)).status, "pending");
 });
 
+// UI audit 31 Oct 2026, C1: "BECAUSE" was kept as a rejection reason.
+test("a placeholder rejection reason is refused in plain words", async () => {
+  const id = await createRestoreRequest();
+  for (const reason of ["BECAUSE", "x", "test"]) {
+    const response = await rejectRoute(
+      post(`/api/approvals/${id}/reject`, { ...approver, body: { reason } }),
+    );
+    assert.equal(response.status, 400, reason);
+    const body = await response.json();
+    assert.equal(body.error, "weak_reason");
+    assert.match(body.message, /real words|a little more/);
+  }
+  assert.equal((await requestRow(id)).status, "pending");
+});
+
 test("approval controls submit each listed request id and its rejection reason", async () => {
   // The page's buttons all go through decideRequest, so the browser-control-to-route
   // boundary is one function: the id and the rejection reason reach the right route.
@@ -485,6 +521,8 @@ test("approval controls submit each listed request id and its rejection reason",
     assert.deepEqual(approved, { ok: true, status: 202, payload: { job: { id: "job-1" } } });
     const rejected = await decideRequest("00000000-0000-4000-8000-000000000202", "reject", "outside the approved change window");
     assert.equal(rejected.ok, true);
+    // Solo approval mode: approving your own request sends the reason you wrote.
+    await decideRequest("00000000-0000-4000-8000-000000000303", "approve", "Restore the policy deleted by mistake");
 
     assert.deepEqual(requests, [
       {
@@ -498,6 +536,12 @@ test("approval controls submit each listed request id and its rejection reason",
         method: "POST",
         contentType: "application/json",
         body: { reason: "outside the approved change window" },
+      },
+      {
+        url: "/api/approvals/00000000-0000-4000-8000-000000000303/approve",
+        method: "POST",
+        contentType: "application/json",
+        body: { reason: "Restore the policy deleted by mistake" },
       },
     ]);
   } finally {

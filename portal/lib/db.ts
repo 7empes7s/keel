@@ -33,6 +33,16 @@ export class DatabaseBusyError extends Error {
   }
 }
 
+/** Said to the person whenever a full pool turns a request away. */
+export const BUSY_MESSAGE = "Keel is busy, try again in a moment.";
+/** The retry-after a busy answer carries. */
+export const BUSY_RETRY_SECONDS = 5;
+
+/** Whether an error is a full pool (checked by name too, across module copies). */
+export function isDatabaseBusy(error: unknown): boolean {
+  return error instanceof DatabaseBusyError || (error as Error | null)?.name === "DatabaseBusyError";
+}
+
 // When each pooled connection was handed out, so a full pool can say how long the
 // holders have had theirs: many short holds mean too many requests at once, one very
 // old hold means a caller that never gave its connection back.
@@ -65,9 +75,28 @@ function poolFor(url: string): pg.Pool {
     // An idle connection dropped by the server is removed from the pool; it must not
     // take the process down.
     pool.on("error", (error) => console.error("[keel-portal] idle database connection failed", error));
+    // No JIT compilation: the portal's reads are short, but a read the planner
+    // over-estimates (a correlated subquery, an unnest of unknown length) crossed
+    // jit_above_cost and spent most of a second compiling before it ran. Set per new
+    // connection, ahead of its first query, whatever options the database URL carries.
+    pool.on("connect", (client) => {
+      client.query("SET jit = off").catch((error: unknown) => console.error("[keel-portal] could not turn off JIT on a new connection", error));
+    });
     registry.set(url, pool);
   }
   return pool;
+}
+
+/** A statement slower than this is logged, so slow pages can be traced on live. */
+export const SLOW_QUERY_MS = 1_000;
+
+/** The first words of a statement, one line, never its parameter values. */
+export function queryLabel(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function logIfSlow(text: string, ms: number): void {
+  if (ms >= SLOW_QUERY_MS) console.warn(`[keel-portal] slow query ${ms} ms: ${queryLabel(text)}`);
 }
 
 const TRANSACTION_START = /^\s*(begin|start\s+transaction)\b/i;
@@ -97,8 +126,10 @@ export async function connect(url: string): Promise<DbClient> {
   return {
     async query(...args: unknown[]) {
       const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string } | undefined)?.text ?? "";
+      const startedAt = Date.now();
       try {
         const result = await (leased.query as (...q: unknown[]) => Promise<unknown>)(...args);
+        logIfSlow(text, Date.now() - startedAt);
         if (TRANSACTION_START.test(text)) inTransaction = true;
         else if (TRANSACTION_END.test(text)) inTransaction = false;
         return result;

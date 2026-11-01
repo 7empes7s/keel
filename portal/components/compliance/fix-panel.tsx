@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalMode } from "@/components/approval-mode-context";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -8,7 +9,7 @@ import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { askFixApproval, planFix, readFixProgress, type FixPlan } from "@/lib/compliance-change";
 import {
-  FIX_STEPS,
+  fixSteps,
   fixAction,
   fixCandidates,
   fixEffect,
@@ -21,6 +22,8 @@ import { refusalSentence } from "@/lib/changes-view";
 import { ago } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 import type { ComplianceFinding, ComplianceFixCandidate } from "@/lib/types";
+import { ReasonHint } from "@/components/reason-hint";
+import { reasonProblem } from "@/lib/written-reason";
 
 // "Make it pass" (CoreView gap 6): one row per object the control fails on, with the
 // setting, its value now and after. A row's button asks Keel to plan the change (a dry
@@ -35,6 +38,7 @@ type RowState =
   | { step: "sent" };
 
 export function FixPanel({ finding, canRestore, now }: { finding: ComplianceFinding; canRestore: boolean; now: string }) {
+  const approvalMode = useApprovalMode();
   const candidates = fixCandidates(finding);
   if (candidates.length === 0) return null;
   const effect = fixEffect(finding);
@@ -50,7 +54,7 @@ export function FixPanel({ finding, canRestore, now }: { finding: ComplianceFind
           <FixRow candidate={candidate} canRestore={canRestore} finding={finding} key={candidate.naturalKey} now={now} primary={index === 0} />
         ))}
       </ul>
-      <p className="cp-muted">{canRestore ? FIX_STEPS : "Ask someone with the restore permission to make this change."}</p>
+      <p className="cp-muted">{canRestore ? fixSteps(approvalMode) : "Ask someone with the restore permission to make this change."}</p>
     </section>
   );
 }
@@ -148,8 +152,9 @@ function FixRow({ finding, candidate, canRestore, now, primary }: {
           <label className="filter-field">
             <span>Why make this change?</span>
             <input onChange={(event) => setReason(event.target.value)} placeholder="Reason for the approver" value={reason} />
+            <ReasonHint value={reason} />
           </label>
-          <button aria-busy={busy || undefined} className="btn btn-primary btn-sm" disabled={busy || reason.trim().length === 0} onClick={() => void send(plan)} type="button">
+          <button aria-busy={busy || undefined} className="btn btn-primary btn-sm" disabled={busy || reasonProblem(reason) !== null} onClick={() => void send(plan)} type="button">
             Ask for approval
           </button>
         </div>

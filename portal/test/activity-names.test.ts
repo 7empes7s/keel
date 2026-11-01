@@ -84,9 +84,9 @@ after(async () => {
 test("a roll back job is named by the saved name of its change, never its id", async () => {
   const [named] = await withSavedChangeNames(client, TENANT, [rollback(GROUP_KEY)]);
   assert.equal(jobName(named), "Roll back of 1 change, including Finance approvers (group)");
-  // No saved name: the count alone, never the id.
+  // No saved name: the count and the kind, never the id.
   const [unnamed] = await withSavedChangeNames(client, "another-tenant", [rollback(GROUP_KEY)]);
-  assert.equal(jobName(unnamed), "Roll back of 1 change");
+  assert.equal(jobName(unnamed), "Roll back of 1 change, including an unnamed group");
   assert.equal(jobName(nameChanges(rollback("group:Finance"), {})), "Roll back of 1 change, including Finance (group)");
 });
 

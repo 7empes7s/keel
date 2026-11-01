@@ -135,9 +135,9 @@ test("the status and verdict say how the tenant stands, in words", () => {
   assert.deepEqual(setupStatus(null, []), { tone: "urgent", label: "None approved" });
   assert.deepEqual(setupStatus(active, []), { tone: "fine", label: "In line" });
   assert.deepEqual(setupStatus(active, [{ blastRadius: "access-affecting" }]), { tone: "soon", label: "1 change to review" });
-  assert.equal(setupVerdict(active, [], NOW).text, "The tenant matches “Golden state”, captured 2 days ago.");
+  assert.equal(setupVerdict(active, [], NOW).text, "The tenant matches “Golden state”, approved 2 days ago.");
   assert.equal(setupVerdict(active, [{ blastRadius: "tenant-lockout" }, { blastRadius: "cosmetic" }], NOW).text,
-    "2 changes since “Golden state”, captured 2 days ago; 1 could lock out admins.");
+    "2 changes since “Golden state”, approved 2 days ago; 1 could lock out admins.");
   assert.equal(plainLabel("conditionalAccessPolicy:Block legacy auth"), "Block legacy auth (sign-in rule)");
   assert.equal(plainLabel("namedLocation:HQ"), "HQ (trusted location)");
 });

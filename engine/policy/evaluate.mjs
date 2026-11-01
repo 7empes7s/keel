@@ -11,7 +11,7 @@
 // happen" is answerable from the evidence chain alone.
 import { createHash } from 'node:crypto';
 import { objectNameSql } from '../cir/objectName.mjs';
-import { appendEvidence } from '../govern/evidence.mjs';
+import { appendEvidence, appendEvidenceInTransaction } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
@@ -184,7 +184,7 @@ function withRunAs(row) {
 export async function listPolicies(client, { tenantRef, enabled } = {}) {
   const { rows } = await client.query(
     `${POLICY_VIEW}
-      WHERE p.tenant_ref = $1 AND ($2::boolean IS NULL OR p.enabled = $2)
+      WHERE p.tenant_ref = $1 AND p.deleted_at IS NULL AND ($2::boolean IS NULL OR p.enabled = $2)
       ORDER BY p.created_at, p.id`,
     [tenantRef, enabled ?? null],
   );
@@ -211,14 +211,14 @@ export async function listPolicyActions(client, { tenantRef, policyId, limit = 2
 }
 
 export async function getPolicy(client, { tenantRef, id }) {
-  const { rows } = await client.query(`${POLICY_VIEW} WHERE p.id::text = $1 AND p.tenant_ref = $2`, [id, tenantRef]);
+  const { rows } = await client.query(`${POLICY_VIEW} WHERE p.id::text = $1 AND p.tenant_ref = $2 AND p.deleted_at IS NULL`, [id, tenantRef]);
   return rows[0] ? withRunAs(rows[0]) : null;
 }
 
 // Clearing a pause must not restore automation under a revoked identity. This does
 // not enable a disabled policy; setPolicyEnabled remains the only enable path.
 export async function clearPolicyPause(client, { policyId }) {
-  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
+  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1 AND deleted_at IS NULL', [policyId]);
   const policy = rows[0];
   if (!policy) throw new Error(`policy not found: ${policyId}`);
   if (policy.action === 'auto_remediate') {
@@ -226,9 +226,10 @@ export async function clearPolicyPause(client, { policyId }) {
   }
   const { rows: updated } = await client.query(
     `UPDATE policy SET paused_at = NULL, run_as_repair_required = false
-      WHERE id = $1 RETURNING *`,
+      WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
     [policyId],
   );
+  if (!updated[0]) throw new Error(`policy not found: ${policyId}`);
   return updated[0];
 }
 
@@ -259,7 +260,7 @@ export async function createPolicy(client, {
 // disabled until an operator repairs its identity, and a revoked, disabled, or expired
 // identity cannot be used to turn automation back on.
 export async function setPolicyEnabled(client, { policyId, enabled }) {
-  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
+  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1 AND deleted_at IS NULL', [policyId]);
   const policy = rows[0];
   if (!policy) throw new Error(`policy not found: ${policyId}`);
   if (enabled && policy.action === 'auto_remediate') {
@@ -276,11 +277,144 @@ export async function setPolicyEnabled(client, { policyId, enabled }) {
               WHEN $2 AND action = 'auto_remediate' AND run_as_repair_required THEN NULL
               ELSE paused_at
             END
-      WHERE id = $1
+      WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
     [policyId, enabled],
   );
+  // A delete that commits after the read above leaves the rule deleted and off.
+  if (!updated[0]) throw new Error(`policy not found: ${policyId}`);
   return updated[0];
+}
+
+const BLAST_RADII = Object.keys(BLAST_RADIUS_RANK);
+const CHANGE_TYPES = ['added', 'modified', 'removed'];
+
+/** The audit record of a rule edit or delete: which settings changed, old and new. */
+export const POLICY_CHANGE_EVIDENCE_KIND = 'policy-change';
+
+// The settings an edit can change, as the audit record names them, and their columns.
+const EDITABLE_FIELDS = [
+  ['name', 'name'], ['resourceType', 'resource_type'], ['naturalKeyGlob', 'natural_key_glob'],
+  ['changeType', 'change_type'], ['blastRadius', 'blast_radius'], ['maxBlastRadius', 'max_blast_radius'],
+  ['maxActionsPerWindow', 'max_actions_per_window'], ['windowSeconds', 'window_seconds'],
+];
+
+const sameValue = (a, b) => (a ?? null) === (b ?? null);
+
+// The rule, locked until the caller's transaction ends, so the audit record and the
+// change are made from the same row and commit together.
+async function lockedPolicy(client, { tenantRef, policyId }) {
+  const { rows } = await client.query(
+    'SELECT * FROM policy WHERE id::text = $1 AND tenant_ref = $2 AND deleted_at IS NULL FOR UPDATE',
+    [String(policyId), tenantRef],
+  );
+  if (!rows[0]) throw new Error(`policy not found: ${policyId}`);
+  return rows[0];
+}
+
+// Runs `work` in one transaction and projects its audit record only once it commits.
+async function withRecord(client, work) {
+  let result;
+  await client.query('BEGIN');
+  try {
+    result = await work();
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+  result.emit?.();
+  return result.row;
+}
+
+/** Edits what a rule watches, its limits and its name. What it does (action) and the
+ * account an undo rule acts as stay as they are: a different action is a different
+ * rule. Editing an undo rule that is on turns it off, because its activation preview
+ * was computed for the old scope and limits; it is turned on again only from a fresh
+ * preview. Every field is required, so a caller sends the whole edited rule and a
+ * cleared limit is an explicit null. Tenant-scoped; a deleted rule reads as not found.
+ *
+ * The audit record (POLICY_CHANGE_EVIDENCE_KIND) names each setting that changed with
+ * its old and new value. An edit that changes nothing writes nothing and leaves the
+ * rule as it is, so an undo rule saved unchanged stays on: its preview still holds. The record and the change
+ * are written in one transaction from the locked row, so neither exists without the
+ * other and the record always describes the change made. */
+export async function updatePolicy(client, {
+  tenantRef, policyId, name, resourceType, blastRadius, naturalKeyGlob, changeType,
+  maxBlastRadius, maxActionsPerWindow, windowSeconds, actor,
+}) {
+  if (typeof actor !== 'string' || !actor) throw new Error('a rule edit needs an actor');
+  if (typeof name !== 'string' || !name.trim()) throw new Error('policy name is required');
+  if (blastRadius != null && !BLAST_RADII.includes(blastRadius)) throw new Error(`invalid blast radius: ${blastRadius}`);
+  if (!BLAST_RADII.includes(maxBlastRadius)) throw new Error(`invalid max blast radius: ${maxBlastRadius}`);
+  if (changeType != null && !CHANGE_TYPES.includes(changeType)) throw new Error(`invalid change type: ${changeType}`);
+  if ((maxActionsPerWindow == null) !== (windowSeconds == null)) throw new Error('a rate limit needs both a count and a window');
+  const next = {
+    // An empty value means "any", the same as none, so it never reads as a change.
+    name: name.trim(), resourceType: resourceType || null, naturalKeyGlob: naturalKeyGlob || null,
+    changeType: changeType || null, blastRadius: blastRadius || null, maxBlastRadius,
+    maxActionsPerWindow: maxActionsPerWindow ?? null, windowSeconds: windowSeconds ?? null,
+  };
+  return withRecord(client, async () => {
+    const before = await lockedPolicy(client, { tenantRef, policyId });
+    // The limit's count and window are one setting: when either changes, both are recorded.
+    const limitChanged = !sameValue(before.max_actions_per_window, next.maxActionsPerWindow) || !sameValue(before.window_seconds, next.windowSeconds);
+    const fields = EDITABLE_FIELDS
+      .filter(([field, column]) => !sameValue(before[column], next[field]) || (limitChanged && (field === 'maxActionsPerWindow' || field === 'windowSeconds')))
+      .map(([field, column]) => ({ field, before: before[column] ?? null, after: next[field] }));
+    if (!fields.length) return { row: before };
+    const turnedOff = before.action === 'auto_remediate' && before.enabled === true;
+    const { emit } = await appendEvidenceInTransaction(client, {
+      tenantRef,
+      kind: POLICY_CHANGE_EVIDENCE_KIND,
+      subject: {
+        change: 'edited', policyId: String(before.id), name: next.name, action: before.action,
+        fields: turnedOff ? [...fields, { field: 'enabled', before: true, after: false }] : fields,
+      },
+      actor,
+    });
+    const { rows } = await client.query(
+      `UPDATE policy
+          SET name = $2, resource_type = $3, blast_radius = $4, natural_key_glob = $5, change_type = $6,
+              max_blast_radius = $7, max_actions_per_window = $8, window_seconds = $9,
+              enabled = CASE WHEN action = 'auto_remediate' THEN false ELSE enabled END
+        WHERE id = $1
+        RETURNING *`,
+      [
+        before.id, next.name, next.resourceType, next.blastRadius, next.naturalKeyGlob,
+        next.changeType, next.maxBlastRadius, next.maxActionsPerWindow, next.windowSeconds,
+      ],
+    );
+    return { row: rows[0], emit };
+  });
+}
+
+/** Deletes a rule: it is turned off and marked deleted, never removed, so the
+ * evaluations, automatic actions and previews that reference it stay readable as
+ * history. A deleted rule is skipped by every reader of current rules and by
+ * evaluation; deleting twice reads as not found. The audit record lists the rule's
+ * settings as they were, in the same transaction as the delete. */
+export async function deletePolicy(client, { tenantRef, policyId, deletedBy }) {
+  if (typeof deletedBy !== 'string' || !deletedBy) throw new Error('a rule delete needs an actor');
+  return withRecord(client, async () => {
+    const before = await lockedPolicy(client, { tenantRef, policyId });
+    const fields = [
+      { field: 'action', before: before.action, after: null },
+      { field: 'enabled', before: before.enabled === true, after: false },
+      ...EDITABLE_FIELDS.map(([field, column]) => ({ field, before: before[column] ?? null, after: null })),
+    ];
+    const { emit } = await appendEvidenceInTransaction(client, {
+      tenantRef,
+      kind: POLICY_CHANGE_EVIDENCE_KIND,
+      subject: { change: 'deleted', policyId: String(before.id), name: before.name, action: before.action, fields },
+      actor: deletedBy,
+    });
+    const { rows } = await client.query(
+      'UPDATE policy SET enabled = false, deleted_at = now(), deleted_by = $2 WHERE id = $1 RETURNING *',
+      [before.id, deletedBy],
+    );
+    return { row: rows[0], emit };
+  });
 }
 
 /** Evaluates one newly detected drift row against every enabled policy for its
@@ -290,7 +424,7 @@ export async function setPolicyEnabled(client, { policyId, enabled }) {
  * re-deriving it. */
 export async function evaluateDrift(client, { tenantRef, drift, actor = 'policy-evaluator' }) {
   const { rows: policies } = await client.query(
-    `SELECT * FROM policy WHERE tenant_ref = $1 AND enabled = true ORDER BY created_at, id`,
+    `SELECT * FROM policy WHERE tenant_ref = $1 AND enabled = true AND deleted_at IS NULL ORDER BY created_at, id`,
     [tenantRef],
   );
 

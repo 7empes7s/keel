@@ -156,7 +156,7 @@ function JobTypes({ job, rows }: { job: JobRecord; rows: TypeRow[] }) {
                     <td data-empty={row.problem ? undefined : ""} data-label="Problem">
                       {row.problem ? <>
                         <span className="job-problem">{row.problem}</span>
-                        {row.raw ? <ShowDetails lines={[row.raw]} /> : null}
+                        {row.raw || row.support.length ? <ShowDetails lines={[...(row.raw ? [row.raw] : []), ...row.support]} /> : null}
                       </> : "—"}
                     </td>
                   </tr>

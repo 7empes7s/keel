@@ -3,6 +3,7 @@
 // approval requests, audit-record entries — built from their own fields and the
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
+import type { UnnamedReference } from "@/lib/app-names";
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
 import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
@@ -39,6 +40,8 @@ export interface ChangeRef extends EngineRef {
   resourceType?: string;
   changeType?: string;
   blastRadius?: string;
+  // What it points to that no backup names, each with a lookup link (filled in by the page).
+  unnamedRefs?: UnnamedReference[];
 }
 
 export interface SnapshotRef extends EngineRef {
@@ -168,7 +171,11 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const named = known.find((change) => change.readable && change.name && !holdsObjectId(change.name));
   if (named?.name) return `${count}, including ${named.name}`;
   const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
-  return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
+  if (first?.naturalKey) return `${count}, including ${resourceLabel(first.naturalKey)}`;
+  // No name and no readable key: say what kind of setting it is, so two such requests
+  // do not read the same.
+  const typed = known.find((change) => change.resourceType && !holdsObjectId(change.resourceType));
+  return typed?.resourceType ? `${count}, including an unnamed ${resourceTypeLabel(typed.resourceType)}` : count;
 }
 
 // A service setting change by its setting's name and service, never by an id.
@@ -180,7 +187,7 @@ function serviceChangePhrase(params: Record<string, unknown>): string {
   return service ? `a ${verb} ${service} setting` : "a service setting change";
 }
 
-// Audit run 2, finding 3: an accept or ignore a second person approves, as what it does:
+// Audit run 2, finding 3: an accept or ignore that needs approval, as what it does:
 // "Accept into the approved setup: 1 change, including …".
 function decisionPhrase(params: Record<string, unknown>, refs: RowReferences): string {
   const what = typeof params.serviceChangeId === "string" ? serviceChangePhrase(params) : changesPhrase(refs.changes);
@@ -327,8 +334,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "approval-request": return `${actorName} asked for approval: ${actionWords(subject.action)}`;
     case "approval-decision": {
       const verb = /^reject/.test(String(subject.decision ?? "")) || subject.status === "rejected" ? "rejected" : "approved";
-      return typeof subject.action === "string" ? `${actorName} ${verb} ${anAction(subject.action)}` : `${actorName} ${verb} a request`;
+      const own = subject.selfApproved === true ? " they asked for themselves (self-approved: approval mode is Solo)" : "";
+      return typeof subject.action === "string" ? `${actorName} ${verb} ${anAction(subject.action)}${own}` : `${actorName} ${verb} a request${own}`;
     }
+    case "approval-mode": return subject.mode === "solo"
+      ? `${actorName} switched approval mode to Solo, so the person who asks can approve their own requests. They confirmed the risk warning`
+      : `${actorName} switched approval mode to Two people, so someone other than the person who asked approves`;
     case "approval-signoff": return typeof subject.action === "string" ? `${actorName} signed off ${anAction(subject.action)}; another approval is still needed` : `${actorName} signed off a request; another approval is still needed`;
     case "approval.decided": return `${actorName} decided an approval`;
     case "action-attempt": return subject.decision === "denied"
@@ -337,8 +348,17 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "policy-evaluation": return typeof subject.naturalKey === "string"
       ? `Policies checked a change to ${namedResource(subject.naturalKey, names)}${subject.matched ? ", and one applied" : ""}`
       : "Policies checked a change";
+    case "policy-change": {
+      const rule = typeof subject.name === "string" && subject.name.trim() ? `the automatic rule “${subject.name.trim()}”` : "an automatic rule";
+      if (subject.change === "deleted") return `${actorName} deleted ${rule}`;
+      const fields = Array.isArray(subject.fields) ? subject.fields as { field?: unknown }[] : [];
+      const turnedOff = fields.some((entry) => entry?.field === "enabled");
+      // Counted as the panel lists them: the limit's count and window are one setting.
+      const changed = new Set(fields.map((entry) => (entry?.field === "windowSeconds" ? "maxActionsPerWindow" : entry?.field))).size;
+      return `${actorName} edited ${rule}: ${changed} ${changed === 1 ? "setting" : "settings"} changed${turnedOff ? "; it stays off until it is previewed again" : ""}`;
+    }
     case "automation-execution": return `Automation ${subject.outcome === "executed" ? "rolled back a change" : "tried to roll back a change"}`;
-    case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared`;
+    case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared${subject.selfApproved === true ? " they asked for themselves (self-approved: approval mode is Solo)" : ""}`;
     case "recovery-completion": return `${actorName} updated the follow-up work of a restore`;
     case "incident-recovery": return `${actorName} updated incident recovery: ${typeof subject.transition === "string" ? words(subject.transition).toLowerCase() : "a change"}`;
     case "incident-recovery-check": return "KEEL checked a restore for malicious items left behind";
@@ -368,7 +388,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       }
       const service = typeof subject.service === "string" ? serviceFor(subject.service).name : "a service";
       return subject.approvalRequired === false
-        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for a second person`
+        ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for approval`
         : `${actorName} turned on restore approvals for ${service}`;
     }
     case "scuba-config-list": {
@@ -376,6 +396,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       const count = typeof subject.count === "number" ? subject.count : null;
       if (count === 0) return `${actorName} cleared the ScubaGear list of ${list}`;
       return `${actorName} set the ScubaGear list of ${list}${count === null ? "" : ` to ${count} ${count === 1 ? "entry" : "entries"}`}`;
+    }
+    case "alert-action": {
+      const verb = { acknowledged: "acknowledged", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(subject.action)] ?? "changed";
+      const about = typeof subject.naturalKey === "string" && subject.naturalKey ? ` about ${namedResource(subject.naturalKey, names)}` : "";
+      const note = typeof subject.note === "string" && subject.note.trim() ? subject.note.trim() : null;
+      return `${actorName} ${verb} an alert${about}${note ? `: “${note.length > 140 ? `${note.slice(0, 139)}…` : note}”` : ""}`;
     }
     case "people-anonymity": return subject.enabled === true
       ? `${actorName} turned on "Hide people's names"`

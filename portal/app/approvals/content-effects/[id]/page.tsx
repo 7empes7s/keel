@@ -64,7 +64,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
         <ContentEffectReview
           approvals={review.approvals}
           artifactId={review.artifactId}
-          canApprove={!review.viewerIsRequester && review.approvalRequired}
+          canApprove={(!review.viewerIsRequester || review.selfApprovalAllowed === true) && review.approvalRequired}
           effects={review.effects}
           effectsDigest={review.effectsDigest}
           names={review.names}

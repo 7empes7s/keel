@@ -2,6 +2,7 @@ import { loadConnections, syncConnections } from "../../engine/bootstrap/connect
 import { loadSetupState } from "../../engine/bootstrap/onboarding.mjs";
 import { guarded, type GuardDeps } from "@/lib/action";
 import { canCheck, canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
+import { confirmedRoles } from "@/lib/setup-view";
 
 // Roadmap task-76: what the setup page reads. Progress comes from the task-75 journal
 // (or, before any run, from the host's readers); nothing here can mark a step done.
@@ -46,15 +47,20 @@ export function guardedSetupState(deps: SetupReadDeps = {}) {
         tenantRef,
         apps: host.apps ?? {},
         readers: checkFailed ? null : host.readers,
+        // The Intune roles Setup shows as done, so an app whose roles Keel cannot read
+        // directly agrees with the step list instead of saying "Not checked".
+        confirmedRoles: confirmedRoles(state),
       } as unknown as Parameters<typeof syncConnections>[1]);
       connections = await loadConnections(client, { tenantRef });
     } catch (error) {
       console.error(error instanceof Error ? error.message : "setup: connections could not be recorded");
     }
     return Response.json(
-      { ...state, connections, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
+      // The page's "now" is when this answer was put together, after the connection check
+      // above: that check records its own time, so the setup state's earlier time would
+      // make every app read "last checked in the future".
+      { ...state, generatedAt: new Date().toISOString(), connections, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
       { headers: NO_STORE },
     );
   }, deps);
 }
-

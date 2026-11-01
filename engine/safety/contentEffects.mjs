@@ -36,6 +36,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/restoreApprovalSettings.mjs';
+import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
@@ -777,20 +778,30 @@ export async function approveContentEffects(client, { tenantRef, artifactId, app
   if (!approver || !(await can(client, approver, 'approve', at))) {
     throw new ContentEffectApprovalError('only a principal currently holding approve can approve content effects');
   }
-  if (String(artifact.requested_by) === String(approverId)) {
-    throw new ContentEffectApprovalError('content effects must be approved by someone other than the requester');
+  // Approval mode (govern/approvalMode.mjs): the requester approves their own content
+  // effects only in solo mode, and the approval says it was self-approved.
+  const selfApproved = String(artifact.requested_by) === String(approverId);
+  if (selfApproved && !(await selfApprovalAllowed(client, { tenantRef }))) {
+    throw new ContentEffectApprovalError('content effects must be approved by someone other than the requester while approvals need two people');
+  }
+  if (selfApproved) {
+    const problem = selfApprovalReasonProblem(justification);
+    if (problem) throw new ContentEffectApprovalError(problem);
   }
   const { rows } = await client.query(
-    `INSERT INTO content_effect_approval (tenant_ref, artifact_id, effects_digest, approved_by, justification, approved_at)
-     VALUES ($1,$2,$3,$4,$5,$6)
+    `INSERT INTO content_effect_approval (tenant_ref, artifact_id, effects_digest, approved_by, justification, approved_at, self_approved)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
      ON CONFLICT (artifact_id, effects_digest, approved_by) DO UPDATE SET justification = content_effect_approval.justification
      RETURNING *`,
-    [tenantRef, artifact.id, effectsDigest, approverId, justification.trim(), at],
+    [tenantRef, artifact.id, effectsDigest, approverId, justification.trim(), at, selfApproved],
   );
   await appendEvidence(client, {
     tenantRef,
     kind: CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND,
-    subject: { artifactId: artifact.id, effectsDigest, effects: effects.map(({ naturalKey, field, effect }) => ({ naturalKey, field, effect })) },
+    subject: {
+      artifactId: artifact.id, effectsDigest, effects: effects.map(({ naturalKey, field, effect }) => ({ naturalKey, field, effect })),
+      ...(selfApproved ? { selfApproved: true, approvalMode: 'solo' } : {}),
+    },
     actor: approverId,
   });
   return rows[0];
@@ -817,14 +828,16 @@ export async function assertContentEffectApproval(client, { artifact, effects, a
       ORDER BY approved_at DESC`,
     [artifact.id, digest],
   );
+  // A self-approval counts only while the approval mode is still solo.
+  const soloNow = await selfApprovalAllowed(client, { tenantRef: artifact.tenantRef });
   for (const approval of rows) {
-    if (String(approval.approved_by) === String(artifact.requestedBy)) continue;
+    if (String(approval.approved_by) === String(artifact.requestedBy) && !soloNow) continue;
     const approver = await findPrincipalById(client, approval.approved_by);
     if (approver && await can(client, approver, 'approve', at)) return approval;
   }
   throw new ContentEffectApprovalError(
     `blocked-content-effect: ${effects.length} content effect(s) (${[...new Set(effects.map((e) => e.effect))].join(', ')}) need a separate, current high-impact approval of exactly these effects. `
-    + `Someone other than the requester approves them in the portal: Approvals, then "Review content effects" on this restore (${contentEffectsReviewPath(artifact.id)}). Then run the restore again.`,
+    + `${soloNow ? 'An approver' : 'Someone other than the requester'} approves them in the portal: Approvals, then "Review content effects" on this restore (${contentEffectsReviewPath(artifact.id)}). Then run the restore again.`,
   );
 }
 
@@ -855,7 +868,7 @@ export async function loadContentEffectReview(client, { tenantRef, artifactId })
   const effectsDigest = effects.length > 0 ? contentEffectsDigest(effects) : null;
   const { rows: approvals } = effectsDigest
     ? await client.query(
-      `SELECT approved_by, approved_at FROM content_effect_approval
+      `SELECT approved_by, approved_at, self_approved FROM content_effect_approval
         WHERE artifact_id::text = $1 AND effects_digest = $2 AND revoked_at IS NULL ORDER BY approved_at`,
       [artifact.id, effectsDigest],
     )
@@ -873,7 +886,9 @@ export async function loadContentEffectReview(client, { tenantRef, artifactId })
     resources: Number(artifact.resources),
     effects,
     effectsDigest,
-    approvals: approvals.map((row) => ({ approvedBy: String(row.approved_by), approvedAt: row.approved_at })),
+    approvals: approvals.map((row) => ({ approvedBy: String(row.approved_by), approvedAt: row.approved_at, selfApproved: row.self_approved === true })),
+    // Solo approval mode: the requester may approve these effects themselves.
+    selfApprovalAllowed: await selfApprovalAllowed(client, { tenantRef }),
   };
 }
 
@@ -903,13 +918,14 @@ export async function dryRunsAwaitingContentEffectApproval(client, { tenantRef, 
     [artifacts.map((artifact) => artifact.id)],
   );
   const settings = await getRestoreApprovalSettings(client, { tenantRef });
+  const soloNow = await selfApprovalAllowed(client, { tenantRef });
   for (const artifact of artifacts) {
     // Effects whose services have restore approvals turned off wait for nobody.
     if (!(await effectsNeedApproval(client, { tenantRef, effects: artifact.content_effects, settings })).required) continue;
     const digest = contentEffectsDigest(artifact.content_effects);
     const approved = approvals.some((approval) => approval.artifact_id === artifact.id
       && approval.effects_digest === digest
-      && String(approval.approved_by) !== String(artifact.requested_by));
+      && (soloNow || String(approval.approved_by) !== String(artifact.requested_by)));
     if (!approved) waiting.add(artifact.id);
   }
   return waiting;

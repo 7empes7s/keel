@@ -23,6 +23,7 @@ import { main as recoveryMetricsCli } from '../../cli/keel-recovery-metrics.mjs'
 import { recordOffsiteCopy } from '../coverage/offsiteCopy.mjs';
 import {
   OFFSITE_COPY_EVIDENCE_KIND, classifyRestoreJob, computeFreshness, loadRecoveryMetrics, typeDependency,
+  loadRecoverablePoint,
 } from '../coverage/recoveryMetrics.mjs';
 import { RECOVERY_DRILL_EVIDENCE_KIND } from '../coverage/recoveryReadiness.mjs';
 import { exportSnapshot } from '../export/configExport.mjs';
@@ -75,8 +76,11 @@ async function edgeSet(tenantRef, snapshotId, { parentType = 'group', family = '
 
 const ok = (count = 1) => ({ outcome: 'complete', itemCount: count });
 
-function metrics(tenantRef, requiredTypes = TYPES) {
-  return loadRecoveryMetrics(client, { tenantRef, requiredTypes, now: NOW });
+async function metrics(tenantRef, requiredTypes = TYPES) {
+  const result = await loadRecoveryMetrics(client, { tenantRef, requiredTypes, now: NOW });
+  // The Overview's narrow read gives the same recoverable point in every scenario here.
+  assert.deepEqual(await loadRecoverablePoint(client, { tenantRef, requiredTypes, now: NOW }), result.recoverablePoint);
+  return result;
 }
 
 const passesVerification = async () => ({ ok: true, recoveryComplete: true, failures: [], incomplete: [] });

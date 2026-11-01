@@ -8,7 +8,7 @@ import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Person } from "@/components/ui/person";
 import { incompleteTypesLine, jobDisplayStatus, jobErrorLine, jobIncompleteTypes } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
-import { ago, formatTimestamp } from "@/lib/presentation";
+import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import { jobName, jobStatusSentence } from "@/lib/sentences";
 
 // Recent jobs on the backups, baselines and restore surfaces (plan task 16), named by
@@ -20,7 +20,10 @@ export function JobRecordFields({ job }: { job: JobRecord }) {
     <>
       <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
       <RecordField copy={false} label="Kind" value={job.kind} />
-      <RecordField copy={false} label="Status" value={job.status} />
+      {/* The status a person reads on the page: a partly done job says so here too, and the
+          stored code (what the API returns) sits beside it. */}
+      <RecordField copy={false} label="Status" value={displayEnum("jobStatus", jobDisplayStatus(job))} />
+      {jobDisplayStatus(job) !== job.status ? <RecordField copy={false} label="Stored status (API)" value={job.status} /> : null}
       <RecordField label="Requested by (account ID)" usage={refUsage(job.references?.people.requested_by)} value={displayAccount(job.requestedBy, job.references?.people.requested_by)} />
       <RecordField copy={false} label="Created" value={job.createdAt} />
       <RecordField copy={false} label="Started" value={job.startedAt} />
@@ -107,19 +110,27 @@ export function JobTable({
   jobs,
   title,
   now = new Date().toISOString(),
+  total,
+  link = { label: "All activity", href: "/activity" },
+  empty = "No jobs of this kind have run yet.",
 }: {
   headingId: string;
   jobs: JobRecord[];
   title: string;
   now?: string;
+  /** How many jobs the list stands for, when it shows only the newest of them. */
+  total?: number;
+  link?: { label: string; href: string };
+  empty?: string;
 }) {
+  const shown = total !== undefined && total > jobs.length ? `Showing ${jobs.length} of ${total} jobs` : null;
   return (
     <section aria-labelledby={headingId} className="report-section job-list">
       <div className="section-heading-row report-heading">
         <h2 id={headingId}>{title}</h2>
         <span className="section-aside">
-          <span className="job-count">{jobs.length} {jobs.length === 1 ? "job" : "jobs"}</span>
-          <Link className="text-link" href="/activity">All activity</Link>
+          <span className="job-count">{shown ?? `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`}</span>
+          <Link className="text-link" href={link.href}>{link.label}</Link>
         </span>
       </div>
 
@@ -145,7 +156,7 @@ export function JobTable({
           </TechnicalDetails>
         </>
       ) : (
-        <p className="empty-state">No jobs of this kind have run yet.</p>
+        <p className="empty-state">{empty}</p>
       )}
     </section>
   );

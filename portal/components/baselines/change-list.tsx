@@ -1,7 +1,8 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
@@ -25,7 +26,7 @@ import {
   changedBy, decisionWords, impactTone, impactWords, itemKindName, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { alertCall, alertCallWords } from "@/lib/alert-calls";
-import { changeLabel, changeName, changesScopeDetail, changesVerdict, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
+import { changeLabel, changeName, changesScopeDetail, changesVerdict, isWaiting, serviceListNote, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
 import { backupPointWords } from "@/lib/restore-workloads-view";
 import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
@@ -41,7 +42,7 @@ import { serviceFor, serviceOrder } from "@/lib/services";
 import { itemKind, kindParts } from "@/lib/type-groups";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 
 const toneOf = (item: DriftRecord): RiskTone => impactTone(item.blastRadius);
 
@@ -110,7 +111,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
  * setting changes (`serviceRead`) sit in the same list, so its filters and grouping
  * cover every service. Each service has its own approved setup: accepting adds the
  * change to it, and undo (one change at a time, where Keel can write the setting back)
- * runs the service restore: a check, then someone else's approval. They have no ignore;
+ * runs the service restore: a check, then an approval that follows the approval mode. They have no ignore;
  * acknowledging marks them seen. */
 /** What the change list knows about an opened change beyond its comparison, added to the
  *  comparison's own Technical details so the sheet has one record. */
@@ -138,6 +139,7 @@ export function ChangeList({
   notice,
   now,
   scopeNote,
+  serviceTotal,
   summary,
 }: {
   // Null when no setup is approved yet: the list then holds service setting changes only.
@@ -149,13 +151,16 @@ export function ChangeList({
   now: string;
   // For a reader scoped to some entities: whose changes they see.
   scopeNote?: string | null;
+  // Every open service setting change, counted without the list's row limit.
+  serviceTotal?: number;
   summary?: SemanticSummary;
 }) {
   const view = useViewState();
   const pathname = usePathname() ?? "/drift";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const router = useRouter();
   const [settled, setSettled] = useState<string[]>([]);
+  const approvalWords = useApprovalWords();
   // Service changes acknowledged here, shown as seen until the server read says so too.
   const [seen, setSeen] = useState<string[]>([]);
   // The service setting change being undone through its service restore.
@@ -164,6 +169,8 @@ export function ChangeList({
   const itemsRef = useRef(items);
   useEffect(() => { if (itemsRef.current !== items) { itemsRef.current = items; setSeen([]); } }, [items]);
   const [deciding, setDeciding] = useState<{ decision: Decision; ids: string[] } | null>(null);
+  // While a decision is being sent its panel stays open: closing it would not stop it.
+  const sendingDecision = useRef(false);
   const { canDispose, canRemediate } = driftActionControls(capabilities);
   const canRestore = capabilities.includes("restore");
   const canApprove = capabilities.includes("approve");
@@ -237,10 +244,14 @@ export function ChangeList({
     view.set(changes);
   };
 
-  const notes = summary ? [
+  const listedService = items.filter((item) => item.serviceRead).length;
+  const notes = [
+    serviceListNote(listedService, serviceTotal ?? listedService),
+    ...(summary ? [
     summary.mismatched ? `${summary.mismatched} ${summary.mismatched === 1 ? "change could not be fully checked. Its details say why." : "changes could not be fully checked. Their details say why."}` : null,
     summary.unknownBefore ? `${summary.unknownBefore} ${summary.unknownBefore === 1 ? "change was" : "changes were"} not in the approved setup, so the earlier values are not known.` : null,
-  ].filter((note): note is string => note !== null) : [];
+    ] : []),
+  ].filter((note): note is string => note !== null);
 
   // Service setting changes are accepted with the rest. They have no ignore, and each
   // is undone on its own through its service restore.
@@ -265,7 +276,7 @@ export function ChangeList({
     : canRemediate
       ? {
         label: (count: number) => decisionWords("undo", count).title,
-        detail: (_count: number, ids: string[]) => `Puts the approved values back once someone else approves.${allService(ids) && ids.length === 1 ? "" : skipped(ids)}`,
+        detail: (_count: number, ids: string[]) => `Puts the approved values back once ${approvalWords.approves}.${allService(ids) && ids.length === 1 ? "" : skipped(ids)}`,
         run: (ids: string[]) => decide("undo", ids),
       }
       : {
@@ -308,12 +319,16 @@ export function ChangeList({
   // its detail then names the filters and gives every service's totals.
   const narrowed = useMemo(() => applyFilters(open, tiles, [], others), [open, tiles, others]);
   const narrowing = activeFilters.filter((filter) => !filter.key.startsWith("tile:")).map((filter) => filter.label);
-  const verdict = changesVerdict(narrowed, baseline?.setAt ?? null, now);
+  // Unfiltered, it counts every open service setting change, not only the listed ones.
+  const unlisted = Math.max(0, (serviceTotal ?? listedService) - listedService);
+  // Unfiltered, the totals tiles count the open service setting changes the list leaves out.
+  const uncounted = narrowing.length ? 0 : unlisted;
+  const verdict = changesVerdict(narrowed, baseline?.setAt ?? null, now, narrowing.length ? undefined : narrowed.filter((item) => item.serviceRead).length + unlisted);
   return (
     <>
     <Verdict
       action={baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
-      detail={narrowing.length ? changesScopeDetail(narrowing, open) : undefined}
+      detail={narrowing.length ? changesScopeDetail(narrowing, open, open.filter((item) => item.serviceRead).length + unlisted) : undefined}
       text={verdict.text}
       tone={verdict.tone}
     />
@@ -335,13 +350,13 @@ export function ChangeList({
         })}
         <Link aria-current={!picked.length || undefined} className="bl-card bl-tile bl-link" {...tileLink(null)}>
           <span className="bl-tile-label"><Icon name="baselines" />All open changes</span>
-          <b className="bl-tile-count">{narrowed.length}</b>
+          <b className="bl-tile-count">{narrowed.length + uncounted}</b>
           <small>{baseline && !serviceReads.length ? "Everything that differs from the approved setup" : "Everything waiting for review"}</small>
         </Link>
         {serviceIds.size ? (
           <Link aria-current={picked.includes(SERVICES_TILE) || undefined} className="bl-card bl-tile bl-link" data-tone={waiting ? "soon" : undefined} title={picked.includes(SERVICES_TILE) ? "Picked: click to remove it from the view" : "Click to add these to the view"} {...tileLink(SERVICES_TILE)}>
             <span className="bl-tile-label"><Icon name="cloud" />Service settings{picked.includes(SERVICES_TILE) ? <Icon className="bl-tile-check" name="check" /> : null}</span>
-            <b className="bl-tile-count">{counts.get(SERVICES_TILE)?.count ?? 0}</b>
+            <b className="bl-tile-count">{(counts.get(SERVICES_TILE)?.count ?? 0) + uncounted}</b>
             <small>{waiting === serviceIds.size ? "Waiting for review" : waiting ? `${waiting} waiting for review; ${serviceIds.size - waiting} seen` : "All seen; accept or undo them"}</small>
             {addsWords(SERVICES_TILE) ? <small className="bl-tile-adds">{addsWords(SERVICES_TILE)}</small> : null}
           </Link>
@@ -363,7 +378,7 @@ export function ChangeList({
         {serviceReads.length ? (
           <p className="bl-note">
             <Icon name="info" />
-            <span>{`${listWords(serviceReads)} ${serviceReads.length === 1 ? "is" : "are"} measured against ${serviceReads.length === 1 ? "its" : "their"} own approved setup, taken from Keel's first read. Accept keeps a change; undo puts the approved value back once someone else approves.`}</span>
+            <span>{`${listWords(serviceReads)} ${serviceReads.length === 1 ? "is" : "are"} measured against ${serviceReads.length === 1 ? "its" : "their"} own approved setup, taken from Keel's first read. Accept keeps a change; undo puts the approved value back once ${approvalWords.approves}.`}</span>
           </p>
         ) : null}
         {notes.map((note) => <p className="bl-note" key={note}><Icon name="info" /><span>{note}</span></p>)}
@@ -387,6 +402,7 @@ export function ChangeList({
             more={more}
             sorts={SORTS}
             noun={{ one: "change", many: "changes" }}
+            partial={serviceListNote(listedService, serviceTotal ?? listedService)}
             renderRow={(item) => {
               const who = changedBy(item);
               const state = reviewState(item);
@@ -433,7 +449,7 @@ export function ChangeList({
               {canDispose && isWaiting(opened) ? <button className="btn" onClick={() => acknowledge([opened.id])} type="button">Acknowledge</button> : null}
               {opened.serviceRead.alertId ? <Link className="btn" href={`/alerts?open=${encodeURIComponent(opened.serviceRead.alertId)}`}>Open its alert</Link> : null}
               {opened.serviceRead.undo.possible ? (
-                <p className="bl-help">Accepting adds it to the approved setup for {workloadLabel(opened.serviceRead.workload)} and changes nothing in Microsoft 365. Undo first checks what it would put back, then needs someone else&apos;s approval.</p>
+                <p className="bl-help">Accepting adds it to the approved setup for {workloadLabel(opened.serviceRead.workload)} and changes nothing in Microsoft 365. Undo first checks what it would put back, then needs {approvalWords.approval}.</p>
               ) : (
                 <p className="bl-cannot" role="note"><RiskChip tone="soon">Keel cannot undo this</RiskChip><span>{opened.serviceRead.undo.reason}</span></p>
               )}
@@ -443,7 +459,7 @@ export function ChangeList({
               {canDispose ? <button className="btn btn-primary" onClick={() => decide("accept", [opened.id])} type="button">Accept this change</button> : null}
               {canRemediate ? <button className="btn" onClick={() => decide("undo", [opened.id])} type="button">Undo this change</button> : null}
               {canDispose ? <button className="btn" onClick={() => decide("ignore", [opened.id])} type="button">Ignore for now</button> : null}
-              <p className="bl-help">Accepting adds it to the approved setup and changes nothing in Microsoft 365. Undo first shows what it can put back, then needs someone else&apos;s approval.</p>
+              <p className="bl-help">Accepting adds it to the approved setup and changes nothing in Microsoft 365. Undo first shows what it can put back, then needs {approvalWords.approval}.</p>
             </>
           ) : undefined}
           kicker={<><RiskChip tone={toneOf(opened)}>{impactWords(opened.blastRadius)}</RiskChip><span>{kindLine(opened)}</span></>}
@@ -475,7 +491,7 @@ export function ChangeList({
           title="Undo this change"
           wide
         >
-          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.undoFrom.approved ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.undoFrom.readAt)}. It checks what would change first and writes nothing until someone else approves. The next read then matches and settles this change.</p>
+          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.undoFrom.approved ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.undoFrom.readAt)}. It checks what would change first and writes nothing until {approvalWords.approves}. The next read then matches and settles this change.</p>
           <WorkloadRestore
             canApprove={canApprove}
             canRestore={canRestore}
@@ -491,16 +507,18 @@ export function ChangeList({
       {deciding && deciding_items.length ? (
         <DetailsSheet
           kicker={<span>{deciding_items.length === 1 ? changeName(deciding_items[0]) : `${deciding_items.length} changes`}</span>}
-          onClose={() => setDeciding(null)}
+          onClose={() => { if (!sendingDecision.current) setDeciding(null); }}
           title={decisionWords(deciding.decision, deciding_items.length).title}
         >
           <ChangeDecision
             decision={deciding.decision}
             items={deciding_items}
+            onBusy={(busy) => { sendingDecision.current = busy; }}
             onCancel={() => setDeciding(null)}
-            onDone={(done, message) => {
+            onDone={(done, message, kept = []) => {
               setSettled((current) => [...new Set([...current, ...done])]);
-              setDeciding(null);
+              // Changes that could not be saved stay chosen, with the panel open on them.
+              setDeciding(kept.length ? { decision: deciding.decision, ids: kept } : null);
               if (done.length) view.set({ open: null });
               toast(done.length ? { title: message } : { tone: "info", title: "Sent to approvers", detail: "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
             }}

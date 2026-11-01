@@ -4,6 +4,7 @@
 
 import type { RiskTone } from "@/lib/menu-status";
 import type { Connection } from "@/lib/connections-view";
+import { ago } from "@/lib/presentation";
 
 export type StepProgress =
   | "done" | "waiting-for-you" | "needs-consent" | "to-do" | "unclear" | "in-progress" | "not-started" | "not-checked";
@@ -319,6 +320,23 @@ export function setupVerdict(state: SetupState): { text: string; tone: "good" | 
       : `${open} steps are left before Keel can read your tenant.`,
     tone: "attention",
   };
+}
+
+/** The First backup tile's line: when it ran and, when Keel knows, how many types it read. */
+export function firstBackupLine(first: NonNullable<SetupState["firstCollection"]>, now: string): string {
+  const when = ago(first.completedAt, now);
+  const parts = [first.read ? `${first.read} ${first.read === 1 ? "type" : "types"} read` : "", first.notRead ? `${first.notRead} not read` : ""].filter(Boolean);
+  return parts.length ? `${when}: ${parts.join(", ")}` : when;
+}
+
+/** Per app, the Intune roles whose setup step is done: Setup's connections use them while
+ * Keel cannot read role assignments itself, so both lists agree. */
+export function confirmedRoles(state: { scopes: { steps: { kind: string; identity: string; name: string; progress: string }[] }[] }): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const step of state.scopes.flatMap((scope) => scope.steps)) {
+    if (step.kind === "workload-rbac" && step.progress === "done") (out[step.identity] ??= []).push(step.name);
+  }
+  return out;
 }
 
 /** The header's status pill. */

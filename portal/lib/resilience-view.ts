@@ -1,8 +1,10 @@
 import type { IconName } from "@/components/shell/icons";
 import type { VerdictTone } from "@/components/verdict";
+import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } from "@/lib/failed-restores";
 import { ago, formatTimestamp, resourceTypeLabel, words } from "@/lib/presentation";
 import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
-import type { StorageResidency } from "@/lib/types";
+import { backupHealth, coverageSummary, typeName, type BackupHealth } from "@/lib/protect-view";
+import type { CoverageSummary, CoverageType, OpenFollowUpTotals, StorageResidency } from "@/lib/types";
 
 // Roadmap task-73: the Resilience page in words. The numbers come from
 // engine/coverage/recoveryMetrics.mjs; this file only turns them into sentences.
@@ -112,11 +114,33 @@ export interface IncidentPointSummary {
   pins: number;
 }
 
+/**
+ * The Entra ID and Intune kinds in the shared coverage buckets (lib/protect-view.ts
+ * coverageBuckets), so the row and its alerts count what What's protected and the
+ * Overview count. `failed` and `late` name the kinds behind those counts.
+ */
+export interface ResilienceKinds {
+  summary: CoverageSummary;
+  failed: string[];
+  late: string[];
+}
+
+export function resilienceKinds(types: readonly CoverageType[]): ResilienceKinds {
+  const named = (health: BackupHealth[]) => types.filter((item) => health.includes(backupHealth(item))).map((item) => typeName(item.type)).sort();
+  return { summary: coverageSummary(types), failed: named(["failed"]), late: named(["stale", "never"]) };
+}
+
 export interface ResilienceData {
   generatedAt: string;
   metrics: RecoveryMetrics;
+  /** Failed restores, counted once by the engine; the same number Restore and the value report show. */
+  failedRestores: FailedRestoreCounts;
+  kinds: ResilienceKinds;
   incidents: IncidentPointSummary[];
   storage: StorageResidency;
+  // Open follow-up work across every restore: the same totals Overview and Restore
+  // show. Null when it could not be read.
+  followUps: OpenFollowUpTotals | null;
 }
 
 /** A duration in words: "8 minutes", "2 hours 5 minutes", "3 days". */
@@ -301,7 +325,8 @@ export function freshnessSentence(metrics: RecoveryMetrics): string {
   }
   if (freshness.state === "gaps") {
     const count = freshness.gaps.length;
-    return `Not measured: ${count} item${count === 1 ? " has" : "s have"} never been backed up.`;
+    // No good copy ever, which is not the "never backed up" bucket on What's protected.
+    return `Not measured: ${count} item${count === 1 ? " has" : "s have"} no good backup yet.`;
   }
   return "Not measured: no backup has finished yet.";
 }
@@ -457,27 +482,25 @@ function isEntraIntune(dependency: DependencyRef): boolean {
   return dependency.kind === "type" || dependency.kind === "relationship";
 }
 
-/** The Entra ID and Intune settings backup as one row, from the freshness numbers. */
-function entraRow(metrics: RecoveryMetrics, now: string): ServiceRow {
+/** The Entra ID and Intune settings backup as one row. Its counts are the shared coverage
+ * buckets; only "last backed up" comes from the freshness numbers. */
+function entraRow(metrics: RecoveryMetrics, kinds: ResilienceKinds, now: string): ServiceRow {
   const freshness = metrics.freshness;
-  const gaps = freshness.gaps.filter(isEntraIntune);
-  const failures = freshness.latestFailures.filter(isEntraIntune);
   const oldest = freshness.oldestDependency && isEntraIntune(freshness.oldestDependency) ? freshness.oldestDependency : null;
   // When the oldest backup overall is another service's, Entra ID and Intune are newer than it.
   const last = oldest ? ago(oldest.since, now) : freshness.oldestDependency ? `Newer than ${ago(freshness.oldestDependency.since, now).replace(/ ago$/, "")}` : "Never";
   const base = { key: "entra-intune", name: "Users, groups, sign-in rules, devices and apps", what: "Settings" as const, holds: "" };
-  if (gaps.length) return { ...base, tone: "urgent", status: `${gaps.length} never backed up`, last };
-  if (failures.length) return { ...base, tone: "soon", status: `${failures.length} failed last time`, last };
-  if (freshness.oldestDependency) {
-    const stale = oldest !== null && oldest.ageMs > STALE_MS;
-    return { ...base, tone: stale ? "soon" : "fine", status: stale ? "Out of date" : "Backed up", last };
-  }
+  const { summary } = kinds;
+  const late = summary.stale + summary.neverCollected;
+  if (summary.failed) return { ...base, tone: "urgent", status: `${summary.failed} failed`, last };
+  if (late) return { ...base, tone: "soon", status: `${late} out of date or never`, last };
+  if (summary.covered) return { ...base, tone: "fine", status: "Backed up", last };
   return { ...base, tone: "soon", status: "Not run yet", last };
 }
 
 /** Every backup by Microsoft service, in the portal's service order; settings before content. */
-export function serviceGroups(metrics: RecoveryMetrics, now: string): ServiceGroup[] {
-  const groups: ServiceGroup[] = [{ key: "entra-intune", name: "Entra ID and Intune", icon: "service-entra", rows: [entraRow(metrics, now)] }];
+export function serviceGroups(metrics: RecoveryMetrics, kinds: ResilienceKinds, now: string): ServiceGroup[] {
+  const groups: ServiceGroup[] = [{ key: "entra-intune", name: "Entra ID and Intune", icon: "service-entra", rows: [entraRow(metrics, kinds, now)] }];
   const entries = [...(metrics.services?.settings ?? []), ...(metrics.services?.content ?? [])];
   const byService = new Map<string, { service: CloudService; entries: ServiceBackup[] }>();
   for (const entry of entries) {
@@ -542,28 +565,26 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     });
   }
 
-  // Service settings and content are in freshness too; their alerts come from `services` below.
-  const gaps = freshness.gaps.filter(isEntraIntune);
-  const failures = freshness.latestFailures.filter(isEntraIntune);
-  if (gaps.length) {
-    const names = gaps.map((gap) => dependencyName(gap));
+  // Entra ID and Intune kinds, counted with the same buckets as What's protected and the
+  // Overview. Service settings and content get their alerts from `services` below.
+  const { summary, failed, late } = data.kinds;
+  if (summary.failed) {
     alerts.push({
-      key: "never-backed-up", tone: "urgent", icon: "x-circle",
-      title: gaps.length === 1 ? `${names[0]} never backed up` : `${gaps.length} setting types never backed up`,
-      todo: "KEEL can't restore them yet. See why on What's protected.",
-      more: gaps.map((gap) => `${dependencyName(gap)}: ${gap.lastAttempt ? `last try ${gap.lastAttempt.outcome === "partial" ? "stopped part way" : "failed"} ${ago(gap.lastAttempt.at, now)}` : "never tried"}`),
-      // A type never tried is "out of date" on Protect, not "failed".
-      action: gaps.some((gap) => gap.lastAttempt) ? { label: "See failures", href: "/protect?health=failed" } : { label: "What's protected", href: "/protect" },
+      key: "kinds-failed", tone: "urgent", icon: "x-circle",
+      title: summary.failed === 1 ? `${failed[0] ?? "1 kind of setting"} failed its last backup` : `${summary.failed} setting types failed their last backup`,
+      todo: "Run the backup again. Older copies are kept where there is one.",
+      more: failed,
+      action: { label: "See failures", href: "/protect?health=failed" },
     });
   }
-
-  if (failures.length) {
+  const lateCount = summary.stale + summary.neverCollected;
+  if (lateCount) {
     alerts.push({
-      key: "latest-failed", tone: "soon", icon: "alert",
-      title: failures.length === 1 ? `${dependencyName(failures[0])}: last backup failed` : `${failures.length} setting types failed last backup`,
-      todo: "Older copies are kept. Run the backup again.",
-      more: failures.map((failure) => `${dependencyName(failure)}: ${failure.outcome === "partial" ? "stopped part way" : "failed"} ${ago(failure.failedAt, now)}; using the copy from ${ago(failure.lastSuccessAt, now)}`),
-      action: { label: "See failures", href: "/protect?health=failed" },
+      key: "kinds-late", tone: "soon", icon: "clock",
+      title: lateCount === 1 ? `${late[0] ?? "1 kind of setting"} is out of date or never backed up` : `${lateCount} setting types are out of date or never backed up`,
+      todo: "Run a backup. KEEL has no copy recent enough for how critical they are.",
+      more: late,
+      action: { label: "See them", href: "/protect?health=out-of-date" },
     });
   }
 
@@ -622,16 +643,17 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     });
   }
 
-  const failedRestores = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && !attempt.counts && attempt.reason !== "awaiting-verification");
-  const openChecks = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "awaiting-verification");
-  if (failedRestores.length) {
-    const newest = failedRestores.at(-1)!;
+  const failedRestores = data.failedRestores;
+  if (failedRestores.total) {
+    const recentFailures = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "restore-failed");
     alerts.push({
       key: "restore-failed", tone: "soon", icon: "restore",
-      title: failedRestores.length === 1 ? "A restore failed" : `${failedRestores.length} restores failed`,
+      title: `${failedRestoresTitle(failedRestores)} · ${failedRestoresRecent(failedRestores)}`,
       todo: "Open it, see what did not go back, try again.",
-      more: failedRestores.slice(-5).reverse().map((attempt) => `Restore ${ago(attempt.at, now)}: ${attemptReason(attempt)}`),
-      action: newest.ref ? { label: "View restore", href: `/jobs/${newest.ref}` } : null,
+      more: recentFailures.slice(-5).reverse().map((attempt) => `Restore ${ago(attempt.at, now)}: ${attemptReason(attempt)}`),
+      action: failedRestores.total === 1 && failedRestores.newest
+        ? { label: "View restore", href: `/jobs/${failedRestores.newest.jobId}` }
+        : { label: "See failed restores", href: failedRestores.href },
     });
   }
   if (recoveryTime.state !== "measured") {
@@ -643,14 +665,17 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
       action: { label: "Plan a restore", href: "/restore" },
     });
   }
-  if (openChecks.length) {
-    const newest = openChecks.at(-1)!;
+  // The shared follow-up count (the same steps Overview and Restore show), not a count
+  // of restore attempts: a step a later restore replaced is not open work.
+  const followUps = data.followUps;
+  if (followUps && followUps.steps > 0) {
+    const steps = `${followUps.steps} follow-up ${followUps.steps === 1 ? "step" : "steps"}`;
     alerts.push({
       key: "restore-checks-open", tone: "low", icon: "check-circle",
-      title: openChecks.length === 1 ? "A restore needs its follow-up checks" : `${openChecks.length} restores need follow-up checks`,
-      todo: "Finish the checks so they count.",
+      title: followUps.restores === 1 ? `A restore has ${steps} open` : `${followUps.restores} restores have ${steps} open`,
+      todo: "Finish the steps so the restores count.",
       more: [],
-      action: newest.ref ? { label: "Open newest", href: `/jobs/${newest.ref}` } : null,
+      action: { label: "See follow-ups", href: followUps.href },
     });
   }
 

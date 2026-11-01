@@ -1,5 +1,6 @@
 // Roadmap task-83: the alerts inbox's types and words. Client-safe: no engine or
 // server imports, so the inbox component and the UI harness can use it.
+import type { UnnamedReference } from "@/lib/app-names";
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { itemService, typeService } from "@/lib/baselines-view";
@@ -55,13 +56,20 @@ export interface AlertItem {
   // The settings catalog template family the newest backup holds for the resource, when
   // it has one: an endpoint security policy made in Intune is a Defender setting.
   templateFamily?: string | null;
+  // What the resource points to that no backup names (a role, who holds it, where), each
+  // with a Microsoft Graph lookup link, for Technical details. Absent when all named.
+  unnamedRefs?: UnnamedReference[];
   lastEventId: string;
   history: AlertHistoryEntry[];
 }
 
 export interface AlertInboxData {
   generatedAt: string;
+  // Every open alert, then the most recent closed ones: a list, never the count.
   alerts: AlertItem[];
+  // The tenant's whole count by state (alertStateCounts): the same numbers as the bell
+  // and the Overview, however many alerts the list holds.
+  counts: AlertCounts;
 }
 
 export const ACTIVE_STATES: AlertState[] = ["open", "reopened", "acknowledged"];
@@ -196,19 +204,57 @@ export function inboxOrder(alerts: AlertItem[]): AlertItem[] {
   return [...alerts].sort((a, b) => rank(a) - rank(b) || deadline(a) - deadline(b) || b.lastFiringAt.localeCompare(a.lastFiringAt));
 }
 
-export function alertsVerdict(alerts: AlertItem[], now: string): { text: string; tone: "good" | "attention" | "critical" } {
-  const waiting = alerts.filter((alert) => alert.state === "open" || alert.state === "reopened");
-  const overdue = waiting.filter((alert) => isOverdue(alert, now)).length;
-  const acknowledged = alerts.filter((alert) => alert.state === "acknowledged").length;
-  if (waiting.length === 0 && acknowledged === 0) {
+/**
+ * The note left when this occurrence was acknowledged, or null. It lives in the
+ * alert's history; an earlier occurrence's note does not carry over.
+ */
+export function acknowledgeNote(alert: Pick<AlertItem, "state" | "occurrence" | "history">): string | null {
+  if (alert.state !== "acknowledged") return null;
+  for (let index = alert.history.length - 1; index >= 0; index -= 1) {
+    const entry = alert.history[index];
+    if (entry.toState === "acknowledged" && entry.reason === "acknowledged") return entry.occurrence === alert.occurrence ? entry.note ?? null : null;
+  }
+  return null;
+}
+
+/**
+ * What the page shows right after its own acknowledge, resolve or mute, until the
+ * server's next read: the new state, the acknowledger as owner and the note in the
+ * history. The banner, tiles and header pill all count this one list.
+ */
+// `acknowledged` marks the page's own acknowledge; an unmute that lands on "acknowledged" changes the state only.
+export interface LocalChange { state: AlertState; acknowledged?: boolean; owner?: AlertItem["owner"]; note?: string | null; at: string; by: string }
+
+export function withLocalChanges(alerts: AlertItem[], changes: Record<string, LocalChange>): AlertItem[] {
+  return alerts.map((alert) => {
+    const change = changes[alert.id];
+    if (!change || change.state === alert.state) return alert;
+    if (change.state !== "acknowledged" || !change.acknowledged) return { ...alert, state: change.state };
+    return {
+      ...alert,
+      state: change.state,
+      acknowledgedAt: alert.acknowledgedAt ?? change.at,
+      acknowledgedByName: alert.acknowledgedByName ?? change.by,
+      owner: change.owner ?? alert.owner,
+      history: [...alert.history, {
+        id: `local-${alert.id}`, occurrence: alert.occurrence, fromState: alert.state, toState: "acknowledged", reason: "acknowledged",
+        actor: "", actorName: change.by, at: change.at, eventId: null, note: change.note?.trim() || null,
+      }],
+    };
+  });
+}
+
+export function alertsVerdict(counts: Pick<AlertCounts, "waiting" | "overdue" | "acknowledged">): { text: string; tone: "good" | "attention" | "critical" } {
+  const { waiting, overdue, acknowledged } = counts;
+  if (waiting === 0 && acknowledged === 0) {
     return { text: "No open alerts. KEEL resolves an alert itself when the change it reported goes away.", tone: "good" };
   }
-  if (waiting.length === 0) {
-    return { text: `${acknowledged} ${acknowledged === 1 ? "alert is" : "alerts are"} acknowledged and still open; nothing is waiting for someone.`, tone: "attention" };
+  if (waiting === 0) {
+    return { text: `${acknowledged.toLocaleString("en-GB")} ${acknowledged === 1 ? "alert is" : "alerts are"} acknowledged and still open; nothing is waiting for someone.`, tone: "attention" };
   }
-  const head = `${waiting.length} ${waiting.length === 1 ? "alert needs" : "alerts need"} someone to acknowledge ${waiting.length === 1 ? "it" : "them"}`;
+  const head = `${waiting.toLocaleString("en-GB")} ${waiting === 1 ? "alert needs" : "alerts need"} someone to acknowledge ${waiting === 1 ? "it" : "them"}`;
   return overdue
-    ? { text: `${head}; ${overdue} ${overdue === 1 ? "is" : "are"} past the deadline.`, tone: "critical" }
+    ? { text: `${head}; ${overdue.toLocaleString("en-GB")} ${overdue === 1 ? "is" : "are"} past the deadline.`, tone: "critical" }
     : { text: `${head}.`, tone: "attention" };
 }
 
@@ -269,20 +315,46 @@ export function resolvedAt(alert: Pick<AlertItem, "history">): string | null {
   return null;
 }
 
-export interface AlertCounts { waiting: number; overdue: number; acknowledged: number; resolvedWeek: number; muted: number; total: number }
+export interface AlertCounts { waiting: number; overdue: number; acknowledged: number; resolved: number; resolvedWeek: number; muted: number; total: number }
 
 export function alertCounts(alerts: AlertItem[], now: string): AlertCounts {
-  const counts: AlertCounts = { waiting: 0, overdue: 0, acknowledged: 0, resolvedWeek: 0, muted: 0, total: alerts.length };
+  const counts: AlertCounts = { waiting: 0, overdue: 0, acknowledged: 0, resolved: 0, resolvedWeek: 0, muted: 0, total: alerts.length };
   const since = new Date(now).valueOf() - WEEK_MS;
   for (const alert of alerts) {
     if (isWaiting(alert)) counts.waiting += 1;
     if (isOverdue(alert, now)) counts.overdue += 1;
     if (alert.state === "acknowledged") counts.acknowledged += 1;
     if (alert.state === "suppressed") counts.muted += 1;
+    if (alert.state === "resolved") counts.resolved += 1;
     const resolved = alert.state === "resolved" ? resolvedAt(alert) : null;
     if (resolved && new Date(resolved).valueOf() >= since) counts.resolvedWeek += 1;
   }
   return counts;
+}
+
+const COUNT_KEYS = ["waiting", "overdue", "acknowledged", "resolved", "resolvedWeek", "muted", "total"] as const;
+
+/**
+ * The tenant's counts with what this page has just changed applied: the server's whole
+ * count, plus the difference between the list as changed here and as it was read.
+ */
+export function liveCounts(server: AlertCounts, read: AlertItem[], changed: AlertItem[], now: string): AlertCounts {
+  const before = alertCounts(read, now);
+  const after = alertCounts(changed, now);
+  const live = { ...server };
+  for (const key of COUNT_KEYS) live[key] = Math.max(0, server[key] + after[key] - before[key]);
+  return live;
+}
+
+/**
+ * When the list holds fewer alerts than the tiles count (it lists every open alert up to
+ * a limit, and only the most recent closed ones), one plain sentence that says so.
+ */
+export function listedNote(counts: AlertCounts, listed: AlertCounts, filter: string[]): string | null {
+  const picked = filter.filter((key): key is AlertFilter => ALERT_FILTERS.includes(key as AlertFilter));
+  const keys = (picked.length ? picked : ALERT_FILTERS).map((key) => FILTER_COUNT[key]);
+  if (keys.every((key) => listed[key] >= counts[key])) return null;
+  return `This list shows ${listed.total.toLocaleString("en-GB")} of ${counts.total.toLocaleString("en-GB")} alerts: every open one, and the most recently closed. The numbers above count all of them.`;
 }
 
 /** The header pill: urgent when one is past its deadline, soon while one waits. */
@@ -295,6 +367,9 @@ export function alertsStatus(counts: AlertCounts): { tone: RiskTone; label: stri
 
 export type AlertFilter = "waiting" | "overdue" | "acknowledged" | "resolved" | "muted";
 export const ALERT_FILTERS: AlertFilter[] = ["waiting", "overdue", "acknowledged", "resolved", "muted"];
+
+// Which count each filter tile lists.
+const FILTER_COUNT: Record<AlertFilter, keyof AlertCounts> = { waiting: "waiting", overdue: "overdue", acknowledged: "acknowledged", resolved: "resolved", muted: "muted" };
 
 export function parseAlertFilter(value: string | null | undefined): AlertFilter | null {
   return ALERT_FILTERS.includes(value as AlertFilter) ? (value as AlertFilter) : null;

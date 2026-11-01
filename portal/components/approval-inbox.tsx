@@ -1,16 +1,18 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { FindInput } from "@/components/list/find-input";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { byTime } from "@/lib/paging";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, UnnamedRefFields, type RecordValue } from "@/components/technical-details";
 import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
@@ -23,6 +25,8 @@ import {
   approvalCounts,
   approvalKind,
   approvalTitle,
+  approvalUnnamedRefs,
+  distinctTitles,
   approvalsVerdict,
   approveOutcome,
   decisionError,
@@ -45,7 +49,8 @@ import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useRefreshPoll } from "@/lib/use-poll";
-import { readList, useViewState } from "@/lib/use-view-state";
+import { readList, useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { reasonProblem, writtenProblemMessage } from "@/lib/written-reason";
 
 // Approvals (portal audit, pick B): one card per request, opened in place. Four tiles
 // filter the list (`soon=`, `effects=`, `show=decided&week=`), the open request sits
@@ -79,6 +84,7 @@ export function contentEffectsLink(request: ApprovalRequestRecord): { href: stri
 }
 
 export function ContentEffectsNote({ request, primary = false }: { request: ApprovalRequestRecord; primary?: boolean }) {
+  const approvalWords = useApprovalWords();
   const link = contentEffectsLink(request);
   if (!link) return null;
   return (
@@ -88,7 +94,7 @@ export function ContentEffectsNote({ request, primary = false }: { request: Appr
         {link.count === 1
           ? "1 change in this restore affects kept or shared content. It needs its own approval"
           : `${link.count} changes in this restore affect kept or shared content. They need their own approval`}
-        {" "}by someone other than the person who asked, or the restore is refused.
+        {" "}by {approvalWords.approver}, or the restore is refused.
         {" "}<Link className={primary ? "btn btn-primary btn-sm" : "ap-inline-link"} href={link.href}>{link.label}</Link>
       </p>
     </div>
@@ -116,6 +122,7 @@ function RequestRecordFields({ request }: { request: ApprovalRequestRecord }) {
       {request.decidedAt ? <RecordField copy={false} label="Decided" value={request.decidedAt} /> : null}
       <RecordField label="Params" value={(request.params ?? {}) as RecordValue} />
       <ReferenceFields references={request.references} skipPeople={["requested_by", "decided_by"]} />
+      <UnnamedRefFields refs={approvalUnnamedRefs(request)} />
     </RecordGroup>
   );
 }
@@ -201,7 +208,8 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
 }) {
   const [reason, setReason] = useState("");
   const [touched, setTouched] = useState(false);
-  const missing = reason.trim().length === 0;
+  const problem = reasonProblem(reason);
+  const missing = problem !== null;
   return (
     <div aria-label="Why reject" className="ap-reject" role="group">
       <b>Why reject {count === 1 ? `this ${noun}` : `these ${count} requests`}?</b>
@@ -216,7 +224,7 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
           rows={2}
           value={reason}
         />
-        {touched && missing ? <span className="ap-field-error" id="ap-reject-error" role="alert"><Icon name="alert" />Write a reason to reject.</span> : null}
+        {touched && missing ? <span className="ap-field-error" id="ap-reject-error" role="alert"><Icon name="alert" />{problem === "empty" ? "Write a reason to reject." : writtenProblemMessage(problem!)}</span> : null}
       </label>
       <div className="ap-reject-actions">
         <button className="btn" disabled={busy} onClick={onCancel} type="button">Keep {count === 1 ? "it" : "them"} waiting</button>
@@ -236,6 +244,10 @@ function RejectSheet({ count, noun, who, onCancel, onConfirm, busy }: {
 
 type Busy = { id: string; decision: "approve" | "reject" } | null;
 
+// The server checks a self-approval's reason (engine/govern/approvalMode.mjs); the button
+// waits for at least this many characters so a click never sends an empty one.
+const SELF_REASON_MIN_LENGTH = 10;
+
 export function ApprovalInbox({
   pending,
   awaitingContentEffects = [],
@@ -243,7 +255,11 @@ export function ApprovalInbox({
   now = new Date().toISOString(),
   viewerId = null,
   notice = null,
+  approvalMode = "two-person",
 }: {
+  // Who may approve: in "solo" mode the viewer may approve their own requests, and each
+  // such approval is recorded as self-approved.
+  approvalMode?: "two-person" | "solo";
   // A page-wide note shown under the verdict, such as "Names hidden".
   notice?: ReactNode;
   pending: ApprovalRequestRecord[];
@@ -255,9 +271,10 @@ export function ApprovalInbox({
   const router = useRouter();
   const view = useViewState();
   const pathname = usePathname() ?? "/approvals";
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   // Waiting splits in two: what this viewer can decide, and what waits on someone else
-  // (requests they asked for, or already signed). Only the first counts as "for you".
+  // (requests they asked for while approvals need two people, or already signed).
+  // Only the first counts as "for you".
   const showParam = view.get("show") === "decided" ? "decided" : view.get("show") === "others" ? "others" : "waiting";
   const sort: WaitingSort = view.get("sort") === "newest" ? "newest" : "expiring";
   const soonOnly = view.get("soon") === "1";
@@ -272,9 +289,15 @@ export function ApprovalInbox({
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [bulk, setBulk] = useState<string[] | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Solo approval mode: the reason typed for approving your own request, by request id.
+  const [selfReasons, setSelfReasons] = useState<Record<string, string>>({});
 
-  const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now, viewerId), [pending, awaitingContentEffects, history, now, viewerId]);
-  const split = useMemo(() => splitWaiting(sortWaiting([...pending, ...awaitingContentEffects], sort), viewerId), [pending, awaitingContentEffects, sort, viewerId]);
+  // Two requests in one list never share a title: same-reading ones get the moment
+  // they were asked. Waiting and decided are separate lists, so each is checked alone.
+  const titles = useMemo(() => new Map([...distinctTitles([...pending, ...awaitingContentEffects]), ...distinctTitles(history)]), [pending, awaitingContentEffects, history]);
+  const titleOf = (request: ApprovalRequestRecord) => titles.get(request.id) ?? approvalTitle(request);
+  const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now, viewerId, approvalMode), [pending, awaitingContentEffects, history, now, viewerId, approvalMode]);
+  const split = useMemo(() => splitWaiting(sortWaiting([...pending, ...awaitingContentEffects], sort), viewerId, approvalMode), [pending, awaitingContentEffects, sort, viewerId, approvalMode]);
   const waiting = split.forYou;
   const onOthers = split.onOthers;
   const decidable = useMemo(() => new Set(waiting.map((request) => request.id)), [waiting]);
@@ -343,7 +366,7 @@ export function ApprovalInbox({
         const outcome = approveOutcome(request, (result.payload ?? {}) as Parameters<typeof approveOutcome>[1]);
         toast({ tone: outcome.pending ? "info" : "success", title: outcome.title, detail: outcome.detail, href: outcome.href, hrefLabel: outcome.hrefLabel });
       } else {
-        toast({ tone: "info", title: "Request rejected", detail: approvalTitle(request) });
+        toast({ tone: "info", title: "Request rejected", detail: titleOf(request) });
       }
       setRejecting(null);
       router.refresh();
@@ -361,7 +384,7 @@ export function ApprovalInbox({
     try {
       for (const request of targets) {
         const result = await decideRequest(request.id, "reject", reason);
-        if (!result.ok) failed.push(approvalTitle(request));
+        if (!result.ok) failed.push(titleOf(request));
       }
       if (failed.length < targets.length) toast({ tone: "info", title: `${targets.length - failed.length} ${targets.length - failed.length === 1 ? "request" : "requests"} rejected`, detail: failed.length ? `${failed.length} could not be: ${failed.join("; ")}` : undefined });
       else toast({ tone: "warning", title: "Nothing was rejected", detail: "Keel could not record the decisions. The list will refresh." });
@@ -387,7 +410,7 @@ export function ApprovalInbox({
     },
   ], [now]);
 
-  const verdict = approvalsVerdict(counts, soonest, now);
+  const verdict = approvalsVerdict(counts, soonest, now, approvalMode);
   const waitFilters: ActiveFilter[] = [
     ...(soonOnly ? [{ key: "soon", label: "Expiring within 4 hours", clear: { soon: null } }] : []),
     ...(effectsOnly ? [{ key: "effects", label: "Waiting on content changes", clear: { effects: null } }] : []),
@@ -419,9 +442,14 @@ export function ApprovalInbox({
     const awaitingEffects = request.status !== "pending";
     const asked = request.references?.people.requested_by;
     const mine = viewerId !== null && request.requestedBy === viewerId;
+    // Two-person mode: the viewer never decides their own request. Solo: they may.
+    const blockedAsRequester = mine && approvalMode !== "solo";
+    const selfApproval = mine && approvalMode === "solo";
     // Approved already, on a request that needs more than one approver.
     const signedByMe = !mine && !awaitingEffects && !decidable.has(request.id);
-    const title = approvalTitle(request);
+    // Starts from the reason given when it was asked for; the server checks it either way.
+    const selfReason = selfReasons[request.id] ?? request.justification ?? "";
+    const title = titleOf(request);
     const left = hoursLeft(request, now);
     const expiryTone = left !== null && left <= 4 ? "urgent" : "neutral";
     const required = request.requiredApprovals ?? 1;
@@ -453,10 +481,12 @@ export function ApprovalInbox({
     }
 
     const who = personLabel(asked);
-    const help = mine
-      ? "You asked for this, so someone else must decide it."
+    const help = blockedAsRequester
+      ? "You asked for this, so someone else must decide it. Approvals need two people."
       : signedByMe
         ? `You approved this. ${required - signed === 1 ? "One more approver" : `${Math.max(1, required - signed)} more approvers`} must approve before ${words.verb} starts.`
+        : selfApproval && !awaitingEffects
+          ? `You asked for this. Approval mode is Solo, so you can approve it yourself: say why, and it is recorded as self-approved with your reason. Keel runs ${words.verb} right after.`
       : awaitingEffects
         ? "The restore is approved. It runs once its content changes are approved too."
         : required > 1 && signed + 1 >= required
@@ -476,6 +506,7 @@ export function ApprovalInbox({
           </div>
           <div className="ap-card-badges">
             {impact ? <Badge icon={impact.icon} tone={impact.tone}>{impact.label}</Badge> : null}
+            {selfApproval && !awaitingEffects ? <Badge icon="person" tone="soon">You can self-approve</Badge> : null}
             {awaitingEffects ? <Badge tone="soon" icon="page">Waiting on content changes</Badge> : <Badge icon="clock" tone={expiryTone === "urgent" ? "urgent" : "neutral"} title={`Expires ${formatTimestamp(request.expiresAt)}`}>Expires {timeLeft(request, now).replace(" left", "").replace(/^(\d+ (?:min|h|days?))$/, "in $1")}</Badge>}
           </div>
           <button aria-expanded className="icon-button ap-collapse" onClick={closeRequest} title="Collapse" type="button"><Icon name="up" /><span className="visually-hidden">Collapse</span></button>
@@ -498,7 +529,19 @@ export function ApprovalInbox({
         {!awaitingEffects ? (
           <footer className="ap-card-foot">
             <p className="ap-help">{help}</p>
-            {!mine && !signedByMe ? (
+            {selfApproval ? (
+              <label className="ap-self-reason">
+                <span>Why are you approving this yourself?</span>
+                <input
+                  disabled={isBusy}
+                  maxLength={500}
+                  onChange={(event) => { const value = event.target.value; setSelfReasons((current) => ({ ...current, [request.id]: value })); }}
+                  placeholder="For example: restore the policy deleted by mistake this morning"
+                  value={selfReason}
+                />
+              </label>
+            ) : null}
+            {!blockedAsRequester && !signedByMe ? (
               <span className="ap-decide">
                 <button
                   aria-busy={(isBusy && busy?.decision === "reject") || undefined}
@@ -513,11 +556,12 @@ export function ApprovalInbox({
                 <button
                   aria-busy={(isBusy && busy?.decision === "approve") || undefined}
                   className="btn btn-primary"
-                  disabled={isBusy}
-                  onClick={() => void decide(request, "approve")}
+                  disabled={isBusy || (selfApproval && selfReason.trim().length < SELF_REASON_MIN_LENGTH)}
+                  onClick={() => void decide(request, "approve", selfApproval && selfReason.trim() !== (request.justification ?? "").trim() ? selfReason.trim() : "")}
+                  title={selfApproval && selfReason.trim().length < SELF_REASON_MIN_LENGTH ? "Write why you are approving it yourself first" : undefined}
                   type="button"
                 >
-                  <Icon name="check" />Approve
+                  <Icon name="check" />{selfApproval ? "Approve myself" : "Approve"}
                 </button>
               </span>
             ) : null}
@@ -613,7 +657,7 @@ export function ApprovalInbox({
                 matches={(item, text) => matchText(item).includes(text)}
                 noun={NOUN}
                 renderRow={renderRequest}
-                rowName={approvalTitle}
+                rowName={titleOf}
                 sorts={REQUEST_SORTS}
                 toneOf={(item) => requestTone(item, now)}
               />
@@ -649,7 +693,7 @@ export function ApprovalInbox({
               <span className="picker-label">Find</span>
               <span className="sel-find-box">
                 <Icon name="search" />
-                <input className="bare-input" onChange={(event) => view.set({ q: event.target.value })} placeholder="Find a request or a person" type="search" value={view.get("q")} />
+                <FindInput onChange={(text) => view.set({ q: text })} placeholder="Find a request or a person" value={view.get("q")} />
               </span>
             </label>
             <ActiveFilters extra={{ open: null }} filters={decidedFilters} noun={NOUN} shown={decided.length} total={history.length} />
@@ -664,11 +708,14 @@ export function ApprovalInbox({
                     <li className="activity-item list-row ap-history-row" data-open={isOpen || undefined} key={request.id}>
                       <span aria-hidden="true" className="row-kind ap-kind"><Icon name={KIND_WORDS[kind].icon} /></span>
                       <span className="row-name">
-                        <Link href={href({ open: isOpen ? null : request.id })} onClick={(event) => { if (isOpen) { event.preventDefault(); view.set({ open: null }); } else openRequest(event, request.id); }}>{approvalTitle(request)}</Link>
+                        <Link href={href({ open: isOpen ? null : request.id })} onClick={(event) => { if (isOpen) { event.preventDefault(); view.set({ open: null }); } else openRequest(event, request.id); }}>{titleOf(request)}</Link>
                         <small>{KIND_WORDS[kind].label} · asked by {personLabel(request.references?.people.requested_by)} {ago(request.createdAt, now)}</small>
                       </span>
                       <span className="row-mid">
-                        <span className="row-status"><Badge icon={badge.icon} tone={badge.tone}>{badge.label}</Badge></span>
+                        <span className="row-status">
+                          <Badge icon={badge.icon} tone={badge.tone}>{badge.label}</Badge>
+                          {request.selfApproved ? <Badge icon="person" tone="soon" title="The person who asked approved it, under solo approval mode">Self-approved</Badge> : null}
+                        </span>
                         <span className="row-meta">
                           {request.status === "expired"
                             ? <>Expired <time dateTime={request.expiresAt ?? undefined} title={formatTimestamp(request.expiresAt)}>{ago(request.expiresAt, now)}</time> without a decision</>

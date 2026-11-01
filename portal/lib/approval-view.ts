@@ -3,8 +3,11 @@
 // tested without a browser. Ids never appear in anything these return.
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
+import type { UnnamedReference } from "@/lib/app-names";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
+import type { ApprovalModeName } from "@/lib/approval-words";
 import type { RiskTone } from "@/lib/menu-status";
+import { formatTimestamp } from "@/lib/presentation";
 import { approvalSentence, personLabel } from "@/lib/sentences";
 
 export type ApprovalKind = "restore" | "undo" | "rollback" | "decision" | "setup" | "other";
@@ -33,6 +36,46 @@ export const KIND_ORDER: ApprovalKind[] = ["restore", "undo", "rollback", "decis
 /** The request's title: what approving it does, with names. */
 export function approvalTitle(request: Pick<ApprovalRequestRecord, "action" | "params" | "references">): string {
   return approvalSentence(request);
+}
+
+/**
+ * Each request's title, made unique: requests that would read the same get the moment
+ * they were asked ("… · asked 31 Oct 2026, 17:41 UTC"), and a number if that matches too,
+ * so a list never shows two identical lines.
+ */
+export function distinctTitles(requests: Pick<ApprovalRequestRecord, "id" | "action" | "params" | "references" | "createdAt">[]): Map<string, string> {
+  const base = new Map(requests.map((request) => [request.id, approvalTitle(request)]));
+  const groups = new Map<string, typeof requests>();
+  for (const request of requests) {
+    const title = base.get(request.id)!;
+    groups.set(title, [...(groups.get(title) ?? []), request]);
+  }
+  const titles = new Map<string, string>();
+  for (const [title, group] of groups) {
+    if (group.length === 1) { titles.set(group[0].id, title); continue; }
+    const timed = group.map((request) => ({ id: request.id, title: `${title} · asked ${formatTimestamp(request.createdAt)}`, at: request.createdAt ?? "" }));
+    const seen = new Map<string, number>();
+    for (const entry of timed) seen.set(entry.title, (seen.get(entry.title) ?? 0) + 1);
+    const numbered = new Map<string, number>();
+    for (const entry of [...timed].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
+      if ((seen.get(entry.title) ?? 0) < 2) { titles.set(entry.id, entry.title); continue; }
+      const n = (numbered.get(entry.title) ?? 0) + 1;
+      numbered.set(entry.title, n);
+      titles.set(entry.id, `${entry.title} (${n})`);
+    }
+  }
+  return titles;
+}
+
+/**
+ * What a request's changes point to that no backup names (a role, who holds it, where),
+ * once each, so Technical details lists every ID with a link that looks it up.
+ */
+export function approvalUnnamedRefs(request: Pick<ApprovalRequestRecord, "references" | "preview">): UnnamedReference[] {
+  const out = new Map<string, UnnamedReference>();
+  const lists = [...(request.references?.changes ?? []).map((change) => change?.unnamedRefs), ...(request.preview?.changes ?? []).map((change) => change.unnamedRefs)];
+  for (const refs of lists) for (const ref of refs ?? []) if (!out.has(ref.id)) out.set(ref.id, ref);
+  return [...out.values()];
 }
 
 const HOUR = 3_600_000;
@@ -98,7 +141,8 @@ export function outcomeBadge(request: Pick<ApprovalRequestRecord, "status">): { 
 export interface ApprovalCounts {
   // Requests this viewer can decide now: the "waiting for you" number everywhere.
   waiting: number;
-  // Requests that wait on someone else: the viewer asked for them, or already signed.
+  // Requests that wait on someone else: the viewer already signed them, or asked for
+  // them while approvals need two people.
   waitingOnOthers: number;
   expiringSoon: number;
   contentEffects: number;
@@ -109,34 +153,37 @@ const WEEK = 7 * 24 * HOUR;
 
 /**
  * Whether this viewer can decide a waiting request. One rule for the page, the badge
- * and the Overview, so "waiting for you" means the same everywhere. The engine always
- * refuses an approver's own request, and an approver who already signed a two-person
- * request waits for the next approver. With no viewer known, every request counts.
+ * and the Overview, so "waiting for you" means the same everywhere. It follows the
+ * tenant's approval mode (engine/govern/approvalMode.mjs): while approvals need two
+ * people the engine refuses an approver's own request, and in Solo the requester may
+ * approve it. In either mode, an approver who already signed a request that needs more
+ * than one approver waits for the next one. With no viewer known, every request counts.
  */
 export function viewerCanDecide(
   request: { requestedBy: string; status?: string; signoffs?: { id: string }[] },
   viewerId: string | null,
+  approvalMode: ApprovalModeName = "two-person",
 ): boolean {
   if (viewerId === null) return true;
-  if (request.requestedBy === viewerId) return false;
+  if (request.requestedBy === viewerId) return approvalMode === "solo";
   if (request.status === "pending" && (request.signoffs ?? []).some((person) => person.id === viewerId)) return false;
   return true;
 }
 
 /** Waiting requests split into the ones this viewer decides and the ones others do. */
-export function splitWaiting<T extends { requestedBy: string; status?: string; signoffs?: { id: string }[] }>(requests: readonly T[], viewerId: string | null): { forYou: T[]; onOthers: T[] } {
+export function splitWaiting<T extends { requestedBy: string; status?: string; signoffs?: { id: string }[] }>(requests: readonly T[], viewerId: string | null, approvalMode: ApprovalModeName = "two-person"): { forYou: T[]; onOthers: T[] } {
   const forYou: T[] = [];
   const onOthers: T[] = [];
-  for (const request of requests) (viewerCanDecide(request, viewerId) ? forYou : onOthers).push(request);
+  for (const request of requests) (viewerCanDecide(request, viewerId, approvalMode) ? forYou : onOthers).push(request);
   return { forYou, onOthers };
 }
 
-export function approvalCounts(data: { pending: ApprovalRequestRecord[]; awaitingContentEffects: ApprovalRequestRecord[]; history: ApprovalRequestRecord[] }, now: string, viewerId: string | null = null): ApprovalCounts {
+export function approvalCounts(data: { pending: ApprovalRequestRecord[]; awaitingContentEffects: ApprovalRequestRecord[]; history: ApprovalRequestRecord[] }, now: string, viewerId: string | null = null, approvalMode: ApprovalModeName = "two-person"): ApprovalCounts {
   const since = new Date(now).valueOf() - WEEK;
   const decidedAt = (request: ApprovalRequestRecord) => new Date(request.decidedAt ?? request.expiresAt ?? 0).valueOf();
   const week = data.history.filter((request) => decidedAt(request) >= since);
-  const pending = splitWaiting(data.pending, viewerId);
-  const effects = splitWaiting(data.awaitingContentEffects, viewerId);
+  const pending = splitWaiting(data.pending, viewerId, approvalMode);
+  const effects = splitWaiting(data.awaitingContentEffects, viewerId, approvalMode);
   return {
     waiting: pending.forYou.length + effects.forYou.length,
     waitingOnOthers: pending.onOthers.length + effects.onOthers.length,
@@ -160,11 +207,13 @@ export function sortWaiting<T extends Pick<ApprovalRequestRecord, "expiresAt" | 
 }
 
 /** The verdict, in at most 25 words. */
-export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
+export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequestRecord | null, now: string, approvalMode: ApprovalModeName = "two-person"): { text: string; tone: "soon" | "urgent" | "fine"; detail: string } {
   if (counts.waiting === 0) {
     const others = counts.waitingOnOthers;
+    const it = others === 1 ? "it" : "them";
+    const why = approvalMode === "solo" ? `you already approved ${it}, and another approver must too` : `you asked for ${it}, or already approved`;
     return others
-      ? { text: "Nothing is waiting for your decision.", tone: "fine", detail: `${others === 1 ? "1 request waits" : `${others} requests wait`} on someone else: you asked for ${others === 1 ? "it" : "them"}, or already approved. See Waiting on others.` }
+      ? { text: "Nothing is waiting for your decision.", tone: "fine", detail: `${others === 1 ? "1 request waits" : `${others} requests wait`} on someone else: ${why}. See Waiting on others.` }
       : { text: "Nothing is waiting for your decision.", tone: "fine", detail: "Restores, undo changes and approved-setup switches will appear here when someone asks for one." };
   }
   const count = counts.waiting === 1 ? "1 request is" : `${counts.waiting} requests are`;
@@ -174,7 +223,9 @@ export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequest
   return {
     text: `${count} waiting for you.${soon}`,
     tone: counts.expiringSoon ? "urgent" : "soon",
-    detail: "Nothing changes until someone other than the person who asked approves.",
+    detail: approvalMode === "solo"
+      ? "Nothing changes until it is approved. Approval mode is Solo, so you can approve your own requests; each is marked self-approved."
+      : "Nothing changes until someone other than the person who asked approves.",
   };
 }
 
@@ -185,10 +236,11 @@ export function approvalsStatus(counts: ApprovalCounts): { tone: RiskTone; label
 
 /** Why a decision was refused, in words next to the button. */
 export function decisionError(status: number, payload: { error?: string; handoff?: string } | null): string {
-  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it.";
+  if (status === 403) return payload?.handoff ? "This request is outside the areas you approve for. A tenant-wide approver must decide it." : "You asked for this, so someone else must decide it: approvals need two people.";
   if (status === 409 && payload?.error === "no_change") return "Nothing to roll back: the setting already holds the same values as the approved setup. Reject this request.";
   if (status === 409) return "Someone else decided it first, or it expired. The list will refresh.";
   if (status === 404) return "This request no longer exists. The list will refresh.";
+  if (status === 400 && payload?.error === "reason_required") return "Approving your own request needs a reason that says why, in a few words.";
   if (status === 400) return "Write a reason to reject.";
   return "Keel could not record the decision. Try again in a moment.";
 }

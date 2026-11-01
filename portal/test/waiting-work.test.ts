@@ -11,7 +11,8 @@ import { enqueue } from "../../engine/jobs/queue.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { RestoreFollowUps } from "@/components/restore-follow-ups";
-import { getRestoreFollowUps, waitingFor } from "@/lib/portal-data";
+import { getResilienceData, getRestoreFollowUps, notifyRoutesFor, waitingFor } from "@/lib/portal-data";
+import { resilienceAlerts, resilienceKinds } from "@/lib/resilience-view";
 import { tenantRef } from "@/lib/runtime-config";
 import type { DashboardData } from "@/lib/types";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -57,7 +58,7 @@ const DASHBOARD: DashboardData = {
   alerts: [],
   headline: {
     state: "collection", tone: "attention", headline: "Not protected yet", sentence: "Nothing backed up.", action: null,
-    counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, lastProvenRestoreAt: null, failingSince: null,
+    counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, proof: { restorable: 0, proven: 0, tested: 0, untested: 0, lastProvenAt: null, href: "/protect?health=proven" }, lastProvenRestoreAt: null, failingSince: null,
   } as DashboardData["headline"],
 };
 
@@ -92,10 +93,11 @@ test("open alerts, open incidents and open restore follow-up steps are counted; 
 
   assert.deepEqual(await waitingFor(client, ref), { openAlerts: 2, openIncidents: 1, restoreFollowUps: items.length });
 
-  const followUps = await getRestoreFollowUps();
-  assert.equal(followUps.length, 1);
-  assert.equal(followUps[0].jobId, job.id);
-  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { followUps, now: DASHBOARD.generatedAt }));
+  const work = await getRestoreFollowUps();
+  assert.equal(work.cards.length, 1);
+  assert.equal(work.cards[0].jobId, job.id);
+  assert.deepEqual([work.steps, work.restores], [items.length, 1]);
+  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now: DASHBOARD.generatedAt }));
   assert.match(html, new RegExp(`href="/jobs/${job.id}"`), "each restore links to the page where its steps are closed");
   assert.match(html, /id="follow-up"/);
 });
@@ -111,9 +113,78 @@ test("the Overview shows a row for each kind of open work, linked to where it is
   assert.match(waiting, /class="ov-row"[^>]*href="\/alerts"[\s\S]*?<b>3 alerts are not acknowledged<\/b>/);
   assert.match(waiting, /class="ov-row"[^>]*href="\/incidents"[\s\S]*?<b>1 incident is open<\/b>/);
   assert.match(waiting, /class="ov-row"[^>]*href="\/restore#follow-up"[\s\S]*?<b>2 restore steps are still open<\/b>/);
-  assert.match(waiting, /data-tile="waiting"[^>]*href="\/alerts"[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile adds them up and opens the first");
+  // Unlike kinds of work are never added into one number: each has its own count and link.
+  assert.doesNotMatch(waiting, /data-tile="waiting"[^>]*>[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile never adds alerts, incidents and restore steps together");
+  assert.match(waiting, /data-tile="waiting"[\s\S]*?data-part="openAlerts" href="\/alerts"><b>3<\/b> alerts[\s\S]*?data-part="openIncidents" href="\/incidents"><b>1<\/b> incident[\s\S]*?data-part="restoreFollowUps" href="\/restore#follow-up"><b>2<\/b> restore steps/);
+  const mixed = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, waiting: { openAlerts: 5, openIncidents: 0, restoreFollowUps: 0 } }, pendingApprovals: 2 }));
+  assert.match(mixed, /data-part="approvals" href="\/approvals"><b>2<\/b> approvals[\s\S]*?data-part="openAlerts" href="\/alerts"><b>5<\/b> alerts/, "approvals and alerts each link to their own list");
+  const single = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, waiting: { openAlerts: 4, openIncidents: 0, restoreFollowUps: 0 } }, pendingApprovals: null }));
+  assert.match(single, /data-tile="waiting"[^>]*href="\/alerts"[\s\S]*?<b class="ov-tile-count">4<\/b><small>Alerts to deal with<\/small>/, "one kind keeps the plain tile, linked to its list");
 
   const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));
   assert.match(approver, /data-tile="waiting"[^>]*href="\/approvals"[\s\S]*?<b class="ov-tile-count">0<\/b>/, "an approver always sees the tile");
-  assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { followUps: [], now: DASHBOARD.generatedAt })), "");
+  assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { work: { steps: 0, restores: 0, href: "/restore#follow-up", cards: [] }, now: DASHBOARD.generatedAt })), "");
+});
+
+// Audit 2026-10-31: Overview said 273 steps, Restore 233 (it added up only the 50 cards it
+// lists) and Resilience "25 restores". With more restores than the list holds, all three
+// now read the one engine count.
+test("Overview, Restore and Resilience show the same follow-up totals past the card limit", async () => {
+  const ref = tenantRef();
+  await client.query("DELETE FROM recovery_completion_item WHERE tenant_ref = $1", [ref]);
+  let steps = 0;
+  for (let n = 1; n <= 52; n++) {
+    const restoreRef = `75000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    steps += ((await emitCompletionItems(client, {
+      tenantRef: ref, restoreRef, owner: null, applied: [{ naturalKey: `group:KEEL-RT-${n}`, resourceType: "group", mechanism: "recreate" }],
+    })) as unknown[]).length;
+  }
+
+  const overview = (await waitingFor(client, ref)).restoreFollowUps;
+  const work = await getRestoreFollowUps();
+  const resilienceData = await getResilienceData();
+  const resilience = resilienceData.followUps;
+  assert.equal(overview, steps);
+  assert.deepEqual([work.steps, work.restores, work.cards.length], [steps, 52, 50], "the page lists 50 and counts all 52");
+  assert.ok(work.cards.reduce((sum, card) => sum + card.pending, 0) < steps, "adding up the cards would under-count");
+  assert.deepEqual(resilience, { steps, restores: 52, href: "/restore#follow-up" });
+
+  const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now: DASHBOARD.generatedAt }));
+  assert.match(html, new RegExp(`${steps} steps on 52 restores`));
+  assert.match(html, /Showing the newest 50 of 52 restores/);
+  const dashboard = renderToStaticMarkup(createElement(DashboardView, {
+    data: { ...DASHBOARD, waiting: { openAlerts: 0, openIncidents: 0, restoreFollowUps: overview } }, pendingApprovals: null,
+  }));
+  assert.match(dashboard, new RegExp(`<b>${steps} restore steps are still open</b>`));
+  const alert = resilienceAlerts({
+    generatedAt: DASHBOARD.generatedAt, incidents: [], followUps: resilience, failedRestores: resilienceData.failedRestores, kinds: resilienceKinds([]),
+    storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    metrics: { freshness: { state: "measured", gaps: [], latestFailures: [], notUsed: [] }, recoverablePoint: { state: "measured", point: DASHBOARD.generatedAt, copies: [] },
+      recoveryTime: { state: "measured", attempts: [] }, readiness: { state: "measured" }, services: { settings: [], content: [] } },
+  } as never).find((entry) => entry.key === "restore-checks-open");
+  assert.equal(alert?.title, `52 restores have ${steps} follow-up steps open`);
+});
+
+test("with no channel, or no rule that sends alerts to one, the Overview says first and Urgent that alerts reach nobody", async () => {
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 0, routed: 0 });
+  const nobody = renderToStaticMarkup(createElement(DashboardView, {
+    data: { ...DASHBOARD, notify: await notifyRoutesFor(client), waiting: { openAlerts: 196, openIncidents: 1, restoreFollowUps: 0 } }, pendingApprovals: null,
+  }));
+  assert.match(nobody, /<ul class="ov-rows"><li><a class="ov-row" data-tone="urgent" href="\/notifications">[\s\S]*?<b>No notification channel<\/b><small>196 open alerts reach nobody\. Add an email or webhook channel so alerts reach someone\.<\/small>[\s\S]*?Urgent/, "it is the first row and opens Notifications");
+
+  const { rows: [disabled] } = await client.query("INSERT INTO channel (kind, config, enabled) VALUES ('email', '{}', false) RETURNING id");
+  await client.query("INSERT INTO subscription (channel_id, event_glob, min_severity) VALUES ($1, '*', 'notice')", [disabled.id]);
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 0, routed: 0 }, "a turned-off channel sends nothing");
+
+  const { rows: [channel] } = await client.query("INSERT INTO channel (kind, config, enabled) VALUES ('webhook', '{}', true) RETURNING id");
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 1, routed: 0 });
+  const noRule = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, notify: await notifyRoutesFor(client) }, pendingApprovals: null }));
+  assert.match(noRule, /href="\/notifications"[\s\S]*?<b>No rule sends alerts to a channel<\/b><small>Add a rule that sends alerts to one of your channels\.<\/small>/);
+
+  await client.query("INSERT INTO subscription (channel_id, event_glob, min_severity) VALUES ($1, '*', 'warning')", [channel.id]);
+  assert.deepEqual(await notifyRoutesFor(client), { channels: 1, routed: 1 });
+  const routed = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, notify: await notifyRoutesFor(client) }, pendingApprovals: null }));
+  assert.doesNotMatch(routed, /href="\/notifications"/, "once alerts reach someone, the row goes");
+  const unknown = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: null }));
+  assert.doesNotMatch(unknown, /href="\/notifications"/, "when the count could not be read, no row is guessed");
 });

@@ -235,6 +235,33 @@ assert.ok(failedOnly.some((job) => job.id === failed.id));
 const failedRestores = await listJobs(client, { limit: 100, kinds: ['restore'], statuses: ['failed', 'cancelled'] });
 assert.ok(failedRestores.every((job) => job.kind === 'restore' && (job.status === 'failed' || job.status === 'cancelled')));
 
+// --- statuses match the status a person reads: 'partial' is a succeeded job with gaps ---
+const finishJob = async (result) => {
+  const job = await enqueue(client, { kind: 'backup', params: {}, requestedBy: 'test-operator' });
+  await claimNext(client, { workerId: 'worker-partial' });
+  return complete(client, { id: job.id, result });
+};
+const partialOld = await finishJob({ partial: true, incompleteTypes: [{ type: 'intune.deviceConfiguration' }] });
+const notPartialEmpty = await finishJob({ partial: true, incompleteTypes: [] });
+const notPartialNoType = await finishJob({ partial: true, incompleteTypes: [{ type: '' }, { reason: 'x' }, 'text'] });
+const notPartialObject = await finishJob({ partial: true, incompleteTypes: { type: 'intune.deviceConfiguration' } });
+const notPartialFlag = await finishJob({ partial: false, incompleteTypes: [{ type: 'intune.deviceConfiguration' }] });
+// Newer gap-free backups crowd the newest-N window; the partly done one is still found.
+for (let i = 0; i < 3; i++) await finishJob({ stdout: 'ok' });
+const partialOnly = await listJobs(client, { limit: 1, statuses: ['partial'] });
+assert.deepEqual(partialOnly.map((job) => job.id), [partialOld.id]);
+const allPartial = await listJobs(client, { limit: 100, statuses: ['partial'] });
+assert.deepEqual(allPartial.map((job) => job.id), [partialOld.id]);
+const finishedOnly = await listJobs(client, { limit: 100, statuses: ['succeeded'] });
+assert.ok(finishedOnly.every((job) => job.status === 'succeeded' && job.id !== partialOld.id));
+for (const job of [notPartialEmpty, notPartialNoType, notPartialObject, notPartialFlag]) {
+  assert.ok(finishedOnly.some((row) => row.id === job.id), 'a backup with no named gap reads as finished');
+}
+const partialOrFailed = await listJobs(client, { limit: 100, statuses: ['partial', 'failed'] });
+assert.ok(partialOrFailed.some((job) => job.id === partialOld.id));
+assert.ok(partialOrFailed.some((job) => job.id === failed.id));
+assert.ok(partialOrFailed.every((job) => job.status === 'failed' || job.id === partialOld.id));
+
 // --- resetOrphaned never reclaims a fresh heartbeat, even for the SAME worker_id ---
 const ownJob = await enqueue(client, { kind: 'collect', params: {}, requestedBy: 'test-operator' });
 await claimNext(client, { workerId: 'worker-recover-me' });

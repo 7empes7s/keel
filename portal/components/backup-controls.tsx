@@ -8,6 +8,7 @@ import { Icon } from "@/components/shell/icons";
 import { Popover } from "@/components/shell/popover";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { postAction } from "@/lib/action-client";
+import type { RetryPlan } from "@/lib/backup-failure";
 import { TIERS, tierLabel, type TierSummary } from "@/lib/protect-view";
 import { toast } from "@/lib/toast";
 
@@ -43,8 +44,30 @@ export function useBackup() {
     router.refresh();
   }
 
+  // Retry one failed kind (portal audit, issue 10): its tier's backup, the service
+  // settings backup for a workload kind, or a full read for a kind with no tier.
+  async function retry(plan: RetryPlan, name: string, source: string) {
+    if (plan.kind === "tier") return backUp([plan.tier], source);
+    const [path, label] = plan.kind === "workloads"
+      ? ["/api/actions/workload-collect", "Service settings backup"]
+      : ["/api/actions/collect", "Full backup"];
+    setBusy(source);
+    setError(null);
+    keys.current[plan.kind] ??= crypto.randomUUID();
+    try {
+      const { payload } = await postAction(path, {}, keys.current[plan.kind]);
+      const job = payload.job as { id: string };
+      toast({ title: `${label} queued`, detail: `It reads ${name} again. It only reads your tenant; nothing changes.`, href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
+      keys.current[plan.kind] = crypto.randomUUID();
+    } catch {
+      setError(`Keel could not queue the ${label.toLowerCase()}. Try again in a minute.`);
+    }
+    setBusy(null);
+    router.refresh();
+  }
+
   const feedback = error ? <p className="action-error" role="alert">{error}</p> : null;
-  return { backUp, busy, feedback };
+  return { backUp, retry, busy, feedback };
 }
 
 /** The header's one "Back up now" menu: every tier, or one. Amber only when something
@@ -104,7 +127,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false }: {
   canEditSchedules?: boolean;
 }) {
   const { backUp, busy, feedback } = useBackup();
-  const cells = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false }));
+  const cells = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false, partial: false }));
   return (
     <section aria-labelledby="backup-now-heading" className="pt-section">
       <h2 className="visually-hidden" id="backup-now-heading">When each tier is backed up</h2>
@@ -113,7 +136,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false }: {
           const badge = tierBadge(tier);
           const jobId = tier.schedule?.last_job_id;
           return (
-            <div className={`pt-tier ${tier.id}-card`} data-tone={tier.failed ? "urgent" : undefined} key={tier.id}>
+            <div className={`pt-tier ${tier.id}-card`} data-tone={tier.failed ? "urgent" : tier.partial ? "soon" : undefined} key={tier.id}>
               <span className="pt-tier-head">
                 <b>{tier.label}</b>
                 <Badge tone={badge.tone}>{badge.label}</Badge>
@@ -121,7 +144,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false }: {
               <span className="pt-tier-about">{tier.description.charAt(0).toUpperCase() + tier.description.slice(1)}.</span>
               {tier.next ? <span className="tier-next">{tier.next}</span> : null}
               {tier.last ? (
-                <span className={tier.failed ? "tier-last tier-last-failed" : "tier-last"}>
+                <span className={tier.failed ? "tier-last tier-last-failed" : tier.partial ? "tier-last tier-last-partial" : "tier-last"}>
                   {jobId ? <Link href={`/jobs/${encodeURIComponent(jobId)}`}>{tier.last}</Link> : tier.last}
                 </span>
               ) : null}

@@ -167,10 +167,19 @@ export async function summarizeJobs(client, { tenantRef, jobs }) {
   return resolveRowReferences(client, { tenantRef, rows: jobs, people: ['requested_by'] });
 }
 
+// A finished backup that could not read some kinds in full: stored as succeeded, with
+// `result.partial` and at least one named `incompleteTypes` entry. The portal's
+// `jobDisplayStatus` reads the same rule and calls such a job "partial".
+const DISPLAY_STATUS_SQL = `CASE WHEN status = 'succeeded'
+    AND result @> '{"partial": true}'
+    AND jsonb_path_exists(result, 'strict $.incompleteTypes[*] ? (@.type.type() == "string" && @.type != "")', '{}', true)
+  THEN 'partial' ELSE status END`;
+
 // kinds narrows the list in the query, so a page about one kind (restores) never loses
 // its rows to a busier kind (scheduled backups) crowding the newest-N window.
 // statuses narrows the same way, so "every failed job" is found past the newest-N window
-// of jobs that finished.
+// of jobs that finished. They match the status a person reads: 'partial' finds partly
+// done backups, and 'succeeded' finds only the ones that read everything.
 /**
  * @param {any} client
  * @param {{ limit?: number, kinds?: string[] | null, statuses?: string[] | null }} [options]
@@ -179,7 +188,10 @@ export async function listJobs(client, { limit = 50, kinds = null, statuses = nu
   const { rows } = await client.query(
     `SELECT *, started_at::text AS event_started_at FROM job
       WHERE ($2::text[] IS NULL OR kind = ANY($2))
-        AND ($3::text[] IS NULL OR status = ANY($3))
+        AND ($3::text[] IS NULL OR (
+          -- The stored status first, so the status index still narrows the scan.
+          status = ANY(array_replace($3::text[], 'partial', 'succeeded'))
+          AND ${DISPLAY_STATUS_SQL} = ANY($3)))
       ORDER BY created_at DESC LIMIT $1`,
     [limit, kinds, statuses],
   );

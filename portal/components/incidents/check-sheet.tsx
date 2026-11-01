@@ -9,6 +9,7 @@ import { Icon } from "@/components/shell/icons";
 import { incidentAction, loadBackupItems, type BackupItem } from "@/lib/incident-calls";
 import { backupName, itemLabel } from "@/lib/incidents-view";
 import type { IncidentRecoveryPoint } from "@/lib/portal-data";
+import { reasonMessage } from "@/lib/written-reason";
 
 interface Chosen { naturalKey: string; label: string; kind: string; reason: string; field: string }
 
@@ -53,9 +54,13 @@ export function CheckSheet({ incidentId, point, onSaved, onClose }: {
     event.preventDefault();
     setError(null);
     if (!rationale.trim()) { setError("Say why: what you checked and what you found."); return; }
+    const weak = reasonMessage(rationale);
+    if (weak) { setError(weak); return; }
     const leftOut = verdict === "clean" ? chosen : [];
     const missing = leftOut.find((entry) => !entry.reason.trim());
     if (missing) { setError(`Say why ${missing.label} is harmful.`); return; }
+    const weakEntry = leftOut.find((entry) => reasonMessage(entry.reason) !== null);
+    if (weakEntry) { setError(`${weakEntry.label}: ${reasonMessage(weakEntry.reason)}`); return; }
     setBusy(true);
     try {
       const saved = await incidentAction("assess", {

@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } f
 import { Icon } from "@/components/shell/icons";
 
 import { Badge } from "@/components/ui/badge";
+import type { UnnamedReference } from "@/lib/app-names";
 import { compareSides } from "@/lib/record-compare";
 import { fieldInfo, type FieldInfo } from "@/lib/record-glossary";
 import { refUsage, type RefLike } from "@/lib/record-refs";
@@ -283,6 +284,17 @@ export function RecordField({ label, value, usage, copy = true }: { label: strin
 /** The plain value as text, to skip "Stored as" when it says the same. */
 function plainOf(shown: ShownValue): string | null {
   return shown.kind === "text" || shown.kind === "missing" ? shown.text : null;
+}
+
+/** What a setting points to that no backup names: each ID with a Microsoft Graph lookup link. */
+export function UnnamedRefFields({ refs }: { refs: readonly UnnamedReference[] | null | undefined }) {
+  return (
+    <>
+      {(refs ?? []).map((ref) => (
+        <RecordField key={ref.id} label={`${ref.what} (no name in any backup)`} usage={<a href={ref.lookup} rel="noreferrer" target="_blank">Look it up in Microsoft Graph Explorer</a>} value={ref.id} />
+      ))}
+    </>
+  );
 }
 
 /** Two sides of one setting (the approved or recommended value and the value now),

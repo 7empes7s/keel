@@ -4,11 +4,15 @@ import { useState } from "react";
 
 import { DatePicker } from "@/components/pickers/date-picker";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { useApprovalMode } from "@/components/approval-mode-context";
+import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
 import { decisionWords, type Decision } from "@/lib/baselines-view";
 import { changeLabel, changeName, plannedActionWords, refusalSentence } from "@/lib/changes-view";
 import { addDays, type Day, type DayRange } from "@/lib/date-range";
 import { remediationParams } from "@/lib/drift-actions";
+import { BusyError, sendEach } from "@/lib/send-each";
 import type { DriftRecord } from "@/lib/types";
+import { reasonMessage } from "@/lib/written-reason";
 
 interface UndoPreview {
   driftIds: string[];
@@ -22,9 +26,17 @@ interface UndoPreview {
 // A change whose setting holds the same values as the approved setup: the server says
 // so (409 no_change), and that sentence is shown instead of a generic failure.
 class NoChangeError extends Error {}
+// No answer, or a failure after Keel may have saved it: never sent again on its own,
+// since a second send could make a second approval request.
+class UnsureError extends Error {}
 
 async function post(path: string, body: Record<string, unknown>): Promise<unknown> {
-  const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  let response: Response;
+  try {
+    response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    throw new UnsureError("Keel did not answer");
+  }
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
     if (response.status === 409 && payload?.error === "no_change") {
@@ -32,9 +44,37 @@ async function post(path: string, body: Record<string, unknown>): Promise<unknow
     }
     // A refused ignore end date says why (for example, more than 90 days away).
     if (response.status === 400 && payload?.message) throw new NoChangeError(`${payload.message[0].toUpperCase()}${payload.message.slice(1)}.`);
+    // Turned away before any work because every database connection was in use: safe
+    // to send again. Any other 503 may come after a write, so it is not retried.
+    if (response.status === 503 && payload?.error === "busy") throw new BusyError("Keel was busy");
+    if (response.status >= 500) throw new UnsureError("Keel did not finish");
     throw new Error(`Action request failed (${response.status})`);
   }
   return response.json();
+}
+
+/** Why one change could not be saved, in a few words. */
+export function whyNotSaved(error: unknown): string {
+  if (error instanceof NoChangeError) return error.message.replace(/\.$/, "");
+  if (error instanceof BusyError) return "Keel was busy";
+  if (error instanceof UnsureError) return "Keel did not answer, so it may already be saved. Reload the page to check before trying again";
+  return "Keel refused it";
+}
+
+/** Whether sending the change again can help: not when Keel said why it refused. */
+export const worthRetrying = (error: unknown) => error instanceof BusyError || error instanceof UnsureError;
+
+/** "760 of 775 changes went through. 15 could not be saved and are still chosen: A, B and 13 more. Try again to save them." */
+export function notSavedMessage(total: number, failedNames: string[], retry = true): string {
+  const failed = failedNames.length;
+  const saved = total - failed;
+  const shown = failedNames.slice(0, 3);
+  const names = failed > shown.length ? `${shown.join(", ")} and ${failed - shown.length} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown[0];
+  // "Went through": some may have gone for approval rather than being saved.
+  const lead = saved ? `${saved} of ${total} changes went through. ` : "";
+  const what = failed === 1 ? "1 change could not be saved and is still chosen" : `${failed} changes could not be saved and are still chosen`;
+  const next = retry ? `Try again to save ${failed === 1 ? "it" : "them"}.` : "See why below, then change or leave out what Keel refused.";
+  return `${lead}${what}: ${names}. ${next}`;
 }
 
 const failure = (error: unknown, fallback: string) => (error instanceof NoChangeError ? error.message : fallback);
@@ -42,14 +82,14 @@ const failure = (error: unknown, fallback: string) => (error instanceof NoChange
 // The engine refuses a longer ignore (dispositionReview.mjs MAX_IGNORE_DAYS).
 const MAX_IGNORE_DAYS = 90;
 
-/** "Accepted 2 changes. 1 change to sign-in or admin access was sent to a second person." */
-export function decisionMessage(action: "accept" | "ignore", results: { sent: boolean }[]): string {
+/** "Accepted 2 changes. 1 change to sign-in or admin access was sent for approval." Follows the approval mode. */
+export function decisionMessage(action: "accept" | "ignore", results: { sent: boolean }[], mode: ApprovalModeName = "two-person"): string {
   const count = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
   const sent = results.filter((result) => result.sent).length;
   const done = results.length - sent;
   const parts: string[] = [];
   if (done) parts.push(`${action === "accept" ? "Accepted" : "Ignored"} ${count(done)}.`);
-  if (sent) parts.push(`${count(sent)} to sign-in or admin access ${sent === 1 ? "was" : "were"} sent to a second person to approve. Nothing changes until they do.`);
+  if (sent) parts.push(`${count(sent)} to sign-in or admin access ${sent === 1 ? "was" : "were"} ${approvalWords(mode).sentFor}. Nothing changes until ${sent === 1 ? "it is" : "they are"} approved.`);
   return parts.join(" ");
 }
 
@@ -57,26 +97,33 @@ const sameIds = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === 
 
 /** One decision on chosen changes: accept them into the approved setup, ignore them for a
  * while, or undo them. It says what it will do before it does it, asks why, and an undo
- * shows Keel's plan first and goes to someone else for approval. */
+ * shows Keel's plan first and goes for approval, as the approval mode says. */
 export function ChangeDecision({
   decision,
   items,
   today,
   onDone,
   onCancel,
+  onBusy,
 }: {
   decision: Decision;
   items: DriftRecord[];
   today: Day;
   // Called with the changes that are settled (accepted or ignored), or none for an undo
-  // sent for approval, and the sentence to show.
-  onDone: (settled: string[], message: string) => void;
+  // sent for approval, and the sentence to show. `kept` are the changes that could not
+  // be saved: the panel stays open on just those, with the reason shown.
+  onDone: (settled: string[], message: string, kept?: string[]) => void;
   onCancel: () => void;
+  // Told while a decision is being sent, so the panel is not closed half way.
+  onBusy?: (busy: boolean) => void;
 }) {
   const [reason, setReason] = useState("");
   const [until, setUntil] = useState<DayRange | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Changes that could not be saved last time, and why.
+  const [notSaved, setNotSaved] = useState<{ name: string; why: string }[]>([]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
 
   const ids = items.map((item) => item.id);
@@ -91,7 +138,8 @@ export function ChangeDecision({
     const item = byKey.get(resource.naturalKey);
     return item ? changeLabel(item) : changeLabel({ naturalKey: resource.naturalKey, resourceType: resource.resourceType ?? resource.naturalKey.split(":")[0] });
   };
-  const words = decisionWords(decision, items.length);
+  const approvalMode = useApprovalMode();
+  const words = decisionWords(decision, items.length, approvalMode);
   // A preview counts only for exactly the changes it was made for.
   const currentPreview = preview && sameIds(preview.driftIds, ids) ? preview : null;
   const refused = Boolean(currentPreview?.guardRefusals.length);
@@ -100,6 +148,11 @@ export function ChangeDecision({
     const trimmed = reason.trim();
     if (!trimmed) {
       setError("Say why: a reason is required, and it is kept with the decision.");
+      return null;
+    }
+    const weak = reasonMessage(trimmed);
+    if (weak) {
+      setError(weak);
       return null;
     }
     return trimmed;
@@ -122,22 +175,36 @@ export function ChangeDecision({
       expiresAt = new Date(`${until.from}T23:59:59Z`).toISOString();
     }
     setSubmitting(true);
+    onBusy?.(true);
     setError(null);
-    try {
-      // A service setting change is accepted into its service's approved setup. A change
-      // to sign-in or admin access goes to a second person instead (202 with a request).
-      const results = await Promise.all(items.map(async (item) => {
-        const result = await post("/api/actions/dispose", item.serviceRead
-          ? { serviceChangeId: item.id, action, reason: justification }
-          : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) }) as { approvalRequest?: unknown } | null;
-        return { id: item.id, sent: Boolean(result?.approvalRequest) };
-      }));
-      onDone(results.filter((result) => !result.sent).map((result) => result.id), decisionMessage(action, results));
-    } catch (error) {
-      setError(failure(error, "Keel could not save the decision. No further changes were sent."));
-    } finally {
-      setSubmitting(false);
+    setNotSaved([]);
+    setProgress({ done: 0, total: items.length });
+    // A service setting change is accepted into its service's approved setup. A change
+    // to sign-in or admin access goes for approval instead (202 with a request).
+    // A few at a time: one failure never stops the rest, and is named afterwards.
+    const results = await sendEach(items, async (item) => {
+      const result = await post("/api/actions/dispose", item.serviceRead
+        ? { serviceChangeId: item.id, action, reason: justification }
+        : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) }) as { approvalRequest?: unknown } | null;
+      return { id: item.id, sent: Boolean(result?.approvalRequest) };
+    }, { onProgress: (done, total) => setProgress({ done, total }) });
+    setSubmitting(false);
+    onBusy?.(false);
+    setProgress(null);
+    const saved = results.flatMap((result) => (result.ok ? [result.value] : []));
+    const failed = results.flatMap((result) => (result.ok ? [] : [{ item: result.item, error: result.error }]));
+    const settled = saved.filter((result) => !result.sent).map((result) => result.id);
+    if (!failed.length) {
+      onDone(settled, decisionMessage(action, saved, approvalMode));
+      return;
     }
+    if (failed.length === 1 && items.length === 1) {
+      setError(failure(failed[0].error, "Keel could not save the decision. Nothing was changed."));
+      return;
+    }
+    setNotSaved(failed.map(({ item, error }) => ({ name: changeLabel(item), why: whyNotSaved(error) })));
+    setError(notSavedMessage(items.length, failed.map(({ item }) => changeLabel(item)), failed.every(({ error }) => worthRetrying(error))));
+    if (saved.length) onDone(settled, decisionMessage(action, saved, approvalMode), failed.map(({ item }) => item.id));
   }
 
   async function previewUndo() {
@@ -226,6 +293,12 @@ export function ChangeDecision({
       ) : null}
 
       {error ? <p className="action-error" role="alert">{error}</p> : null}
+      {notSaved.length ? (
+        <details className="bl-not-saved">
+          <summary>Why each one was not saved</summary>
+          <ul>{notSaved.map((entry, index) => <li key={index}><b>{entry.name}</b>: {entry.why}</li>)}</ul>
+        </details>
+      ) : null}
 
       <div className="bl-decision-actions">
         {decision === "undo" ? (
@@ -235,7 +308,7 @@ export function ChangeDecision({
             <button aria-busy={submitting || undefined} className="btn btn-primary" disabled={submitting} onClick={() => void previewUndo()} type="button">Check what undoing would do</button>
           )
         ) : (
-          <button aria-busy={submitting || undefined} className="btn btn-primary" disabled={submitting} onClick={() => void dispose(decision)} type="button">{words.confirm}</button>
+          <button aria-busy={submitting || undefined} className="btn btn-primary" disabled={submitting} onClick={() => void dispose(decision)} type="button">{progress && progress.total > 1 ? `Saving ${progress.done} of ${progress.total}…` : words.confirm}</button>
         )}
         <button className="btn" disabled={submitting} onClick={onCancel} type="button">Cancel</button>
       </div>

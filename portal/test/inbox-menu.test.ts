@@ -39,6 +39,22 @@ test("the viewer cannot decide their own request or one they already signed", ()
   assert.deepEqual(onOthers.map((entry) => entry.id), ["r-mine", "r-signed"]);
 });
 
+test("in Solo mode your own request waits for you; one you already signed still waits on others", () => {
+  assert.equal(viewerCanDecide(mineOwn, ME, "solo"), true);
+  assert.equal(viewerCanDecide(mineOwn, ME, "two-person"), false);
+  assert.equal(viewerCanDecide(signedByMe, ME, "solo"), false);
+  const { forYou, onOthers } = splitWaiting([mineOwn, signedByMe, forMe], ME, "solo");
+  assert.deepEqual(forYou.map((entry) => entry.id), ["r-mine", "r-for-me"]);
+  assert.deepEqual(onOthers.map((entry) => entry.id), ["r-signed"]);
+  const counts = approvalCounts({ pending: [mineOwn, signedByMe, forMe], awaitingContentEffects: [], history: [] }, NOW, ME, "solo");
+  assert.equal(counts.waiting, 2);
+  assert.equal(counts.waitingOnOthers, 1);
+  const onlySigned = approvalCounts({ pending: [signedByMe], awaitingContentEffects: [], history: [] }, NOW, ME, "solo");
+  const verdict = approvalsVerdict(onlySigned, null, NOW, "solo");
+  assert.match(verdict.detail, /you already approved it, and another approver must too/);
+  assert.doesNotMatch(verdict.detail, /you asked for/);
+});
+
 test("waiting for you counts only what the viewer can decide", () => {
   const counts = approvalCounts({ pending: [mineOwn, signedByMe, forMe], awaitingContentEffects: [], history: [] }, NOW, ME);
   assert.equal(counts.waiting, 1);
@@ -69,6 +85,19 @@ test("Approvals splits For you and Waiting on others, and own requests have no d
   // And one you can decide opens on For you, even from a link that names the other tab.
   const yours = await renderApprovalInboxAt("show=others&open=r-for-me", props);
   assert.match(yours, />Approve</);
+});
+
+test("in Solo mode Approvals lists your own request under For you, with Approve", async () => {
+  const props = { pending: [mineOwn, forMe], history: [], now: NOW, viewerId: ME, approvalMode: "solo" as const };
+  const waiting = await renderApprovalInboxAt("", props);
+  assert.match(waiting, /For you · 2/);
+  assert.match(waiting, /Waiting on others · 0/);
+  assert.match(waiting, /2 requests are waiting for you/);
+  // A link to your own request opens it on For you, ready to self-approve.
+  const opened = await renderApprovalInboxAt("show=others&open=r-mine", props);
+  assert.match(opened, /Approval mode is Solo, so you can approve it yourself/);
+  assert.match(opened, /Approve myself/);
+  assert.doesNotMatch(opened, /someone else must decide it/);
 });
 
 async function renderMenu(capabilities: { canApprove?: boolean; canRead?: boolean }, approvals: number | null, alerts: number | null): Promise<string> {

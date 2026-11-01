@@ -40,6 +40,18 @@ test("the jobs table displays failed-job error text and a detail link", () => {
   assert.ok(!succeeded.includes(row.error));
 });
 
+test("a list of only the newest failed restores says how many it stands for and links back", () => {
+  const html = renderToStaticMarkup(createElement(JobTable, {
+    headingId: "restore-jobs-heading", jobs: [normalizeJob(row)], title: "Failed restores", total: 47,
+    link: { label: "All restores and checks", href: "/restore#restore-jobs-heading" },
+  }));
+  assert.ok(html.includes("Showing 1 of 47 jobs"), "the total comes from the shared count, never from the rows shown");
+  assert.ok(html.includes('href="/restore#restore-jobs-heading"'));
+  // When the list holds every row it just counts them.
+  const whole = renderToStaticMarkup(createElement(JobTable, { headingId: "jobs", jobs: [normalizeJob(row)], title: "Failed restores", total: 1 }));
+  assert.ok(whole.includes("1 job") && !whole.includes("Showing"));
+});
+
 test("job details preserve the full error and expose params, result, worker and heartbeat", () => {
   const job = normalizeJob(row);
   const html = renderToStaticMarkup(createElement(JobDetail, { job }));
@@ -92,8 +104,12 @@ test("existing guarded job handlers serve the requested history limit and job de
   // Activity: kind and status narrow the query itself; an unknown status is refused.
   const filtered = await guardedJobList(deps)(new Request("http://localhost/api/jobs?limit=20&kind=backup,collect&status=failed", { headers }));
   assert.equal(filtered.status, 200);
-  assert.match(queries.at(-1)?.sql ?? "", /status = ANY/);
+  assert.match(queries.at(-1)?.sql ?? "", /ELSE status END = ANY/);
   assert.deepEqual(queries.at(-1)?.values, [20, ["backup", "collect"], ["failed"]]);
+  // "Partly done" is its own status in the query, so older partial runs are found too.
+  await guardedJobList(deps)(new Request("http://localhost/api/jobs?limit=100&status=partial", { headers }));
+  assert.match(queries.at(-1)?.sql ?? "", /THEN 'partial' ELSE status END = ANY/);
+  assert.deepEqual(queries.at(-1)?.values, [100, null, ["partial"]]);
   const refused = await guardedJobList(deps)(new Request("http://localhost/api/jobs?status=exploded", { headers }));
   assert.equal(refused.status, 400);
   assert.equal((await guardedJobList(deps)(new Request("http://localhost/api/jobs?kind=drop%20table", { headers }))).status, 400);

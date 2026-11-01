@@ -206,7 +206,7 @@ const SECRET_SHAPES = [
   /[A-Za-z0-9_~.-]{3}\dQ~[A-Za-z0-9_~.-]{20,}/, // Entra client-secret shape
 ];
 
-function secretShaped(text) {
+export function secretShaped(text) {
   return redactSecrets(text) !== text || SECRET_SHAPES.some((pattern) => pattern.test(text));
 }
 
@@ -351,13 +351,37 @@ export async function listOpenCompletionWork(client, { tenantRef, limit = 50 }) 
   }));
 }
 
-/** How many follow-up steps are open across every restore (replaced steps left out). */
-export async function countOpenCompletionSteps(client, { tenantRef }) {
+/** Where the full list of open follow-up work is shown in the portal. */
+export const OPEN_COMPLETION_HREF = '/restore#follow-up';
+
+/**
+ * The one count of open follow-up work: open steps across every restore and how many
+ * restores they belong to (replaced steps left out). Overview, the menu, Restore and
+ * Resilience all show these totals, never a count of a shortened list.
+ */
+export async function countOpenCompletionWork(client, { tenantRef }) {
   const { rows } = await client.query(
-    `SELECT count(*)::int AS open FROM recovery_completion_item i WHERE i.tenant_ref = $1 AND ${OPEN_STEP}`,
+    `SELECT count(*)::int AS steps, count(DISTINCT i.restore_ref)::int AS restores
+       FROM recovery_completion_item i WHERE i.tenant_ref = $1 AND ${OPEN_STEP}`,
     [tenantRef],
   );
-  return rows[0]?.open ?? 0;
+  return { steps: rows[0]?.steps ?? 0, restores: rows[0]?.restores ?? 0, href: OPEN_COMPLETION_HREF };
+}
+
+/** How many follow-up steps are open across every restore (replaced steps left out). */
+export async function countOpenCompletionSteps(client, { tenantRef }) {
+  return (await countOpenCompletionWork(client, { tenantRef })).steps;
+}
+
+/**
+ * Open follow-up work for a page: the totals from countOpenCompletionWork plus the
+ * newest `limit` restores as cards. `cards.length` can be smaller than `restores`;
+ * the page then says how many it shows.
+ */
+export async function readOpenCompletionWork(client, { tenantRef, limit = 50 }) {
+  const totals = await countOpenCompletionWork(client, { tenantRef });
+  const cards = totals.restores ? await listOpenCompletionWork(client, { tenantRef, limit }) : [];
+  return { ...totals, cards };
 }
 
 /** Per-resource summary for a restore: state plus its items. */

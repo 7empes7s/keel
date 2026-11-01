@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import { useState } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -8,12 +9,14 @@ import { fieldWords } from "@/lib/changes-view";
 import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { resourceLabel } from "@/lib/presentation";
 import { refused, toast } from "@/lib/toast";
+import { ReasonHint } from "@/components/reason-hint";
+import { reasonProblem } from "@/lib/written-reason";
 
 // Roadmap task-66: the content consequences of a reviewed dry run. Each effect
 // says plainly that KEEL does not back up content and that restoring the old
 // setting later does not bring back what was deleted or disclosed. Promotion
 // needs a separate approval of exactly these effects by someone other than
-// the requester.
+// the requester, or by the requester when the approval mode is Solo.
 export type ContentEffectName =
   | "retention-reducing"
   | "hold-releasing"
@@ -125,6 +128,7 @@ interface PanelProps {
 export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approvals, canApprove, onApproved, names }: PanelProps) {
   const [justification, setJustification] = useState("");
   const [busy, setBusy] = useState(false);
+  const approvalWords = useApprovalWords();
   if (effects.length === 0) return null;
 
   async function approve() {
@@ -160,7 +164,7 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
         </p>
       ) : (
         <p className="content-effect-pending">
-          Not yet approved. The restore will be refused until someone other than the person who asked approves these changes.
+          Not yet approved. The restore will be refused until {approvalWords.approver} approves these changes.
         </p>
       )}
       {canApprove && approvals.length === 0 ? (
@@ -168,11 +172,12 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
           <label className="content-effect-why">
             <span>Why is this acceptable? (required, kept in the audit log)</span>
             <input onChange={(event) => setJustification(event.target.value)} placeholder="Why are these content effects acceptable?" value={justification} />
+            <ReasonHint value={justification} />
           </label>
           <button
             aria-busy={busy || undefined}
             className="btn btn-primary"
-            disabled={busy || justification.trim().length === 0 || !effectsDigest}
+            disabled={busy || reasonProblem(justification) !== null || !effectsDigest}
             onClick={() => void approve()}
             type="button"
           >

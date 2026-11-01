@@ -3,6 +3,7 @@ import { connection } from "next/server";
 
 import { AnonymityNote } from "@/components/anonymity-note";
 import { ApprovalInbox } from "@/components/approval-inbox";
+import { ApprovalModeCard } from "@/components/approval-mode-card";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
@@ -13,10 +14,12 @@ import {
 import { getAnonymitySetting } from "@/lib/anonymity";
 import { approvalCounts, approvalsStatus } from "@/lib/approval-view";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { getApprovalModeView } from "@/lib/approval-mode";
 import { getRestoreApprovalSettingsView } from "@/lib/restore-approvals";
 
 const TITLE = "Approvals";
 const DESCRIPTION = "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.";
+const SOLO_DESCRIPTION = "Restores, undo changes and approved-setup switches wait here for approval. Approval mode is Solo, so you can approve your own.";
 
 export default async function ApprovalsPage() {
   // The approval guard is intentionally before connection() and the loader: a pure
@@ -31,19 +34,22 @@ export default async function ApprovalsPage() {
 
   try {
     const data = await getApprovalInboxData(scope);
-    const status = approvalsStatus(approvalCounts(data, data.generatedAt, viewerId));
     const anonymity = await getAnonymitySetting();
     const restoreApprovals = await getRestoreApprovalSettingsView();
+    const approvalMode = await getApprovalModeView();
+    const solo = (approvalMode?.mode ?? data.approvalMode) === "solo";
+    const status = approvalsStatus(approvalCounts(data, data.generatedAt, viewerId, solo ? "solo" : "two-person"));
     return (
       <>
         <PageHeader
-          description={DESCRIPTION}
+          description={solo ? SOLO_DESCRIPTION : DESCRIPTION}
           section="Inbox"
           generatedAt={data.generatedAt}
           status={status}
           title={TITLE}
         />
         <ApprovalInbox
+          approvalMode={solo ? "solo" : "two-person"}
           awaitingContentEffects={data.awaitingContentEffects}
           history={data.history}
           notice={<AnonymityNote setting={anonymity} />}
@@ -52,6 +58,7 @@ export default async function ApprovalsPage() {
           viewerId={viewerId}
         />
         {/* Settings after what waits for a decision: pending work comes first. */}
+        <ApprovalModeCard canChange={canChangeApprovals} now={data.generatedAt} setting={approvalMode} />
         <RestoreApprovalSettingsCard canChange={canChangeApprovals} now={data.generatedAt} settings={restoreApprovals} />
       </>
     );

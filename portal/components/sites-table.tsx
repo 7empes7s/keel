@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { FindInput } from "@/components/list/find-input";
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
@@ -80,7 +81,7 @@ export function SitesTable({ sites, run, now }: { sites: SitePermissions[]; run:
           <span className="picker-label">Find</span>
           <span className="sel-find-box">
             <Icon name="search" />
-            <input className="bare-input" onChange={(event) => view.set({ q: event.target.value, ...paging.resetPage })} placeholder="Find a site, address or owner" type="search" value={view.get("q")} />
+            <FindInput onChange={(text) => view.set({ q: text, ...paging.resetPage })} placeholder="Find a site, address or owner" value={view.get("q")} />
           </span>
         </label>
         <SortControl paging={paging} sorts={sorts} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useApprovalWords } from "@/components/approval-mode-context";
 import { useEffect, useState } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -8,6 +9,7 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { namedResource } from "@/lib/job-names";
 import { formatTimestamp, words } from "@/lib/presentation";
 import { refused, toast } from "@/lib/toast";
+import { evidenceMessage, reasonMessage } from "@/lib/written-reason";
 
 // Roadmap task-65: what a restore could not write back (secrets, certificates,
 // consent, a new id's downstream integrations) and the service check after it.
@@ -86,6 +88,8 @@ interface ChecklistProps {
 
 export function CompletionChecklist({ resources, canComplete, busyItem = null, onComplete, onReopen }: ChecklistProps) {
   const [openItem, setOpenItem] = useState<string | null>(null);
+  const approvalWords = useApprovalWords();
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   if (resources.length === 0) {
     return <p className="ui-calm"><Icon name="check-circle" />Nothing to follow up: everything was restored in full.</p>;
   }
@@ -131,7 +135,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       ) : null}
                       {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
                         <small className="completion-evidence completion-next-step">
-                          Next: ask for the enforcement step. A second person approves it, and KEEL closes this once the policy reads back as on.
+                          Next: ask for the enforcement step. {approvalWords.approvesIt}, and KEEL closes this once the policy reads back as on.
                         </small>
                       ) : null}
                     </div>
@@ -142,7 +146,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       {canComplete ? (
                         item.state === "pending" ? (
                           item.kind === "enforcement" || formOpen ? null : (
-                            <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(item.id)} type="button">
+                            <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => { setOpenItem(item.id); setEvidenceError(null); }} type="button">
                               Add evidence
                             </button>
                           )
@@ -165,12 +169,17 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                         onSubmit={(event) => {
                           event.preventDefault();
                           const data = new FormData(event.currentTarget);
-                          onComplete?.(item, String(data.get("reference") ?? ""), String(data.get("type") ?? "ticket"));
+                          const reference = String(data.get("reference") ?? "");
+                          const type = String(data.get("type") ?? "ticket");
+                          // UI audit C1: a blank or placeholder reference proves nothing.
+                          const weak = evidenceMessage(type, reference);
+                          setEvidenceError(weak);
+                          if (!weak) onComplete?.(item, reference.trim(), type);
                         }}
                       >
                         <div className="completion-field">
                           <label htmlFor={`type-${item.id}`}>Evidence type</label>
-                          <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type">
+                          <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type" onChange={() => setEvidenceError(null)}>
                             <option value="ticket">Ticket</option>
                             <option value="link">Link</option>
                             <option value="log-reference">Log reference</option>
@@ -180,20 +189,23 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                         <div className="completion-field">
                           <label htmlFor={`reference-${item.id}`}>Evidence reference</label>
                           <input
-                            aria-describedby={`reference-hint-${item.id}`}
+                            aria-describedby={evidenceError ? `reference-error-${item.id}` : `reference-hint-${item.id}`}
+                            aria-invalid={evidenceError ? true : undefined}
                             autoComplete="off"
                             autoFocus
                             className="completion-control"
                             id={`reference-${item.id}`}
                             name="reference"
+                            onChange={() => setEvidenceError(null)}
                             placeholder="CHG-5120 or a link"
                             required
                           />
+                          {evidenceError ? <small className="reason-hint" id={`reference-error-${item.id}`} role="alert"><Icon name="alert" />{evidenceError}</small> : null}
                         </div>
                         <button aria-busy={busyItem === item.id || undefined} className="btn btn-primary btn-sm" disabled={busyItem !== null} type="submit">
                           Mark verified
                         </button>
-                        <button className="btn btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(null)} type="button">Cancel</button>
+                        <button className="btn btn-sm" disabled={busyItem !== null} onClick={() => { setOpenItem(null); setEvidenceError(null); }} type="button">Cancel</button>
                         {/* Stays visible while typing: the moment a credential could be pasted. */}
                         <small className="completion-hint" id={`reference-hint-${item.id}`}>
                           Where the proof lives. Never the secret itself.
@@ -273,6 +285,8 @@ export function RecoveryCompletion({ restoreRef, canComplete }: { restoreRef: st
           tone: "warning",
           title: "Not saved",
           ...words,
+          ...(payload.error === "weak_evidence" ? { detail: "That reference does not say where the proof is.", todo: "Use a ticket number such as CHG-5120, or a full link." } : {}),
+          ...(payload.error === "weak_reason" ? { detail: "That reason is too short to keep.", todo: "Say in a few words why it is reopened." } : {}),
           ...(payload.error === "invalid_evidence" ? { detail: "That looks like a secret or key.", todo: "Paste a reference to the proof, such as a ticket number, never the credential itself." } : {}),
         });
         return;
@@ -300,7 +314,10 @@ export function RecoveryCompletion({ restoreRef, canComplete }: { restoreRef: st
           onComplete={(item, reference, type) => void submit(item, { action: "complete", evidence: { type, reference } }, "Item verified")}
           onReopen={(item) => {
             const reason = window.prompt("Why is this item being reopened?");
-            if (reason) void submit(item, { action: "reopen", reason }, "Item reopened");
+            if (!reason) return;
+            const weak = reasonMessage(reason);
+            if (weak) { toast({ tone: "warning", title: "Not reopened", detail: weak }); return; }
+            void submit(item, { action: "reopen", reason: reason.trim() }, "Item reopened");
           }}
           resources={resources}
         />

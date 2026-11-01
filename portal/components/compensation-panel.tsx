@@ -21,6 +21,8 @@ import {
   undoChoiceSentence,
   undoSubject,
 } from "@/lib/undo-view";
+import { ReasonHint } from "@/components/reason-hint";
+import { reasonProblem } from "@/lib/written-reason";
 
 // Roadmap task-70: undo a restore. The plan is computed by the worker from the
 // restore's own write journal and a fresh read of the tenant, and persisted as an
@@ -372,11 +374,12 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
                 <label className="filter-field">
                   <span>Why undo this restore?</span>
                   <input onChange={(event) => setJustification(event.target.value)} placeholder="Reason for the approver" value={justification} />
+                  <ReasonHint value={justification} />
                 </label>
                 <button
                   aria-busy={busy || undefined}
                   className="btn btn-primary btn-sm"
-                  disabled={busy || justification.trim().length === 0}
+                  disabled={busy || reasonProblem(justification) !== null}
                   onClick={() => void requestApproval()}
                   type="button"
                 >

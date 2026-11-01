@@ -71,8 +71,10 @@ export function kindWords(policy: Pick<Policy, "resource_type" | "natural_key_gl
 export function watchedType(policy: Pick<Policy, "resource_type" | "natural_key_glob">): string | null {
   if (policy.resource_type) return policy.resource_type;
   const glob = policy.natural_key_glob;
-  if (glob && glob.includes(":")) return glob.split(":")[0];
-  return null;
+  if (!glob || !glob.includes(":")) return null;
+  // "*:Admin*" watches every kind, so it has no single type.
+  const type = glob.split(":")[0];
+  return type && !/[*?]/.test(type) ? type : null;
 }
 
 /** The name pattern a rule watches, without its type: "Admin*"; null for every name. */
@@ -306,4 +308,46 @@ export function changeRefusal(status: number, code: string | undefined, change: 
   if (status === 409) return change === "turn-off" ? "The rule could not be changed." : "The account this rule acts as can no longer undo changes. Give it the restorer role first.";
   if (status === 403) return "You do not have the policies permission.";
   return "The rule could not be changed. Try again in a minute.";
+}
+
+/** One setting a rule edit or delete changed, as its audit record holds it. */
+export interface RuleChangeField { field: string; before: unknown; after: unknown }
+
+const str = (value: unknown): string | null => (typeof value === "string" && value ? value : null);
+const num = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+// Each recorded setting in the words the rule sheet uses. The limit is one row: its
+// count and its window read together ("50 an hour").
+const RULE_FIELD_WORDS: Record<string, { label: string; words: (value: unknown) => string }> = {
+  action: { label: "What it does", words: (value) => RULE_KINDS[ruleKind({ action: str(value) ?? "alert" } as Pick<Policy, "action">)].label },
+  enabled: { label: "On or off", words: (value) => (value === true ? "On" : "Off") },
+  name: { label: "Name", words: (value) => str(value) ?? "No name" },
+  resourceType: { label: "Kind of thing", words: (value) => (str(value) ? plainKind(String(value)) : "Anything") },
+  naturalKeyGlob: { label: "Name like", words: (value) => namePattern({ natural_key_glob: str(value) }) ?? "Any name" },
+  changeType: { label: "Change", words: (value) => (str(value) && CHANGE_WORDS[String(value)]) || "Any change" },
+  blastRadius: { label: "Risk", words: (value) => riskWords(str(value)) },
+  maxBlastRadius: { label: "Most risky it may touch", words: (value) => RISK_WORDS[String(value)] ?? "Any risk" },
+};
+const RULE_FIELD_ORDER = ["action", "enabled", "name", "resourceType", "naturalKeyGlob", "changeType", "blastRadius", "maxBlastRadius", "limit"];
+
+/**
+ * The settings a rule edit or delete changed, in words, in the order the rule sheet
+ * shows them. A delete has no "after". Unknown fields are dropped.
+ */
+export function ruleChangeFields(change: "edited" | "deleted", fields: unknown): { path: string; before: string; after: string | null }[] {
+  const list = (Array.isArray(fields) ? fields : []).filter((entry): entry is RuleChangeField => !!entry && typeof entry === "object" && typeof (entry as RuleChangeField).field === "string");
+  const byField = new Map(list.map((entry) => [entry.field, entry]));
+  const rows: { order: number; path: string; before: string; after: string | null }[] = [];
+  for (const entry of list) {
+    const words = RULE_FIELD_WORDS[entry.field];
+    if (words) rows.push({ order: RULE_FIELD_ORDER.indexOf(entry.field), path: words.label, before: words.words(entry.before), after: change === "deleted" ? null : words.words(entry.after) });
+  }
+  // The engine records the limit's count and window together whenever either changes.
+  const count = byField.get("maxActionsPerWindow");
+  const window = byField.get("windowSeconds");
+  if (count || window) {
+    const side = (which: "before" | "after") => rateWords({ max_actions_per_window: num(count?.[which]), window_seconds: num(window?.[which]) }) ?? "No limit";
+    rows.push({ order: RULE_FIELD_ORDER.indexOf("limit"), path: "Limit", before: side("before"), after: change === "deleted" ? null : side("after") });
+  }
+  return rows.sort((a, b) => a.order - b.order).map(({ path, before, after }) => ({ path, before, after }));
 }

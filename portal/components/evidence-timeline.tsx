@@ -1,9 +1,14 @@
 import Link from "next/link";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
+import { AUDIT_CHECK_WORDS, auditCheckOf } from "@/lib/audit-check";
+
+const CHECK_CLASS = { unknown: "", intact: "evidence-intact", unchecked: "evidence-unchecked", failed: "evidence-broken" } as const;
+const CHECK_TITLE = { unknown: "Chain integrity unavailable", intact: "Evidence checkpoint verified", unchecked: AUDIT_CHECK_WORDS.unchecked.label, failed: AUDIT_CHECK_WORDS.failed.label } as const;
 
 export function ChainIndicator({ integrity }: { integrity: ChainIntegrity | null }) {
-  return <section role="status" className={`evidence-integrity ${integrity === null ? "" : integrity.ok ? "evidence-intact" : "evidence-broken"}`}>
-    <h2>{integrity === null ? "Chain integrity unavailable" : integrity.ok ? "Evidence checkpoint verified" : integrity.status === "unanchored" ? "Evidence chain unanchored" : "Chain integrity failed"}</h2>
+  const check = auditCheckOf(integrity);
+  return <section role="status" className={`evidence-integrity ${CHECK_CLASS[check]}`}>
+    <h2>{CHECK_TITLE[check]}</h2>
     <p>Verification checks tenant evidence against an independently trusted checkpoint, regardless of timeline filters.</p>
     {integrity?.ok ? <p>Anchored through sequence {integrity.anchoredThroughSeq}. Later records without an external checkpoint: {integrity.unanchoredRecords}.</p> : null}
     {integrity && !integrity.ok ? <pre className="job-payload">{JSON.stringify(integrity, null, 2)}</pre> : null}

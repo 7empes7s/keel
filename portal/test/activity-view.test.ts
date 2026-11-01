@@ -23,6 +23,7 @@ import {
   rowMatches,
 } from "@/lib/activity-view";
 import { normalizeJob } from "@/lib/action";
+import { changesQuery } from "@/lib/changed-values";
 import { EMPTY_REFERENCES, type EngineRef, evidenceSentence } from "@/lib/sentences";
 import { renderActivityAt } from "./render-activity";
 
@@ -108,8 +109,8 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   assert.equal(counts.running, 1);
   assert.equal(counts.waiting, 1);
   assert.equal(counts.days.length, 7);
-  assert.deepEqual(counts.days.at(-1), { day: "2026-10-02", jobs: 3, failed: 1 });
-  assert.deepEqual(counts.days[0], { day: "2026-09-26", jobs: 0, failed: 0 });
+  assert.deepEqual(counts.days.at(-1), { day: "2026-10-02", jobs: 3, failed: 1, partial: 0 });
+  assert.deepEqual(counts.days[0], { day: "2026-09-26", jobs: 0, failed: 0, partial: 0 });
   assert.equal(counts.newestFailed?.id, JOBS[2].id);
   assert.deepEqual(activityStatus(counts), { tone: "urgent", label: "2 failed today" });
   assert.deepEqual(activityStatus(activityCounts([JOBS[0]], NOW)), { tone: "low", label: "1 running" });
@@ -126,7 +127,12 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   assert.deepEqual(retryOf({ ...JOBS[1], status: "failed" }), { kind: "collect" });
   assert.deepEqual(retryOf(JOBS[3]), { kind: "plan", href: "/restore", label: "Plan it again" });
   assert.equal(integrityWords({ ok: true, status: "verified", unanchoredRecords: 4 }).sentence, "Verified against the off-site copy. 4 newer entries wait for the next copy.");
-  assert.equal(integrityWords({ ok: false, status: "unanchored" }).label, "Not copied yet");
+  // The live route reports external-trust-unavailable when no off-site storage is set up.
+  assert.equal(integrityWords({ ok: false, status: "unanchored", reason: "external-trust-unavailable" }).label, "Not checked: no off-site copy");
+  assert.equal(integrityWords({ ok: false, status: "unanchored", reason: "missing-external-anchor" }).label, "Not checked: no off-site copy");
+  assert.equal(integrityWords({ ok: false, status: "unanchored" }).tone, "soon");
+  assert.equal(integrityWords({ ok: false, status: "broken-at-sequence" }).label, "Failed the check");
+  assert.equal(integrityWords({ ok: false, status: "broken-at-sequence" }).tone, "urgent");
   assert.equal(integrityWords(null).tone, "neutral");
 });
 
@@ -196,4 +202,52 @@ test("the page body renders rows by day, filters by address, and keeps ids in th
   assert.ok(!viewer.includes("btn-primary"), "no amber action without the backup capability");
   const records = await renderActivityAt("show=records", { ...props, jobs: [] });
   assert.ok(records.includes("Showing the audit record: who did what, newest first."));
+});
+
+test("a backup that ended partly done is a warning everywhere on Activity, never finished (audit issue 2)", () => {
+  const partly = job("6", "backup", "succeeded", { result: { partial: true, incompleteTypes: [{ type: "deviceManagementSettings", outcome: "failed", httpStatus: 400 }] } });
+  const whole = job("7", "backup", "succeeded");
+  assert.equal(jobOutcome("partial"), "partial");
+  assert.equal(jobOutcome("succeeded"), "finished");
+  const [row] = activityRows([partly], [], {}, {}, NOW);
+  assert.equal(row.outcome, "partial");
+  assert.match(row.line, /Partly done/);
+  assert.equal(activityRows([whole], [], {}, {}, NOW)[0].outcome, "finished");
+  // The outcome filter tells the two apart: "Finished" never shows a partly done run.
+  assert.ok(rowMatches(row, parseFilters((key) => (key === "outcome" ? "partial" : null))));
+  assert.ok(!rowMatches(row, parseFilters((key) => (key === "outcome" ? "finished" : null))));
+
+  const counts = activityCounts([partly, whole], NOW);
+  assert.equal(counts.failedDay, 0);
+  assert.equal(counts.partialDay, 1);
+  assert.equal(counts.partialWeek, 1);
+  assert.deepEqual(counts.days.at(-1), { day: "2026-10-02", jobs: 2, failed: 0, partial: 1 });
+  assert.deepEqual(activityStatus(counts), { tone: "soon", label: "1 partly done today" });
+  const verdict = activityVerdict(counts, true, { ok: true, status: "verified" });
+  assert.equal(verdict.tone, "soon");
+  assert.equal(verdict.text, "Keel ran 2 jobs in the last day; none failed, but 1 was only partly done.");
+  assert.doesNotMatch(verdict.text, /none failed\./);
+  // Only whole runs read as fine.
+  assert.deepEqual(activityStatus(activityCounts([whole], NOW)), { tone: "fine", label: "All finished" });
+});
+
+test("a rule edit or delete reads as who changed which rule, under policy, and opens the rule", () => {
+  const edit = { seq: "41", occurred_at: "2026-10-02T09:00:00Z", kind: "policy-change", actor: AMARA.id, subject: {
+    change: "edited", policyId: "5a000000-0000-4000-8000-000000000001", name: "Undo low risk", action: "auto_remediate",
+    fields: [
+      { field: "name", before: "Undo", after: "Undo low risk" },
+      { field: "maxActionsPerWindow", before: 50, after: 10 }, { field: "windowSeconds", before: 3600, after: 3600 },
+      { field: "enabled", before: true, after: false },
+    ],
+  } };
+  const removal = { ...edit, seq: "42", subject: { ...edit.subject, change: "deleted", fields: [] } };
+  const [editRow, deleteRow] = activityRows([], [edit, removal], PEOPLE, {}, NOW).sort((a, b) => a.id.localeCompare(b.id));
+  assert.equal(kindOfRecord("policy-change"), "policy");
+  assert.equal(editRow.title, "Amara Okafor edited the automatic rule “Undo low risk”: 3 settings changed; it stays off until it is previewed again");
+  assert.equal(deleteRow.title, "Amara Okafor deleted the automatic rule “Undo low risk”");
+  assert.equal(editRow.line, "Audit record · Automatic rule change");
+  assert.equal(rowHref(editRow), "/policies/5a000000-0000-4000-8000-000000000001");
+  assert.equal(rowHref(deleteRow), "/policies", "a deleted rule has no page; the link shows the rules");
+  assert.equal(changesQuery(editRow), "record=41");
+  assert.equal(changesQuery({ entry: { kind: "policy-change", seq: "1; drop", subject: {} } }), null);
 });

@@ -16,10 +16,11 @@ import { after, before, test } from 'node:test';
 import { main as valueReportCli } from '../../cli/keel-value-report.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import {
-  COUNTING_RULES, MAX_PERIOD_DAYS, OUTCOME_STATES, classifyChangeRemediation, classifyControlFinding,
+  COUNTING_RULES, MAX_OUTCOME_ROWS, MAX_PERIOD_DAYS, OUTCOME_STATES, classifyChangeRemediation, classifyControlFinding,
   classifyRestoreOutcome, estimateHours, loadValueReport, readEstimate, reportPeriod, summarizeOutcomes,
   valueReportCsv,
 } from '../reports/value.mjs';
+import { countFailedRestores } from '../restore/failedRestores.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
@@ -453,6 +454,11 @@ test('totals, percentages and periods stay consistent, and every export carries 
   assert.equal(current.outcomes.byFamily.restore.total + current.outcomes.byFamily.remediation.total, current.outcomes.total);
   assert.equal(current.outcomes.byFamily.restore.attempts + current.outcomes.byFamily.remediation.attempts, current.outcomes.attempts);
 
+  // Failed restores: the engine's one count (as Resilience and Restore show it), plus this period's.
+  assert.deepEqual(current.recovery.failedRestores, await countFailedRestores(client, { tenantRef, now: NOW, from: FROM, to: NOW }));
+  assert.equal(current.recovery.failedRestores.total, 1, 'the July failure counts in all');
+  assert.equal(current.recovery.failedRestores.period.count, 0, 'but not in this period');
+
   // Adjacent periods: each verified outcome counts in exactly one of them.
   const previous = await loadValueReport(client, { tenantRef, from: new Date('2026-08-04T12:00:00Z'), to: FROM, now: NOW, requiredTypes: ['group'] });
   assert.equal(previous.outcomes.states.verified + current.outcomes.states.verified, 2);
@@ -482,6 +488,23 @@ test('totals, percentages and periods stay consistent, and every export carries 
   assert.throws(() => reportPeriod({ from: new Date(NOW.getTime() - (MAX_PERIOD_DAYS + 1) * 86_400_000), to: NOW, now: NOW }), RangeError);
   assert.equal(reportPeriod({ from: FROM, to: new Date('2027-01-01T00:00:00Z'), now: NOW }).to.toISOString(), NOW.toISOString(), 'a period never runs into the future');
   await assert.rejects(loadValueReport(client, { tenantRef: 'raw-tenant-id', from: FROM, to: NOW, now: NOW }), TypeError);
+});
+
+// Audit 31 Oct 2026: the page listed 50 of 98 requests and its pager could not reach
+// the rest. Every request in the period is serialized, so the page pages through all.
+test('the report lists every request of the period, not only the first 50', async () => {
+  const tenantRef = 'sha256:value-many-requests';
+  const sharedSnapshot = await snapshot(tenantRef, { completedAt: '2026-08-01T00:00:00Z' });
+  for (let index = 0; index < 98; index += 1) {
+    const { planId } = await plan(tenantRef, { snapshotId: sharedSnapshot });
+    await restoreJob(planId, { status: 'queued', createdAt: new Date(Date.parse('2026-09-10T00:00:00Z') + index * 60_000).toISOString() });
+  }
+  const current = await report(tenantRef);
+  assert.equal(current.outcomes.total, 98);
+  assert.equal(current.outcomes.rows.length, 98);
+  assert.equal(current.outcomes.rowsShown, 98);
+  assert.equal(new Set(current.outcomes.rows.map((row) => row.id)).size, 98);
+  assert.ok(MAX_OUTCOME_ROWS >= 1000, 'the cap is far above a real period');
 });
 
 test('an entity-scoped reader sees only its own outcomes; tenant-wide sections are withheld', async () => {
@@ -564,6 +587,8 @@ test('backups in the period count every service: settings, service settings and 
   const tenantRef = 'sha256:value-backups';
   await snapshot(tenantRef, { completedAt: '2026-09-20T03:00:00Z' });
   await snapshot(tenantRef, { completedAt: '2026-08-01T03:00:00Z' });
+  // #447: a settings backup that could not read one type is partly done, not complete.
+  await snapshot(tenantRef, { completedAt: '2026-09-21T03:00:00Z', digest: { group: ok(), user: { outcome: 'failed', itemCount: null } } });
   const workload = (name, outcome, at) => client.query(
     `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
      VALUES ($1, $2, $3, $4, $4, $4)`,
@@ -589,6 +614,8 @@ test('backups in the period count every service: settings, service settings and 
   const result = await report(tenantRef);
   assert.equal(result.backups.withheld, false);
   assert.equal(result.backups.settings.backups, 1, 'only the settings backup inside the period');
+  assert.equal(result.backups.settings.partial, 1, 'a partly done settings backup is counted apart');
+  assert.equal(result.backups.settings.lastAt, '2026-09-20T03:00:00.000Z', 'the last complete backup, not the partly done one');
   assert.deepEqual(result.backups.serviceSettings, {
     runs: 2, workloads: 1, expected: 2, partial: 0, failed: 1, notRun: 0, lastAt: '2026-09-22T02:00:00.000Z',
     areas: [

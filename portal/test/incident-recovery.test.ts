@@ -292,11 +292,11 @@ test("incident changes require investigate, re-checked against current grants", 
   const incidentId = ((await opened.json()) as { incident: { id: string } }).incident.id;
 
   assert.equal((await incidents({ op: "interval", incidentId, startsAt: new Date(Date.now() - 86_400_000).toISOString(), reason: "first malicious sign-in" })).status, 200);
-  const assessed = await incidents({ op: "assess", incidentId, snapshotId, verdict: "maybe", rationale: "r" });
+  const assessed = await incidents({ op: "assess", incidentId, snapshotId, verdict: "maybe", rationale: "Checked against the sign-in log" });
   assert.equal(assessed.status, 409);
   assert.equal((await incidents({ op: "assess", incidentId, snapshotId, verdict: "clean", rationale: "before the window" })).status, 200);
   assert.equal((await incidents({ op: "pin", incidentId, snapshotId, reason: "last known good" })).status, 200);
-  assert.equal((await incidents({ op: "pin", incidentId: "00000000-0000-4000-8000-000000000000", snapshotId, reason: "r" })).status, 404);
+  assert.equal((await incidents({ op: "pin", incidentId: "00000000-0000-4000-8000-000000000000", snapshotId, reason: "Last known good backup" })).status, 404);
 
   // The loader returns the engine's qualification for this tenant only.
   const data = await getIncidentRecoveryData(incidentId);
@@ -325,7 +325,7 @@ test("incident changes require investigate, re-checked against current grants", 
 
   // A header still claiming investigate after the grant is revoked is refused by the engine.
   await revokeRole(client, { principalId: investigator.id, grantId: investigator.grantId, revokedBy: investigator.id });
-  assert.equal((await incidents({ op: "pin", incidentId, snapshotId, reason: "again" })).status, 403);
+  assert.equal((await incidents({ op: "pin", incidentId, snapshotId, reason: "Kept again for the incident" })).status, 403);
 });
 
 test("a backup's items are read with the read permission, by this tenant's backup id", async () => {

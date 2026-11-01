@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto';
-import { canonicalize } from '../cir/canonicalHash.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { isServerError } from '../../tools/tenant-probe/graph.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
-import { appendEvidence } from './evidence.mjs';
+import { appendEvidence, appendEvidenceInTransaction } from './evidence.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { refuseSameContentDrift } from '../store/openDrift.mjs';
 import {
@@ -72,6 +70,50 @@ export function isEligibleBaselineSource(snapshot, { tenantRef }) {
 }
 
 /**
+ * Why a completed snapshot is not a whole-estate baseline source, kind by kind: the
+ * kinds it did not read at all (a tier backup, or a kind added to Keel after it ran),
+ * the kinds it read only in part, and the kinds whose read failed. Every list is sorted
+ * and empty for an eligible source. Uses the same rule as isEligibleBaselineSource.
+ */
+export function baselineSourceGap(snapshot) {
+  const digest = isRecord(snapshot?.coverage_digest) ? snapshot.coverage_digest : {};
+  const gap = { notInBackup: [], partial: [], failed: [] };
+  for (const { type } of DESCRIPTORS) {
+    const coverage = digest[type];
+    if (!isRecord(coverage) || coverage.outcome === 'not-requested') gap.notInBackup.push(type);
+    else if (['complete', 'complete-empty', 'unavailable'].includes(coverage.outcome) || leftOutForServiceError(type, coverage)) continue;
+    else if (coverage.outcome === 'partial') gap.partial.push(type);
+    else gap.failed.push(type);
+  }
+  for (const list of Object.values(gap)) list.sort();
+  return gap;
+}
+
+/**
+ * The newest finished backup when it cannot be a baseline source, with why
+ * (baselineSourceGap); null when it can, or when no backup has finished. The Approved
+ * setup page says this beside a disabled "Capture new version".
+ */
+export async function newestBackupGap(client, { tenantRef }) {
+  assertTenantRef(tenantRef);
+  const { rows } = await client.query(
+    `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
+     FROM snapshot
+     WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC, id DESC
+     LIMIT 1`,
+    [tenantRef],
+  );
+  const snapshot = rows[0];
+  if (!snapshot || isEligibleBaselineSource(snapshot, { tenantRef })) return null;
+  return {
+    id: String(snapshot.id),
+    completedAt: snapshot.completed_at instanceof Date ? snapshot.completed_at.toISOString() : String(snapshot.completed_at),
+    ...baselineSourceGap(snapshot),
+  };
+}
+
+/**
  * The portal's baseline picker and seedFromSnapshot share this contract. Keep
  * tier-filtered snapshots available to restore/history callers; this list is
  * specifically for whole-estate baseline sources.
@@ -92,54 +134,25 @@ export async function listEligibleBaselineSnapshots(client, { tenantRef, limit =
     .slice(0, limit);
 }
 
-function evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor }) {
-  return createHash('sha256')
-    .update(
-      `${prevHash ?? ''}${tenantRef}${occurredAt.toISOString()}${kind}`
-      + `${JSON.stringify(canonicalize(subject, 'group'))}${actor}`,
-    )
-    .digest('hex');
-}
-
+// The accept's record is written in the accept's own transaction, through the shared
+// writer, so it chains onto the stored head and moves it like every other record.
 async function appendAcceptanceEvidence(client, {
   tenantRef, drift, resourceVersionId, actor,
 }) {
-  const { rows: headRows } = await client.query(
-    `SELECT record_hash
-     FROM evidence
-     WHERE tenant_ref = $1
-     ORDER BY seq DESC
-     LIMIT 1
-     FOR UPDATE`,
-    [tenantRef],
-  );
-  const prevHash = headRows[0]?.record_hash ?? null;
-  const occurredAt = new Date();
-  const kind = 'disposition';
-  const subject = {
-    driftId: drift.id,
-    naturalKey: drift.natural_key,
-    resourceType: drift.resource_type,
-    changeType: drift.change_type,
-    beforeHash: drift.before_hash,
-    afterHash: drift.after_hash,
-    resourceVersionId,
-  };
-
-  await client.query(
-    `INSERT INTO evidence
-       (tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [
-      tenantRef,
-      occurredAt,
-      kind,
-      subject,
-      actor,
-      prevHash,
-      evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor }),
-    ],
-  );
+  await appendEvidenceInTransaction(client, {
+    tenantRef,
+    kind: 'disposition',
+    subject: {
+      driftId: drift.id,
+      naturalKey: drift.natural_key,
+      resourceType: drift.resource_type,
+      changeType: drift.change_type,
+      beforeHash: drift.before_hash,
+      afterHash: drift.after_hash,
+      resourceVersionId,
+    },
+    actor,
+  });
 }
 
 /** Spec M2.6.1. Accept repoints exactly ONE baseline_resource row — never the whole baseline. */
@@ -155,6 +168,17 @@ export async function acceptDrift(client, { driftId, actor, reason }) {
     );
     const drift = driftRows[0];
     if (!drift) throw new Error(`drift not found: ${driftId}`);
+    // A change already accepted is not accepted again: a second click or a retried send
+    // writes no second accept row and no second evidence record. The row lock above
+    // makes two accepts sent at once wait for each other, so the later one sees this.
+    const { rows: accepted } = await client.query(
+      "SELECT 1 FROM disposition WHERE drift_id = $1 AND action = 'accept' LIMIT 1",
+      [driftId],
+    );
+    if (accepted.length) {
+      await client.query('ROLLBACK');
+      return { alreadyAccepted: true };
+    }
     // A row that records no change (only a stored fingerprint differed) is never
     // accepted: there is nothing to put into the approved setup.
     refuseSameContentDrift([drift]);
@@ -579,13 +603,13 @@ export async function reinstateBaseline(client, {
     const { rows } = await client.query(
       `INSERT INTO baseline
          (tenant_ref, set_by, label, description, source_snapshot_id, captured_at,
-          observation_scope, version, supersedes_id, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          observation_scope, version, supersedes_id, active, reinstated_from_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id, version`,
       [
         tenantRef, actor, versionLabel(latest.label, nextVersion), source.description ?? null,
         source.source_snapshot_id ?? null, source.captured_at ?? null, source.observation_scope ?? null,
-        nextVersion, latest.id, latest.active,
+        nextVersion, latest.id, latest.active, source.id,
       ],
     );
     created = rows[0];

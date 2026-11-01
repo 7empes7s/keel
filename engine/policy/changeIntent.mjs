@@ -3,7 +3,8 @@
 // Roadmap task-93: time-bounded approved emergency deviations. An operator sometimes has
 // to change a setting outside the baseline in an emergency. A change intent records that
 // decision, immutably: one resource, the exact field transitions approved (before ->
-// after), the owner who made or will make the change, the approver (never the owner),
+// after), the owner who made or will make the change, the approver (never the owner,
+// unless the tenant's approval mode is solo: then it is recorded as self-approved),
 // a window [windowStart, windowEnd) and an optional external change id.
 //
 // What an intent does, and what it never does:
@@ -35,6 +36,7 @@
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
+import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { changedFields } from '../identity/attribution.mjs';
 import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalDigest } from '../restore/dryRunArtifact.mjs';
@@ -188,6 +190,8 @@ function rowToIntent(row) {
     transitionDigest: row.transition_digest,
     owner: person(row.owner_principal_id, row.owner_email, row.owner_display_name),
     approver: person(row.approver_principal_id, row.approver_email, row.approver_display_name),
+    // The owner approved it themselves, under solo approval mode.
+    selfApproved: row.self_approved === true,
     reason: row.reason,
     externalChangeId: row.external_change_id ?? null,
     sourceDriftId: row.source_drift_id ? String(row.source_drift_id) : null,
@@ -209,16 +213,19 @@ async function tableExists(client) {
 }
 
 /** Intents of one tenant whose window contains `now` and which were not revoked at or
- * before `now`, for the given resources. Legacy read: before the table exists, none. */
+ * before `now`, for the given resources. A self-approved intent counts only while the
+ * tenant's approval mode is still solo. Legacy read: before the table exists, none. */
 export async function activeIntentsFor(client, { tenantRef, naturalKeys, now = new Date() }) {
   if (!(await tableExists(client)) || naturalKeys.length === 0) return [];
+  const soloNow = await selfApprovalAllowed(client, { tenantRef });
   const { rows } = await client.query(
     `${INTENT_VIEW}
       WHERE i.tenant_ref = $1 AND i.natural_key = ANY($2::text[])
         AND i.window_start <= $3 AND i.window_end > $3
         AND (r.occurred_at IS NULL OR r.occurred_at > $3)
+        AND (NOT i.self_approved OR $4::boolean)
       ORDER BY i.approved_at, i.id`,
-    [tenantRef, naturalKeys, now],
+    [tenantRef, naturalKeys, now, soloNow],
   );
   return rows.map(rowToIntent);
 }
@@ -287,8 +294,15 @@ export async function createChangeIntent(client, {
   const approver = await requireApprover(client, approverPrincipalId, now);
   const owner = ownerPrincipalId ? await findPrincipalById(client, String(ownerPrincipalId)) : null;
   if (!owner || owner.disabled_at != null) throw new ChangeIntentError('owner-not-found', 'the owner must be an enabled person known to KEEL');
-  if (String(owner.id) === String(approver.id)) {
-    throw new ChangeIntentError('owner-is-approver', 'the owner of an emergency change cannot approve it');
+  // Approval mode (govern/approvalMode.mjs): the owner approves their own emergency
+  // change only in solo mode, and the record says it was self-approved.
+  const selfApproved = String(owner.id) === String(approver.id);
+  if (selfApproved && !(await selfApprovalAllowed(client, { tenantRef }))) {
+    throw new ChangeIntentError('owner-is-approver', 'the owner of an emergency change cannot approve it while approvals need two people');
+  }
+  if (selfApproved) {
+    const problem = selfApprovalReasonProblem(reason);
+    if (problem) throw new ChangeIntentError('reason-required', problem);
   }
 
   let key = naturalKey;
@@ -355,12 +369,12 @@ export async function createChangeIntent(client, {
     `INSERT INTO change_intent
        (tenant_ref, natural_key, resource_type, transitions, transition_digest, owner_principal_id,
         approver_principal_id, reason, external_change_id, source_drift_id, window_start, window_end,
-        approved_at, decision_digest)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        approved_at, decision_digest, self_approved)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id`,
     [
       tenantRef, key, type, JSON.stringify(approved), canonicalDigest(approved), owner.id, approver.id,
-      reason.trim(), externalChangeId, sourceDriftId, start, end, approvedAt, decisionDigest,
+      reason.trim(), externalChangeId, sourceDriftId, start, end, approvedAt, decisionDigest, selfApproved,
     ],
   );
   await appendEvidence(client, {
@@ -371,6 +385,7 @@ export async function createChangeIntent(client, {
       fields: approved.map((entry) => entry.field), ownerPrincipalId: String(owner.id),
       approverPrincipalId: String(approver.id), externalChangeId, sourceDriftId,
       windowStart: start.toISOString(), windowEnd: end.toISOString(), decisionDigest,
+      ...(selfApproved ? { selfApproved: true, approvalMode: 'solo' } : {}),
     },
     actor: String(approver.id),
   });

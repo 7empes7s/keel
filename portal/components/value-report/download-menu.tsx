@@ -1,15 +1,14 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-
 import { Icon } from "@/components/shell/icons";
 import { Popover } from "@/components/shell/popover";
+import { useLiveSearchParams } from "@/lib/use-view-state";
 
 // The value report's one Download menu: a spreadsheet (.csv), an Excel workbook
 // (.xlsx), a PDF through the browser's print dialog, or the data file for tools
 // (.json). Every file covers the period and owner the page shows. Outlined, not amber.
 export function DownloadMenu() {
-  const params = useSearchParams();
+  const params = useLiveSearchParams();
   const file = (format: string) => {
     const query = new URLSearchParams();
     const period = params?.get("period");

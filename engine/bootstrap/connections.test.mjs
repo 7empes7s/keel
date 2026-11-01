@@ -78,6 +78,17 @@ test('derive: unknown is never absent, and each state comes from what was observ
   assert.equal(unseen.observed.missingRoles, null);
   assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: ['Read Only Operator'] }).state, 'missing-permission');
   assert.equal(derive(plan({}, ['satisfied']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: [] }).state, 'working');
+  // Re-test 2026-10-31: with no direct read yet, the setup run's check of the role stands,
+  // so the app agrees with Setup's "3 of 3" instead of saying "Not checked".
+  const confirmed = derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], confirmedRoles: ['Read Only Operator'] });
+  assert.equal(confirmed.state, 'working');
+  assert.deepEqual(confirmed.observed.missingRoles, []);
+  assert.equal(confirmed.observed.rolesFromSetupRun, true);
+  assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], confirmedRoles: ['Another role'] }).state, 'not-checked');
+  // A direct read always wins over the setup run.
+  assert.equal(derive(plan({}, ['pending-manual']), { confirmedRoles: ['Read Only Operator'] }).state, 'missing-permission');
+  assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: ['Read Only Operator'],
+    confirmedRoles: ['Read Only Operator'] }).state, 'missing-permission');
   assert.equal(derive(plan(), { servicePrincipals: [{ id: 'sp-1', accountEnabled: false }] }).state, 'switched-off');
   assert.equal(derive(plan(), { credentialExpiresAt: '2026-10-01T00:00:00Z' }).state, 'needs-reconnect');
   assert.deepEqual(derive(plan()).wanted, { permissions: ['A', 'B'], roles: [] });
@@ -254,4 +265,28 @@ test('sync: the Engage writer is listed last, working with its one permission, a
   await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 60_000) });
   engage = byRole(await loadConnections(client, { tenantRef, now: NOW }))['engage-writer'];
   assert.deepEqual(engage.observed.extraPermissions, ['Group.ReadWrite.All']);
+});
+
+test('sync: the setup run\'s role check is taken fresh each time, never kept as a read (re-test 2026-10-31)', async (t) => {
+  const client = await database(t);
+  const tenant = fixtureTenant({ contentReaderScopes: CONTENT_READER_SCOPES });
+  t.after(installFixtureGraph(tenant));
+  const composed = host();
+  // Keel cannot see Intune role assignments this time.
+  const readers = { ...composed.readers, uncheckedKinds: async () => ['workload-rbac'] };
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers, now: NOW });
+  let collector = byRole(await loadConnections(client, { tenantRef, now: NOW }))['settings-reader'];
+  const roles = collector.wanted.roles;
+  assert.ok(roles.length > 0, 'the fixture collector wants an Intune role');
+  assert.equal(collector.state, 'not-checked');
+
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers, confirmedRoles: { collector: roles }, now: new Date(NOW.getTime() + 60_000) });
+  collector = byRole(await loadConnections(client, { tenantRef, now: NOW }))['settings-reader'];
+  assert.equal(collector.state, 'working');
+
+  // The role is taken away and Setup no longer shows it done: the app follows, not the stored answer.
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers, confirmedRoles: {}, now: new Date(NOW.getTime() + 2 * 60_000) });
+  collector = byRole(await loadConnections(client, { tenantRef, now: NOW }))['settings-reader'];
+  assert.equal(collector.state, 'not-checked');
+  assert.equal(collector.observed.missingRoles, null);
 });

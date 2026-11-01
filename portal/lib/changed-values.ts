@@ -1,7 +1,7 @@
 // The setting that changed, with its value before and after, in words. Shared by the
 // Activity panel and Compare, so a value reads the same on both. Pure, so the UI
 // harness and the unit tests use the real code.
-import { entryWords, fieldWords, valueWords } from "@/lib/changes-view";
+import { entryWords, fieldWords, HIDDEN_VALUE, HIDDEN_WORDS, valueWords } from "@/lib/changes-view";
 import { holdsObjectId, replaceObjectIds } from "@/lib/object-ids";
 import { resourceTypeLabel } from "@/lib/presentation";
 
@@ -27,8 +27,9 @@ export interface ChangedObject {
 export interface ActivityChanges {
   // backup: this backup against the one before it. rollback: what a roll back puts
   // back. restore: the restored backup against the last backup before the restore.
-  // found: a change Keel found against the approved setup.
-  basis: "backup" | "rollback" | "restore" | "found";
+  // found: a change Keel found against the approved setup. rule: an automatic rule
+  // someone edited or deleted, from its audit record.
+  basis: "backup" | "rollback" | "restore" | "found" | "rule";
   // How the two sides read: "Before", "After" and the like.
   sides: { before: string; after: string };
   // One plain sentence on what the two sides are.
@@ -56,6 +57,7 @@ export const CHANGE_LABELS: Record<ChangeKind, string> = { changed: "Changed", a
 export function readableValue(value: unknown, names: Readonly<Record<string, string>> = {}): unknown {
   if (typeof value === "string") {
     if (value === "<id>") return "an object Keel could not name";
+    if (value === HIDDEN_VALUE) return HIDDEN_WORDS;
     const ref = /^ref:([A-Za-z]+):(.+)$/.exec(value);
     if (ref) return `${ref[2]} (${resourceTypeLabel(ref[1])})`;
     if (value === "ref:unresolved") return "an object Keel could not name";
@@ -136,7 +138,7 @@ export function changeLine(change: ChangedObject): string {
 }
 
 /** Which activity rows can say what they changed, and the address that tells it. */
-export function changesQuery(row: { job?: { id: string; kind: string; status: string; params: unknown } | null; entry?: { subject: unknown } | null }): string | null {
+export function changesQuery(row: { job?: { id: string; kind: string; status: string; params: unknown } | null; entry?: { subject: unknown; kind?: string; seq?: string } | null }): string | null {
   const job = row.job;
   if (job) {
     const params = (job.params ?? {}) as Record<string, unknown>;
@@ -145,6 +147,8 @@ export function changesQuery(row: { job?: { id: string; kind: string; status: st
     if (job.kind === "restore" && typeof params.compensates !== "string" && (typeof params.artifactId === "string" || (typeof params.snapshotId === "string" && Array.isArray(params.selection)))) return `job=${encodeURIComponent(job.id)}`;
     return null;
   }
+  // A rule edit or delete: its audit record holds each setting before and after.
+  if (row.entry?.kind === "policy-change" && row.entry.seq && /^\d+$/.test(row.entry.seq)) return `record=${row.entry.seq}`;
   const subject = (row.entry?.subject ?? {}) as Record<string, unknown>;
   return typeof subject.driftId === "string" && subject.driftId ? `drift=${encodeURIComponent(subject.driftId)}` : null;
 }

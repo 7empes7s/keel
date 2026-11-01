@@ -54,12 +54,13 @@ async function append(step: number) {
 test("the Overview's audit check reuses the verified records and still catches a change", async () => {
   for (const step of [1, 2, 3]) await append(step);
   const first = await getDashboardData();
-  assert.deepEqual(first.evidence, { ok: true, chainLength: 3 });
+  // No off-site copy in the test: the own chain is intact, so the record is "not checked".
+  assert.deepEqual(first.evidence, { ok: true, chainLength: 3, check: "unchecked" });
   assert.equal(evidenceChainCache.has(ref), true, "the verified records are remembered");
 
   await append(4);
   const second = await getDashboardData();
-  assert.deepEqual(second.evidence, { ok: true, chainLength: 4 });
+  assert.deepEqual(second.evidence, { ok: true, chainLength: 4, check: "unchecked" });
 
   await client.query(
     `UPDATE evidence SET subject = '{"step": 99}'::jsonb WHERE seq = (SELECT min(seq) FROM evidence WHERE tenant_ref = $1)`,
@@ -67,6 +68,8 @@ test("the Overview's audit check reuses the verified records and still catches a
   );
   const changed = await getDashboardData();
   assert.equal(changed.evidence.ok, false, "a changed old record fails the check");
-  assert.equal(changed.alerts.some((alert) => alert.key === "audit"), true, "and raises the audit alert");
+  assert.equal(changed.evidence.check, "failed", "a missing off-site copy never hides a broken chain");
+  assert.deepEqual(changed.alerts.filter((alert) => alert.key === "audit").map((alert) => [alert.severity, alert.title]),
+    [["critical", "The audit record failed the check"]], "and raises the Urgent audit alert");
   assert.equal(evidenceChainCache.has(ref), false, "a broken result is never remembered");
 });

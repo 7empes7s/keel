@@ -370,7 +370,9 @@ export function serviceBackupSentence(entry: ServiceBackup, now: string): string
   if (!entry.lastGood) {
     return entry.latest ? `Never backed up successfully; the latest try ${entry.latest.outcome === "partial" ? "stopped part way" : "failed"}.${holds}${scope}` : `No backup run recorded yet.${holds}${scope}`;
   }
-  const failedSince = entry.latest && entry.latest.id !== entry.lastGood.id ? " The latest try failed." : "";
+  const failedSince = entry.latest && entry.latest.id !== entry.lastGood.id
+    ? (entry.latest.outcome === "partial" ? " The latest try was only partly done." : " The latest try failed.")
+    : "";
   return `Last good backup ${ago(entry.lastGood.at, now)}.${failedSince}${holds}${scope}`;
 }
 
@@ -630,8 +632,11 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "service-partial-last", tone: "soon", icon: "alert",
       title: partialLast.length === 1 ? `${partialLast[0].name}: last backup only partly done` : `${partialLast.length} service backups were only partly done last time`,
-      todo: "Older complete copies are kept. Tonight's run tries again.",
-      more: partialLast.map((entry) => `${entry.name}: partly done ${ago(entry.latest?.at ?? null, now)}`),
+      // Claim older complete copies only when every one of them has one.
+      todo: partialLast.every((entry) => entry.lastGood)
+        ? "Older complete copies are kept. Tonight's run tries again."
+        : `${partialLast.length === 1 ? "There is no complete copy yet" : "Not every one has a complete copy yet"}. Tonight's run tries again.`,
+      more: partialLast.map((entry) => `${entry.name}: partly done ${ago(entry.latest?.at ?? null, now)}${entry.lastGood ? "" : ", no complete copy yet"}`),
       action: { label: "See them", href: "/activity?what=backup&outcome=partial" },
     });
   }

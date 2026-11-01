@@ -102,9 +102,15 @@ function needsSentence(needs: FailureNeed[], confirmed: boolean): string {
     : `Microsoft refused the read. Keel's backup app needs ${parts.join(" and ")} for it; Setup shows which one is missing.`;
 }
 
-/** Why one kind's last backup failed or was partly done, or null when neither. */
+/** Why one kind's last backup failed or was partly done, or null when neither.
+ *  A partly done kind stays amber, so its reason is never red. */
 export function failureReason(item: CoverageType): FailureReason | null {
   if (!needsRetry(item)) return null;
+  const reason = whyNotBackedUp(item);
+  return backupHealth(item) === "partial" && reason.tone === "urgent" ? { ...reason, tone: "soon" } : reason;
+}
+
+function whyNotBackedUp(item: CoverageType): FailureReason {
   const diagnosis = item.diagnosis;
   const confirmed = diagnosis?.confirmed ?? {};
   const strings = (value: unknown) => (Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []);

@@ -7,7 +7,7 @@ import {
 import { summarizeRecoveryReadiness } from "../../engine/coverage/recoveryReadiness.mjs";
 import {
   attemptReason, cadenceSentence, dependencyName, formatDuration, freshnessSentence, notUsedSentence, offsiteReason,
-  recoverablePointSentence, recoveryTimeSentence, resilienceAlerts, resilienceVerdict, serviceGroups, serviceState,
+  recoverablePointSentence, recoveryTimeSentence, resilienceAlerts, serviceBackupSentence, resilienceVerdict, serviceGroups, serviceState,
   resilienceKinds, type RecoveryMetrics, type ResilienceData, type ServiceBackup,
 } from "@/lib/resilience-view";
 import { failedRestoresLine, type FailedRestoreCounts } from "@/lib/failed-restores";
@@ -140,6 +140,34 @@ test("a service backup failure is reported once, by its service, never against E
   assert.equal(alerts.filter((alert) => alert.key === "service-never-worked").length, 1);
   const [entra] = serviceGroups(data.metrics, data.kinds, NOW_);
   assert.equal(entra.rows[0].status, "Backed up");
+});
+
+test("a partly done service never claims an older complete copy it does not have, and never says failed", () => {
+  const NOW_ = "2026-10-03T12:00:00.000Z";
+  const base = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z")] });
+  const mail: ServiceBackup = {
+    kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", switchedOn: true,
+    latest: { id: "c1", outcome: "partial", at: "2026-10-03T01:00:00.000Z" }, lastGood: null, stored: null,
+  };
+  const data = (entry: ServiceBackup) => ({
+    generatedAt: NOW_,
+    metrics: { ...base, services: { settings: [], content: [entry] } },
+    failedRestores: NO_FAILED_RESTORES,
+    kinds: resilienceKinds([kind("user")]),
+    incidents: [],
+    storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+    followUps: null,
+  } as ResilienceData);
+  const never = resilienceAlerts(data(mail)).find((alert) => alert.key === "service-partial-last")!;
+  assert.equal(never.tone, "soon");
+  assert.doesNotMatch(never.todo, /Older complete copies/);
+  assert.match(never.todo, /no complete copy yet/);
+  // With an earlier complete copy, the alert says it is kept, and the row says partly done, not failed.
+  const withGood: ServiceBackup = { ...mail, lastGood: { id: "c0", from: "2026-10-02T01:00:00.000Z", at: "2026-10-02T01:05:00.000Z", items: 5 } } as ServiceBackup;
+  const kept = resilienceAlerts(data(withGood)).find((alert) => alert.key === "service-partial-last")!;
+  assert.match(kept.todo, /Older complete copies are kept/);
+  assert.match(serviceBackupSentence(withGood, NOW_), /The latest try was only partly done\./);
+  assert.doesNotMatch(serviceBackupSentence(withGood, NOW_), /failed/);
 });
 
 test("a service backup that was only ever partly done is amber, never \"Never worked\"", () => {

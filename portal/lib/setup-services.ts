@@ -55,7 +55,7 @@ function blockerFor(item: CoverageType, code: string, now: string): { text: stri
   const partial: ServiceFix = { label: "See what was partly done", href: `/protect?service=${encodeURIComponent(code)}&health=partial` };
   const late: ServiceFix = { label: "See what is out of date", href: `/protect?service=${encodeURIComponent(code)}&health=out-of-date` };
   // A refused read names the permission or role it needs and opens it on Setup.
-  const reason = backupHealth(item) === "failed" ? failureReason(item) : null;
+  const reason = failureReason(item);
   if (reason?.needs.length) {
     const [first] = reason.needs;
     return {

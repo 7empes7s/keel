@@ -68,21 +68,21 @@ test("Overview, menu and Integrations show the known break as Check soon", () =>
   const alerts = buildAlerts({
     activeBaseline: { resourceCount: 3 } as DashboardData["activeBaseline"],
     lastCollection: { completedAt: "2026-10-31T10:00:00Z", status: "complete" },
-    coverage: { covered: 3, failed: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: 3 },
+    coverage: { covered: 3, failed: 0, partial: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: 3 },
     evidence,
   }).filter((alert) => alert.key === "audit");
   assert.deepEqual(alerts.map((alert) => [alert.severity, alert.title, alert.href]), [["warning", AUDIT_CHECK_WORDS.known.title, "/activity?show=records"]]);
   const unanchored = buildAlerts({
     activeBaseline: { resourceCount: 3 } as DashboardData["activeBaseline"],
     lastCollection: { completedAt: "2026-10-31T10:00:00Z", status: "complete" },
-    coverage: { covered: 3, failed: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: 3 },
+    coverage: { covered: 3, failed: 0, partial: 0, stale: 0, neverCollected: 0, notCovered: 0, unavailable: 0, total: 3 },
     evidence: { ...evidence, unanchored: true },
   }).filter((alert) => alert.key?.startsWith("audit"));
   assert.deepEqual(unanchored.map((alert) => alert.title), [AUDIT_CHECK_WORDS.known.title, AUDIT_CHECK_WORDS.unchecked.title], "the missing off-site copy is still asked for");
   assert.deepEqual(integrationAlerts([], [], null, "known", true).filter((alert) => alert.key.startsWith("audit")).map((alert) => alert.key), ["audit-known", "audit-unchecked"]);
   const menu = menuStatuses({
     headline: null as never,
-    coverage: { covered: 3, failed: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 3 },
+    coverage: { covered: 3, failed: 0, partial: 0, notCovered: 0, neverCollected: 0, stale: 0, unavailable: 0, total: 3 },
     openDriftByBlastRadius: [], openDriftTotal: 0, evidence,
   });
   assert.deepEqual(menu["Audit log"], { tone: "soon", note: AUDIT_CHECK_WORDS.known.title });

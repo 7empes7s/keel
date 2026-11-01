@@ -466,6 +466,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Restorable": count("Can be restored", "Backed-up types Keel can put back."),
   "Failing": count("Failing", "Types whose backups keep failing.", { zeroIsGood: true }),
   "Failed": count("Failed", "Types whose last backup failed.", { zeroIsGood: true }),
+  "Partly done": count("Partly done", "Types whose last backup read only part of the settings.", { zeroIsGood: true }),
   "Never collected": count("Never backed up", "Types with no backup yet.", { zeroIsGood: true }),
   "Never backed up": count("Never backed up", "Items with no backup yet.", { zeroIsGood: true }),
   "Last proven restore": fact("Last proven restore", "When a live test restore on this tenant last worked.", { missing: "No live test restore has worked yet." }),

@@ -1443,7 +1443,7 @@ const ALERTS: DashboardData["alerts"][] = [
   [],
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
-const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, partial: 0, stale: 0, neverCollected: 0 };
 // "Restore proven" comes from the same kinds What's protected lists, so the Overview tile and that page agree.
 const RESTORE_PROOF = restoreProofCounts(COVERAGE_TYPES);
 const NOTHING_PROVEN = { ...RESTORE_PROOF, proven: 0, tested: RESTORE_PROOF.tested + RESTORE_PROOF.proven, lastProvenAt: null };
@@ -1463,7 +1463,7 @@ function dashboard(posture: number): DashboardData {
     openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
     // The buckets add up to the total, as coverageSummary makes them.
-    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
+    coverage: { covered: 142, failed: posture === 0 ? 4 : 0, partial: 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
     headline: HEADLINES[posture],

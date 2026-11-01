@@ -13,8 +13,8 @@ import { ProtectCoverage } from "@/components/protect-coverage";
 import { getContentBackups } from "@/lib/content-backups";
 import { getDiscoveryInventory } from "@/lib/discovery";
 import { getCoverageData } from "@/lib/portal-data";
-import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
-import { protectStatus, protectVerdict, tierSummaries, withWorkloadKinds } from "@/lib/protect-view";
+import { getActiveTierJobs, getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
+import { activeTierRuns, protectStatus, protectVerdict, tierSummaries, withWorkloadKinds } from "@/lib/protect-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { Schedule } from "@/lib/schedules";
 import type { CoverageData } from "@/lib/types";
@@ -49,7 +49,7 @@ export default async function ProtectPage() {
   }
 
   const requestHeaders = await headers();
-  const [schedulesResult, jobsResult, discoveryResult, contentResult] = await Promise.allSettled([
+  const [schedulesResult, jobsResult, discoveryResult, contentResult, activeResult] = await Promise.allSettled([
     loadSchedules(new Request("http://localhost/api/schedules", { headers: requestHeaders }))
       .then(async (response) => {
         if (!response.ok) throw new Error("Schedules unavailable");
@@ -58,18 +58,22 @@ export default async function ProtectPage() {
     getRecentJobs(BACKUP_JOB_KINDS, 10),
     getDiscoveryInventory(),
     getContentBackups(new Date(data.generatedAt)),
+    getActiveTierJobs(),
   ]);
   const schedules = schedulesResult.status === "fulfilled" ? schedulesResult.value : null;
   const jobs: JobRecord[] = jobsResult.status === "fulfilled" ? jobsResult.value : [];
   const now = data.generatedAt;
   const verdict = protectVerdict(data, now);
-  const jobsActive = jobs.some((job) => job.status === "queued" || job.status === "running");
+  // UI audit B1: each tier's queued or running backup, so its cards and buttons say
+  // "Queued" / "Running" and a second press cannot start it again.
+  const active = activeTierRuns(activeResult.status === "fulfilled" ? activeResult.value : jobs, new Date().toISOString());
+  const jobsActive = Object.keys(active).length > 0 || jobs.some((job) => job.status === "queued" || job.status === "running");
 
   const status = protectStatus(data);
   return (
     <>
       <PageHeader
-        actions={<BackUpNow disabled={!canBackup} urgent={verdict.tone !== "good"} />}
+        actions={<BackUpNow active={active} disabled={!canBackup} now={now} urgent={verdict.tone !== "good"} />}
         description={DESCRIPTION}
         generatedAt={now}
         section="Backup"
@@ -78,12 +82,13 @@ export default async function ProtectPage() {
       />
       {/* The coverage list draws the verdict, so it follows the service filter like the tiles. */}
       <ProtectCoverage
+        active={active}
         canBackup={canBackup}
         canCollect={canCollect}
         data={data}
         now={now}
         tierStrip={<>
-          <TierStrip canEditSchedules={canEditSchedules} disabled={!canBackup} tiers={tierSummaries(schedules ?? [], now)} />
+          <TierStrip active={active} canEditSchedules={canEditSchedules} disabled={!canBackup} now={now} tiers={tierSummaries(schedules ?? [], now, active)} />
           {schedules === null ? <p className="action-error">Keel could not read the schedules, so next run times are missing. Reload in a minute.</p> : null}
         </>}
       >

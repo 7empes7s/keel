@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { ContentEffectReview } from "@/components/content-effect-review";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { pageTrail } from "@/lib/page-trail";
 import { Verdict } from "@/components/verdict";
 import {
   type ContentEffectReviewView,
@@ -25,6 +26,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
   // Guard first: only tenant-wide approvers reach the loader.
   const viewerId = await requireContentEffectReviewAccess();
   await connection();
+  const trail = await pageTrail("Inbox", PARENTS);
   const { id } = await params;
   if (!isArtifactId(id)) notFound();
 
@@ -34,7 +36,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} parents={PARENTS} section="Inbox" title={TITLE} />
+        <PageHeader description={DESCRIPTION} parents={trail.parents} section={trail.section} title={TITLE} />
         <DataUnavailable surface="These content effects" />
       </>
     );
@@ -48,8 +50,8 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
       <PageHeader
         description={DESCRIPTION}
         generatedAt={new Date().toISOString()}
-        parents={PARENTS}
-        section="Inbox"
+        parents={trail.parents}
+        section={trail.section}
         status={!review.approvalRequired && review.effects.length > 0 ? { tone: "fine", label: "No approval needed" } : cleared ? { tone: "fine", label: "Approved" } : { tone: "soon", label: "Waiting for you" }}
         title={TITLE}
       />

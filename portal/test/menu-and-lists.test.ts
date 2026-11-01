@@ -13,10 +13,10 @@ import { SERVICES as TAXONOMY_SERVICES } from "../../engine/insights/taxonomy.mj
 
 test("menu preferences round-trip through the cookie and drop anything unsafe", () => {
   let prefs = EMPTY_PREFS;
-  const added = addItem(prefs, "pinned", { href: "/drift?group=risk", label: "  Changes   by risk ", icon: "baselines" });
+  const added = addItem(prefs, "pinned", { href: "/changes?group=risk", label: "  Changes   by risk ", icon: "baselines" });
   assert.ok(added.ok);
   prefs = added.ok ? added.prefs : prefs;
-  assert.deepEqual(prefs.pinned, [{ href: "/drift?group=risk", label: "Changes by risk", icon: "baselines" }]);
+  assert.deepEqual(prefs.pinned, [{ href: "/changes?group=risk", label: "Changes by risk", icon: "baselines" }]);
   prefs = toggleClosed({ ...prefs, hidden: true }, "favourites");
   assert.deepEqual(parseMenuPrefs(serializeMenuPrefs(prefs)), prefs);
 
@@ -40,14 +40,14 @@ test("menu preferences round-trip through the cookie and drop anything unsafe", 
   // An older cookie's Custom group (saved views) folds into Favourites, after what is there.
   const legacy = parseMenuPrefs(encodeURIComponent(JSON.stringify({
     favourites: [{ href: "/jobs", label: "Jobs", icon: "page" }],
-    custom: [{ href: "/drift?group=risk", label: "By risk", icon: "filter" }, { href: "/jobs", label: "Jobs again", icon: "page" }],
+    custom: [{ href: "/changes?group=risk", label: "By risk", icon: "filter" }, { href: "/jobs", label: "Jobs again", icon: "page" }],
     closed: ["custom", "favourites"],
   })));
-  assert.deepEqual(legacy.favourites, [{ href: "/jobs", label: "Jobs", icon: "page" }, { href: "/drift?group=risk", label: "By risk", icon: "filter" }]);
+  assert.deepEqual(legacy.favourites, [{ href: "/jobs", label: "Jobs", icon: "page" }, { href: "/changes?group=risk", label: "By risk", icon: "filter" }]);
   assert.deepEqual(legacy.closed, ["favourites"]);
   assert.equal("custom" in legacy, false);
   // The server hands over the cookie already decoded; a % in a saved link must survive.
-  const percent = addItem(EMPTY_PREFS, "favourites", { href: "/drift?q=50%25", label: "Half", icon: "page" });
+  const percent = addItem(EMPTY_PREFS, "favourites", { href: "/changes?q=50%25", label: "Half", icon: "page" });
   assert.ok(percent.ok);
   if (percent.ok) {
     assert.deepEqual(parseMenuPrefs(serializeMenuPrefs(percent.prefs)), percent.prefs);

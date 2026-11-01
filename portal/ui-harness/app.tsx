@@ -926,7 +926,7 @@ const COMPARED = (added: number, modified: number, removed: number): BaselineCha
   added, modified, removed, total: added + modified + removed,
 });
 const BASELINES: BaselineRecord[] = [
-  { id: "b1180000-0000-4000-8000-000000000118", label: "Post-migration golden state", description: "After the tenant move", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" }, active: true, resourceCount: 4812,
+  { id: "b1180000-0000-4000-8000-000000000118", label: "Post-migration golden state", description: "After the tenant move", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/people" }, active: true, resourceCount: 4812,
     version: 1, supersedesId: null, supersededById: null, supersededAt: null, capture: CAPTURED("2026-09-29T13:40:00Z", "0b5e0000-0000-4000-8000-0000000000c8"), changesSinceCapture: COMPARED(1, 2, 0) },
   { id: "b1170000-0000-4000-8000-000000000117", label: "Before migration (v2)", description: null, setAt: "2026-09-01T09:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "Keel's scheduler", href: null }, active: false, resourceCount: 4590,
     version: 2, supersedesId: "b1160000-0000-4000-8000-000000000116", supersededById: null, supersededAt: null, capture: CAPTURED("2026-09-01T08:30:00Z", "0b5e0000-0000-4000-8000-0000000000a9"), changesSinceCapture: COMPARED(30, 9, 2) },
@@ -965,7 +965,7 @@ const COMPLIANCE: ComplianceData = {
       details: [{ subject: "Global Administrator", setting: "assignmentCount", value: 7, expected: { atMost: 5 }, ok: false }],
       exceptionState: "expired", exposed: true,
       exception: { id: "e7c10000-0000-4000-8000-0000000000c1", owner: "secops@contoso.com", reason: "Two break-glass accounts during the migration", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-01T10:00:00Z", expiresAt: "2026-09-30T00:00:00Z",
-        ownerRef: null, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" } },
+        ownerRef: null, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/people" } },
       evidence: [ROLE_EVIDENCE],
       links: {
         backup: { state: "linked", linked: [ROLE_EVIDENCE], mismatched: [] },
@@ -982,7 +982,7 @@ const COMPLIANCE: ComplianceData = {
       ],
       exceptionState: "authorized", exposed: false,
       exception: { id: "e7c10000-0000-4000-8000-0000000000c2", owner: "amara.okafor@contoso.example", reason: "Branch offices route through a trusted proxy until the November cutover.", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z",
-        ownerRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", href: "/principals" }, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" } },
+        ownerRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", href: "/people" }, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/people" } },
       evidence: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")],
       links: {
         backup: { state: "linked", linked: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] },
@@ -1473,7 +1473,7 @@ const HEADLINES: DashboardData["headline"][] = [
 function dashboard(posture: number): DashboardData {
   return {
     generatedAt: now,
-    activeBaseline: { id: "b-118", label: "Post-migration golden state", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" }, resourceCount: 4812 } as never,
+    activeBaseline: { id: "b-118", label: "Post-migration golden state", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/people" }, resourceCount: 4812 } as never,
     lastCollection: { completedAt: "2026-10-02T09:12:00Z", status: "complete" },
     lastCompletedCollectionAt: "2026-10-02T09:12:00Z",
     // The same open changes as the Changes page fixture (DRIFT), so tile links land on matching counts.
@@ -1493,7 +1493,7 @@ function dashboard(posture: number): DashboardData {
 // resolved name, as the portal readers return it; the investigator's email shows only
 // in Technical details. One backup needs a new check (the window moved after it was
 // checked), one was allowed for a restore anyway, and a closed drill stays as a record.
-const INVESTIGATOR = { kind: "person", id: "3f9c2b1e-0000-4000-8000-0000000000aa", name: "Dana Reyes", href: "/principals" };
+const INVESTIGATOR = { kind: "person", id: "3f9c2b1e-0000-4000-8000-0000000000aa", name: "Dana Reyes", href: "/people" };
 const SNAP_NEW = "b7e20000-0000-4000-8000-000000000004";
 const SNAP_BAD = "93c41e07-0000-4000-8000-000000000003";
 const SNAP_GOOD = "5a2be911-0000-4000-8000-000000000002";
@@ -2159,10 +2159,10 @@ const ASK_ANSWERED: AskData = { generatedAt: now, entities: ["SALES"], scope: { 
   records: [
     { kind: "change", id: "a5c00000-0000-4000-8000-000000000991", resourceType: "group", naturalKey: "group:Sales Admins", name: "Sales Admins", changeType: "modified", impact: "access-affecting", decision: null,
       seenAt: "2026-10-01T06:00:00.000Z", window: { from: "2026-09-30T06:00:00.000Z", to: "2026-10-01T06:00:00.000Z" },
-      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000991", href: "/drift", collectionId: "c0110000-0000-4000-8000-000000000992" } },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000991", href: "/changes", collectionId: "c0110000-0000-4000-8000-000000000992" } },
     { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", resourceType: "conditionalAccessPolicy", naturalKey: "conditionalAccessPolicy:Sales VPN", name: null, changeType: "added", impact: "tenant-lockout", decision: "accept",
       seenAt: "2026-09-29T06:00:00.000Z", window: { from: null, to: "2026-09-29T06:00:00.000Z" },
-      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", href: "/drift", collectionId: "c0110000-0000-4000-8000-000000000994" } },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", href: "/changes", collectionId: "c0110000-0000-4000-8000-000000000994" } },
   ],
 } };
 // Backlog D19: "Who changed ...?" lists who made each change from the audit log, and the
@@ -2176,7 +2176,7 @@ const ASK_WHO: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], sco
       who: { verdict: "exact", label: "Confirmed", text: "Alice Admin, confirmed by the Microsoft Entra audit log.", detail: null } },
     { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", resourceType: "group", naturalKey: "group:Sales Readers", name: "Sales Readers", changeType: "added", impact: "scoped", decision: null,
       seenAt: "2026-09-30T06:00:00.000Z", window: { from: "2026-09-29T06:00:00.000Z", to: "2026-09-30T06:00:00.000Z" },
-      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", href: "/drift", collectionId: null },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000995", href: "/changes", collectionId: null },
       who: { verdict: "unknown", label: "Not known", text: "No audit entry names this change, so Keel cannot say who made it.", detail: "A change Microsoft or a sync makes has no person behind it." } },
   ],
 } };
@@ -2209,7 +2209,7 @@ const ASK_MANY_RECORDS = Array.from({ length: 36 }, (_, index) => {
     decision: index % 5 === 0 ? "accept" : null, seenAt: `2026-${month}-${day}T${hour}:00:00.000Z`,
     fields: changeType === "modified" ? (index % 3 === 0 ? ["accountEnabled", "department"] : ["displayName"]) : null,
     window: { from: `2026-${month}-${day}T${hour === "00" ? "00" : String(Number(hour) - 1).padStart(2, "0")}:00:00.000Z`, to: `2026-${month}-${day}T${hour}:00:00.000Z` },
-    source: { kind: "change" as const, id, href: "/drift", collectionId: null },
+    source: { kind: "change" as const, id, href: "/changes", collectionId: null },
   };
 });
 const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
@@ -2250,7 +2250,7 @@ const ASK_MONTH_RECORDS = Array.from({ length: 1000 }, (_, index) => {
     kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
     decision: null, seenAt: at.toISOString(), fields,
     window: { from: new Date(at.getTime() - 3600_000).toISOString(), to: at.toISOString() },
-    source: { kind: "change" as const, id, href: "/drift", collectionId: null },
+    source: { kind: "change" as const, id, href: "/changes", collectionId: null },
   };
 });
 const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
@@ -2715,7 +2715,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   const count = changes.length;
   return <>
     <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and nothing changes until it is approved." generatedAt={now} section="Restore"
-      status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore" />
+      status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore settings" />
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} workloads={RESTORE_WORKLOADS} />
@@ -2798,34 +2798,34 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/who": return askPage(ASK_WHO);
     case "/ask/month": return askPage(ASK_MONTH);
     case "/ask/coverage": return askPage(ASK_COVERAGE);
-    case "/readiness": return readinessPage(READINESS);
-    case "/readiness/ready": return readinessPage(READINESS_READY);
-    case "/readiness/empty": return readinessPage(READINESS_EMPTY);
-    case "/readiness/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
-    case "/drift/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+    case "/emergency-access": return readinessPage(READINESS);
+    case "/emergency-access/ready": return readinessPage(READINESS_READY);
+    case "/emergency-access/empty": return readinessPage(READINESS_EMPTY);
+    case "/emergency-access/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
+    case "/changes/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;
-    case "/drift/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+    case "/changes/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;
-    case "/drift/anonymous": {
+    case "/changes/anonymous": {
       const items = DRIFT_DECIDED.map(hideActors);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items))}
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} summary={DRIFT_SUMMARY} /></>;
     }
-    case "/drift/solo": {
+    case "/changes/solo": {
       // Approval mode Solo: the undo lines say the person who asked may approve.
       const items = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
       return <ApprovalModeProvider mode="solo">{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={SERVICE_CHANGES.length} summary={DRIFT_SUMMARY} /></ApprovalModeProvider>;
     }
-    case "/drift":
-    case "/drift/services":
-    case "/drift/services-capped": {
+    case "/changes":
+    case "/changes/services":
+    case "/changes/services-capped": {
       // The visual baseline is the plain Changes page; /drift/services adds service setting
       // changes; /drift/services-capped has more open service setting changes than the list holds.
-      const items = path === "/drift" ? DRIFT_DECIDED : [...DRIFT_DECIDED, ...SERVICE_CHANGES];
-      const serviceTotal = path === "/drift" ? 0 : SERVICE_CHANGES.length + (path === "/drift/services-capped" ? CAPPED_SERVICE_CHANGES : 0);
+      const items = path === "/changes" ? DRIFT_DECIDED : [...DRIFT_DECIDED, ...SERVICE_CHANGES];
+      const serviceTotal = path === "/changes" ? 0 : SERVICE_CHANGES.length + (path === "/changes/services-capped" ? CAPPED_SERVICE_CHANGES : 0);
       // As on the live page: the header counts every open change (openChangeCount).
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items, openChangeCount(DRIFT_DECIDED.length, serviceTotal)))}
         <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} serviceTotal={serviceTotal} summary={DRIFT_SUMMARY} /></>;
@@ -2875,18 +2875,18 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.", undefined, integrationsStatus(alerts))}
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
-    case "/baselines/put-back": {
+    case "/approved-setups/put-back": {
       // Backlog B12 and D16: the version in use was put back from an older one, and the
       // newest backup missed kinds, so there is nothing to capture a new version from.
       const gap = { id: "0b5e0000-0000-4000-8000-0000000000e1", completedAt: "2026-10-02T07:40:00Z", notInBackup: [], partial: ["group"], failed: ["todoSettings"] };
       const verdict = approvedVerdict(PUT_BACK_BASELINES[0], [], now, 0);
-      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(PUT_BACK_BASELINES[0], [], 0))}
+      return <>{header("Baselines", "Approved setups", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(PUT_BACK_BASELINES[0], [], 0))}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={[]} baselines={PUT_BACK_BASELINES} canBaseline gap={gap} items={[]} now={now} sources={[]} />
       </div></>;
     }
-    case "/baselines": {
+    case "/approved-setups": {
       // As on the live page: the badge and the verdict count every open change,
       // service setting changes included (openChangeCount), like the Overview.
       const openItems = [...DRIFT_DECIDED, ...SERVICE_CHANGES];
@@ -2900,76 +2900,76 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           .reduce((tally, item) => ({ ...tally, [item.changeType]: tally[item.changeType] + 1 }), { added: 0, modified: 0, removed: 0 }) }));
       // The 4,812 settings the setup holds, per kind (adds up to its resourceCount).
       const held = { conditionalAccessPolicy: 24, group: 640, namedLocation: 8, roleAssignment: 140, user: 3900, application: 100 };
-      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], openItems, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
-      <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
+      return <>{header("Baselines", "Approved setups", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], openItems, openChangeCount(DRIFT_DECIDED.length, SERVICE_CHANGES.length)))}
+      <Verdict action={{ label: "Review changes", href: "/changes" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline held={held} items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }
-    case "/baselines/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.", undefined, undefined, [{ href: "/baselines", label: "Approved setups" }])}
+    case "/approved-setups/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.", undefined, undefined, [{ href: "/approved-setups", label: "Approved setups" }])}
       <Verdict text="Three short steps: pick a backup, name it, then check what will happen." />
       <div data-layer="explanation">
         <BaselinesStyles />
         <CreateWizard completedSnapshotsExist disabled={false} snapshots={CAPTURE_SOURCES} today={toDay(new Date(now))} />
       </div></>;
-    case "/benchmarks/anonymous": {
+    case "/compliance/anonymous": {
       const data = hiddenCompliance();
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
       {ANONYMOUS_NOTE}
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
     }
-    case "/benchmarks": case "/benchmarks/viewer": {
+    case "/compliance": case "/compliance/viewer": {
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} canRestore={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+      <CompliancePage canCheck={path === "/compliance"} canConfigure={path === "/compliance"} canRestore={path === "/compliance"} data={COMPLIANCE} now={now} /></>;
     }
-    case "/benchmarks/scuba": case "/benchmarks/scuba-viewer": {
+    case "/compliance/scuba": case "/compliance/scuba-viewer": {
       // ScubaGear lists: one not set holds back its rule; a viewer sees them without Edit.
-      const edit = path === "/benchmarks/scuba";
+      const edit = path === "/compliance/scuba";
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(SCUBA_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck={edit} canConfigure={edit} canRestore={edit} data={SCUBA_COMPLIANCE} now={now} scubaLists={SCUBA_LISTS} /></>;
     }
-    case "/benchmarks/own": {
+    case "/compliance/own": {
       // A check the tenant wrote itself, beside Keel's, and the form that writes one.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(OWN_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={OWN_COMPLIANCE} now={now} ownChoices={OWN_CHOICES} /></>;
     }
-    case "/benchmarks/defender": {
+    case "/compliance/defender": {
       // Defender email controls beside the others: filed under Defender, failing settings in a table.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={DEFENDER_COMPLIANCE} now={now} /></>;
     }
-    case "/benchmarks/many": {
+    case "/compliance/many": {
       // Controls that checked more than the 50 settings a result lists.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(MANY_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={MANY_COMPLIANCE} now={now} /></>;
     }
-    case "/benchmarks/live": case "/benchmarks/same-name": case "/benchmarks/old-full": {
+    case "/compliance/live": case "/compliance/same-name": case "/compliance/old-full": {
       // Shaped like the live results of 2026-10-27; same-name and old-full are their two edge cases.
-      const data = path === "/benchmarks/live" ? LIVE_COMPLIANCE : path === "/benchmarks/same-name" ? SAME_NAME_COMPLIANCE : OLD_FULL_COMPLIANCE;
+      const data = path === "/compliance/live" ? LIVE_COMPLIANCE : path === "/compliance/same-name" ? SAME_NAME_COMPLIANCE : OLD_FULL_COMPLIANCE;
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
     }
-    case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
+    case "/compliance/empty": case "/compliance/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.
       const empty: ComplianceData = { ...COMPLIANCE, findings: [], storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null } };
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts([]))} title="Compliance" />
-      <CompliancePage canCheck={path === "/benchmarks/empty"} canConfigure={false} data={empty} now={now} /></>;
+      <CompliancePage canCheck={path === "/compliance/empty"} canConfigure={false} data={empty} now={now} /></>;
     }
-    case "/principals/anonymity": case "/principals/anonymity-off": {
-      const on = path === "/principals/anonymity";
+    case "/people/anonymity": case "/people/anonymity-off": {
+      const on = path === "/people/anonymity";
       return <>
-        <PageHeader actions={<a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a>} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <PageHeader actions={<a className="btn" href="#/people?new=1"><Icon name="plus" />Add person</a>} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
         <AnonymitySettingCard canChange now={now} setting={on ? ANONYMITY_ON : { enabled: false, changedAt: null, changedBy: null }} />
         <PeoplePage canRoles canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
-    case "/principals": case "/principals/viewer": {
+    case "/people": case "/people/viewer": {
       // A viewer here holds users but not roles: they see everyone and can disable, not grant.
-      const rolesToo = path === "/principals";
+      const rolesToo = path === "/people";
       return <>
-        <PageHeader actions={rolesToo ? <a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a> : undefined} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <PageHeader actions={rolesToo ? <a className="btn" href="#/people?new=1"><Icon name="plus" />Add person</a> : undefined} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
         <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
@@ -3019,33 +3019,33 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
-    case "/policies/p2/anonymous": {
+    case "/rules/p2/anonymous": {
       const policy = hiddenRunAs(OFF_POLICY);
       const state = RULE_STATES[ruleState(policy)];
-      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/policies", label: "Policies" }])}
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/rules", label: "Automatic rules" }])}
         {ANONYMOUS_NOTE}
         <PolicyPage actions={[]} canEdit halted={false} initialPreview={hiddenPreview()} now={now} policy={policy} />
       </>;
     }
-    case "/policies/anonymous": {
+    case "/rules/anonymous": {
       const policies = POLICIES.map(hiddenRunAs);
       return <>
-        <PageHeader actions={<a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(policies), false)} title="Automatic rules" />
+        <PageHeader actions={<a className="btn" href="#/rules?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(policies), false)} title="Automatic rules" />
         {ANONYMOUS_NOTE}
         <PoliciesPage canEdit halted={false} now={now} policies={policies} />
       </>;
     }
-    case "/policies/p1": case "/policies/p2": case "/policies/p3": {
-      const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
+    case "/rules/p1": case "/rules/p2": case "/rules/p3": {
+      const policy = path === "/rules/p1" ? POLICY : path === "/rules/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];
-      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/policies", label: "Policies" }])}
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/rules", label: "Automatic rules" }])}
         <PolicyPage actions={policy === POLICY ? POLICY_ACTIONS : []} canEdit halted={false} initialPreview={policy === OFF_POLICY ? ACTIVATION_PREVIEW : null} now={now} policy={policy} />
       </>;
     }
-    case "/policies": case "/policies/viewer": {
-      const viewer = path === "/policies/viewer";
+    case "/rules": case "/rules/viewer": {
+      const viewer = path === "/rules/viewer";
       return <>
-        <PageHeader actions={viewer ? undefined : <a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(POLICIES), false)} title="Automatic rules" />
+        <PageHeader actions={viewer ? undefined : <a className="btn" href="#/rules?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(POLICIES), false)} title="Automatic rules" />
         <PoliciesPage canEdit={!viewer} halted={false} now={now} policies={POLICIES} />
       </>;
     }
@@ -3082,7 +3082,7 @@ function App() {
       capabilities={{ canApprove: true, canBackup: true, canConfigure: true, canPolicies: true, canRead: true, canUsers: true }}
       initialPrefs={EMPTY_PREFS}
       pendingApprovals={2}
-      person={{ email: "marouanedefili@gmail.com", name: "Marouane Defili", href: "/principals#person-8c1e0000-0000-4000-8000-0000000000a1", access: accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"]) }}
+      person={{ email: "marouanedefili@gmail.com", name: "Marouane Defili", href: "/people#person-8c1e0000-0000-4000-8000-0000000000a1", access: accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"]) }}
       theme="system"
     >
       <div className="page-transition" key={loading ? "loading" : `${path}:${posture}`}>

@@ -6,6 +6,7 @@
 export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <section className="data-error state-page" role="alert">
+      <title>Page could not be shown · Keel</title>
       <p className="severity-label">Unexpected error</p>
       <h2>This page could not be rendered</h2>
       <p>

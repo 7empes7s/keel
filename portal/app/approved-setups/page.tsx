@@ -47,7 +47,7 @@ export default async function BaselinesPage() {
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} section="Baselines" title="Approved setup" />
+        <PageHeader description={DESCRIPTION} section="Baselines" title="Approved setups" />
         <DataUnavailable surface="Baselines" />
       </>
     );
@@ -99,10 +99,10 @@ export default async function BaselinesPage() {
         generatedAt={data.generatedAt}
         section="Baselines"
         status={setupStatus(active, openItems ?? [], total ?? 0)}
-        title="Approved setup"
+        title="Approved setups"
       />
       <Verdict
-        action={active ? (total ? { label: "Review changes", href: OPEN_CHANGES_HREF } : null) : { label: "Create an approved setup", href: "/baselines/new" }}
+        action={active ? (total ? { label: "Review changes", href: OPEN_CHANGES_HREF } : null) : { label: "Create an approved setup", href: "/approved-setups/new" }}
         text={verdict.text}
         tone={verdict.tone}
       />

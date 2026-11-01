@@ -441,14 +441,14 @@ export function alertService(alert: AlertItem): CloudService {
 
 /** Where to see the change behind the alert. Never a write: undo starts on Changes. */
 export function changeLink(alert: AlertItem): { href: string; label: string } {
-  if (alert.control === "break-glass") return { href: "/readiness", label: "Open emergency access" };
+  if (alert.control === "break-glass") return { href: "/emergency-access", label: "Open emergency access" };
   const workload = alertWorkload(alert.resourceKey);
   if (workload === SHAREPOINT_SITES) {
     const rest = alert.resourceKey.slice(workload.length + 1);
     if (rest.startsWith("site:") && rest.length > 5) return { href: `/sites/${encodeURIComponent(rest.slice(5))}`, label: "Open the site" };
   }
   const name = usable(alert.name) ?? alertTitle(alert).replace(/ \([^()]*\)$/, "");
-  return { href: `/drift?q=${encodeURIComponent(name)}`, label: "Open the change" };
+  return { href: `/changes?q=${encodeURIComponent(name)}`, label: "Open the change" };
 }
 
 /** The engine's escalation error in words, never its code. */

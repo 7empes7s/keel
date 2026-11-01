@@ -354,3 +354,24 @@ test("non-GET requests to /api/health do not bypass authentication", async () =>
 
   assert.equal(response.status, 401);
 });
+
+test("an old page URL is sent to the page's new name, with the rest of the path and the query", async () => {
+  const token = await accessToken();
+  for (const [from, to] of [
+    ["/drift?open=dr5", "/changes?open=dr5"],
+    ["/policies/p1", "/rules/p1"],
+    ["/principals?role=investigator", "/people?role=investigator"],
+    ["/readiness", "/emergency-access"],
+    ["/baselines/new", "/approved-setups/new"],
+    ["/benchmarks?result=failing", "/compliance?result=failing"],
+  ]) {
+    const response = await middleware(request(from, token));
+    assert.equal(response.status, 307, from);
+    assert.equal(response.headers.get("location"), to, from);
+  }
+  // Not before the sign-in check, not for the API (which kept its names), not for a post.
+  assert.equal((await middleware(request("/drift"))).status, 401);
+  assert.equal((await middleware(request("/api/drift", token))).headers.get("location"), null);
+  assert.equal((await middleware(request("/driftwood", token))).headers.get("location"), null);
+  assert.equal((await middleware(request("/policies", token, "POST", { "sec-fetch-site": "same-origin" }))).headers.get("location"), null);
+});

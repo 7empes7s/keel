@@ -80,7 +80,7 @@ export default async function RestorePage({
           description={DESCRIPTION}
           section="Restore"
           marker={canRestore ? "Actionable" : "Read-only"}
-          title="Restore"
+          title="Restore settings"
         />
         <DataUnavailable surface="Restore data" />
       </>
@@ -147,7 +147,7 @@ export default async function RestorePage({
         generatedAt={now}
         marker={canRestore ? undefined : "Read-only"}
         status={status}
-        title="Restore"
+        title="Restore settings"
       />
 
       {/* Roadmap task-71: incident recovery belongs to Restore in the portal map. */}

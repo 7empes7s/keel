@@ -14,10 +14,10 @@ async function contexts(pathname: string, search: string) {
 }
 
 export async function renderPeopleAt(search: string, props: ComponentProps<typeof PeoplePage>): Promise<string> {
-  return (await contexts("/principals", search))(createElement(PeoplePage, props));
+  return (await contexts("/people", search))(createElement(PeoplePage, props));
 }
 
 /** Any element (such as the whole server page) inside the same router contexts. */
 export async function renderInPeopleRoute(element: ReactElement, search = ""): Promise<string> {
-  return (await contexts("/principals", search))(element);
+  return (await contexts("/people", search))(element);
 }

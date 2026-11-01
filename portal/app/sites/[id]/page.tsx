@@ -3,6 +3,7 @@ import { connection } from "next/server";
 
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { pageTrail } from "@/lib/page-trail";
 import { SiteDetail } from "@/components/site-permissions";
 import { Verdict } from "@/components/verdict";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
@@ -25,19 +26,20 @@ function decoded(id: string): string {
 export default async function SitePage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   await requireReadAccess(DATA_SURFACES.sitePage);
+  const trail = await pageTrail("Backup", PARENTS);
   const siteId = decoded((await params).id);
   let data: SitePermissionsData;
   try {
     data = await getSitePermissions(siteId);
   } catch {
-    return <><PageHeader description={DESCRIPTION} parents={PARENTS} section="Backup" title="Site" /><DataUnavailable surface="This site" /></>;
+    return <><PageHeader description={DESCRIPTION} parents={trail.parents} section={trail.section} title="Site" /><DataUnavailable surface="This site" /></>;
   }
   const site = data.sites[0];
   if (!site || !data.run) notFound();
   const verdict = siteVerdict(site, data.contentRun);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} parents={PARENTS} section="Backup" title={siteName(site)} />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} parents={trail.parents} section={trail.section} title={siteName(site)} />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <SiteDetail contentRun={data.contentRun} latest={data.latest} now={data.generatedAt} run={data.run} site={site} tenantSharing={data.tenantSharing} />

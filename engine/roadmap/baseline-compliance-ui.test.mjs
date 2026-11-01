@@ -540,22 +540,22 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
   writeFileSync(manifest, JSON.stringify({ residency: { provider: 'local-disk', region: 'westeurope' }, generatedAt: now.toISOString() }));
 
   inPortal(String.raw`
-    const benchmarks = require('./app/benchmarks/page.tsx').default;
-    const baselines = require('./app/baselines/page.tsx').default;
+    const benchmarks = require('./app/compliance/page.tsx').default;
+    const baselines = require('./app/approved-setups/page.tsx').default;
     const { POST } = require('./app/api/actions/baseline/route.ts');
     const { POST: grantException } = require('./app/api/actions/compliance/exception/route.ts');
     const { getComplianceData } = require('./lib/portal-data.ts');
     const { complianceVerdict } = require('./lib/compliance-view.ts');
     const viewerHeaders = new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(viewer)}], [CAPABILITIES_HEADER, 'read']]);
     (async () => {
-      await assert.rejects(render('/benchmarks', benchmarks, new Headers([[CAPABILITIES_HEADER, 'read']])), (error) => error.digest === 'NEXT_HTTP_ERROR_FALLBACK;403');
+      await assert.rejects(render('/compliance', benchmarks, new Headers([[CAPABILITIES_HEADER, 'read']])), (error) => error.digest === 'NEXT_HTTP_ERROR_FALLBACK;403');
 
       const data = await getComplianceData();
       assert.equal(data.summary.expiredExceptions, 1);
       const verdict = complianceVerdict(data);
       assert.match(verdict.text, /^1 control fails, and its exception ended (24 hours|1 day) ago\.$/);
       assert.equal(data.findings[0].exception.ownerRef, null, 'an owner who is not in Keel stays unresolved');
-      const html = withRouter(await render('/benchmarks', benchmarks, viewerHeaders));
+      const html = withRouter(await render('/compliance', benchmarks, viewerHeaders));
       assert.ok(html.includes('<p class="verdict-sentence">' + verdict.text + '</p>'));
       assert.equal((html.match(/data-layer="verdict"/g) || []).length, 1);
       assert.match(html, /1 failing/, 'the status pill counts the failing control');
@@ -599,7 +599,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
 
       // Baselines: the verdict says when it was approved, as the Overview does, and the
       // age of its settings is the capture's; a viewer sees the re-capture disabled.
-      const baselineHtml = withRouter(await render('/baselines', baselines, viewerHeaders));
+      const baselineHtml = withRouter(await render('/approved-setups', baselines, viewerHeaders));
       assert.match(baselineHtml, /\d+ changes? since “Golden state”, approved (just now|\d+ minutes? ago);/);
       assert.match(baselineHtml, /<dt>Settings from<\/dt><dd>10 days ago/);
       assert.match(baselineHtml, /<button[^>]*disabled=""[^>]*>Capture new version<\/button>/);

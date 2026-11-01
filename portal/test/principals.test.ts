@@ -88,7 +88,7 @@ test("live portal requests see role writes immediately and display the engine ca
     assert.deepEqual(disabled.capabilities, await capabilitiesForPrincipal(client, disabled));
     assert.deepEqual(disabled.capabilities, []);
     const [pageModule, unitModule, workModule] = await Promise.all([
-      import("../app/principals/page"),
+      import("../app/people/page"),
       import("next/dist/server/app-render/work-unit-async-storage.external.js"),
       import("next/dist/server/app-render/work-async-storage.external.js"),
     ]);
@@ -96,9 +96,9 @@ test("live portal requests see role writes immediately and display the engine ca
     const unit = (unitModule as { workUnitAsyncStorage: Store }).workUnitAsyncStorage;
     const work = (workModule as { workAsyncStorage: Store }).workAsyncStorage;
     const page = pageModule.default;
-    const rendered = await work.run({ route: "/principals", forceStatic: false, dynamicShouldError: false }, () => unit.run({
+    const rendered = await work.run({ route: "/people", forceStatic: false, dynamicShouldError: false }, () => unit.run({
       type: "request", phase: "render", headers: request("", "other-admin", ["users"]).headers,
-      implicitTags: [], url: { pathname: "/principals", search: "" }, rootParams: {},
+      implicitTags: [], url: { pathname: "/people", search: "" }, rootParams: {},
       resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
     }, () => page()));
     const pageMarkup = await renderInPeopleRoute(rendered as ReactElement);

@@ -135,8 +135,8 @@ test("each control reaches its guarded route with the body it takes", async () =
 test("the page body: tiles filter by link, ids stay in the record, the scheduler has no controls", async () => {
   const html = await renderPeopleAt("role=approver", { people: PEOPLE, canUsers: true, canRoles: true, now: NOW });
   assert.match(html, /Showing <b>2<\/b> of 5 people/);
-  assert.match(html, /href="\/principals\?role=admin%2Capprover"/, "Admins adds to Can approve");
-  assert.match(html, /href="\/principals"[^>]*>[\s\S]*?Can approve/, "the active tile clears its filter");
+  assert.match(html, /href="\/people\?role=admin%2Capprover"/, "Admins adds to Can approve");
+  assert.match(html, /href="\/people"[^>]*>[\s\S]*?Can approve/, "the active tile clears its filter");
   const record = html.indexOf('data-layer="record"');
   const visible = html.slice(0, record).replace(/ (data-row-id|href|title|id|for|aria-labelledby)="[^"]*"/g, "");
   assert.doesNotMatch(visible, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);

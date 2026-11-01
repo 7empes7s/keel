@@ -101,7 +101,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const router = useRouter();
   const check = useCheckNow(() => router.refresh());
   const view = useViewState();
-  const pathname = usePathname() ?? "/benchmarks";
+  const pathname = usePathname() ?? "/compliance";
   const params = useLiveSearchParams();
   const [granted, setGranted] = useState<Record<string, Granted>>({});
 
@@ -220,7 +220,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
       <div data-layer="explanation">
         <p className="cp-context">
           <span>
-            {baseline ? <>Measured against <Link className="cp-inline-link" href="/baselines">{baseline.label ?? "the approved setup"}</Link>{baseline.capture?.capturedAt ? `, settings from ${ago(baseline.capture.capturedAt, now)}` : ""}.</> : <>No approved setup is active. <Link className="cp-inline-link" href="/baselines">Approved setups</Link></>}
+            {baseline ? <>Measured against <Link className="cp-inline-link" href="/approved-setups">{baseline.label ?? "the approved setup"}</Link>{baseline.capture?.capturedAt ? `, settings from ${ago(baseline.capture.capturedAt, now)}` : ""}.</> : <>No approved setup is active. <Link className="cp-inline-link" href="/approved-setups">Approved setups</Link></>}
           </span>
           <span>{NOT_RUN_YET}{checkedWhen ? ` ${checkedWhen}` : ""}</span>
           {canCheck && findings.length ? <CheckNowButton check={check} /> : null}

@@ -6,8 +6,8 @@ import Link from "next/link";
 export function ChangesViews({ current }: { current: "open" | "feed" }) {
   return (
     <nav aria-label="Changes views" className="section-tabs changes-views">
-      <Link aria-current={current === "open" ? "page" : undefined} className="section-tab" href="/drift">Open changes</Link>
-      <Link aria-current={current === "feed" ? "page" : undefined} className="section-tab" href="/drift?view=feed">Every change</Link>
+      <Link aria-current={current === "open" ? "page" : undefined} className="section-tab" href="/changes">Open changes</Link>
+      <Link aria-current={current === "feed" ? "page" : undefined} className="section-tab" href="/changes?view=feed">Every change</Link>
     </nav>
   );
 }

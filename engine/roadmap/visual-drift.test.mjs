@@ -402,7 +402,7 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
   writeFileSync(tenantConfig, JSON.stringify({ tenantId }));
 
   inPortal(String.raw`
-    const page = require('./app/drift/page.tsx').default;
+    const page = require('./app/changes/page.tsx').default;
     const { displayItems, getDriftData } = require('./lib/portal-data.ts');
     const { SemanticDiff } = require('./components/semantic-diff.tsx');
     const { ChangeEvidencePanel } = require('./components/decision-workbook.tsx');
@@ -472,14 +472,14 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
       // The page itself, as the scoped viewer.
       const { ENTITY_CAPABILITIES_HEADER } = require('./lib/principal.ts');
       const viewerHeaders = new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(creosViewer)}], [ENTITY_CAPABILITIES_HEADER, 'read:CREOS']]);
-      const html = withRouter(await render('/drift', page, viewerHeaders));
+      const html = withRouter(await render('/changes', page, viewerHeaders));
       assert.match(html, /aria-label="Open changes by risk"/);
       assert.match(html, /All open changes<\/span><b class="bl-tile-count">2<\/b>/);
       assert.match(html, /1 change was not in the approved setup, so the earlier values are not known\./);
       for (const hidden of HIDDEN) assert.ok(!html.includes(hidden), 'page carries ' + hidden);
       assertPlain(visibleText(html), 'Changes page');
 
-      const centralHtml = withRouter(await render('/drift', page, new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(central)}], [CAPABILITIES_HEADER, 'read']])));
+      const centralHtml = withRouter(await render('/changes', page, new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(central)}], [CAPABILITIES_HEADER, 'read']])));
       assert.match(centralHtml, /All open changes<\/span><b class="bl-tile-count">3<\/b>/);
     })().catch((error) => { console.error(error); process.exitCode = 1; });
   `, { KEEL_TENANT_CONFIG_PATH: tenantConfig });

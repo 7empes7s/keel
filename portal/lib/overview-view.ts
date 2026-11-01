@@ -110,7 +110,7 @@ const RISK_TONES: Record<string, RiskWord> = { "tenant-lockout": "urgent", "acce
 export function riskRows(items: DashboardData["openDriftByBlastRadius"]): { key: string; tone: RiskWord; count: number; href: string }[] {
   const counts = new Map(items.map((item) => [item.blastRadius, item.count]));
   const keys = [...RISK_ORDER, ...items.map((item) => item.blastRadius).filter((key) => !RISK_ORDER.includes(key))];
-  return keys.map((key) => ({ key, tone: RISK_TONES[key] ?? "low", count: counts.get(key) ?? 0, href: `/drift?risk=${encodeURIComponent(key)}` }));
+  return keys.map((key) => ({ key, tone: RISK_TONES[key] ?? "low", count: counts.get(key) ?? 0, href: `/changes?risk=${encodeURIComponent(key)}` }));
 }
 
 // Work outside the approvals inbox that waits on a person, each linked to where it is done.
@@ -190,7 +190,7 @@ export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | 
       key: "lockout", tone: "urgent", icon: "baselines",
       title: `${plural(lockout, "change", "changes")} could lock out admins`,
       detail: "They could block sign-in for admins. Review them first.",
-      href: "/drift?risk=tenant-lockout",
+      href: "/changes?risk=tenant-lockout",
     });
   }
   if (pendingApprovals) {
@@ -271,7 +271,7 @@ export function overviewTiles(data: DashboardData, pendingApprovals: number | nu
     key: "changes", label: "Changes to review", icon: "baselines",
     value: data.openDriftTotal.toLocaleString("en-GB"),
     detail: lockout ? `${plural(lockout, "could", "could")} lock out admins` : access ? `${plural(access, "affects", "affect")} access` : data.openDriftTotal ? "None affects access" : "Nothing changed",
-    href: "/drift",
+    href: "/changes",
     tone: lockout ? "urgent" : access ? "soon" : undefined,
     meter: data.openDriftTotal ? risks.filter((row) => row.count > 0).map((row) => ({ tone: row.tone, share: row.count / open })) : undefined,
   });

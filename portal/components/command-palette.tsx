@@ -107,7 +107,7 @@ async function readItems(capabilities: NavCapabilities): Promise<Found[]> {
       id: `person:${person.id}`,
       label: person.display_name || person.email,
       hint: person.disabled_at ? "Person · disabled" : "Person",
-      href: `/principals#person-${encodeURIComponent(person.id)}`,
+      href: `/people#person-${encodeURIComponent(person.id)}`,
       icon: "settings",
       keywords: `person people ${person.email}`,
     });
@@ -202,7 +202,7 @@ export function CommandPalette(capabilities: NavCapabilities) {
       ...(capabilities.canBackup ? [{ id: "action:backup", label: "Back up the critical settings now", hint: "Backup", keywords: "backup run tier 1 now", group: "Actions" as const, icon: "backup" as IconName, run: () => void backUpCritical() }] : []),
       go("action:restore", "Restore from a backup", "Restore", "/restore", "restore", "restore undo put back recover"),
       ...(capabilities.canRead ? [go("action:compare", "Compare two backups", "Baselines", "/compare", "baselines", "compare differences")] : []),
-      ...(capabilities.canUsers ? [go("action:person", "Add a person", "Settings", "/principals", "settings", "add person people invite role")] : []),
+      ...(capabilities.canUsers ? [go("action:person", "Add a person", "Settings", "/people", "settings", "add person people invite role")] : []),
       ...(capabilities.canRead ? [go("action:channel", "Add an alert channel", "Settings", "/notifications", "bell", "add channel notification email teams slack webhook")] : []),
       ...(["system", "light", "dark"] as ThemePreference[]).map((theme) => ({
         id: `theme:${theme}`,

@@ -246,8 +246,8 @@ test("a rule edit or delete reads as who changed which rule, under policy, and o
   assert.equal(editRow.title, "Amara Okafor edited the automatic rule “Undo low risk”: 3 settings changed; it stays off until it is previewed again");
   assert.equal(deleteRow.title, "Amara Okafor deleted the automatic rule “Undo low risk”");
   assert.equal(editRow.line, "Audit record · Automatic rule change");
-  assert.equal(rowHref(editRow), "/policies/5a000000-0000-4000-8000-000000000001");
-  assert.equal(rowHref(deleteRow), "/policies", "a deleted rule has no page; the link shows the rules");
+  assert.equal(rowHref(editRow), "/rules/5a000000-0000-4000-8000-000000000001");
+  assert.equal(rowHref(deleteRow), "/rules", "a deleted rule has no page; the link shows the rules");
   assert.equal(changesQuery(editRow), "record=41");
   assert.equal(changesQuery({ entry: { kind: "policy-change", seq: "1; drop", subject: {} } }), null);
 });

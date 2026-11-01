@@ -9,7 +9,7 @@ export async function renderComplianceAt(search: string, props: ComponentProps<t
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { PathnameContext, SearchParamsContext } = await import("next/dist/shared/lib/hooks-client-context.shared-runtime");
   return renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: {} as ContextType<typeof AppRouterContext> },
-    createElement(PathnameContext.Provider, { value: "/benchmarks" },
+    createElement(PathnameContext.Provider, { value: "/compliance" },
       createElement(SearchParamsContext.Provider, { value: new URLSearchParams(search) as unknown as ContextType<typeof SearchParamsContext> },
         createElement(CompliancePage, props)))));
 }

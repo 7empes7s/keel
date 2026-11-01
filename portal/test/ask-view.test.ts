@@ -50,7 +50,7 @@ test("words the reading left out are said plainly, and the summary counts every 
 
 test("the settings a change touched read as words, not as Microsoft's field names", () => {
   const record = { kind: "change", id: "x", resourceType: "user", naturalKey: "user:x", name: "x", changeType: "modified", impact: "access-affecting", decision: null,
-    seenAt: null, window: { from: null, to: null }, source: { kind: "change", id: "x", href: "/drift", collectionId: null } } as const;
+    seenAt: null, window: { from: null, to: null }, source: { kind: "change", id: "x", href: "/changes", collectionId: null } } as const;
   assert.equal(recordFields({ ...record, fields: ["accountEnabled", "scheduleInfo.expiration.endDateTime"] } as never), "Account enabled, Schedule info › expiration › end date time");
   assert.equal(recordFields({ ...record, fields: ["department"], moreFields: true } as never), "Department and more");
   assert.equal(recordFields({ ...record, fields: [] } as never), "");

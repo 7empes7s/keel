@@ -8,7 +8,7 @@ import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
 import type { Day } from "@/lib/date-range";
 import type { SnapshotOption } from "@/lib/portal-jobs";
-import { backupAge, backupDays, backupForDay, backupsOn, dayWords, plural, takenAt, timeWords } from "@/lib/restore-view";
+import { backupAge, backupDays, backupForDay, backupsOn, dayWords, partialWords, plural, takenAt, timeWords } from "@/lib/restore-view";
 import { useLiveSearchParams } from "@/lib/use-view-state";
 
 /** The point in time a restore goes back to: always visible with its age, picked on a
@@ -35,6 +35,7 @@ export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick,
   const sameDay = day ? backupsOn(snapshots, day) : [];
   const newest = snapshots[0];
   const isNewest = newest?.id === chosen.id;
+  const partial = partialWords(chosen);
 
   function pickDay(value: Day) {
     const found = backupForDay(snapshots, value);
@@ -42,7 +43,7 @@ export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick,
     onPick(found.snapshot.id, found.exact ? undefined : value);
   }
 
-  const times = [...sameDay].reverse().map((snapshot) => ({ value: snapshot.id, label: timeWords(takenAt(snapshot)).replace(" UTC", ""), hint: plural(snapshot.resourceCount, "setting") }));
+  const times = [...sameDay].reverse().map((snapshot) => ({ value: snapshot.id, label: timeWords(takenAt(snapshot)).replace(" UTC", ""), hint: [plural(snapshot.resourceCount, "setting"), partialWords(snapshot)].filter(Boolean).join(" · ") }));
 
   return (
     <section aria-labelledby={headingId} className="restore-point">
@@ -57,6 +58,7 @@ export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick,
             {[
               backupAge(at, now),
               `${plural(chosen.resourceCount, "setting")} saved`,
+              ...(partial ? [partial] : []),
               isNewest ? "your newest backup" : `${plural(snapshots.findIndex((entry) => entry.id === chosen.id), "backup")} taken after it`,
             ].join(" · ")}
           </p>

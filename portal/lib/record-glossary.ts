@@ -403,6 +403,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Restore reference": support("Restore reference", ID),
   "Open steps": fact("Steps still open", "Follow-up steps not finished yet."),
   "Restore finished": fact("Restore finished", "When the restore ended."),
+  "Oldest open step opened": fact("Oldest open step opened", "When the oldest step still open was added."),
   "Completion state": fact("Follow-up", "Whether the follow-up checks are done."),
   "Requirement": fact("What is needed", "What must be true to close this step."),
   "Times reopened": count("Times reopened", "How often the step was reopened.", { zeroIsGood: true }),

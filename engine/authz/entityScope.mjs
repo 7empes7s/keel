@@ -84,39 +84,55 @@ export async function scopeForPrincipalId(client, principalId, capability, at = 
  * held the key at that time).
  */
 export async function ownershipOfResources(client, { tenantRef, resources }) {
-  const answers = [];
-  for (const { resourceType, naturalKey, asOf } of resources) {
-    const when = asOf ? new Date(asOf) : new Date();
-    const { rows: lineages } = await client.query(
-      `SELECT DISTINCT sa.lineage_id
-         FROM resource_lineage_alias sa
-         JOIN resource_lineage sl ON sl.id = sa.lineage_id
-        WHERE sl.tenant_ref = $1 AND sl.resource_type = $2 AND sa.natural_key = $3
-          AND sa.valid_from <= $4 AND (sa.valid_until IS NULL OR sa.valid_until > $4)`,
-      [tenantRef, resourceType, naturalKey, when],
-    );
+  if (!resources.length) return [];
+  // One read for every resource's lineages and one for their ownership, however many
+  // resources there are (the Changes list used to ask once per change).
+  const now = new Date();
+  const { rows: lineages } = await client.query(
+    `SELECT DISTINCT r.idx, sa.lineage_id
+       FROM unnest($2::text[], $3::text[], $4::timestamptz[]) WITH ORDINALITY AS r(rtype, nkey, at, idx)
+       JOIN resource_lineage sl ON sl.tenant_ref = $1 AND sl.resource_type = r.rtype
+       JOIN resource_lineage_alias sa ON sa.lineage_id = sl.id AND sa.natural_key = r.nkey
+        AND sa.valid_from <= r.at AND (sa.valid_until IS NULL OR sa.valid_until > r.at)`,
+    [tenantRef, resources.map((entry) => entry.resourceType), resources.map((entry) => entry.naturalKey),
+      resources.map((entry) => (entry.asOf ? new Date(entry.asOf) : now))],
+  );
+  const byIndex = new Map();
+  for (const row of lineages) byIndex.set(Number(row.idx), [...(byIndex.get(Number(row.idx)) ?? []), row.lineage_id]);
+  const single = resources.map((_, index) => {
+    const found = byIndex.get(index + 1) ?? [];
+    return found.length === 1 ? found[0] : null;
+  });
+  const owners = await currentOwnershipMany(client, tenantRef, single.filter(Boolean));
+  return resources.map(({ resourceType, naturalKey }, index) => {
     const base = { resourceType, naturalKey, lineageId: null, evidenceId: null, entityCode: null, entityCodes: [], expiresAt: null };
-    if (lineages.length !== 1) {
-      answers.push({ ...base, state: 'unattributed' });
-      continue;
-    }
-    answers.push({ ...base, lineageId: lineages[0].lineage_id, ...await currentOwnership(client, tenantRef, lineages[0].lineage_id) });
-  }
-  return answers;
+    const lineageId = single[index];
+    if (!lineageId) return { ...base, state: 'unattributed' };
+    return { ...base, lineageId, ...owners.get(lineageId) };
+  });
 }
 
-async function currentOwnership(client, tenantRef, lineageId) {
-  const { rows: [row] } = await client.query(
-    `SELECT id, state, entity_code, entity_codes, expires_at
+const NEVER_RESOLVED = Object.freeze({ evidenceId: null, state: 'never-resolved', entityCode: null, entityCodes: [], expiresAt: null });
+
+/** The current ownership evidence of each lineage, read at once. A lineage with none is
+ * `never-resolved`. */
+async function currentOwnershipMany(client, tenantRef, lineageIds) {
+  const wanted = [...new Set(lineageIds.map(String))];
+  const owners = new Map(wanted.map((id) => [id, { ...NEVER_RESOLVED, entityCodes: [] }]));
+  if (!wanted.length) return owners;
+  const { rows } = await client.query(
+    `SELECT id, lineage_id, state, entity_code, entity_codes, expires_at
        FROM resource_ownership_evidence
-      WHERE tenant_ref = $1 AND lineage_id = $2 AND superseded_at IS NULL`,
-    [tenantRef, lineageId],
+      WHERE tenant_ref = $1 AND lineage_id = ANY($2::uuid[]) AND superseded_at IS NULL`,
+    [tenantRef, wanted],
   );
-  if (!row) return { evidenceId: null, state: 'never-resolved', entityCode: null, entityCodes: [], expiresAt: null };
-  return {
-    evidenceId: row.id, state: row.state, entityCode: row.entity_code,
-    entityCodes: [...(row.entity_codes ?? [])].sort(), expiresAt: new Date(row.expires_at).toISOString(),
-  };
+  for (const row of rows) {
+    owners.set(String(row.lineage_id), {
+      evidenceId: row.id, state: row.state, entityCode: row.entity_code,
+      entityCodes: [...(row.entity_codes ?? [])].sort(), expiresAt: new Date(row.expires_at).toISOString(),
+    });
+  }
+  return owners;
 }
 
 /** Whether a resolved ownership answer is visible to `scope` at `at`. */
@@ -135,7 +151,12 @@ export function ownershipVisibleTo(scope, ownership, at = new Date()) {
  * request can only be decided by a central approver.
  */
 export async function captureApprovalScope(client, { tenantRef, resources, at = new Date() }) {
-  const owned = await ownershipOfResources(client, { tenantRef, resources });
+  return approvalScopeFrom(await ownershipOfResources(client, { tenantRef, resources }), at);
+}
+
+/** The approval scope for ownership answers already read (ownershipOfResources), so a
+ * reader routing many changes reads ownership once for all of them. */
+export function approvalScopeFrom(owned, at = new Date()) {
   const fresh = (entry) => entry.expiresAt && new Date(entry.expiresAt) > at;
   const centralOnly = owned.length === 0 || owned.some((entry) => entry.state !== 'owned' || !fresh(entry));
   return {
@@ -165,21 +186,31 @@ function covers(scope, entities) {
  * The captured ownership is only the reference point that detects a change.
  */
 export async function rereadApprovalOwnership(client, { tenantRef, entityScope, at = new Date() }) {
-  let expired = false;
-  const current = [];
-  for (const captured of entityScope.resources) {
-    const now = captured.lineageId
-      ? { ...captured, ...await currentOwnership(client, tenantRef, captured.lineageId) }
-      : { ...captured, state: 'unattributed', entityCode: null, entityCodes: [] };
-    if (!sameOwner(captured, now)) return { changed: true };
-    if (now.state !== 'unattributed' && !(now.expiresAt && new Date(now.expiresAt) > at)) expired = true;
-    current.push(now);
-  }
-  if (expired) return { expired: true };
-  return {
-    centralOnly: entityScope.centralOnly === true || current.some((entry) => entry.state !== 'owned'),
-    entities: [...new Set(current.filter((entry) => entry.state === 'owned').map((entry) => entry.entityCode))].sort(),
-  };
+  const [answer] = await rereadApprovalOwnershipMany(client, { tenantRef, entityScopes: [entityScope], at });
+  return answer;
+}
+
+/** rereadApprovalOwnership for many captured scopes, with one read of ownership. */
+export async function rereadApprovalOwnershipMany(client, { tenantRef, entityScopes, at = new Date() }) {
+  const lineageIds = entityScopes.flatMap((scope) => scope.resources.map((captured) => captured.lineageId).filter(Boolean));
+  const owners = await currentOwnershipMany(client, tenantRef, lineageIds);
+  return entityScopes.map((entityScope) => {
+    let expired = false;
+    const current = [];
+    for (const captured of entityScope.resources) {
+      const now = captured.lineageId
+        ? { ...captured, ...owners.get(String(captured.lineageId)) }
+        : { ...captured, state: 'unattributed', entityCode: null, entityCodes: [] };
+      if (!sameOwner(captured, now)) return { changed: true };
+      if (now.state !== 'unattributed' && !(now.expiresAt && new Date(now.expiresAt) > at)) expired = true;
+      current.push(now);
+    }
+    if (expired) return { expired: true };
+    return {
+      centralOnly: entityScope.centralOnly === true || current.some((entry) => entry.state !== 'owned'),
+      entities: [...new Set(current.filter((entry) => entry.state === 'owned').map((entry) => entry.entityCode))].sort(),
+    };
+  });
 }
 
 /**

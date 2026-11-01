@@ -275,13 +275,31 @@ async function tableExists(client, name) {
   return Boolean(row.name);
 }
 
-async function coverageFor(client, tenantRef, source, window) {
-  if (!await tableExists(client, 'audit_ingest_run')) return { status: 'not-configured' };
-  const { rows: [state] } = await client.query('SELECT * FROM audit_ingest_state WHERE tenant_ref=$1 AND source=$2', [tenantRef, source]);
-  const { rows: runs } = await client.query(
-    'SELECT evidence FROM audit_ingest_run WHERE tenant_ref=$1 AND source=$2 ORDER BY started_at DESC, id DESC LIMIT 100', [tenantRef, source],
-  );
-  return coverageFromRuns({ runs, state: state ?? null }, window);
+/** Coverage of `source` over a window. `ingest` caches each source's ingest state and
+ * runs, so a batch of changes reads them once per source, not once per change. */
+async function coverageFor(client, tenantRef, source, window, ingest = null) {
+  const reader = ingest ?? ingestReader(client, tenantRef);
+  const read = await reader(source);
+  return read ? coverageFromRuns(read, window) : { status: 'not-configured' };
+}
+
+function ingestReader(client, tenantRef) {
+  let ready = null;
+  const bySource = new Map();
+  return async (source) => {
+    ready ??= tableExists(client, 'audit_ingest_run');
+    if (!await ready) return null;
+    if (!bySource.has(source)) {
+      bySource.set(source, (async () => {
+        const { rows: [state] } = await client.query('SELECT * FROM audit_ingest_state WHERE tenant_ref=$1 AND source=$2', [tenantRef, source]);
+        const { rows: runs } = await client.query(
+          'SELECT evidence FROM audit_ingest_run WHERE tenant_ref=$1 AND source=$2 ORDER BY started_at DESC, id DESC LIMIT 100', [tenantRef, source],
+        );
+        return { runs, state: state ?? null };
+      })());
+    }
+    return bySource.get(source);
+  };
 }
 
 /** The one lineage that held (type, key) at `at`, or null when none or several did. */
@@ -328,6 +346,49 @@ async function actorNames(client, tenantRef, actors, scope, at) {
   return names;
 }
 
+/** Audit records (by change index) and sign-ins (by window) for the changes being read:
+ * one query each. Each change gets at most MAX_EVENTS_PER_CHANGE records naming its
+ * objects, newest first; each window at most MAX_SIGN_IN_ACTORS + 1 accounts. */
+async function factsFor(client, tenantRef, reading) {
+  const auditFacts = new Map();
+  const signInFacts = new Map();
+  if (!reading.length) return { auditFacts, signInFacts };
+  const indexes = reading.map((entry) => entry.index);
+  const pairs = reading.flatMap((entry) => entry.objectIds.map((id) => [entry.index, id]));
+  const { rows: audit } = await client.query(
+    `WITH c AS (SELECT * FROM unnest($2::int[], $3::timestamptz[], $4::timestamptz[]) AS c(idx, from_at, until_at)),
+          t AS (SELECT * FROM unnest($5::int[], $6::text[]) AS t(idx, target_id))
+     SELECT c.idx, f.* FROM c CROSS JOIN LATERAL (
+       SELECT tenant_ref AS "tenantRef", source_event_id AS "sourceEventId", occurred_at AS "occurredAt",
+              target_type AS "targetType", target_id AS "targetId", operation, activity, fields,
+              actor_kind AS "actorKind", actor_id AS "actorId"
+         FROM audit_change_fact
+        WHERE tenant_ref = $1 AND target_id = ANY(ARRAY(SELECT t.target_id FROM t WHERE t.idx = c.idx))
+          AND occurred_at > c.from_at AND occurred_at <= c.until_at
+        ORDER BY occurred_at DESC, source_event_id LIMIT ${MAX_EVENTS_PER_CHANGE}
+     ) f
+     ORDER BY c.idx, f."occurredAt" DESC, f."sourceEventId"`,
+    [tenantRef, indexes, reading.map((entry) => entry.change.window.from), reading.map((entry) => entry.change.window.until),
+      pairs.map(([index]) => index), pairs.map(([, id]) => id)],
+  );
+  for (const { idx, ...fact } of audit) auditFacts.set(Number(idx), [...(auditFacts.get(Number(idx)) ?? []), fact]);
+  const windows = [...new Map(reading.map(({ change: { window } }) => [`${window.from}|${window.until}`, window])).entries()];
+  const { rows: signIns } = await client.query(
+    `SELECT w.key, f.* FROM unnest($2::text[], $3::timestamptz[], $4::timestamptz[]) AS w(key, from_at, until_at)
+     CROSS JOIN LATERAL (
+       SELECT DISTINCT ON (actor_kind, actor_id) tenant_ref AS "tenantRef", source_event_id AS "sourceEventId",
+              occurred_at AS "occurredAt", actor_kind AS "actorKind", actor_id AS "actorId"
+         FROM audit_sign_in_fact
+        WHERE tenant_ref = $1 AND occurred_at > w.from_at AND occurred_at <= w.until_at
+        ORDER BY actor_kind, actor_id, occurred_at DESC LIMIT ${MAX_SIGN_IN_ACTORS + 1}
+     ) f
+     ORDER BY w.key, f."actorKind", f."actorId"`,
+    [tenantRef, windows.map(([key]) => key), windows.map(([, window]) => window.from), windows.map(([, window]) => window.until)],
+  );
+  for (const { key, ...fact } of signIns) signInFacts.set(key, [...(signInFacts.get(key) ?? []), fact]);
+  return { auditFacts, signInFacts };
+}
+
 /** Top-level field names that differ between two payloads. */
 export function changedFields(before, after) {
   const a = before && typeof before === 'object' ? before : {};
@@ -357,9 +418,8 @@ export async function attributeChanges(client, { tenantRef, changes, scope = { c
   if (!bounded.length) return [];
   const identities = await lineagesFor(client, tenantRef, bounded);
   const factsReady = await tableExists(client, 'audit_change_fact');
-  const results = [];
-  const allActors = new Map();
-  for (const [index, change] of bounded.entries()) {
+  const ingest = ingestReader(client, tenantRef);
+  const planned = bounded.map((change, index) => {
     const lineage = identities[index];
     const { source, service } = auditSourceFor(change.resourceType);
     // The object ids an audit record would name: the lineage's when KEEL resolved one,
@@ -368,6 +428,16 @@ export async function attributeChanges(client, { tenantRef, changes, scope = { c
       ? [lineage.sourceId.toLowerCase()]
       : [...new Set((change.objectIds ?? []).filter((id) => typeof id === 'string' && OBJECT_ID.test(id)).map((id) => id.toLowerCase()))];
     const identity = objectIds.length ? { lineageId: lineage?.lineageId ?? null, sourceId: objectIds[0] } : null;
+    return { index, change, source, service, objectIds, identity };
+  });
+  // Every change's audit records and nearby sign-ins in one read each, with the same
+  // per-change limits as before.
+  const reading = factsReady ? planned.filter((entry) => entry.source && entry.objectIds.length) : [];
+  const { auditFacts, signInFacts } = await factsFor(client, tenantRef, reading);
+  const read = new Set(reading.map((entry) => entry.index));
+  const results = [];
+  const allActors = new Map();
+  for (const { index, change, source, service, objectIds, identity } of planned) {
     if (!source) {
       results.push({
         change, identity, source: null, service,
@@ -376,33 +446,14 @@ export async function attributeChanges(client, { tenantRef, changes, scope = { c
       });
       continue;
     }
-    const auditCoverage = await coverageFor(client, tenantRef, source, change.window);
-    const signInCoverage = await coverageFor(client, tenantRef, 'sign-in', change.window);
-    let auditFacts = [];
-    let signInFacts = [];
-    if (factsReady && objectIds.length) {
-      ({ rows: auditFacts } = await client.query(
-        `SELECT tenant_ref AS "tenantRef", source_event_id AS "sourceEventId", occurred_at AS "occurredAt",
-                target_type AS "targetType", target_id AS "targetId", operation, activity, fields,
-                actor_kind AS "actorKind", actor_id AS "actorId"
-           FROM audit_change_fact
-          WHERE tenant_ref = $1 AND target_id = ANY($2::text[]) AND occurred_at > $3 AND occurred_at <= $4
-          ORDER BY occurred_at DESC, source_event_id LIMIT ${MAX_EVENTS_PER_CHANGE}`,
-        [tenantRef, objectIds, change.window.from, change.window.until],
-      ));
-      ({ rows: signInFacts } = await client.query(
-        `SELECT DISTINCT ON (actor_kind, actor_id) tenant_ref AS "tenantRef", source_event_id AS "sourceEventId",
-                occurred_at AS "occurredAt", actor_kind AS "actorKind", actor_id AS "actorId"
-           FROM audit_sign_in_fact
-          WHERE tenant_ref = $1 AND occurred_at > $2 AND occurred_at <= $3
-          ORDER BY actor_kind, actor_id, occurred_at DESC LIMIT ${MAX_SIGN_IN_ACTORS + 1}`,
-        [tenantRef, change.window.from, change.window.until],
-      ));
-    }
+    const auditCoverage = await coverageFor(client, tenantRef, source, change.window, ingest);
+    const signInCoverage = await coverageFor(client, tenantRef, 'sign-in', change.window, ingest);
     const verdict = classifyAttribution({
       tenantRef,
       change: { ...change, sourceIds: objectIds, edge: typeof change.naturalKey === 'string' && change.naturalKey.startsWith('edge:') },
-      auditFacts, signInFacts, auditCoverage, signInCoverage,
+      auditFacts: auditFacts.get(index) ?? [],
+      signInFacts: read.has(index) ? signInFacts.get(`${change.window.from}|${change.window.until}`) ?? [] : [],
+      auditCoverage, signInCoverage,
     });
     for (const actor of verdict.actors) allActors.set(`${actor.kind}:${actor.id}`, actor);
     results.push({ change, identity, source, service, verdict, coverage: { audit: auditCoverage.status, signIn: signInCoverage.status } });

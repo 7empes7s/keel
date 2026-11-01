@@ -30,8 +30,8 @@ import type { FailedRestoreCounts } from "@/lib/failed-restores";
 import { checkAuditRecord } from "@/lib/evidence";
 import { AUDIT_CHECK_WORDS, AUDIT_RECORD_HREF, auditCheckOf, dashboardAuditCheck } from "@/lib/audit-check";
 import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
-import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
-import { routeApproval } from "../../engine/govern/approvals.mjs";
+import { approvalScopeFrom, ownershipOfResources, scopePredicate } from "../../engine/authz/entityScope.mjs";
+import { routeApprovals } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
@@ -890,25 +890,31 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
     console.error("[keel-portal] change attribution unavailable", error);
     return items.map((item) => ({ ...item, attribution: null }));
   }
-  const approverCache = new Map();
-  const result: DriftRecord[] = [];
-  for (const item of items) {
-    const found = byId.get(item.id);
-    if (!found) { result.push({ ...item, attribution: null }); continue; }
-    const { changeId: _changeId, ...attribution } = found;
-    let route: ChangeAttribution["route"] = null;
+  // Where a roll back of each attributed change would go: ownership is read once for all
+  // of them and each set of approvers once, not once per change (Q305: 1,850 queries).
+  const attributedItems = items.filter((item) => byId.has(item.id));
+  let routes: (ChangeAttribution["route"])[] = attributedItems.map(() => null);
+  if (attributedItems.length) {
     try {
-      const entityScope = await captureApprovalScope(client, { tenantRef: ref, resources: [{ resourceType: item.resourceType, naturalKey: item.naturalKey }] });
-      const routed = (await routeApproval(client, { tenantRef: ref, entityScope, approverCache })) as {
-        route: "entity" | "central" | "refused"; reason?: string; entityCode?: string; approvers?: string[]; routedAt: string;
-      };
-      route = { route: routed.route, reason: routed.reason, entityCode: routed.entityCode, approverCount: routed.approvers?.length ?? 0, routedAt: routed.routedAt };
+      const at = new Date();
+      const owned = (await ownershipOfResources(client, {
+        tenantRef: ref, resources: attributedItems.map((item) => ({ resourceType: item.resourceType, naturalKey: item.naturalKey })),
+      })) as unknown[];
+      const routed = (await routeApprovals(client, {
+        tenantRef: ref, at, approverCache: new Map(), entityScopes: owned.map((entry) => approvalScopeFrom([entry], at)),
+      })) as { route: "entity" | "central" | "refused"; reason?: string; entityCode?: string; approvers?: string[]; routedAt: string }[];
+      routes = routed.map((entry) => ({ route: entry.route, reason: entry.reason, entityCode: entry.entityCode, approverCount: entry.approvers?.length ?? 0, routedAt: entry.routedAt }));
     } catch (error) {
       console.error("[keel-portal] approval route unavailable", error);
     }
-    result.push({ ...item, attribution: { ...attribution, route } });
   }
-  return result;
+  const routeOf = new Map(attributedItems.map((item, index) => [item.id, routes[index]]));
+  return items.map((item) => {
+    const found = byId.get(item.id);
+    if (!found) return { ...item, attribution: null };
+    const { changeId: _changeId, ...attribution } = found;
+    return { ...item, attribution: { ...attribution, route: routeOf.get(item.id) ?? null } };
+  });
 }
 
 // Task 98: the settings that change behaviour for each change the reader may see, and
@@ -968,20 +974,29 @@ async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[
   const names = new Map<string, string>();
   try {
     const { rows } = await client.query(
-      `WITH seen AS (
-         SELECT DISTINCT d.observed_snapshot AS id FROM drift d
+      // Each wanted id is looked up on its own in the id, app id and role template id
+      // indexes (store/schema.d/91), limited to the backups that saw these changes. The
+      // old form let the planner read every version in those backups and unpack each
+      // payload three times: 3 to 4 s on live (operator queue Q305).
+      `WITH seen AS MATERIALIZED (
+         SELECT coalesce(array_agg(DISTINCT d.observed_snapshot), '{}') AS ids FROM drift d
           WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
+       ), hits AS (
+         SELECT DISTINCT h.id FROM unnest($3::text[]) AS w(id) CROSS JOIN seen CROSS JOIN LATERAL (
+           SELECT rv.id FROM resource_version rv WHERE lower(rv.payload->>'id') = w.id AND rv.snapshot_id = ANY(seen.ids)
+           UNION ALL
+           SELECT rv.id FROM resource_version rv WHERE lower(rv.payload->>'appId') = w.id AND rv.snapshot_id = ANY(seen.ids)
+           UNION ALL
+           SELECT rv.id FROM resource_version rv WHERE lower(rv.payload->>'roleTemplateId') = w.id AND rv.snapshot_id = ANY(seen.ids)
+         ) h
        )
        SELECT lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
               lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name,
               rv.resource_type, rv.natural_key,
               CASE WHEN rv.resource_type = ANY($4::text[]) AND ${REF_NAME_SQL} IS NULL THEN rv.payload END AS payload
-         FROM resource_version rv
-         JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
-        WHERE rv.snapshot_id IN (SELECT id FROM seen)
-          AND (lower(rv.payload->>'id') = ANY($3::text[])
-            OR lower(rv.payload->>'appId') = ANY($3::text[])
-            OR lower(rv.payload->>'roleTemplateId') = ANY($3::text[]))`,
+         FROM hits
+         JOIN resource_version rv ON rv.id = hits.id
+         JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1`,
       [ref, items.map((item) => item.id), wanted, DERIVED_NAME_TYPES],
     );
     const add = (row: Record<string, unknown>, name: string) => {

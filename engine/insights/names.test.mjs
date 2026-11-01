@@ -225,7 +225,7 @@ test('an app is found by its app id, and a bare id is looked up through the inde
     },
   };
   await lookupNames(explaining, { tenantRef: TENANT, ids: [SP_ID] });
-  assert.match(plans[0], /resource_version_object_id_idx/);
-  assert.match(plans[0], /resource_version_app_id_idx/);
+  assert.match(plans[0], /resource_version_object_id_snapshot_idx/);
+  assert.match(plans[0], /resource_version_app_id_snapshot_idx/);
   assert.doesNotMatch(plans[0], /Seq Scan on resource_version/);
 });

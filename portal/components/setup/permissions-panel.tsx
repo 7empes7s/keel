@@ -214,7 +214,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
               </p>
               <p>
                 {permissions ? `An admin removes ${permissions === 1 ? "the permission" : "the permissions"} in Entra ID under the app's API permissions${roles.length ? ", and " : "."}` : ""}
-                {roles.length ? `${permissions ? "a" : "A"} Privileged Role Administrator removes ${roles.length === 1 ? "the role" : "each role"} from ${entry.info?.displayName ?? `the ${appNameInSentence(entry.identity)}`}: ${roles.map((row) => row.name).join(", ")}.` : ""}
+                {roles.length ? `${permissions ? "a" : "A"}${roles.every((row) => row.api === "intune") ? "n Intune Administrator" : " Privileged Role Administrator"} removes ${roles.length === 1 ? "the role" : "each role"} from ${entry.info?.displayName ?? `the ${appNameInSentence(entry.identity)}`}: ${roles.map((row) => row.name).join(", ")}.` : ""}
                 {" "}Keel never removes access for you.
               </p>
               <div className="su-pp-alert-actions">

@@ -14407,3 +14407,18 @@ item that needs it stays untouched.
      record has a known break, explained" in amber (Check soon), plus "not checked: no off-site copy", and it should not read
      "failed the check".
 - **Report:** the commit, the dry-run and confirm outputs verbatim, the step 4 output and what the Overview showed.
+
+### Q307: After PR #901 deploys, time the Changes feed again (read-only, no tenant), about 5 minutes
+- Drafted by the "Speed up the Changes feed" thread (2026-11-01, backlog 40). PR #901 rewrites the name lookup that took
+  **11.5 s** in Q305 (`WITH wanted AS ... hits AS ...`) so it reads only each object's newest backup, and adds three indexes
+  (schema fragment 92). This item gets the after-numbers. **Same read-only rules as Q303 and Q305:** every connection opened
+  with `default_transaction_read_only=on`; no tenant calls, no restarts, no config changes, nothing installed; never print a
+  database URL, password, token, tenant id or address.
+- Needs: the deployed build at or after PR #901's merge, and its schema applied
+  (`SELECT indexname FROM pg_indexes WHERE indexname = 'resource_version_object_id_snapshot_idx'` returns a row; if not, report `blocked`).
+- Status: todo
+- Do, on Mulinux: exactly Q303 steps 1–4 (same `profile-reads.mts` script from Q303, same principal pick), at the deployed
+  commit, with `ONLY='changes|alerts'` and `timeout 300`. Delete the script and the output file afterwards.
+  Also run, read-only: `SELECT pg_size_pretty(pg_relation_size('resource_version_object_id_snapshot_idx')), pg_size_pretty(pg_relation_size('resource_version_app_id_snapshot_idx'))`.
+- **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, the two
+  index sizes, and any `[keel-portal] slow query` line that starts with `WITH wanted AS` or `WITH latest AS`.

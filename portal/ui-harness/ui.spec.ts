@@ -2681,7 +2681,8 @@ test("Incidents · the picker switches incident; a closed one and a reader see n
 
   await open(page, "/incidents/viewer");
   await expect(page.locator(".mode-marker")).toHaveText("Read-only");
-  await expect(page.getByText("Only investigators can change incidents.")).toBeVisible();
+  // Not a dead end (D12): the reader is told who the investigators are.
+  await expect(page.locator("[data-who-to-ask=investigator]")).toContainText("Only investigators can open or change incidents. Ask Ines Investigator (investigator).");
   await expect(page.getByRole("link", { name: /New incident|Record your check|Close incident/ })).toHaveCount(0);
   await page.locator(".sel-row").nth(0).locator(".sel-check").click();
   await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 backup");
@@ -3930,7 +3931,7 @@ test("Compliance · nothing checked yet: Check now runs the checks; storage not 
   await expect(page.locator(".cp-empty").getByRole("button", { name: "Check now" })).toBeVisible();
   const storage = page.locator(".cp-storage");
   await expect(storage).toHaveAttribute("data-tone", "soon");
-  await expect(storage).toContainText("Ask whoever runs the Keel server to record where backups are stored.");
+  await expect(storage).toContainText("Ask a Keel admin to record where backups are stored on the Keel server.");
   await expect(storage.getByRole("link", { name: "See backup storage" })).toHaveAttribute("href", /\/resilience#storage$/);
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 

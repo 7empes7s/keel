@@ -101,7 +101,7 @@ export function settingsFileWords(raw: string | null): Pick<PlainError, "cause" 
   // Raw text from before the engine named the file: only a missing file under /etc/keel,
   // never any ENOENT (a missing program or content blob) or JSON error (an HTML answer).
   if (/\bENOENT\b[^\n]*\/etc\/keel\/[^\s'"]+\.json/.test(raw)) {
-    return { cause: "A settings file Keel needs on its server is missing.", todo: "Ask whoever runs Keel to put the file named in the details back, then try again." };
+    return { cause: "A settings file Keel needs on its server is missing.", todo: "Ask a Keel admin to put the file named in the details back on the Keel server, then try again." };
   }
   return null;
 }

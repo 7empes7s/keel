@@ -10663,6 +10663,12 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .ir-toolbar .btn .icon, .ir-card-acts .btn .icon, .ir-empty .btn .icon { width: 0.875rem; height: 0.875rem; }
 .ir-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); padding: var(--space-md); border: 1px dashed var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .ir-empty p { flex: 1 1 18rem; margin: 0; color: var(--text-soft); }
+/* Who to ask (D12): a reader without the investigator role sees who has it, and an admin can give it to themselves. */
+.ir-who { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in srgb, var(--low-risk) 35%, var(--line)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--low-risk-bg) 70%, var(--surface)); }
+.ir-who > .icon { width: 1rem; height: 1rem; flex: none; color: var(--low-risk); }
+.ir-who p { flex: 1 1 16rem; margin: 0; font-size: 0.875rem; line-height: 1.45; }
+.ir-who-acts { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.ir-who-acts .btn .icon { width: 0.875rem; height: 0.875rem; }
 
 .ir-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; align-items: stretch; }
 .ir-tiles > * { min-width: 0; }

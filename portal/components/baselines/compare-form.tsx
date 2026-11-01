@@ -62,8 +62,11 @@ export function CompareForm({ tenants, input, quick }: { tenants: CompareTenant[
       </form>
       <p className="bl-help">
         Pick a backup from another tenant to compare the two tenants. Comparing only reads backups: nothing here changes anything.
-        Comparing with the tenant as it is this minute is done by an operator on the Keel server.
+        To compare with the tenant as it is now, back it up first, then choose that backup as After.
       </p>
+      <Link className="btn btn-sm bl-compare-now" href="/protect">
+        <Icon name="backup" />Back up now on What&apos;s protected<Icon name="chevron" />
+      </Link>
     </section>
   );
 }

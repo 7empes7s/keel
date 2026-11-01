@@ -46,6 +46,7 @@ import { ago, formatTimestamp } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
+import { askServerAdmin, type Contacts } from "@/lib/who-to-ask";
 
 // Policies (portal audit, one design): automatic rules as one grouped list. Four count
 // tiles (Running, Paused or stopped, Off, Actions this week) are links that set a
@@ -54,12 +55,14 @@ import { useLiveSearchParams, useViewState } from "@/lib/use-view-state";
 // paused itself. "New rule" (`?new=1`) opens a guided sheet. Ids stay in one record
 // at the foot of the page.
 
-export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltFile, now = new Date().toISOString() }: {
+export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltFile, contacts = null, now = new Date().toISOString() }: {
   canEdit: boolean;
   policies: Policy[];
   halted: boolean;
   haltedAt?: string | null;
   haltFile?: string;
+  // Keel admins by name, for "who to ask" while automation is stopped.
+  contacts?: Contacts | null;
   now?: string;
 }) {
   const router = useRouter();
@@ -192,7 +195,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
             <Icon name="alert" />
             <div>
               <b>Automation is stopped by an operator{haltedAt ? <> since <time dateTime={haltedAt} title={formatTimestamp(haltedAt)}>{ago(haltedAt, now)}</time></> : null}.</b>
-              <p>Ask an operator to start it again. Until then no rule acts, whatever its state here.</p>
+              <p>{askServerAdmin(contacts, "start it again on the Keel server")} Until then no rule acts, whatever its state here.</p>
             </div>
           </div>
         ) : null}

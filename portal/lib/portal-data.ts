@@ -48,6 +48,7 @@ import { templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
+import type { Contacts } from "@/lib/who-to-ask";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { objectIds, openChangeCount, payloadName } from "@/lib/changes-view";
@@ -1221,6 +1222,43 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   return refs;
 }
 
+/** Who holds a role tenant-wide right now (enabled people, not Keel's own accounts),
+ * by name, A to Z. Pages use it to say who to ask instead of "ask an admin". The names
+ * follow "Hide people's names", like every other person the portal shows. */
+async function roleHolders(client: KeelClient, role: string): Promise<{ id: string; name: string }[]> {
+  const { rows } = await client.query(
+    `SELECT DISTINCT p.id::text AS id
+       FROM principal p JOIN role_grant g ON g.principal_id = p.id
+      WHERE g.role = $1 AND g.scope = '*' AND p.disabled_at IS NULL AND p.system_kind IS NULL
+        AND g.active_from <= now() AND (g.active_until IS NULL OR g.active_until > now())`,
+    [role],
+  );
+  const refs = await principalRefs(client, rows.map((row) => String(row.id)));
+  return [...refs.values()].filter((ref) => ref.href).map((ref) => ({ id: ref.id, name: ref.name })).sort((a, b) => a.name.localeCompare(b.name, "en-GB"));
+}
+
+/** Admins and investigators by name. The reader is left out of the lists and flagged
+ * instead, so a page never tells someone to ask themselves. */
+export async function readContacts(client: KeelClient, viewerId: string | null): Promise<Contacts> {
+  const [admins, investigators] = [await roleHolders(client, "admin"), await roleHolders(client, "investigator")];
+  const others = (list: { id: string; name: string }[]) => list.filter((person) => person.id !== viewerId).map((person) => person.name);
+  return {
+    admins: others(admins),
+    investigators: others(investigators),
+    youAreAdmin: admins.some((person) => person.id === viewerId),
+  };
+}
+
+/** The people a page names as "who to ask": Keel admins and investigators. Null when
+ * they could not be read, so the page falls back to the role's name. */
+export async function getContacts(viewerId: string | null): Promise<Contacts | null> {
+  try {
+    return await withClient((client) => readContacts(client, viewerId));
+  } catch {
+    return null;
+  }
+}
+
 /** People by principal id for a page that has no other database work (Activity). */
 export async function getPrincipalNames(ids: string[]): Promise<Record<string, Ref>> {
   return withClient(async (client) => Object.fromEntries(await principalRefs(client, ids)));
@@ -1617,7 +1655,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 // Roadmap task-73: measured freshness, recoverable point, recovery time and the
 // recovery context around them. Every read is pinned to this portal's tenant; the
 // numbers are the engine's (engine/coverage/recoveryMetrics.mjs), never recomputed here.
-export async function getResilienceData(): Promise<ResilienceData> {
+export async function getResilienceData(viewerId: string | null = null): Promise<ResilienceData> {
   const ref = tenantRef();
   const now = new Date();
   const storage = storageFrom();
@@ -1654,7 +1692,14 @@ export async function getResilienceData(): Promise<ResilienceData> {
     }
     // The Entra ID and Intune row counts kinds with the same buckets as What's protected.
     const kinds = resilienceKinds((await coverageFor(client, ref)).types);
-    return { generatedAt: now.toISOString(), metrics, failedRestores, kinds, incidents, storage, followUps };
+    // Who to ask for work done on the Keel server (D12); the page still loads without it.
+    let contacts: Contacts | null;
+    try {
+      contacts = await readContacts(client, viewerId);
+    } catch {
+      contacts = null;
+    }
+    return { generatedAt: now.toISOString(), metrics, failedRestores, kinds, incidents, storage, followUps, contacts };
   });
 }
 

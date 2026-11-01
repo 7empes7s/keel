@@ -782,7 +782,7 @@ function ChannelSheet({ busy, error, onClose, onSave }: {
 }) {
   const [kind, setKind] = useState<ChannelKind>("email");
   const [test, setTest] = useState(true);
-  const settingHelp = "The name of a setting on the Keel server that holds the secret address or key, written as env:KEEL_INTEGRATION_NAME (only names that start with KEEL_INTEGRATION_ are read). Ask whoever runs the server to add it. Keel keeps the name only.";
+  const settingHelp = "The name of a setting on the Keel server that holds the secret address or key, written as env:KEEL_INTEGRATION_NAME (only names that start with KEEL_INTEGRATION_ are read). Add that setting on the Keel server first; Keel keeps the name only.";
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);

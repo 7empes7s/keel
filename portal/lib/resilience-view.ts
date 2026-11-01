@@ -3,6 +3,7 @@ import type { VerdictTone } from "@/components/verdict";
 import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } from "@/lib/failed-restores";
 import { ago, formatTimestamp, resourceTypeLabel, words } from "@/lib/presentation";
 import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
+import { askServerAdmin, type Contacts } from "@/lib/who-to-ask";
 import { backupHealth, coverageSummary, typeName, type BackupHealth } from "@/lib/protect-view";
 import type { CoverageSummary, CoverageType, OpenFollowUpTotals, StorageResidency } from "@/lib/types";
 
@@ -141,6 +142,9 @@ export interface ResilienceData {
   // Open follow-up work across every restore: the same totals Overview and Restore
   // show. Null when it could not be read.
   followUps: OpenFollowUpTotals | null;
+  // Keel admins by name, for the alerts that need work on the Keel server. Null or
+  // missing when they could not be read: the alerts then name the role.
+  contacts?: Contacts | null;
 }
 
 /** A duration in words: "8 minutes", "2 hours 5 minutes", "3 days". */
@@ -637,7 +641,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "no-offsite", tone: "soon", icon: "cloud",
       title: "No safe copy outside this server",
-      todo: "Ask your KEEL server admin to fix the daily off-site copy.",
+      todo: askServerAdmin(data.contacts, "fix the daily off-site copy on the Keel server"),
       more: newest ? recoverablePoint.copies.slice(-3).reverse().filter((copy) => !copy.counts).map((copy) => `Copy sent ${ago(copy.shippedAt, now)} does not count: ${offsiteReason(copy)}`) : [],
       action: { label: "Off-site copies", href: "/activity?what=copy" },
     });
@@ -683,7 +687,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "no-drill", tone: "soon", icon: "play",
       title: "No recovery drill yet",
-      todo: "Ask your KEEL server admin to run one. It uses test objects only.",
+      todo: `${askServerAdmin(data.contacts, "run one from the Keel server")} It uses test objects only.`,
       more: [],
       action: null,
     });
@@ -695,7 +699,7 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     alerts.push({
       key: "storage", tone: unknown || unsupported ? "soon" : "low", icon: "backup",
       title: unknown ? "Backup storage unknown" : unsupported ? "Backups can be deleted" : "Locked storage not proven",
-      todo: unknown ? "Set the storage details on the KEEL server." : unsupported ? "Move backups to storage that blocks deletion." : "Run the locked-storage check here.",
+      todo: askServerAdmin(data.contacts, unknown ? "record where backups are stored on the Keel server" : unsupported ? "move backups to storage that blocks deletion" : "run the locked-storage check on the Keel server"),
       more: [],
       action: null,
     });

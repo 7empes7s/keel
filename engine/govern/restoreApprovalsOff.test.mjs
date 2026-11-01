@@ -8,6 +8,7 @@ import {
   HIGH_RISK_RESTORE_APPROVAL_RULES,
   RESTORE_APPROVALS_OFF_BASIS,
   RESTORE_APPROVALS_OFF_DECIDER,
+  RESTORE_APPROVAL_SERVICES,
   WORKLOAD_RESTORE_SERVICES,
   RESTORE_APPROVAL_RULES,
   restoreApprovalScope,
@@ -94,7 +95,7 @@ async function turnOffRules(client, tenantRef, rules, actor) {
   for (const rule of rules) await setRestoreApprovalRule(client, { tenantRef, rule, approvalRequired: false, actor, riskAcknowledged: true });
 }
 
-const ALL_SERVICES = ['Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender'];
+const ALL_SERVICES = [...RESTORE_APPROVAL_SERVICES];
 
 const ask = (client, { tenantRef, artifact, requestedBy, executor = 'worker' }) => requestApproval(client, {
   tenantRef, action: 'restore', params: { artifactId: artifact.id }, requestedBy, executor,
@@ -179,7 +180,7 @@ test('an object Keel cannot place, a CA policy turned on, or a two-person rule k
   const tenantRef = tenant();
   const admin = await principal(client);
   const requester = await principal(client);
-  await turnOff(client, tenantRef, ['Entra', 'Intune', 'Exchange', 'Teams', 'SharePoint', 'Purview', 'Power Platform', 'Defender'], admin);
+  await turnOff(client, tenantRef, ALL_SERVICES, admin);
 
   // A closure key the backup does not hold: no type, no service, so a person approves it.
   const unplaced = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-a', 'group']] });

@@ -64,10 +64,11 @@ export function tileParam<T>(tiles: readonly FilterTile<T>[], picked: readonly s
   return key === null ? null : toggleTile(tiles, picked, key).join(",") || null;
 }
 
-/** What a tile that is not picked would add to the view, once another tile is picked. */
+/** What a tile that is not picked would add to the view, once another tile is picked.
+ *  Every tile row says it in these words, so the hint reads the same on every page. */
 export function addsWords(entry: TileCount | undefined, pickedCount: number): string | null {
   if (!pickedCount || !entry || entry.picked) return null;
-  return entry.adds ? `+${entry.adds} if added` : "Adds none";
+  return entry.adds ? `+${entry.adds.toLocaleString("en-GB")} more if picked` : "Nothing new if picked";
 }
 
 /** The address value with one tile taken off, for its chip. */

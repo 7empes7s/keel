@@ -58,6 +58,7 @@ const PATHS = {
   "service-power-platform": "M5 3v12M19 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM19 9c0 6-8 6-12 10",
   "service-purview": "M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM12 9v4M12 16h.01",
   "service-defender": "M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM9 12h6",
+  "service-m365-apps": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   "service-keel": "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",
 } as const;
 

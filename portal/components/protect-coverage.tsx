@@ -41,7 +41,7 @@ import {
   restoreStanding,
   tierLabel,
   typeName,
-  workloadLiveLines,
+  workloadLiveNote,
   activeRunSentence,
   type ActiveTierRuns,
   type BackupHealth,
@@ -281,7 +281,7 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
   const tileTotals = useMemo(() => new Map(tileCounts(data.types, HEALTH_TILES, pickedKey ? pickedKey.split(",") : [], others).map((entry) => [entry.key, entry])), [data.types, pickedKey, others]);
   const opened = data.types.find((item) => item.type === view.get("open")) ?? null;
   const windows = coverageWindows(data);
-  const liveLines = workloadLiveLines(data);
+  const liveNote = workloadLiveNote(data);
 
   const href = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params?.toString() ?? "");
@@ -448,7 +448,18 @@ export function ProtectCoverage({ data, now, canBackup, canCollect = canBackup, 
           <button className="btn btn-sm" onClick={() => downloadCsv(shown, now)} type="button"><Icon name="save" />Download CSV</button>
         </div>
         {windows.length > 1 ? <p className="pt-note"><Icon name="info" /><span>These kinds were read at different times, so treat each one as its own copy, not one picture of the tenant at a single moment.</span></p> : null}
-        {liveLines.map((line) => <p className="pt-note" key={line}><Icon name="info" /><span>{line}</span></p>)}
+        {liveNote ? (
+          <div className="pt-note" role="note">
+            <Icon name="info" />
+            <div>
+              <span>{liveNote.summary}</span>
+              <details className="technical-details">
+                <summary>Dates and reasons</summary>
+                <ul>{liveNote.lines.map((line) => <li key={line}>{line}</li>)}</ul>
+              </details>
+            </div>
+          </div>
+        ) : null}
         <ActiveFilters extra={{ open: null }} filters={activeFilters} noun={NOUN} shown={shown.length} total={data.types.length} />
         <SelectableList
           action={{

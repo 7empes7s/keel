@@ -51,6 +51,9 @@
  *  - `planChanges(io, step)`: in a dry run, the changes the record's
  *    `afterWrite` would make (an app's categories), read from live, so the plan
  *    shows a difference that is not in a field of the object;
+ *  - `planCompletion(step)`: in a dry run, the completion steps the record's
+ *    `afterWrite` would add (a step for a person), so the plan lists the same
+ *    outstanding work as the enforce run;
  *  - `tenantWide`: the object is one setting for the whole tenant and cannot
  *    carry a KEEL-RT- fixture name. On the test tenant it is planned and
  *    written only with the separate tenant-wide option (`ctx.allowTenantWide`),
@@ -135,6 +138,7 @@ export function defineRecord(spec) {
     writeRoute: null,
     deleteVia: null,
     planChanges: null,
+    planCompletion: null,
     remapsReferences: false,
     tenantWide: false,
     checkedAfterWrite: [],
@@ -697,7 +701,8 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   }
   if (ctx.mode === 'dry-run') {
     const planned = record.planChanges && writer ? await record.planChanges(io, { resource, payload, verb, targetId, before, ctx }) : null;
-    return { applied: { naturalKey, targetId, changes: { fields, ...(planned ?? {}) }, ...trustCompletion, ...followUp } };
+    const planSteps = [...(trustCompletion.completion ?? []), ...(record.planCompletion?.({ resource, payload, verb, targetId, before, ctx }) ?? [])];
+    return { applied: { naturalKey, targetId, changes: { fields, ...(planned ?? {}) }, ...(planSteps.length > 0 ? { completion: planSteps } : {}), ...followUp } };
   }
   if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields }, ...trustCompletion } };
 

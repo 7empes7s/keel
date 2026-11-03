@@ -238,6 +238,12 @@ function federationAfterWrite(_io, { resource }) {
   return { completion: step ? [step] : [] };
 }
 
+/** The dry run's view of federationAfterWrite: the same sign-in step, nothing written. */
+function federationPlanCompletion({ resource }) {
+  const step = federationSignInCompletion(resource);
+  return step ? [step] : [];
+}
+
 // ------------------------------------------------ Exchange app access scope
 
 const EXCHANGE_ROLE_ASSIGNMENTS = '/roleManagement/exchange/roleAssignments';
@@ -773,7 +779,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     collectionFor: (payload) => (payload?.['@odata.type'] === undefined || stripGraph(payload['@odata.type']) === 'samlOrWsFedExternalDomainFederation'
       ? FEDERATIONS : null),
     operations: ['update'],
-    writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite,
+    writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite, planCompletion: federationPlanCompletion,
     permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
   // Restore gaps, batch 9. An Exchange app access scope: a recipient filter

@@ -816,6 +816,11 @@ test('a guest federation restore never writes its sign-in endpoints or signing c
     assert.equal(writes.length, 1);
     assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' }, `${field} is never sent`);
     assert.deepEqual(result.applied.completion.map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]]);
+    // The dry run plans the name and lists the same step.
+    const planned = await run({ ...live, displayName: 'KEEL-RT-148-fed-renamed', [field]: value }, 'dry-run');
+    assert.equal(planned.writes.length, 0, `${field} (dry-run): nothing is written`);
+    assert.deepEqual(planned.result.applied.changes.fields, ['displayName']);
+    assert.deepEqual((planned.result.applied.completion ?? []).map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]], `${field} (dry-run)`);
   }
 
   // Nothing differs in the sign-in fields: no step.
@@ -867,6 +872,13 @@ test('a guest federation backup without sign-in fields opens the manual sign-in 
   assert.equal(writes.length, 1);
   assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' });
   assert.deepEqual(stepOf(result.applied.completion), allFields);
+
+  // The dry run plans the same: the name change and the step, with nothing written.
+  const planned = await run({ id: 'fed-1', displayName: 'KEEL-RT-148-fed-renamed' }, 'dry-run');
+  assert.equal(planned.result.failed, undefined, planned.result.failed?.error);
+  assert.deepEqual(planned.result.applied.changes.fields, ['displayName']);
+  assert.deepEqual(stepOf(planned.result.applied.completion ?? []), allFields, 'dry-run lists the step enforce opens');
+  assert.equal(planned.writes.length, 0, 'dry-run: nothing is written');
 });
 
 test('restore gaps batch 3: a federation of another kind has no write route', async () => {

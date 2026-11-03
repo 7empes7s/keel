@@ -43,8 +43,10 @@ const PRODUCTION_URL = 'postgres://keel@db.internal:5432/keel';
 const collector = JSON.parse(readFileSync(new URL('../../tools/rehearsal/fixtures/roundTrip-collector.json', import.meta.url), 'utf8'));
 const restorer = JSON.parse(readFileSync(new URL('../../tools/rehearsal/fixtures/roundTrip-restorer.json', import.meta.url), 'utf8'));
 const tenantRef = tenantRefFor(collector);
-const START = new Date('2026-10-03T01:02:03.004Z');
-const NOW = new Date('2026-10-03T03:00:00.000Z');
+// The CLI verifies against the wall clock; keep its evidence fresh on every run.
+const HOUR_MS = 3600_000;
+const NOW = new Date();
+const START = new Date(NOW.getTime() - 2 * HOUR_MS);
 const options = { gate: DRILL_LIVE_GATE, tenantRef, build: BUILD, now: NOW, hmacKey: KEY, requireLive: true };
 
 let dir;
@@ -134,7 +136,7 @@ function reconstruction(overrides = {}) {
     recovered: { evidence: { chainOk: true, headSeq: 42, headHash: 'a'.repeat(64), recordCount: 42 } },
     tenantRef,
     buildRevision: BUILD,
-    completedAt: '2026-10-03T02:00:00.000Z',
+    completedAt: new Date(NOW.getTime() - HOUR_MS).toISOString(),
     ...overrides,
   };
 }
@@ -148,7 +150,7 @@ function capture({ runner = 'keel-release-runner', row = drillRow, recon = recon
     reconstruction: recon,
     onboarding: setup,
     build: BUILD,
-    observedAt: '2026-10-03T02:30:00.000Z',
+    observedAt: new Date(NOW.getTime() - HOUR_MS / 2).toISOString(),
     artifactPath: join(dir, artifactRef),
     artifactRef,
     runner: { identity: runner, key: KEY },
@@ -268,7 +270,7 @@ test('wrong tenant, build or operation fails', () => {
 
 test('stale evidence fails', () => {
   const evidence = capture({ name: 'stale' });
-  assertFails(verify(evidence, { now: new Date('2027-01-01T00:00:00Z') }), /stale/);
+  assertFails(verify(evidence, { now: new Date(NOW.getTime() + 90 * 24 * HOUR_MS) }), /stale/);
   assertFails(verify(evidence, { maxAgeHours: 1 }), /stale/);
   // A fresh observation time cannot refresh an old drill or reconstruction.
   assertFails(verify(forge(evidence, (e) => {
@@ -276,8 +278,8 @@ test('stale evidence fails', () => {
     e.subject.drillRecord.startedAt = shift(e.subject.drillRecord.startedAt);
     e.subject.drillRecord.finishedAt = shift(e.subject.drillRecord.finishedAt);
   })), /drill is stale/);
-  assertFails(verify(forge(evidence, (e) => { e.subject.reconstruction.completedAt = '2026-06-01T00:00:00.000Z'; })), /reconstruction is stale/);
-  assertFails(verify(forge(evidence, (e) => { e.observedAt = '2026-10-03T01:02:04.000Z'; })), /observed before the drill finished/);
+  assertFails(verify(forge(evidence, (e) => { e.subject.reconstruction.completedAt = new Date(NOW.getTime() - 90 * 24 * HOUR_MS).toISOString(); })), /reconstruction is stale/);
+  assertFails(verify(forge(evidence, (e) => { e.observedAt = new Date(START.getTime() + 1000).toISOString(); })), /observed before the drill finished/);
 });
 
 test('missing prerequisite or missing external evidence fails', () => {

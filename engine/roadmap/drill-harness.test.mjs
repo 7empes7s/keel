@@ -63,15 +63,17 @@ function manifest(overrides = {}) {
 
 /**
  * A fake tenant holding only what the drill creates. Every write advances the fake clock.
- * unlicensed: lifecycle workflow reads answer 403 "Insufficient license", as on a tenant
- * without Entra ID Governance. patchStatus: the first PATCH fails with this status, so the
- * round trip stops mid-way and leaves an orphan to clean up. staleDeletedReads: after the
- * purge, this many reads of /directory/deletedItems still answer 200 (a stale replica).
+ * collectFailure: returns a refused collect answer for a path, or null to read it normally.
+ * patchStatus: the first PATCH fails with this status, so the round trip stops mid-way and
+ * leaves an orphan to clean up. staleDeletedReads: after the purge, this many reads of
+ * /directory/deletedItems still answer 200 (a stale replica).
  */
-function fakeTenant({ purgeStatus = 204, tick = 1000, unlicensed = false, patchStatus, staleDeletedReads = 0 } = {}) {
+function fakeTenant({
+  purgeStatus = 204, tick = 1000, collectFailure = () => null, patchStatus, staleDeletedReads = 0,
+} = {}) {
   const state = {
     group: null, softDeleted: false, hardDeleted: false, writes: [], reads: 0, time: 0,
-    staleReadsLeft: staleDeletedReads, patchFailed: false, licenceRefusals: 0,
+    staleReadsLeft: staleDeletedReads, patchFailed: false,
   };
   const getGroup = () => (state.group && !state.softDeleted
     ? { ok: true, status: 200, body: state.group }
@@ -79,11 +81,8 @@ function fakeTenant({ purgeStatus = 204, tick = 1000, unlicensed = false, patchS
   const reader = {
     collect: async (version, path) => {
       state.reads += 1;
-      if (unlicensed && path.startsWith('/identityGovernance/lifecycleWorkflows/')) {
-        state.licenceRefusals += 1;
-        const error = 'Insufficient license to complete this operation. User workflows require an Entra ID Governance license.';
-        return { status: 403, error: { status: 403, error } };
-      }
+      const failure = collectFailure(path);
+      if (failure) return failure;
       return { items: path.startsWith('/groups') && state.group && !state.softDeleted ? [state.group] : [] };
     },
     get: async (version, path) => {
@@ -402,13 +401,26 @@ test('a purge that reads stale for a moment is not reported as a residual (#646)
   assert.deepEqual(flickering.residuals.map((item) => [item.surface, item.state]), [['deleted-items', 'present']]);
 });
 
+/** Lifecycle workflows refused as on a tenant without Entra ID Governance; counts each refusal. */
+function lifecycleLicenceRefusal() {
+  const refusal = (path) => {
+    if (!path.startsWith('/identityGovernance/lifecycleWorkflows/')) return null;
+    refusal.count += 1;
+    const error = 'Insufficient license to complete this operation. User workflows require an Entra ID Governance license.';
+    return { items: [], status: 403, error: { status: 403, error } };
+  };
+  refusal.count = 0;
+  return refusal;
+}
+
 test('replay of the 2026-10-28 drill: a tenant without Entra ID Governance still passes (#646)', async () => {
   // Gate 116 failed at the baseline collect: lifecycle workflows answered 403
   // "Insufficient license" and the whole drill stopped after 5 writes.
-  const tenant = fakeTenant({ unlicensed: true });
+  const refusal = lifecycleLicenceRefusal();
+  const tenant = fakeTenant({ collectFailure: refusal });
   const lines = [];
   const record = await live(tenant, { log: (line) => lines.push(line) });
-  assert.ok(tenant.state.licenceRefusals > 0, 'the drill read lifecycle workflows and was refused');
+  assert.ok(refusal.count > 0, 'the drill read lifecycle workflows and was refused');
   assert.equal(record.error, null);
   assert.equal(record.outcome, 'passed');
   assert.equal(record.cleanup.status, 'complete');
@@ -426,7 +438,7 @@ test('replay of the 2026-10-28 drill: orphan cleanup followed by a stale read is
   // The drill failed mid-way, orphan cleanup purged the group, and the
   // residual check read /directory/deletedItems once more as 200 before it
   // settled at 404. The record must show the drill failure, not cleanup-failed.
-  const tenant = fakeTenant({ unlicensed: true, patchStatus: 400, staleDeletedReads: 2 });
+  const tenant = fakeTenant({ collectFailure: lifecycleLicenceRefusal(), patchStatus: 400, staleDeletedReads: 2 });
   const lines = [];
   const record = await live(tenant, { log: (line) => lines.push(line) });
   assert.equal(record.outcome, 'failed');

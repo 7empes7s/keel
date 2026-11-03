@@ -75,7 +75,7 @@ import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './workloads/fixtureGuard.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
-import { ENGAGE_RESOURCE_TYPES } from './engageWriter.mjs';
+import { ENGAGE_RESOURCE_TYPES, engageWriterConfigPath } from './engageWriter.mjs';
 import { holdsPlannedId } from './plannedIds.mjs';
 import { TRUST_FIELD_PATTERN, isTrustField } from './workloads/writeDeclarations.mjs';
 
@@ -482,6 +482,14 @@ export function graphFailure(naturalKey, result, prefix = '') {
   return failure;
 }
 
+// The stock HTML page Viva Engage's front proxy sends with a 400 when headers are too large.
+const ENGAGE_PROXY_400 = /Your browser sent an invalid request/i;
+
+function isEngageHeaderLimit(record, result) {
+  if (result?.status !== 400 || !ENGAGE_RESOURCE_TYPES.includes(record?.resourceType)) return false;
+  return ENGAGE_PROXY_400.test(JSON.stringify(result?.body ?? result?.error ?? ''));
+}
+
 // Graph names the permission it wants in a 403's message, in one of these shapes.
 const NAMED_SCOPES = [/following scopes:\s*([\w.]+(?:\s*,\s*[\w.]+)*)/i, /requires one of '([^']+)'/i, /required scopes\s*=\s*\[([^\]]+)\]/i];
 
@@ -492,6 +500,13 @@ const NAMED_SCOPES = [/following scopes:\s*([\w.]+(?:\s*,\s*[\w.]+)*)/i, /requir
  * first-party object) is left as Graph's answer.
  */
 export function writeFailure(record, naturalKey, result) {
+  if (isEngageHeaderLimit(record, result)) {
+    // Viva Engage's front proxy refuses headers over its buffer, and an app-only token
+    // carries every role the app holds (issue #681). The Engage writer is the fix.
+    const failure = graphFailure(naturalKey, result, `Viva Engage refused the request because the app's sign-in is too large (it holds too many permissions). Set up the Engage writer, a small app holding only Community.ReadWrite.All, in ${engageWriterConfigPath()}; Graph answered `);
+    failure.engageHeaderLimit = true;
+    return failure;
+  }
   const message = result?.status === 403 ? JSON.stringify(result?.body ?? result?.error ?? '') : '';
   const named = NAMED_SCOPES.map((pattern) => message.match(pattern)?.[1]).find(Boolean)
     ?.split(',').map((scope) => scope.trim()).filter(Boolean) ?? [];

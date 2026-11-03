@@ -124,3 +124,28 @@ test('a missing-permission failure on a community names the Engage writer, not t
   assert.match(failure.error, /^missing permission: the Engage writer needs Community\.ReadWrite\.All \(admin consent\)/);
   assert.equal(failure.missingPermission, 'Community.ReadWrite.All');
 });
+
+// The body Viva Engage's front proxy sends when the request headers are too large (Q219, 2026-10-29).
+const ENGAGE_PROXY_400 = {
+  ok: false,
+  status: 400,
+  body: { error: { code: 'UnknownError', message: '<html><body><h1>400 Bad request</h1>\nYour browser sent an invalid request.\n</body></html>\n' } },
+};
+
+test("Engage's proxy 400 on a community says the token is too large and points to the Engage writer", () => {
+  const failure = writeFailure(IDENTITY_RECORDS.engageCommunity, 'community-1', ENGAGE_PROXY_400);
+  assert.match(failure.error, /^Viva Engage refused the request because the app's sign-in is too large/);
+  assert.match(failure.error, /engage-writer\.json/);
+  assert.match(failure.error, /Graph answered .*400 Bad request/);
+  assert.equal(failure.engageHeaderLimit, true);
+});
+
+test('the same 400 on any other kind, or a plain 400 on a community, stays as Graph answered it', () => {
+  const other = writeFailure(IDENTITY_RECORDS.servicePrincipal, 'sp-1', ENGAGE_PROXY_400);
+  assert.equal(other.error, JSON.stringify(ENGAGE_PROXY_400.body));
+  assert.equal(other.engageHeaderLimit, undefined);
+  const plain = { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'Invalid privacy value.' } } };
+  const community = writeFailure(IDENTITY_RECORDS.engageCommunity, 'community-1', plain);
+  assert.equal(community.error, JSON.stringify(plain.body));
+  assert.equal(community.engageHeaderLimit, undefined);
+});

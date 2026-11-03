@@ -2105,7 +2105,7 @@ function relationshipEntry(link, targetId) {
 
 // Intune's answers when a link joins an app that is not a Win32 app (seen
 // live in Q191), and when an app's package is not uploaded yet (seen live on
-// PATCH in Q185; assumed the same for its links until proven).
+// PATCH in Q185, and on updateRelationships in Q209: issue #653).
 const NOT_WIN32 = /is not a Win32LobApp/i;
 const NOT_PUBLISHED = /PublishingState is not 'Published'/i;
 

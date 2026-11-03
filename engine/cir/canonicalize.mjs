@@ -308,12 +308,18 @@ function lastField(path) {
   return path.split('.').pop().replace(/\[\d+\]/g, '');
 }
 
+/** Whether the id `value` found at field path `path` can be a reference. The
+ * collector applies this to what it finds; the restore applies it again to the
+ * references of snapshots stored before the rule existed (restoreCandidates). */
+export function isReferenceCandidate(path, value) {
+  const field = lastField(path);
+  if (FREE_TEXT_FIELDS.has(field)) return false;
+  return !(typeof value === 'string' && DIGITS.test(value) && !ID_FIELD.test(field));
+}
+
 function* referenceValues(node, idToSymbol, path = '') {
   for (const value of [...walkGuids(node, path), ...walkKnownSymbolValues(node, idToSymbol, path)]) {
-    const field = lastField(value.path);
-    if (FREE_TEXT_FIELDS.has(field)) continue;
-    if (DIGITS.test(value.guid) && !ID_FIELD.test(field)) continue;
-    yield value;
+    if (isReferenceCandidate(value.path, value.guid)) yield value;
   }
 }
 

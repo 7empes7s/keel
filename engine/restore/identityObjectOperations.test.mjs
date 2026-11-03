@@ -833,6 +833,42 @@ test('a guest federation update with no live copy to compare is withheld when it
   assert.equal(graph.calls.length, 0);
 });
 
+test('a guest federation backup without sign-in fields opens the manual sign-in step, never reports the drift as restored (issue #640)', async () => {
+  // Q111: the live sign-in page drifted; the backup was taken from the base
+  // collection, which held only id and displayName.
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',
+    issuerUri: 'https://keel-rt-fed.example/issuer', metadataExchangeUri: null,
+    passiveSignInUri: 'https://keel-rt-other.example/sso', preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture',
+  };
+  const run = async (desired, mode = 'enforce') => {
+    const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
+    const result = await applyIdentityObjectWrite(graph, {
+      naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [],
+      live: { state: 'present', targetId: 'fed-1', payload: live },
+    }, 'update', { ...FAST, mode });
+    return { result, writes: graph.calls.filter((call) => call.method !== 'GET') };
+  };
+  const stepOf = (completion) => completion.map((step) => [step.requirement, step.fields]);
+  const allFields = [['externalDomainFederationSignIn', [...FEDERATION_SIGN_IN_FIELDS]]];
+
+  // Same name: nothing to write, so nothing is applied; the step says the backup cannot tell.
+  for (const mode of ['enforce', 'dry-run']) {
+    const { result, writes } = await run({ id: 'fed-1', displayName: 'KEEL-RT-148-fed' }, mode);
+    assert.equal(result.applied, undefined, `${mode}: not reported as restored`);
+    assert.match(result.skipped?.reason ?? '', /^manual: This backup does not hold where this guest federation's guests sign in/, mode);
+    assert.deepEqual(stepOf(result.skipped.completion), allFields, mode);
+    assert.equal(writes.length, 0, `${mode}: nothing is written`);
+  }
+
+  // The name drifted too: only the name is written, and the step still opens.
+  const { result, writes } = await run({ id: 'fed-1', displayName: 'KEEL-RT-148-fed-renamed' });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' });
+  assert.deepEqual(stepOf(result.applied.completion), allFields);
+});
+
 test('restore gaps batch 3: a federation of another kind has no write route', async () => {
   const payload = { '@odata.type': '#microsoft.graph.internalDomainFederation', id: 'fed-2', displayName: 'KEEL-RT-148-internal' };
   const graph = idoFakeGraph();

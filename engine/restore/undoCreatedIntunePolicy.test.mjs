@@ -18,6 +18,7 @@ import { assignmentTarget, readUndoAssignments } from './undoAssignedPolicy.mjs'
 import { INTUNE_EXTENDED_RECORDS } from './intuneOperations.mjs';
 import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
+import { incompleteReadDeleteRefusals } from '../../cli/keel-restore.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: [], caPolicies: [] };
@@ -329,4 +330,34 @@ test('who an assignment applies to is kept as a kind and a group id', () => {
   assert.deepEqual(assignmentTarget(GROUP('g-1')), { kind: 'group', groupId: 'g-1' });
   assert.deepEqual(assignmentTarget({ target: { '@odata.type': '#microsoft.graph.exclusionGroupAssignmentTarget', groupId: 'g-2' } }), { kind: 'excluded-group', groupId: 'g-2' });
   assert.deepEqual(assignmentTarget({ target: { '@odata.type': '#microsoft.graph.configurationManagerCollectionAssignmentTarget' } }), { kind: 'other' });
+});
+
+// Issue #666, operator queue Q213: an undo of two created policies, one deleted
+// with its assignment and one skipped, was refused because To Do settings
+// (Microsoft 500) could not be read. Their objects hold no reference, so they
+// no longer block the chosen delete. A kind that could hold one still blocks
+// it, and a skipped policy is never refused because nothing deletes it.
+test('Q213: the chosen undo delete of an assigned policy is not blocked by unread To Do settings; a kind that could reference it still blocks', async () => {
+  const d1 = created('deviceConfiguration');
+  const { collection, payload } = FIXTURES.windowsFeatureUpdateProfile;
+  const s1 = { type: 'windowsFeatureUpdateProfile', path: `${collection}/created-2`, object: { ...payload, id: 'created-2' }, naturalKey: `windowsFeatureUpdateProfile:${payload.displayName}` };
+  const graph = idoFakeGraph({ seed: { [d1.path]: d1.object, [s1.path]: s1.object } });
+  for (const item of [d1, s1]) {
+    await graph.write('v1.0', `${item.path}/assign`, { method: 'POST', body: { assignments: [ALL_DEVICES] } });
+  }
+  const planned = planCompensation({
+    restoreRef: 'restore-1',
+    entries: [journaledCreate(d1), { ...journaledCreate(s1), id: 'entry-2', targetId: 'created-2' }],
+    current: new Map([[d1.naturalKey, { targetId: ID, payload: d1.object }], [s1.naturalKey, { targetId: 'created-2', payload: s1.object }]]),
+  });
+  const plan = applyUndoChoices(planned, {
+    assigned: await readUndoAssignments(readerOf(graph), planned.operations),
+    choices: { [d1.naturalKey]: 'delete', [s1.naturalKey]: 'skip' },
+  });
+  assert.deepEqual(plan.operations.map((op) => [op.naturalKey, op.verb, op.removeAssignments?.ids.length]), [[d1.naturalKey, 'delete', 1]]);
+
+  assert.deepEqual(incompleteReadDeleteRefusals(['todoSettings'], plan.operations), [], 'To Do settings hold no reference to a policy');
+  const blocked = incompleteReadDeleteRefusals(['todoSettings', 'vppToken'], plan.operations);
+  assert.deepEqual(blocked.map((refusal) => refusal.naturalKey), [d1.naturalKey], 'only the chosen delete needs the read');
+  assert.match(blocked[0].reason, /, but vppToken could not be read$/, 'To Do settings are not named');
 });

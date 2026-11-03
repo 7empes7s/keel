@@ -62,7 +62,7 @@ function manifest(overrides = {}) {
 }
 
 /** A fake tenant holding only what the drill creates. Every write advances the fake clock. */
-function fakeTenant({ purgeStatus = 204, tick = 1000 } = {}) {
+function fakeTenant({ purgeStatus = 204, tick = 1000, collectFailure = () => null } = {}) {
   const state = { group: null, softDeleted: false, hardDeleted: false, writes: [], reads: 0, time: 0 };
   const getGroup = () => (state.group && !state.softDeleted
     ? { ok: true, status: 200, body: state.group }
@@ -70,6 +70,8 @@ function fakeTenant({ purgeStatus = 204, tick = 1000 } = {}) {
   const reader = {
     collect: async (version, path) => {
       state.reads += 1;
+      const failure = collectFailure(path);
+      if (failure) return failure;
       return { items: path.startsWith('/groups') && state.group && !state.softDeleted ? [state.group] : [] };
     },
     get: async (version, path) => {
@@ -301,6 +303,52 @@ test('a live bounded drill runs the real round trip, observes elapsed time and v
   assert.equal(readiness.countedDrills, 1);
   assert.equal(readiness.lastCountedDrill.elapsedMs, record.elapsedMs);
   assert.deepEqual(readiness.cleanupFailures, []);
+});
+
+test('types the drill does not round-trip cannot fail it; they are recorded as failed reads (#663)', async () => {
+  // The two refusals Q206 hit live at 39129d8 (2026-10-28 21:44 UTC), in the
+  // same run: PIM for Groups without its permission scope, and /admin/todo
+  // answering 500 with an empty error.
+  const pimRefusal = JSON.stringify({
+    errorCode: 'PermissionScopeNotGranted',
+    message: 'Authorization failed due to missing permission scope PrivilegedEligibilitySchedule.Read.AzureADGroup,'
+      + 'PrivilegedEligibilitySchedule.ReadWrite.AzureADGroup,PrivilegedAccess.Read.AzureADGroup,PrivilegedAccess.ReadWrite.AzureADGroup.',
+    instanceAnnotations: [],
+  });
+  const tenant = fakeTenant({
+    collectFailure: (path) => {
+      if (path.startsWith('/identityGovernance/privilegedAccess/group/')) {
+        return { items: [], status: 403, error: { status: 403, error: pimRefusal, code: 'PermissionScopeNotGranted' } };
+      }
+      if (path.startsWith('/admin/todo')) return { items: [], status: 500, error: { status: 500, error: '' } };
+      return null;
+    },
+  });
+  const lines = [];
+  const record = await live(tenant, { log: (line) => lines.push(line) });
+  assert.equal(record.outcome, 'passed', record.error ?? '');
+  assert.equal(record.countsAsRecoveryDrill, true);
+  assert.equal(record.cleanup.status, 'complete');
+  assert.equal(tenant.state.hardDeleted, true);
+
+  // Step 2 names both unread types.
+  const step2 = JSON.parse(lines.find((line) => line.startsWith('step 2: ')).slice('step 2: '.length));
+  assert.deepEqual(step2.unreadTypes.sort(), ['privilegedAccessGroupResource', 'todoSettings']);
+
+  // Both snapshots the drill wrote record those types as failed reads, never complete.
+  const { rows } = await client.query(
+    `SELECT coverage_digest FROM snapshot WHERE tenant_ref = $1 ORDER BY started_at DESC, id DESC LIMIT 2`,
+    [tenantRefFor(collector)],
+  );
+  assert.equal(rows.length, 2);
+  for (const { coverage_digest: digest } of rows) {
+    assert.equal(digest.group.outcome, 'complete');
+    for (const type of ['privilegedAccessGroupResource', 'todoSettings']) {
+      assert.equal(digest[type].outcome, 'failed', type);
+      assert.equal(digest[type].itemCount, null, type);
+    }
+    assert.match(digest.privilegedAccessGroupResource.error, /PermissionScopeNotGranted/);
+  }
 });
 
 test('the time bound is enforced from the observed clock', async () => {

@@ -41,6 +41,7 @@ import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
 import {
   EXCHANGE_ORG_ACCESS_WORKLOAD, EXCHANGE_ORG_DEFAULTS_WORKLOAD, readExchangeOrgAccess, readExchangeOrgDefaults,
 } from '../../engine/collect/workloads/exchangeOrgPolicies.mjs';
+import { EXCHANGE_ORG_CONFIG_WORKLOAD, readExchangeOrgConfig } from '../../engine/collect/workloads/exchangeOrgConfig.mjs';
 import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import {
   EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_WORKLOAD, readExchangeDistributionGroups, readExchangeRecipients,
@@ -87,6 +88,7 @@ export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
   [PURVIEW_CLASSIFIERS_WORKLOAD]: readPurviewClassifiers, [PURVIEW_AUDIT_RETENTION_WORKLOAD]: readPurviewAuditRetention,
+  [EXCHANGE_ORG_CONFIG_WORKLOAD]: readExchangeOrgConfig,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
   [TEAMS_VOICE_NETWORK_WORKLOAD]: readTeamsVoiceNetwork, [TEAMS_DEVICE_POLICIES_WORKLOAD]: readTeamsDevicePolicies,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: readExchangeOrgAccess, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: readExchangeOrgDefaults,

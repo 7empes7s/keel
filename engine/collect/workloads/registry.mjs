@@ -18,6 +18,7 @@
 import { DEFENDER_INDICATORS_WORKLOAD, collectDefenderIndicators, defenderIndicatorsTransportFor, recordDefenderIndicatorsRun } from './defenderIndicators.mjs';
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
+import { collectExchangeOrgConfig, recordExchangeOrgConfigRun } from './exchangeOrgConfig.mjs';
 import {
   collectExchangeDistributionGroups, collectExchangeRecipients, recordExchangeDistributionGroupsRun, recordExchangeRecipientsRun,
 } from './exchangeRecipients.mjs';
@@ -58,6 +59,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // exchangeExtended.mjs
   { workload: 'exchange-extended', powershellFamily: 'exchange', record: recordExchangeExtendedRun,
     collect: (client, { base, powershell }) => collectExchangeExtended(client, { ...base, powershell }) },
+  // exchangeOrgConfig.mjs
+  { workload: 'exchange-org-config', powershellFamily: 'exchange', record: recordExchangeOrgConfigRun,
+    collect: (client, { base, powershell }) => collectExchangeOrgConfig(client, { ...base, powershell }) },
   // exchangeRecipients.mjs: distribution lists, then mailboxes and the rights on them.
   { workload: 'exchange-distribution-groups', powershellFamily: 'exchange', record: recordExchangeDistributionGroupsRun,
     collect: (client, { base, powershell }) => collectExchangeDistributionGroups(client, { ...base, powershell }) },

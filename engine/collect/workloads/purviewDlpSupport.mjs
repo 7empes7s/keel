@@ -145,7 +145,7 @@ export const AUDIT_RETENTION_FAMILIES = Object.freeze({
 
 // Never allowed: they read DLP matches, raised alerts or audit records, or write.
 export const DLP_SUPPORT_EXCLUDED_CMDLETS = Object.freeze([
-  'Get-DlpDetailReport', 'Get-DlpSiDetectionsReport', 'Get-DlpDetectionsReport', 'Search-UnifiedAuditLog', 'Get-AdminAuditLogConfig',
+  'Get-DlpDetailReport', 'Get-DlpSiDetectionsReport', 'Get-DlpDetectionsReport', 'Search-UnifiedAuditLog',
   'Test-DataClassification', 'Test-TextExtraction',
   'New-DlpSensitiveInformationTypeRulePackage', 'Set-DlpSensitiveInformationTypeRulePackage', 'Remove-DlpSensitiveInformationTypeRulePackage',
   'New-DlpKeywordDictionary', 'Set-DlpKeywordDictionary', 'Set-UnifiedAuditLogRetentionPolicy', 'Remove-UnifiedAuditLogRetentionPolicy',

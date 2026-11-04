@@ -971,6 +971,25 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Transport settings (such as SMTP AUTH), email address policies and mailbox plans are put back by hand in the Exchange admin center or Exchange Online PowerShell using the backup.
+### Exchange audit, encryption and organization settings
+
+**Backed up:**
+
+- Audit log settings
+- Information Rights Management settings
+- Message encryption branding and options
+- Perimeter (gateway IP) settings
+- Free/busy access settings
+- Free/busy address spaces
+- Message classifications
+- Custom policy tips
+- Room and equipment properties
+- Partner applications
+- On-premises organization (hybrid)
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. The audit log switch, encryption options, free/busy settings, message classifications, policy tips and room properties are set back by hand in the Exchange admin center or Exchange Online PowerShell using the backup. Partner applications and the hybrid on-premises organization hold sign-in trust, so KEEL never writes them: rerun the Hybrid Configuration Wizard or set them by hand.
 
 ### SharePoint site structure
 

@@ -32,6 +32,7 @@ import { isRestWorkload, readModule } from '../../tools/qualification/workloadRe
 import { assertPowerPlatformRequest, powerPlatformActivation, readOnlyPowerPlatformTransport } from '../collect/workloads/powerPlatform.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
+import { exchangeOrgConfigActivation } from '../collect/workloads/exchangeOrgConfig.mjs';
 import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
 import { exchangeOrgAccessActivation, exchangeOrgDefaultsActivation } from '../collect/workloads/exchangeOrgPolicies.mjs';
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
@@ -63,6 +64,7 @@ const ACTIVATION = {
   'exchange-recipients': exchangeRecipientsActivation,
   'exchange-org-access': exchangeOrgAccessActivation,
   'exchange-org-defaults': exchangeOrgDefaultsActivation,
+  'exchange-org-config': exchangeOrgConfigActivation,
   'teams-org-policies': teamsPolicyActivation,
   'teams-voice-policies': teamsExtendedActivation,
   'teams-voice-network': teamsVoiceNetworkActivation,
@@ -79,7 +81,7 @@ const ACTIVATION = {
 };
 const TABLES = {
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork', 'AllowedTeamsCollaboration'],
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditRetention'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedExchangeOrgConfig', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditRetention'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).

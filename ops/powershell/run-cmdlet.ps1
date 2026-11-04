@@ -23,6 +23,7 @@
   engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/exchange-recipients.test.mjs,
   engine/roadmap/teams-voice-network.test.mjs,
   engine/roadmap/exchange-org-policies.test.mjs, engine/roadmap/purview-dlp-support.test.mjs,
+  engine/roadmap/exchange-org-config.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -176,6 +177,23 @@ $AllowedExchangeRoleWrites = @{
     'New-ManagementRole'         = @('Name', 'Parent', 'Description', 'EnabledCmdlets')
     'Set-ManagementRoleEntry'    = @('Identity', 'Parameters', 'RemoveParameter')
     'Remove-ManagementRoleEntry' = @('Identity', 'Confirm')
+}
+
+# Exchange audit, encryption and organization settings
+# (engine/collect/workloads/exchangeOrgConfig.mjs), in the Exchange Online session.
+# Reads only, none with parameters.
+$AllowedExchangeOrgConfig = @{
+    'Get-AdminAuditLogConfig'      = @()
+    'Get-IRMConfiguration'         = @()
+    'Get-OMEConfiguration'         = @()
+    'Get-PerimeterConfig'          = @()
+    'Get-AvailabilityConfig'       = @()
+    'Get-AvailabilityAddressSpace' = @()
+    'Get-MessageClassification'    = @()
+    'Get-PolicyTipConfig'          = @()
+    'Get-ResourceConfig'           = @()
+    'Get-PartnerApplication'       = @()
+    'Get-OnPremisesOrganization'   = @()
 }
 
 # Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies and policy
@@ -468,6 +486,7 @@ elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOn
 elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
 elseif ($AllowedExchangeRecipients.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRecipients[$name] }
 elseif ($AllowedExchangeOrgPolicies.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgPolicies[$name] }
+elseif ($AllowedExchangeOrgConfig.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgConfig[$name] }
 elseif ($AllowedExchangeRoleReads.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleReads[$name] }
 elseif ($AllowedExchangeRoleWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleWrites[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }

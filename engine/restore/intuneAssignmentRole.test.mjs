@@ -77,7 +77,7 @@ test('Q271: an assignment no role lists is kept without a role, and a role that 
 test('Q271: an assignment listed under two roles, or a failed role list, fails the kind', async () => {
   const twice = graphLikeReader({ roles: [{ id: ROLE_A }, { id: ROLE_B }], assignmentsOf: { [ROLE_A]: ['a1'], [ROLE_B]: ['a1'] } });
   assert.match((await withLinkedFromForTest(twice, entry, [{ id: 'a1' }])).error.error, /more than one object/);
-  const denied = graphLikeReader({ roles: [], assignmentsOf: {}, failRoles: { error: { status: 403, error: 'Forbidden' }, pages: 0 } });
+  const denied = graphLikeReader({ roles: [], assignmentsOf: { [ROLE_A]: ['a1'] }, failRoles: { error: { status: 403, error: 'Forbidden' }, pages: 0 } });
   const reply = await get('deviceManagementRoleAssignment').adapter.collectRaw(denied, { tenantId: 'fixture-tenant' });
   assert.equal(reply.status, 403);
   assert.equal(reply.path, '/deviceManagement/roleDefinitions');

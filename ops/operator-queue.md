@@ -13613,8 +13613,17 @@ item that needs it stays untouched.
     The tenant id is taken from the default environment's name (`Default-<tenant id>`).
 - Needs: Q284 done, and /opt/keel-live at the #823 merge or later
   (`grep -q listTenantSettings /opt/keel-live/engine/collect/workloadContract.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done, both new reads proven (2026-11-04 04:00 UTC, keel-operator). Build **B = d1fa3887** (`listTenantSettings` present; #823 in history). Reads only; Collector `/etc/keel/tenant.json`; nothing granted, created or changed; global admin not used. No 401/403.
+  - **1. Capture** `power-platform-settings`: exit **0**, outcome **partial**, proven `powerplatform.environments`, `powerplatform.dlp-policies`, `powerplatform.connectors`, **`powerplatform.tenant-settings`**, **`powerplatform.tenant-isolation`**, `powerbi.tenant-settings`; notProven `[]`; verify ok. pseudonymize exit 0. Objects: environment 1, dlp 0, connectors 0, tenant-settings 1, tenant-isolation 1, powerbi 182.
+    Evidence `claude/live-evidence-power-platform` **c7651d5f** (record replaced, on top of fb1fa645; secret scan 0). No PR. Import exit 0, imported 25, refused `[]` (shared with Q309).
+  - **2. Run** (exit 3 from other workloads): `power-platform-settings` **partial**, "1 object: returned without an identity, so it could not be kept; 1032 settings: not read (not returned)" (same as Q284; unknown fields only). Families all `read`: **tenantSettings 1, tenantIsolation 1**, environment 1, powerBiSetting 182, dlpPolicy 0, connector 0. fieldCounts `{"unknown":1032,"observed":805}`. No unknown field on tenantSettings or tenantIsolation. Environment unknown: `description`, `linkedEnvironmentMetadata`.
+  - **3. Answer shapes:**
+    - Tenant settings: `disableEnvironmentCreationByNonAdminUsers`, `disableTrialEnvironmentCreationByNonAdminUsers`, `disablePortalsCreationByNonAdminUsers` all present with that exact spelling, booleans (all false). `powerPlatform.powerApps.disableShareWithEveryone` present, boolean (true).
+    - Tenant isolation: the read returned no object (a JSON `null` or an empty body; not a 404, which would have been a failure), stored as `{ neverConfigured: true }`. The stored record does not say which of null or empty.
+  - **4. Power BI optional fields** unknown (of 182 settings): `excludedSecurityGroups` 182, `enabledSecurityGroups` 181, `delegateToDomain` 175, `properties` 172, `delegateToWorkspace` 169, `delegateToCapacity` 151. Observed on all: `title`, `enabled`, `canSpecifySecurityGroups`, `tenantSettingGroup`.
+  - **Proof:** power-platform-settings current (expires 2026-12-04).
+  - Left in the tenant: nothing, reads only.
 - **Tenant:** reads only, with the Collector credential from `/etc/keel/tenant.json`. Grant, register or change nothing. If a read
   answers 401 or 403, report it as is: do not add a role or a permission.
 - Do: the same steps as Q284 (capture with `--workload power-platform-settings`, pseudonymize check, evidence on
@@ -13696,8 +13705,21 @@ item that needs it stays untouched.
 - Needs: Q276 done (`sharepoint-tenant.tenant` enabled), and /opt/keel-live at the #824 merge or later
   (`grep -q "SPO_TENANT_FIELDS" /opt/keel-live/engine/benchmarks/scubagear/adapters.mjs`). If either is not there yet, set
   Status `waiting` with which one, and check again later.
-- Status: todo
-- Result:
+- Status: done
+- Result: done, 8 verdicts, all match (2026-11-04 04:00 UTC, keel-operator). Build **B = d1fa3887** (`SPO_TENANT_FIELDS` present; Q276 done). Nothing sent beyond the normal reads; nothing granted or created.
+  - **1. Run** by hand at 03:40 (shared with Q309/Q288): exit 3 (partials elsewhere). `sharepoint-tenant` **partial**: "Restricted search allowed sites: not switched on yet, so it was not read" (Q310 recaptures it as not-licensed); 0 new changes.
+  - **2. Newest `benchmark_evaluation` rows** (03:52:39; `details->0->>'value'` empty on all, so the text below is the `reason`):
+    - 1.1v1 **fail** "Requirement not met"
+    - 1.2v1 **pass** "Requirement met"
+    - 1.3v1 **pass** "Requirement met: Note that we currently only check for approved external domains…"
+    - 2.1v1 **pass** "Requirement met"
+    - 2.2v1 **pass** "Requirement met"
+    - 3.1v1 **pass** "This policy is only applicable if the external sharing slider … is set to Anyone…"
+    - 3.2v1 **pass** (same text as 3.1)
+    - 3.3v2 **pass** "Requirement met"
+    None `scubagear:incomplete:SPO_tenant`, none "could not check".
+  - **3. Values** (kind `tenantSettings`): SharingCapability `ExternalUserSharingOnly` (name), OneDriveSharingCapability `Disabled` (name), SharingDomainRestrictionMode `AllowList` (name), DefaultSharingLinkType `Direct` (name), DefaultLinkPermission `View` (name), FileAnonymousLinkType `Edit` (name), FolderAnonymousLinkType `Edit` (name), RequireAnonymousLinksExpireInDays `-1` (number), EmailAttestationRequired `true` (boolean), EmailAttestationReAuthDays `15` (number). None missing.
+  - **4. By hand:** 1.1 fail ✓ (ExternalUserSharingOnly is neither Disabled nor ExistingExternalUserSharingOnly); 1.2 pass ✓ (OneDrive Disabled); 1.3 pass ✓ (AllowList); 2.1 pass ✓ (Direct); 2.2 pass ✓ (View); 3.1 and 3.2 not applicable ✓ (sharing is not ExternalUserAndGuestSharing; KEEL records them as `pass` with ScubaGear's "only applicable if … Anyone" text, not as N/A); 3.3 pass ✓ (true, 15 ≤ 30). **8/8 match.**
 - **Tenant:** nothing is sent beyond the normal scheduled reads. Grant, assign or create nothing.
 - Do, with `set -a; . /etc/keel/db.env; set +a`:
   1. If no `sharepoint-tenant` run has completed since the deploy, run `node cli/keel-workload-collect.mjs run` once by hand
@@ -13749,8 +13771,17 @@ item that needs it stays untouched.
   stored copy of the template (`engine/insights/templateAreas.mjs`); nothing is written onto the stored policy. Q283 found 0 intents,
   so a fixture is needed.
 - Needs: /opt/keel-live at the #944 merge or later (#944 carries the #828 change; `test -f /opt/keel-live/engine/insights/templateAreas.mjs`).
-- Status: todo
-- Result:
+- Status: done (pass)
+- Result: done, pass (2026-11-04 03:55 UTC, keel-operator). Build **B = d1fa3887** (#948; `templateAreas.mjs` present). Restorer for the create and delete, Collector for reads; global admin not used; nothing assigned or granted.
+  - **Step 1, template:** `endpointDetectionReponse` "Endpoint detection and response" (`e44c2ca3-2f9a-400a-a113-6cc88efd773d`). 16 templates listed. 0 intents before.
+  - **Step 2, create:** `createInstance` **200**. New intent `KEEL-RT-Old-Endpoint-Security`, templateId = the template id, isAssigned false.
+  - **Step 3, collect:** tier3 exit **3**, snapshot `ddb9460c` (incomplete only `todoSettings` 500). tier2 exit **3**, snapshot `f4029df7` (incomplete only `defenderIdentitySensor` 403). Both are the known incompletes.
+  - **Step 4, check:** the query as written printed **no rows**, because the stored natural key is the intent **id** (`deviceManagementIntent:<id>`), not its name, so `LIKE 'deviceManagementIntent:KEEL-RT-%'` cannot match. The same query keyed by the fixture id printed:
+    `{"natural_key":"deviceManagementIntent:921a1ddb-…","resource_type":"deviceManagementIntent","snapshot":"f4029df7-…","family":"endpointDetectionReponse","stored_subtype":false,"kind":"defenderEndpointSecurityIntent","service":"Defender"}`
+    Coverage: `[["defenderEndpointSecurityIntent","complete",1],["deviceManagementIntent","complete",0]]`.
+    **Pass:** family = the template's subtype, kind `defenderEndpointSecurityIntent`, service Defender, stored_subtype false, from the tier2 snapshot, coverage count 1. (Item text fix for the thread: match intents by id, or by `payload->>'displayName'`.)
+  - **Step 5, remove:** DELETE **200**, then GET **404**. 0 intents after.
+  - Left in the tenant: nothing.
 - **Tenant:** test tenant only. Restorer credential for the create and the delete (`DeviceManagementConfiguration.ReadWrite.All`;
   if it answers 403, queue the permission on the **KEEL Restorer** app yourself per the app-permissions rule and report it), Collector
   for reads. Create one intent named `KEEL-RT-Old-Endpoint-Security`, **unassigned**, with the template's default settings (send no
@@ -14486,7 +14517,17 @@ item that needs it stays untouched.
   `DecryptAttachmentOnDownload`. PR #947 keys message encryption by its `Identity` (expected key `ome:ome configuration`) and
   drops that IRM field. No cmdlet or parameter changed; `run-cmdlet.ps1` is unchanged.
 - Needs: PR #947 merged and deployed (`grep -q byIdentity /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
-- Status: todo
+- Status: done
+- Result: done, complete (2026-11-04 04:00 UTC, keel-operator). Build **B = d1fa3887** (#947 `byIdentity` present). Reads only; no New/Set/Add/Remove cmdlet; nothing granted or created; global admin not used. Collector config `/etc/keel/exchange-collector.json`, scripts mounted from the checkout at B.
+  - **Step 1, capture** `exchange-org-config`: exit **0**, outcome **complete**, proven all 11 (admin-audit-log, irm, message-encryption, perimeter, availability, availability-address-spaces, message-classifications, policy-tips, resource-config, partner-applications, on-premises-organizations); notProven `[]`; verify ok. pseudonymize exit 0. message-encryption now 1 object.
+  - **Step 2:** `claude/live-evidence-exchange-org-config` **7e7388d1** (record replaced, on top of 2ba8d010; secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **25**, refused `[]`, absent 15. This record: reads 11.
+  - **Step 4, `run`:** exit **3** (other workloads' partials: power-platform-settings, sharepoint-tenant, teams-collaboration-policies; 22 complete, 3 disabled). `exchange-org-config` **complete**, "1 new change(s) against the approved setup" (the OME object that was dropped before).
+    - Families all `read`: irm 1, perimeter 1, adminAuditLog 1, resourceConfig 1, **messageEncryption 1**; 0 for policyTip, availability, partnerApplication, messageClassification, onPremisesOrganization, availabilityAddressSpace.
+    - `discovery.empty` **`[]`**, unidentified **0**, fieldCounts `{"observed":43}`, **unknownFields `{}`**.
+    - Message encryption resource key: **`ome:ome configuration`** (as expected).
+  - **Step 5, `proof`:** listed as current (expires 2026-12-04). Exit 1 only from the four older proofs expiring 2026-11-06.
+  - Left in the tenant: nothing.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
   cmdlet. Grant, assign or create nothing.
 - Do: exactly Q275 steps 1–5 at the deployed commit (capture, pseudonymize check, evidence to

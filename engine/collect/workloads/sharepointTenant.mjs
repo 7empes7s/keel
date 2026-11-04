@@ -20,12 +20,17 @@
  *  - Errors are structured. A failed read is `failed` or `denied`, never an empty object.
  *  - Disabled until qualified, per read: each family runs only once its own ledger row is
  *    live-qualified and enabled. A family not switched on yet is listed as skipped.
+ *  - No licence is an observation, not a failure. Restricted SharePoint Search needs
+ *    Microsoft 365 Copilot: without it the module may not offer the cmdlet, or may refuse it
+ *    for the licence. Either way the read is `not-licensed`. A live capture that found it so
+ *    puts its ledger row in the `not-licensed` state, and runs list the read as not licensed
+ *    (never as "not switched on yet") without sending it.
  */
 import { registerWorkload } from '../registry.mjs';
 import { runCmdlet } from '../../powershell/jobQueue.mjs';
 import { structuredFailure } from './exchange.mjs';
 import {
-  emptyRead, ledgerRows, notExposed, objectsFrom, recordCmdletRun, recordDisabledRun, summarize,
+  emptyRead, ledgerRows, notExposed, objectsFrom, recordCmdletRun, recordDisabledRun, refusedForLicence, summarize,
 } from './cmdletFamilies.mjs';
 
 export const SHAREPOINT_TENANT_WORKLOAD = 'sharepoint-tenant';
@@ -209,20 +214,25 @@ function allowedSitesBody(output) {
   return { SiteUrls: [...new Set(urls)].sort() };
 }
 
+/** A family the tenant has no licence for, in the shape a run's digest lists it. */
+function notLicensed(family) {
+  const spec = FAMILIES[family];
+  return {
+    family, operation: spec.operation, status: 'not-licensed', license: spec.license,
+    reason: `${spec.cmdlet} is not available in this tenant: ${spec.license} is not licensed`,
+  };
+}
+
 async function readFamily(family, { powershell }) {
   const spec = FAMILIES[family];
   let output;
   try {
     ({ output } = await sharePointTenantCmdlet({ cmdlet: spec.cmdlet }, powershell));
   } catch (error) {
-    // Restricted SharePoint Search comes with Microsoft 365 Copilot: a tenant without it may not offer the cmdlet.
-    if (spec.license && notExposed(error)) {
-      return emptyRead({
-        unavailable: {
-          family, operation: spec.operation, status: 'not-licensed', license: spec.license,
-          reason: `${spec.cmdlet} is not available in this tenant: ${spec.license} is not licensed`, error: structuredFailure(error).error,
-        },
-      });
+    // Restricted SharePoint Search comes with Microsoft 365 Copilot: a tenant without it may
+    // not offer the cmdlet, or may refuse it for the licence.
+    if (spec.license && (notExposed(error) || refusedForLicence(error))) {
+      return emptyRead({ unavailable: { ...notLicensed(family), error: structuredFailure(error).error } });
     }
     return emptyRead({ failure: { family, operation: spec.operation, ...structuredFailure(error) } });
   }
@@ -245,12 +255,16 @@ async function readFamily(family, { powershell }) {
 /**
  * Reads the named families (all by default). Pure apart from the injected PowerShell
  * options: no database, no gate. Callers outside tests use collectSharePointTenant.
+ * `unlicensed` names families a live capture found the tenant has no licence for: they are
+ * listed as not licensed and not sent.
  */
-export async function readSharePointTenant({ powershell = {}, families = FAMILY_NAMES, skipped = [], now = () => new Date() }) {
-  for (const family of families) if (!FAMILIES[family]) throw new TypeError(`unknown SharePoint tenant settings family ${family}`);
+export async function readSharePointTenant({ powershell = {}, families = FAMILY_NAMES, skipped = [], unlicensed = [], now = () => new Date() }) {
+  for (const family of [...families, ...unlicensed]) if (!FAMILIES[family]) throw new TypeError(`unknown SharePoint tenant settings family ${family}`);
   const observedFrom = now().toISOString();
   const reads = {};
   for (const family of families) reads[family] = await readFamily(family, { powershell });
+  for (const family of unlicensed) reads[family] = emptyRead({ unavailable: { ...notLicensed(family), checked: 'live capture' } });
+  families = FAMILY_NAMES.filter((family) => families.includes(family) || unlicensed.includes(family));
   // Every tenant has these settings, so an empty answer is a gap; the allowed site list
   // may be empty, and then it is read as an empty list.
   return summarize({
@@ -262,14 +276,18 @@ export async function readSharePointTenant({ powershell = {}, families = FAMILY_
 
 /**
  * Whether live collection may run, per family: a family runs once its own read is
- * live-qualified and enabled. The others are listed as skipped (the run is partial).
+ * live-qualified and enabled. A licence-gated family whose live capture found no licence
+ * is `unlicensed` (listed as not licensed, never sent). The others are listed as skipped.
+ * Either makes the run partial.
  */
 export function sharePointTenantActivation(ledger) {
   const { rows, describe } = ledgerRows(ledger);
   const families = FAMILY_NAMES.filter((name) => rows.get(FAMILIES[name].operation)?.enabled);
-  const skipped = FAMILY_NAMES.filter((name) => !families.includes(name))
+  const unlicensed = FAMILY_NAMES.filter((name) => !families.includes(name) && FAMILIES[name].license
+    && rows.get(FAMILIES[name].operation)?.state === 'not-licensed');
+  const skipped = FAMILY_NAMES.filter((name) => !families.includes(name) && !unlicensed.includes(name))
     .map((name) => ({ family: name, operation: FAMILIES[name].operation, reason: describe(FAMILIES[name].operation) }));
-  return { enabled: families.length > 0, reasons: families.length ? [] : skipped.map((entry) => entry.reason), families, skipped };
+  return { enabled: families.length > 0, reasons: families.length ? [] : skipped.map((entry) => entry.reason), families, unlicensed, skipped };
 }
 
 export const recordSharePointTenantRun = (client, { tenantRef, result }) => recordCmdletRun(client, SHAREPOINT_TENANT_WORKLOAD, { tenantRef, result });
@@ -281,7 +299,7 @@ export async function collectSharePointTenant(client, { tenantRef, ledger, power
     const run = await recordDisabledRun(client, SHAREPOINT_TENANT_WORKLOAD, { tenantRef, reasons: activation.reasons, now });
     return { run, result: null, activation };
   }
-  const result = await readSharePointTenant({ powershell, families: activation.families, skipped: activation.skipped, now });
+  const result = await readSharePointTenant({ powershell, families: activation.families, skipped: activation.skipped, unlicensed: activation.unlicensed, now });
   const run = await recordSharePointTenantRun(client, { tenantRef, result });
   return { run, result, activation };
 }

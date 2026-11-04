@@ -11,7 +11,7 @@
  * Only live captures and live write captures are stored. A fixture result never
  * counts as live proof, so there is nothing to persist for it.
  */
-import { LIVE_EVIDENCE_MAX_AGE_MS, buildWorkloadLedger } from './workloadContract.mjs';
+import { LIVE_EVIDENCE_MAX_AGE_MS, NOT_LICENSED_ERROR, buildWorkloadLedger } from './workloadContract.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const PROOF_EXPIRY_WARNING_DAYS = 14;
@@ -121,7 +121,8 @@ export function proofExpiry(items, { now = new Date(), warningDays = PROOF_EXPIR
   const groups = new Map();
   for (const item of items) {
     const at = Date.parse(item.capturedAt ?? '');
-    if (Number.isNaN(at) || item.synthetic !== false) continue;
+    // A capture that found no licence for a read is not proof of it.
+    if (Number.isNaN(at) || item.synthetic !== false || item.error === NOT_LICENSED_ERROR) continue;
     const group = groups.get(item.proofRef) ?? { proofRef: item.proofRef, oldest: at, operations: new Set() };
     group.oldest = Math.min(group.oldest, at);
     group.operations.add(item.operationId);

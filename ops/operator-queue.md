@@ -15068,3 +15068,22 @@ item that needs it stays untouched.
   console.log(lines.join("\n"));
   process.exit(0);
   ```
+
+### Q317: After PR #974 deploys, time the Alerts page again (read-only, no tenant), about 5 minutes
+- Drafted by the "Get the Alerts page under 3 seconds" thread (2026-11-04), from the Q313 Result: `/api/alerts` took
+  **4580 / 3831 / 3838 ms**, led by `WITH wanted AS (SELECT unnest…) latest AS` (1756–1845 ms), `WITH wanted AS (SELECT DISTINCT
+  unnest…)` (1229–1955 ms) and `WITH latest AS (… unnest($2::text …` (557 ms). PR #974 bounds those reads' walks over backups and
+  adds one index (`resource_version_named_key_idx`, schema fragment 94). **Same read-only rules as Q303–Q313:** every connection
+  opened with `default_transaction_read_only=on`; no tenant calls, no restarts, no config changes, nothing installed; never print a
+  database URL, password, token, tenant id or address.
+- Needs: the deployed build at or after PR #974's merge
+  (`grep -q newestBackupWithKeySql /opt/keel-live/engine/insights/names.mjs` and
+  `psql "$KEEL_DB_URL" -Atc "SELECT to_regclass('resource_version_named_key_idx')"` not empty; if not, report `blocked`).
+  If Q316 is still todo when this one can run, skip Q316 (this one supersedes it).
+- Status: todo
+- Do, on Mulinux: exactly Q313's steps (Q303 steps 1–4, same `profile-reads.mts`, same principal pick, fresh worktree at the
+  deployed commit with `portal/node_modules` and `engine/node_modules` symlinked), with `ONLY='alerts|changes'` and `timeout 300`.
+  Delete the script, output and worktree afterwards.
+- **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, and every
+  `[keel-portal] slow query` line. Expected: `/api/alerts` under 3 s; no `WITH wanted AS` line over 1 s; the Changes feed no
+  slower than Q313 (500 / 377 / 370 ms).

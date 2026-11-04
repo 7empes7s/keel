@@ -154,3 +154,29 @@ test('a OneDrive: new anyone links and an Everyone grant across its files, with 
   assert.ok(!text.includes('Ada Admin'), text);
   assert.equal(hidden[0].object.name, `${namer('ada admin')}’s OneDrive`);
 });
+
+test('a backup that could not read a group\'s members produces no row, nor does the next full one', async () => {
+  const tenant = 'sharing-feed-partial';
+  const MEMBERS = { id: 4, title: 'Finance Members', principalType: 8 };
+  // Everyone in the company is a member of an Edit group, beside one owner and one guest.
+  const site = ({ ownersRead = true, membersRead = true } = {}) => ({
+    groups: [
+      { id: 3, title: 'Finance Owners', members: ownersRead ? [ADA] : null },
+      { id: 4, title: 'Finance Members', members: membersRead ? [ALL_USERS, GUEST] : null },
+    ],
+    siteCollectionAdmins: [],
+    roleAssignments: [
+      { principalId: 3, member: { id: 3, title: 'Finance Owners', principalType: 8 }, roles: [{ name: 'Full Control' }] },
+      { principalId: 4, member: MEMBERS, roles: [{ name: 'Edit' }] },
+    ],
+  });
+  assert.equal(permissionsSummary(site({ membersRead: false })).exposure.checked, false);
+  // Full, then one group unread, then full again: nothing changed on either site.
+  for (const [siteId, failed] of [[SITE, { membersRead: false }], [OTHER_SITE, { ownersRead: false }]]) {
+    await siteBackup(tenant, siteId, site(), hoursAgo(30), { siteName: 'Finance' });
+    await siteBackup(tenant, siteId, site(failed), hoursAgo(20), { siteName: 'Finance' });
+    await siteBackup(tenant, siteId, site(), hoursAgo(6), { siteName: 'Finance' });
+  }
+  const { rows } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW });
+  assert.deepEqual(rows.filter((row) => row.source === 'backup').map((row) => row.activity), []);
+});

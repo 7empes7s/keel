@@ -196,7 +196,7 @@ const LOOKUP_SQL = `
   SELECT n.wanted, n.natural_key, n.resource_type, n.object_id, n.last_seen,
          CASE WHEN ${usableNameSql('n.name')} THEN n.name
               -- A backup key none of whose versions may carry a name has none to find:
-              -- one probe of resource_version_named_key_idx, not a walk of every backup.
+              -- one probe of resource_version_named_key_v2_idx, not a walk of every backup.
               WHEN NOT (lower(n.wanted) = ANY($3::text[]))
                AND (SELECT 1 FROM resource_version rv WHERE rv.natural_key = n.wanted AND ${MAY_HAVE_NAME_SQL} LIMIT 1) IS NULL THEN NULL
               ELSE (

@@ -14890,7 +14890,122 @@ item that needs it stays untouched.
   restarts, no config changes, nothing installed; never print a database URL, password, token, tenant id or address. The
   output holds only plan node types, index names, loop and row counts, times and buffer counts (no SQL values).
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
+- Status: done
+- Result: done (2026-11-04 07:42 UTC, keel-operator). Commit **77fb3247** (#959 deployed). Fresh worktree at that commit, both node_modules symlinked to /opt/keel-live's, same principal pick, env loaded and not printed; exit 0. Every connection `default_transaction_read_only=on`; no tenant calls, restarts or config changes; nothing installed. Script and worktree removed. **No `read-only transaction` line.**
+  - **What the plans show:** both slow reads spend almost all their time in a per-name walk back through snapshots. For each name they step through `snapshot_tenant_started_idx` (about 298–624 snapshots each) and probe `resource_version_key_idx` once per snapshot: **about 354,000 index probes, 1.5–1.6 M buffer hits**.
+    - In `savedNames` (`DISTINCT unnest … newest`) this is the `Append → Subquery Scan → Nested Loop` branch: 1274 of 1370 ms.
+    - In `wanted/latest` it is `SubPlan 1`: 1805 of 1955 ms.
+  - Also: `WITH latest AS (… w.object_id …)` (341 ids) spends 512 of 656 ms in a `Bitmap Heap Scan` on `resource_version_object_id_idx` (48,786 blocks read from disk).
+  - The run times (15.6 s and 8.3 s) include the explains: each explained query runs twice.
+  - Output verbatim:
+    ```
+    [keel-portal] slow query 6772 ms: WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key), newest AS ( SELECT w.key, b.id AS snapshot_id, b.started_at 
+    [keel-portal] slow query 5656 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    [keel-portal] slow query 2656 ms: WITH latest AS ( SELECT w.object_id, w.resource_type, v.natural_key, v.name, v.started_at FROM unnest($2::text[], $3::te
+    # run 1: /api/alerts 200 in 15550 ms (includes the explains)
+    [keel-portal] slow query 2666 ms: WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key), newest AS ( SELECT w.key, b.id AS snapshot_id, b.started_at 
+    [keel-portal] slow query 3952 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    [keel-portal] slow query 1324 ms: WITH latest AS ( SELECT w.object_id, w.resource_type, v.natural_key, v.name, v.started_at FROM unnest($2::text[], $3::te
+    # run 2: /api/alerts 200 in 8332 ms (includes the explains)
+    ## WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key),  (ids: 1190) execution 1370 ms
+      Nested Loop  loops=1 rows/loop=1190 total=1369ms hit=1655971 read=59225
+        Nested Loop  loops=1 rows/loop=1190 total=65ms hit=46613 read=5607
+          Subquery Scan  loops=1 rows/loop=1190 total=16ms hit=3653 read=1516
+            Aggregate  loops=1 rows/loop=1190 total=1ms hit=0 read=0
+              ProjectSet  loops=1 rows/loop=1190 total=0ms hit=0 read=0
+                Result  loops=1 rows/loop=1 total=0ms hit=0 read=0
+            Limit (SubPlan 2)  loops=1190 rows/loop=1 total=14ms hit=3653 read=1516
+              Index Only Scan using resource_version_key_idx  loops=1190 rows/loop=1 total=14ms hit=3653 read=1516
+          Limit  loops=1190 rows/loop=1 total=49ms hit=42960 read=4091
+            Index Scan using snapshot_tenant_started_idx  loops=1190 rows/loop=1 total=49ms hit=42960 read=4091
+              Limit (SubPlan 3)  loops=10187 rows/loop=0 total=41ms hit=37778 read=4089
+                Index Only Scan using resource_version_key_idx  loops=10187 rows/loop=0 total=41ms hit=37778 read=4089
+        Limit  loops=1190 rows/loop=1 total=1277ms hit=1608668 read=53618
+          Append  loops=1190 rows/loop=1 total=1277ms hit=1608668 read=53618
+            Subquery Scan  loops=1190 rows/loop=1 total=1274ms hit=1605833 read=53618
+              Limit  loops=1190 rows/loop=1 total=1274ms hit=1605833 read=53618
+                Nested Loop  loops=1190 rows/loop=1 total=1274ms hit=1605833 read=53618
+                  Index Scan using snapshot_tenant_started_idx  loops=1190 rows/loop=298 total=60ms hit=90420 read=5
+                  Index Scan using resource_version_key_idx  loops=354235 rows/loop=0 total=1063ms hit=1515413 read=53613
+            Index Scan using resource_version_key_idx  loops=567 rows/loop=1 total=2ms hit=2835 read=0
+        Limit (SubPlan 1)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+          Incremental Sort  loops=0 rows/loop=0 total=0ms hit=0 read=0
+            Nested Loop  loops=0 rows/loop=0 total=0ms hit=0 read=0
+              Index Scan using snapshot_tenant_started_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+              Index Scan using resource_version_key_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+    ## WITH latest AS ( SELECT c.id FROM workload_collection c WHER (ids: 253) execution 15 ms
+      Nested Loop  loops=1 rows/loop=0 total=14ms hit=110 read=121
+        Aggregate  loops=1 rows/loop=1 total=13ms hit=103 read=110
+          Limit  loops=1 rows/loop=1 total=13ms hit=103 read=110
+            Sort  loops=1 rows/loop=1 total=13ms hit=103 read=110
+              Nested Loop  loops=1 rows/loop=51 total=13ms hit=103 read=110
+                Index Scan using workload_collection_latest_idx  loops=1 rows/loop=51 total=6ms hit=3 read=51
+                Index Only Scan using workload_observation_pkey  loops=51 rows/loop=1 total=7ms hit=100 read=59
+        Bitmap Heap Scan  loops=1 rows/loop=0 total=1ms hit=7 read=11
+          Bitmap Index Scan using workload_observation_pkey  loops=1 rows/loop=39 total=0ms hit=3 read=0
+    ## WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS  (ids: 1190) execution 1955 ms
+      Subquery Scan  loops=1 rows/loop=1190 total=1954ms hit=1683824 read=37601
+        Unique  loops=1 rows/loop=1190 total=79ms hit=54459 read=3811
+          Sort  loops=1 rows/loop=1190 total=78ms hit=54459 read=3811
+            Nested Loop  loops=1 rows/loop=1190 total=76ms hit=54459 read=3811
+              Nested Loop  loops=1 rows/loop=1190 total=59ms hit=48066 read=3794
+                Subquery Scan  loops=1 rows/loop=1190 total=11ms hit=3732 read=1077
+                  ProjectSet  loops=1 rows/loop=1190 total=0ms hit=0 read=0
+                    Result  loops=1 rows/loop=1 total=0ms hit=0 read=0
+                  Limit (SubPlan 5)  loops=1190 rows/loop=1 total=11ms hit=3732 read=1077
+                    Index Only Scan using resource_version_key_idx  loops=1190 rows/loop=1 total=11ms hit=3732 read=1077
+                  Limit (SubPlan 6)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                    Index Scan using resource_version_object_id_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                  Limit (SubPlan 7)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                    Index Scan using resource_version_app_id_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                Limit  loops=1190 rows/loop=1 total=48ms hit=44334 read=2717
+                  Index Scan using snapshot_tenant_started_idx  loops=1190 rows/loop=1 total=48ms hit=44334 read=2717
+                    Limit (SubPlan 8)  loops=10187 rows/loop=0 total=31ms hit=39150 read=2717
+                      Index Only Scan using resource_version_key_idx  loops=10187 rows/loop=0 total=31ms hit=39150 read=2717
+                    Limit (SubPlan 9)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                      Index Scan using resource_version_object_id_snapshot_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                    Limit (SubPlan 10)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                      Index Scan using resource_version_app_id_snapshot_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+              Aggregate  loops=1190 rows/loop=1 total=15ms hit=6393 read=17
+                Append  loops=1190 rows/loop=1 total=15ms hit=6393 read=17
+                  Index Scan using resource_version_key_idx  loops=1190 rows/loop=1 total=13ms hit=6393 read=17
+                  Result  loops=1190 rows/loop=0 total=1ms hit=0 read=0
+                    Index Scan using resource_version_object_id_snapshot_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                  Result  loops=1190 rows/loop=0 total=1ms hit=0 read=0
+                    Index Scan using resource_version_app_id_snapshot_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+        Limit (SubPlan 1)  loops=567 rows/loop=0 total=1805ms hit=1620658 read=33579
+          Nested Loop  loops=567 rows/loop=0 total=1805ms hit=1620658 read=33579
+            Index Scan using snapshot_tenant_started_idx  loops=567 rows/loop=624 total=60ms hit=88556 read=0
+            Aggregate  loops=353612 rows/loop=0 total=1768ms hit=1532102 read=33579
+              Append  loops=353612 rows/loop=0 total=1768ms hit=1532102 read=33579
+                Index Scan using resource_version_key_idx  loops=353612 rows/loop=0 total=1061ms hit=1532102 read=33579
+                Result  loops=353612 rows/loop=0 total=354ms hit=0 read=0
+                  Index Scan using resource_version_object_id_snapshot_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+                Result  loops=353612 rows/loop=0 total=354ms hit=0 read=0
+                  Index Scan using resource_version_app_id_snapshot_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+        Limit (SubPlan 4)  loops=1190 rows/loop=0 total=62ms hit=8707 read=211
+          Nested Loop  loops=1190 rows/loop=0 total=62ms hit=8707 read=211
+            Index Scan using snapshot_tenant_started_idx  loops=1190 rows/loop=0 total=57ms hit=7516 read=34
+              Index Scan using resource_version_snapshot_id_natural_key_key (SubPlan 2)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+            Index Only Scan using resource_version_key_idx  loops=342 rows/loop=0 total=2ms hit=1191 read=177
+    ## WITH latest AS ( SELECT w.object_id, w.resource_type, v.natu (ids: 341) execution 656 ms
+      Nested Loop  loops=1 rows/loop=0 total=656ms hit=584484 read=48792
+        Function Scan  loops=1 rows/loop=341 total=0ms hit=0 read=0
+        Nested Loop  loops=341 rows/loop=0 total=655ms hit=584484 read=48792
+          Index Scan using snapshot_pkey  loops=341 rows/loop=1 total=0ms hit=1023 read=0
+          Limit  loops=341 rows/loop=0 total=654ms hit=583461 read=48792
+            Result  loops=341 rows/loop=0 total=654ms hit=583461 read=48792
+              Sort  loops=341 rows/loop=0 total=654ms hit=583461 read=48792
+                Nested Loop  loops=341 rows/loop=0 total=653ms hit=583461 read=48792
+                  Bitmap Heap Scan  loops=341 rows/loop=452 total=512ms hit=120951 read=48786
+                    Bitmap Index Scan using resource_version_object_id_idx  loops=341 rows/loop=495 total=23ms hit=694 read=386
+                  Index Scan using snapshot_pkey  loops=154172 rows/loop=0 total=154ms hit=462510 read=6
+        Limit (SubPlan 3)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+          Nested Loop  loops=0 rows/loop=0 total=0ms hit=0 read=0
+            Index Scan using snapshot_tenant_started_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+              Index Scan using resource_version_snapshot_id_natural_key_key (SubPlan 1)  loops=0 rows/loop=0 total=0ms hit=0 read=0
+            Index Only Scan using resource_version_key_idx  loops=0 rows/loop=0 total=0ms hit=0 read=0
+    ```
 - Do, on Mulinux: exactly Q313's steps (Q303 steps 1–4: fresh worktree at the deployed commit, `portal/node_modules` and
   `engine/node_modules` symlinked, same principal pick, env loaded and not printed), but save the script below as
   `<checkout>/portal/explain-alert-names.mts` and run

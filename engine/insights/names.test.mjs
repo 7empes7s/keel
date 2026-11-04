@@ -364,14 +364,14 @@ test('a nameless object, a weekly kind and a long-gone object are looked up with
 test('the named-keys index holds the same condition the name reads ask for', async () => {
   const { mayHaveNameSql } = await import('../cir/objectName.mjs');
   const { rows: [index] } = await client.query(
-    "SELECT pg_get_expr(indpred, indrelid) AS predicate FROM pg_index WHERE indexrelid = 'resource_version_named_key_idx'::regclass");
+    "SELECT pg_get_expr(indpred, indrelid) AS predicate FROM pg_index WHERE indexrelid = 'resource_version_named_key_v2_idx'::regclass");
   // Postgres prints the stored condition its own way; the plan check below is what matters.
-  assert.ok(index?.predicate, 'resource_version_named_key_idx is a partial index');
+  assert.ok(index?.predicate, 'resource_version_named_key_v2_idx is a partial index');
   await client.query('SET enable_seqscan = off');
   try {
     const { rows } = await client.query(
       `EXPLAIN SELECT 1 FROM resource_version rv WHERE rv.natural_key = 'group:Finance' AND ${mayHaveNameSql('rv.payload', 'rv.resource_type')} LIMIT 1`);
-    assert.match(rows.map((row) => row['QUERY PLAN']).join('\n'), /Index Only Scan using resource_version_named_key_idx/);
+    assert.match(rows.map((row) => row['QUERY PLAN']).join('\n'), /Index Only Scan using resource_version_named_key_v2_idx/);
   } finally {
     await client.query('RESET enable_seqscan');
   }

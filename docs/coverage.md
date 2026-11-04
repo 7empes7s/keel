@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 109 at least in part and 9 hold nothing to restore; the other 67 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 111 at least in part and 9 hold nothing to restore; the other 65 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -53,14 +53,14 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Access package assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Entitlement management settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Terms of use | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access review settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; remove ones added since | Tested against a simulated tenant |
@@ -153,9 +153,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Terms of use** (not built yet). The agreement documents are files that are not backed up yet, and nobody can recreate who accepted them.
   - *Not brought back:* the agreement documents (a file the backup does not hold); who accepted the terms (no tool can write it).
   - *You do:* Upload the documents again and recreate the terms of use in the Entra admin center using the backup. Users will be asked to accept again.
-- **Guest sign-up user flows** (not built yet). The languages, attributes and API connectors a flow uses are not backed up yet.
-  - *Not brought back:* its languages, sign-up attributes and API connector links (stored separately and not in the backup yet).
-  - *You do:* Recreate the user flow in the Entra admin center using the backup.
+- **Guest sign-up user flows.** Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.
+  - *Not brought back:* custom page text (language overrides) (stored separately and not in the backup yet); an identity provider or API connector that is not set up in the target, and the client secret or password each one uses (Microsoft never returns it).
+  - *You do:* A restore that changes a flow waits for a second approver while restore approvals are on. An identity provider or API connector that is not set up in the target is listed for you to set up first: KEEL never holds their secrets or passwords. Custom page text is not backed up, and a restore never takes a provider, attribute or connector off a flow.
 - **API connectors for user flows** (not built yet). The password or certificate a connector uses can never be read back.
   - *Not brought back:* password or certificate (Microsoft never returns it).
   - *You do:* Recreate the connector using the backup, and enter its password or certificate again.
@@ -170,9 +170,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Access review settings.** Puts back whether group owners can manage access reviews of their groups.
 - **Admin role access review defaults.** Puts back the default settings of access reviews of admin roles.
   - *You do:* Reviews already running keep the settings they started with.
-- **User flow attributes** (not built yet). KEEL backs up the custom attributes but does not restore them yet. The built-in attributes are set by Microsoft.
-  - *Not brought back:* built-in attributes (set by Microsoft).
-  - *You do:* Recreate each custom attribute in the Entra admin center, under External Identities, Custom user attributes, from the backup, before the user flows that collect it.
+- **User flow attributes.** Recreates missing custom attributes with their name, description and data type, and puts back their description.
+  - *Not brought back:* built-in attributes (set by Microsoft); a data type that differs from the target's, which cannot change after an attribute is made (in the backup, but KEEL does not write it yet).
+  - *You do:* The built-in attributes are set by Microsoft. An attribute whose data type differs from the backup is listed for you: a data type cannot change once an attribute is made, and KEEL never deletes one.
 - **Authentication event listeners** (not built yet). KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.
   - *You do:* Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.
 - **Exchange admin roles** (KEEL choice). KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.

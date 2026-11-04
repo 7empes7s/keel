@@ -61,7 +61,7 @@ const SAVED_NAMES_SQL = `
   ),
   -- The newest version with a name, else the newest version: UNION ALL ... LIMIT 1
   -- stops at the first branch that returns a row. A key none of whose versions may carry
-  -- a name skips the walk: one probe of resource_version_named_key_idx (store/schema.d/94).
+  -- a name skips the walk: one probe of resource_version_named_key_v2_idx (store/schema.d/95).
   picked AS (
     SELECT v.* FROM newest n
      CROSS JOIN LATERAL (

@@ -22,7 +22,12 @@
  * (`path`, or `byType[@odata.type]` for a list of mixed kinds, holds `{item}`;
  * the result lands in the object's `as`, sorted by `sortBy` when set, left out when empty with `omitEmpty`; kinds not
  * in `byType` are left as they are; with `single` the path names one related object, kept
- * as an object with only its `fields`). `linkedFrom` reads one related object that
+ * as an object with only its `fields`; with `single` and `field` it keeps that one field of the
+ * related object, each object inside it cut to `fields`; a list read with `fields` keeps only
+ * those fields of each item). `itemReads` may be a list of such reads (a user flow's identity
+ * providers, attributes, languages and API connectors), made in order. With
+ * `liveItemReads` a restore's read of the live tenant makes the same item reads, so it
+ * compares the backup with live parts and not with none. `linkedFrom` reads one related object that
  * no route per object returns, from the other side: each object at `parents` lists
  * its children at `children` (`{parent}` is its id), and an object listed under one
  * parent gets that parent's `fields` as `as`. engine/collect/entraAdapter.mjs performs the reads.
@@ -111,6 +116,12 @@ export function catalogReadPath(entry, basePath = entry.path) {
 export function catalogReadPaths(entry, basePath = entry.path) {
   if (!entry.selectEach) return [catalogReadPath(entry, basePath)];
   return entry.selectEach.map((field) => catalogReadPath({ ...entry, select: field }, basePath));
+}
+
+/** The item reads of an entry, as a list (none, one or several). */
+export function itemReadsOf(entry) {
+  if (!entry?.itemReads) return [];
+  return Array.isArray(entry.itemReads) ? entry.itemReads : [entry.itemReads];
 }
 
 /**

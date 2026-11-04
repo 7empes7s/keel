@@ -1,6 +1,6 @@
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
-import { collectEntry, collectPerParent } from '../collect/entraAdapter.mjs';
+import { collectEntry, collectPerParent, readItemExtras } from '../collect/entraAdapter.mjs';
 
 const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
@@ -98,6 +98,13 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, del
       : entry.selectEach
         ? await listEachField(reader, entry)
         : await list(reader, entry.version, catalogReadPath(entry, entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(await resolveOrganizationId())) : entry.path), entry);
+    // Issue #995: a kind whose parts are read per object (a user flow's identity
+    // providers, attributes, languages and API connectors) is read live with them,
+    // so the plan and the restore approval compare the backup's parts with live's.
+    if (entry.liveItemReads && entry.itemReads && live.length > 0) {
+      const extra = await readItemExtras(reader, entry, live);
+      if (extra.error) throw new Error(`listing ${entry.type} parts failed: ${extra.error.error ?? extra.error.status ?? extra.error}`);
+    }
     for (const object of live) {
       index.set(naturalKeyFor(resourceType, object), {
         targetId: object.id,

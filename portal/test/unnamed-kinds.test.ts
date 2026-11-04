@@ -76,6 +76,7 @@ const OWN_FIELD_FIXTURES: Record<string, { payload: Record<string, unknown>; nam
   enterpriseCodeSigningCertificate: { payload: { subjectName: "CN=Contoso Code Signing" }, name: "CN=Contoso Code Signing" },
   profileCardProperty: { payload: { directoryPropertyName: "customAttribute1" }, name: "customAttribute1" },
   attributeSet: { payload: { id: "Engineering", description: "Engineering attributes" }, name: "Engineering" },
+  b2xIdentityUserFlow: { payload: { id: "B2X_1_PartnerSignUp", userFlowType: "signUpOrSignIn" }, name: "B2X_1_PartnerSignUp" },
 };
 const NAMED_BY_OWN_FIELD = new Set<string>([...Object.keys(OWN_NAME_FIELDS), ...RELATIONSHIP_KINDS]);
 

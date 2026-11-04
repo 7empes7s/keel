@@ -165,6 +165,12 @@ export default [
     resourceType, operation, path, handler, proofRef,
     idOutcome: { create: 'server-assigned', update: 'preserved', delete: 'terminal' }[operation],
   }))),
+  // Issue #995: guest sign-up user flows (behind the restore approval; a flow keeps its
+  // name, which Graph prefixes with B2X_1_) and their custom attributes. Neither is ever deleted.
+  { resourceType: 'b2xIdentityUserFlow', operation: 'create', path: '/identity/b2xUserFlows', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
+  { resourceType: 'b2xIdentityUserFlow', operation: 'update', path: '/identity/b2xUserFlows', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'identityUserFlowAttribute', operation: 'create', path: '/identity/userFlowAttributes', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
+  { resourceType: 'identityUserFlowAttribute', operation: 'update', path: '/identity/userFlowAttributes', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Restore gaps, batch 12: Windows app protection policies and iOS app provisioning profiles.
   { resourceType: 'windowsManagedAppProtection', operation: 'create', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'windowsManagedAppProtection', operation: 'update', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },

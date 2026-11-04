@@ -1,12 +1,12 @@
 import { connection } from "next/server";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
-import { JobTable } from "@/components/job-table";
 import { AlertRow } from "@/components/ui/alert-list";
 import { PageHeader } from "@/components/page-header";
-import { RestoreFollowUps } from "@/components/restore-follow-ups";
+import { RestoreFollowUpsAlert } from "@/components/restore-follow-ups";
 import { RestoreSelection } from "@/components/restore-selection";
 import { Verdict } from "@/components/verdict";
 import { WorkloadServices } from "@/components/restore/workload-services";
@@ -20,7 +20,6 @@ import {
 import { failedRestoresRecent, failedRestoresTitle, type FailedRestoreCounts } from "@/lib/failed-restores";
 import {
   getFailedRestoreCounts,
-  getFailedRestoreJobs,
   getRecentJobs,
   getRestoreSnapshotOptions,
   type JobRecord,
@@ -52,7 +51,8 @@ export default async function RestorePage({
     .filter((capability) => capability.length > 0);
   const canRestore = capabilities.includes("restore");
   const { snapshot: requestedSnapshot, incident: requestedIncident, jobs: jobFilter } = await searchParams;
-  const onlyFailed = jobFilter === "failed";
+  // The failed restores list moved to Past restores; older links still land on it.
+  if (jobFilter === "failed") redirect("/restore/past-restores?jobs=failed");
 
   let snapshots: SnapshotOption[];
   let jobs: JobRecord[];
@@ -108,7 +108,8 @@ export default async function RestorePage({
     workloads = null;
   }
 
-  // Secondary: if it cannot be read, the page still works and says so.
+  // Secondary: open follow-up steps show first, as one alert that links to their page.
+  // If they cannot be read, the page still works and says so.
   let followUps: OpenFollowUpWork | null;
   try {
     followUps = await getRestoreFollowUps();
@@ -117,12 +118,10 @@ export default async function RestorePage({
   }
 
   // Failed restores (audit metric 7): the engine's one count, the same number
-  // Resilience and the value report show; "?jobs=failed" lists exactly those jobs.
+  // Resilience and the value report show; its link lists exactly those jobs on Past restores.
   let failedRestores: FailedRestoreCounts | null;
-  let failedJobs: JobRecord[] | null = null;
   try {
     failedRestores = await getFailedRestoreCounts();
-    if (onlyFailed) failedJobs = await getFailedRestoreJobs();
   } catch {
     failedRestores = null;
   }
@@ -149,6 +148,10 @@ export default async function RestorePage({
         status={status}
         title="Restore settings"
       />
+
+      {followUps === null
+        ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
+        : <RestoreFollowUpsAlert work={followUps} />}
 
       {/* Roadmap task-71: incident recovery belongs to Restore in the portal map. */}
       {incident ? null : (
@@ -187,11 +190,8 @@ export default async function RestorePage({
         </>
       )}
 
-      <div data-layer="explanation">
-        {followUps === null
-          ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
-          : <RestoreFollowUps canRestore={canRestore} work={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
-        {failedRestores && failedRestores.total && !onlyFailed ? (
+      {failedRestores && failedRestores.total ? (
+        <div data-layer="explanation">
           <AlertRow
             as="div"
             item={{
@@ -203,29 +203,8 @@ export default async function RestorePage({
               action: { label: "See failed restores", href: failedRestores.href },
             }}
           />
-        ) : null}
-        {onlyFailed && !failedJobs ? (
-          <p className="action-error">KEEL could not read the failed restores. Reload in a minute; the list below shows every recent restore and check.</p>
-        ) : null}
-        {onlyFailed && failedJobs ? (
-          <JobTable
-            empty="No restore has failed."
-            headingId="restore-jobs-heading"
-            jobs={failedJobs}
-            link={{ label: "All restores and checks", href: "/restore#restore-jobs-heading" }}
-            now={now}
-            title="Failed restores"
-            total={failedRestores?.total}
-          />
-        ) : (
-          <JobTable
-            headingId="restore-jobs-heading"
-            jobs={jobs}
-            now={now}
-            title="Restores and checks"
-          />
-        )}
-      </div>
+        </div>
+      ) : null}
       <JobRefresher active={jobsActive} />
     </>
   );

@@ -369,7 +369,7 @@ export async function listOpenCompletionWork(client, { tenantRef, limit = OPEN_C
 }
 
 /** Where the full list of open follow-up work is shown in the portal. */
-export const OPEN_COMPLETION_HREF = '/restore#follow-up';
+export const OPEN_COMPLETION_HREF = '/restore/follow-up-steps';
 
 /**
  * The one count of open follow-up work: open steps across every restore and how many

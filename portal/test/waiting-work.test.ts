@@ -153,7 +153,7 @@ test("each follow-up card names and links its restore and shows when the restore
 
 test("the Overview shows a row for each kind of open work, linked to where it is done, and counts it on the Waiting tile", () => {
   const none = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: null }));
-  assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore#follow-up"/, "nothing waits, so no rows");
+  assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore\/follow-up-steps"/, "nothing waits, so no rows");
   assert.doesNotMatch(none, /Waiting on you/, "a viewer who cannot approve and has nothing waiting sees no Waiting tile");
 
   const waiting = renderToStaticMarkup(createElement(DashboardView, {
@@ -161,10 +161,10 @@ test("the Overview shows a row for each kind of open work, linked to where it is
   }));
   assert.match(waiting, /class="ov-row"[^>]*href="\/alerts"[\s\S]*?<b>3 alerts are not acknowledged<\/b>/);
   assert.match(waiting, /class="ov-row"[^>]*href="\/incidents"[\s\S]*?<b>1 incident is open<\/b>/);
-  assert.match(waiting, /class="ov-row"[^>]*href="\/restore#follow-up"[\s\S]*?<b>2 restore steps are still open<\/b>/);
+  assert.match(waiting, /class="ov-row"[^>]*href="\/restore\/follow-up-steps"[\s\S]*?<b>2 restore steps are still open<\/b>/);
   // Unlike kinds of work are never added into one number: each has its own count and link.
   assert.doesNotMatch(waiting, /data-tile="waiting"[^>]*>[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile never adds alerts, incidents and restore steps together");
-  assert.match(waiting, /data-tile="waiting"[\s\S]*?data-part="openAlerts" href="\/alerts"><b>3<\/b> alerts[\s\S]*?data-part="openIncidents" href="\/incidents"><b>1<\/b> incident[\s\S]*?data-part="restoreFollowUps" href="\/restore#follow-up"><b>2<\/b> restore steps/);
+  assert.match(waiting, /data-tile="waiting"[\s\S]*?data-part="openAlerts" href="\/alerts"><b>3<\/b> alerts[\s\S]*?data-part="openIncidents" href="\/incidents"><b>1<\/b> incident[\s\S]*?data-part="restoreFollowUps" href="\/restore\/follow-up-steps"><b>2<\/b> restore steps/);
   const mixed = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, waiting: { openAlerts: 5, openIncidents: 0, restoreFollowUps: 0 } }, pendingApprovals: 2 }));
   assert.match(mixed, /data-part="approvals" href="\/approvals"><b>2<\/b> approvals[\s\S]*?data-part="openAlerts" href="\/alerts"><b>5<\/b> alerts/, "approvals and alerts each link to their own list");
   const single = renderToStaticMarkup(createElement(DashboardView, { data: { ...DASHBOARD, waiting: { openAlerts: 4, openIncidents: 0, restoreFollowUps: 0 } }, pendingApprovals: null }));
@@ -172,7 +172,7 @@ test("the Overview shows a row for each kind of open work, linked to where it is
 
   const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));
   assert.match(approver, /data-tile="waiting"[^>]*href="\/approvals"[\s\S]*?<b class="ov-tile-count">0<\/b>/, "an approver always sees the tile");
-  assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { work: { steps: 0, restores: 0, href: "/restore#follow-up", cards: [] }, now: DASHBOARD.generatedAt })), "");
+  assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { work: { steps: 0, restores: 0, href: "/restore/follow-up-steps", cards: [] }, now: DASHBOARD.generatedAt })), "");
 });
 
 // Audit 2026-10-31: Overview said 273 steps, Restore 233 (it added up only the 50 cards it
@@ -197,7 +197,7 @@ test("Overview, Restore and Resilience show the same follow-up totals past the c
   // UI audit B10: every restore is listed, a page of them at a time.
   assert.deepEqual([work.steps, work.restores, work.cards.length], [steps, 52, 52], "the page lists and counts all 52");
   assert.equal(work.cards.reduce((sum, card) => sum + card.pending, 0), steps, "every restore's steps are on a card");
-  assert.deepEqual(resilience, { steps, restores: 52, href: "/restore#follow-up" });
+  assert.deepEqual(resilience, { steps, restores: 52, href: "/restore/follow-up-steps" });
 
   const html = renderToStaticMarkup(createElement(RestoreFollowUps, { work, now: DASHBOARD.generatedAt }));
   assert.match(html, new RegExp(`${steps} steps on 52 restores`));

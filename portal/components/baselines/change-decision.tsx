@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { PickSummary } from "@/components/list/pick-summary";
 import { DatePicker } from "@/components/pickers/date-picker";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { useApprovalMode } from "@/components/approval-mode-context";
@@ -11,6 +12,7 @@ import { changeLabel, changeName, plannedActionWords, refusalSentence } from "@/
 import { addDays, type Day, type DayRange } from "@/lib/date-range";
 import { remediationParams } from "@/lib/drift-actions";
 import { BusyError, sendEach } from "@/lib/send-each";
+import { changePick } from "@/lib/pick-items";
 import type { DriftRecord } from "@/lib/types";
 import { reasonMessage } from "@/lib/written-reason";
 
@@ -140,6 +142,7 @@ export function ChangeDecision({
   };
   const approvalMode = useApprovalMode();
   const words = decisionWords(decision, items.length, approvalMode);
+  const picks = useMemo(() => items.map(changePick), [items]);
   // A preview counts only for exactly the changes it was made for.
   const currentPreview = preview && sameIds(preview.driftIds, ids) ? preview : null;
   const refused = Boolean(currentPreview?.guardRefusals.length);
@@ -240,9 +243,7 @@ export function ChangeDecision({
   return (
     <div className="bl-decision">
       <p className="bl-decision-what">{words.detail}</p>
-      <p className="bl-decision-scope">
-        <b>Applies only to:</b> {items.map((item) => changeLabel(item)).join(", ")}.
-      </p>
+      <PickSummary items={picks} noun={{ one: "change", many: "changes" }} />
       <label className="picker-field bl-reason">
         <span className="picker-label">Why</span>
         <input

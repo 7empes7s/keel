@@ -463,6 +463,8 @@ test("breadcrumbs: every page says where it sits, and a detail page links back u
   await open(page, "/restore");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator("li")).toHaveText(["Restore", "Restore settings"]);
   for (const { hash, trail } of [
+    { hash: "/restore/follow-up-steps", trail: ["Restore", "Follow-up steps"] },
+    { hash: "/restore/past-restores", trail: ["Restore", "Past restores"] },
     { hash: "/jobs/a4", trail: ["Audit log", "Activity", "Job"] },
     { hash: "/approved-setups/new", trail: ["Baselines", "Approved setups", "New approved setup"] },
     { hash: "/approvals/content-effects", trail: ["Inbox", "Approvals", "Changes to kept or shared content"] },
@@ -472,10 +474,69 @@ test("breadcrumbs: every page says where it sits, and a detail page links back u
   }
 });
 
+// Restore's areas are sub-pages of their own, in the order people use them, under the
+// section on a desktop and as one row of tabs on a phone. /restore is current only on
+// itself, never also on its sub-pages.
+const RESTORE_PAGES = ["Restore settings", "Follow-up steps", "Past restores", "Incidents", "Resilience", "Emergency access"];
+test("restore sub-menu: each restore area has its own page, current only on that page", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/restore");
+  const restore = page.locator('section[data-group="everything"] .menu-section', { hasText: "Restore" });
+  await expect(restore.locator("a.menu-sublink")).toHaveText(RESTORE_PAGES);
+  await expect(restore.locator("a.menu-sublink[aria-current='page']")).toHaveText(["Restore settings"]);
+  for (const label of ["Follow-up steps", "Past restores"]) {
+    await restore.getByRole("link", { name: label, exact: true }).click();
+    await expect(page.locator("main h1")).toHaveText(label);
+    await expect(restore.locator("a.menu-sublink[aria-current='page']")).toHaveText([label]);
+  }
+  await restore.getByRole("link", { name: "Restore settings", exact: true }).click();
+  await expect(page.locator("main h1")).toHaveText("Restore settings");
+  await expect(restore.locator("a.menu-sublink[aria-current='page']")).toHaveText(["Restore settings"]);
+
+  // Phone: the same pages as one scrolling row of tabs, the current one marked and in sight.
+  await page.setViewportSize(phone);
+  await open(page, "/restore/past-restores", "light");
+  const tabs = page.locator(".section-tabs");
+  await expect(tabs.locator("a")).toHaveText(RESTORE_PAGES);
+  await expect(tabs.locator("a[aria-current='page']")).toHaveText(["Past restores"]);
+  await expect(tabs.locator("a[aria-current='page']")).toBeInViewport({ ratio: 0.9 });
+  await tabs.getByRole("link", { name: "Follow-up steps" }).click();
+  await expect(page.locator("main h1")).toHaveText("Follow-up steps");
+  await expect(tabs.locator("a[aria-current='page']")).toHaveText(["Follow-up steps"]);
+  await noSidewaysScroll(page);
+});
+
+test("restore: open follow-up steps show first on Restore settings and link to their page", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/restore");
+  const alert = page.locator(".restore-follow-ups-alert .ui-alert");
+  await expect(alert).toHaveAttribute("data-tone", "soon");
+  await expect(alert).toContainText("3 follow-up steps are still open from 2 past restores");
+  // It sits above the restore itself.
+  const [alertTop, pointTop] = await Promise.all([alert.evaluate((el) => el.getBoundingClientRect().top), page.locator(".restore-point").first().evaluate((el) => el.getBoundingClientRect().top)]);
+  expect(alertTop).toBeLessThan(pointTop);
+  await alert.getByRole("link", { name: /See follow-up steps/ }).click();
+  await expect(page.locator("main h1")).toHaveText("Follow-up steps");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("3 steps are still open from 2 restores. Open each restore to finish them.");
+  await expect(page.locator(".status-pill")).toHaveText("3 open");
+  await expect(page.locator(".follow-up-card .activity-title")).toHaveCount(2);
+  // With nothing open, no alert, and the follow-up page says so in one calm line.
+  await open(page, "/restore/calm");
+  await expect(page.locator(".restore-follow-ups-alert")).toHaveCount(0);
+  await open(page, "/restore/follow-up-steps/none");
+  await expect(page.locator('[data-layer="verdict"]')).toHaveAttribute("data-tone", "fine");
+  await expect(page.locator(".status-pill")).toHaveText("All done");
+  // Past restores lists the restore jobs that used to sit at the foot of Restore settings.
+  await open(page, "/restore/past-restores");
+  await expect(page.locator("#restore-jobs-heading")).toHaveText("Restores and checks");
+});
+
 test("the browser tab, the heading and the menu name a page the same way", async ({ page }) => {
   await page.setViewportSize(desktop);
   for (const { hash, menu } of [
     { hash: "/restore", menu: "Restore settings" },
+    { hash: "/restore/follow-up-steps", menu: "Follow-up steps" },
+    { hash: "/restore/past-restores", menu: "Past restores" },
     { hash: "/rules", menu: "Automatic rules" },
     { hash: "/approved-setups", menu: "Approved setups" },
     { hash: "/emergency-access", menu: "Emergency access" },

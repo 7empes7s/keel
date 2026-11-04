@@ -23,3 +23,8 @@ export function currentQuery(): string {
 export function currentPath(): string {
   return location.hash.slice(1).split(/[?#]/)[0] || "/";
 }
+
+export function currentUrl(): { pathname: string; search: string } {
+  const [pathname, search = ""] = location.hash.slice(1).split("?");
+  return { pathname: pathname || "/", search: search ? `?${search}` : "" };
+}

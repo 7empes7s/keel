@@ -20,7 +20,7 @@ import type { CoverageType } from "@/lib/types";
 const NOW = "2026-10-03T12:00:00.000Z";
 const TENANT = "sha256:portal-resilience";
 const required = [typeDependency("user"), typeDependency("group")];
-const FAILED_HREF = "/restore?jobs=failed#restore-jobs-heading";
+const FAILED_HREF = "/restore/past-restores?jobs=failed#restore-jobs-heading";
 const NO_FAILED_RESTORES: FailedRestoreCounts = { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: FAILED_HREF };
 
 function metrics({ observations = [], copies = [], drills = [], restores = [], observationsById = new Map() }: {
@@ -241,17 +241,17 @@ test("the follow-up alert shows the shared step and restore totals and links to 
     kinds: resilienceKinds([kind("user")]),
     incidents: [],
     storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
-    followUps: { steps: 7, restores: 3, href: "/restore#follow-up" },
+    followUps: { steps: 7, restores: 3, href: "/restore/follow-up-steps" },
     failedRestores: NO_FAILED_RESTORES,
   } as ResilienceData;
   const open = resilienceAlerts(base).find((alert) => alert.key === "restore-checks-open");
   assert.equal(open?.title, "3 restores have 7 follow-up steps open");
-  assert.deepEqual(open?.action, { label: "See follow-ups", href: "/restore#follow-up" });
+  assert.deepEqual(open?.action, { label: "See follow-ups", href: "/restore/follow-up-steps" });
 
-  const one = resilienceAlerts({ ...base, followUps: { steps: 1, restores: 1, href: "/restore#follow-up" } }).find((alert) => alert.key === "restore-checks-open");
+  const one = resilienceAlerts({ ...base, followUps: { steps: 1, restores: 1, href: "/restore/follow-up-steps" } }).find((alert) => alert.key === "restore-checks-open");
   assert.equal(one?.title, "A restore has 1 follow-up step open");
 
-  assert.equal(resilienceAlerts({ ...base, followUps: { steps: 0, restores: 0, href: "/restore#follow-up" } }).some((alert) => alert.key === "restore-checks-open"), false,
+  assert.equal(resilienceAlerts({ ...base, followUps: { steps: 0, restores: 0, href: "/restore/follow-up-steps" } }).some((alert) => alert.key === "restore-checks-open"), false,
     "nothing open, no alert, even while attempts still wait on replaced steps");
   assert.equal(resilienceAlerts({ ...base, followUps: null }).some((alert) => alert.key === "restore-checks-open"), false, "unreadable is not invented");
 });

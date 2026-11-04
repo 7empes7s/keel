@@ -15,7 +15,7 @@ import { assertTenantRef } from '../store/tenantRef.mjs';
 export const FAILED_RESTORE_RECENT_DAYS = 30;
 
 /** Where the list of failed restores lives in the portal. */
-export const FAILED_RESTORES_HREF = '/restore?jobs=failed#restore-jobs-heading';
+export const FAILED_RESTORES_HREF = '/restore/past-restores?jobs=failed#restore-jobs-heading';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

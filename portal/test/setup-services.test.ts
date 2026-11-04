@@ -32,8 +32,10 @@ test("every Microsoft 365 service gets one line, worst first, and Keel's own rec
   const statuses = serviceStatuses(types, NOW);
   assert.deepEqual(statuses.map((status) => status.code).sort(), SERVICES.filter((s) => s.code !== "Keel").map((s) => s.code).sort());
   assert.deepEqual(statuses.slice(0, 3).map((status) => [status.code, status.label]), [
-    ["Exchange", "Failing"], ["Teams", "Out of date"], ["Entra", "Working"],
+    ["Exchange", "Last backup failed"], ["Teams", "Out of date"], ["Entra", "Working"],
   ]);
+  // A failure with no known cause is one Keel retries: amber, not red (lib/severity.ts).
+  assert.equal(statuses[0].tone, "soon");
   // Services with nothing read yet say so plainly, and come last.
   const intune = statuses.find((status) => status.code === "Intune")!;
   assert.equal(intune.label, "Not set up");
@@ -80,7 +82,7 @@ test("a plain failure links to the failed kinds of that service; out of date lin
   assert.equal(exchange.blocker!.fix!.href, "/protect?service=Exchange&health=failed");
   assert.equal(teams.blocker!.fix!.href, "/protect?service=Teams&health=out-of-date");
   assert.match(teams.blocker!.text, /3 days ago, longer ago than its tier allows/);
-  assert.deepEqual(servicesSummary([exchange, teams]), { tone: "urgent", text: "1 of 2 services is failing to back up." });
+  assert.deepEqual(servicesSummary([exchange, teams]), { tone: "soon", text: "2 of 2 services need a look: a failed, partly done or out-of-date backup." });
 });
 
 test("a failed read diagnosed as a missing licence still links to what failed", () => {
@@ -154,4 +156,20 @@ test("an unknown date is never shown as fine, and the soonest certificate comes 
   ], NOW);
   assert.deepEqual(both.map((warning) => warning.role), ["content-reader", "settings-reader"]);
   assert.match(both[0].detail, /mail, file and Teams backups stop/);
+});
+
+test("UI audit E1: only a failure a person must fix paints a service red", () => {
+  const statuses = serviceStatuses([
+    // Microsoft was busy: Keel retries on the next run, so amber.
+    kind("exchange-mail-flow", { outcome: "failed", detail: { httpStatus: 503, graphCode: null, message: "Service Unavailable" } as CoverageType["detail"] }),
+    kind("teams-org-policies", { outcome: "failed", detail: { httpStatus: 429, graphCode: null, message: "Too many requests" } as CoverageType["detail"] }),
+    // A missing permission does not clear by itself: red.
+    kind("group", { outcome: "failed", diagnosis: { diagnosis: "missing-scope", original: { httpStatus: 403, graphCode: "Authorization_RequestDenied" } } }),
+  ], NOW);
+  const tone = (code: string) => statuses.find((status) => status.code === code)!;
+  assert.deepEqual([tone("Entra").tone, tone("Entra").label], ["urgent", "Failing"]);
+  assert.deepEqual([tone("Exchange").tone, tone("Exchange").label], ["soon", "Last backup failed"]);
+  assert.deepEqual([tone("Teams").tone, tone("Teams").label], ["soon", "Last backup failed"]);
+  assert.equal(statuses.filter((status) => status.tone === "urgent").length, 1);
+  assert.deepEqual(servicesSummary(statuses), { tone: "urgent", text: `1 of ${statuses.length} services needs a fix to back up; 2 more need a look.` });
 });

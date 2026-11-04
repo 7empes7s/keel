@@ -272,6 +272,8 @@ function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
 // A role group ("/RoleGroups/{id}") is not a directory object and stays as it is.
 const SCOPE_REFERENCE_FIELDS = new Map([
   ['roleEligibilitySchedule', ['directoryScopeId']],
+  // Issue #991: an active time-bound assignment is scoped the same way.
+  ['roleAssignmentSchedule', ['directoryScopeId']],
   ['exchangeRoleAssignment', ['principalId', 'directoryScopeId', 'appScopeId']],
 ]);
 const SCOPE_PATH = /^(\/(?:administrativeUnits|users|groups|servicePrincipals)\/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;

@@ -59,7 +59,7 @@ export function privilegedGroupIds(targetResources) {
     if (resource?.resourceType === 'group') {
       const id = lower(resource.sourceId ?? resource.payload?.id);
       if (id) groups.set(id, resource.payload?.isAssignableToRole === true);
-    } else if (resource?.resourceType === 'roleAssignment' || resource?.resourceType === 'roleEligibilitySchedule') {
+    } else if (resource?.resourceType === 'roleAssignment' || resource?.resourceType === 'roleEligibilitySchedule' || resource?.resourceType === 'roleAssignmentSchedule') {
       const id = lower(resource.payload?.principalId);
       if (id) principals.add(id);
     }

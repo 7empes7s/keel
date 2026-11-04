@@ -96,10 +96,10 @@ test('every catalogue type sits in exactly one expansion batch with an explicit 
   assert.equal(seen.get('application').batch, 'identity-application');
   // Roadmap task-109: the administrative unit is now a registered subset.
   assert.equal(seen.get('administrativeUnit').status, 'qualified-subset');
-  // Roadmap task-151: the eligibility schedule is now a registered subset; the
-  // active time-bound assignment schedule stays research-needed.
+  // Roadmap task-151: the eligibility schedule is now a registered subset, and
+  // since issue #991 so is the active time-bound assignment schedule.
   assert.equal(seen.get('roleEligibilitySchedule').status, 'qualified-subset');
-  assert.equal(seen.get('roleAssignmentSchedule').status, 'research-needed');
+  assert.equal(seen.get('roleAssignmentSchedule').status, 'qualified-subset');
   // Wave 2 ENTRA: delegated consents are now a registered subset.
   assert.equal(seen.get('oauth2PermissionGrant').status, 'qualified-subset');
   assert.equal(seen.get('certificateBasedAuthConfiguration').status, 'research-needed');
@@ -113,11 +113,16 @@ test('scopes are derived from registered operations only; no new family is fully
   assert.equal(restoreScopeFor('servicePrincipal'), 'partial');
   assert.equal(restoreScopeFor('administrativeUnit'), 'partial', 'task-109: update only');
   assert.equal(restoreScopeFor('roleEligibilitySchedule'), 'partial', 'task-151: create only');
-  assert.equal(restoreScopeFor('roleAssignmentSchedule'), 'none');
-  const unit = qualificationFor('roleAssignmentSchedule');
+  assert.equal(restoreScopeFor('roleAssignmentSchedule'), 'partial', 'issue #991: create only');
+  const active = qualificationFor('roleAssignmentSchedule');
+  assert.equal(active.decision, 'automated');
+  // Its backup stays incomplete: activations and group-held copies are read only.
+  assert.equal(active.completeness.state, 'incomplete');
+  assert.deepEqual({ status: active.expansion.status, restoreScope: active.expansion.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });
+  assert.equal(restoreScopeFor('certificateBasedAuthConfiguration'), 'none');
+  const unit = qualificationFor('certificateBasedAuthConfiguration');
   // Coverage plan v3: no longer 'unknown'; restored by hand until a writer exists.
   assert.equal(unit.decision, 'manual');
-  assert.equal(unit.completeness.state, 'incomplete');
   assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });
   assert.equal(qualificationFor('application').expansion.restoreScope, 'partial');
 });
@@ -125,10 +130,10 @@ test('scopes are derived from registered operations only; no new family is fully
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
   // Roadmap task-109 registered administrativeUnit and groupSetting, and
   // task-151 roleEligibilitySchedule; the research-needed examples are now
-  // roleAssignmentSchedule and certificateBasedAuthConfiguration (Wave 2 ENTRA
-  // registered oauth2PermissionGrant).
-  const asQualified = { ...EXPANSION_INVENTORY, roleAssignmentSchedule: { ...EXPANSION_INVENTORY.roleAssignmentSchedule, status: 'qualified-subset' } };
-  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /roleAssignmentSchedule is marked qualified-subset but has no registered write capability/);
+  // certificateBasedAuthConfiguration and accessPackage (Wave 2 ENTRA registered
+  // oauth2PermissionGrant, and issue #991 roleAssignmentSchedule).
+  const asQualified = { ...EXPANSION_INVENTORY, accessPackage: { ...EXPANSION_INVENTORY.accessPackage, status: 'qualified-subset' } };
+  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /accessPackage is marked qualified-subset but has no registered write capability/);
   const flagged = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
   const { accessPackage: _omitted, ...missing } = EXPANSION_INVENTORY;
@@ -140,8 +145,8 @@ test('adversarial inventory edits are refused: a research-needed family cannot b
   const manualMismatch = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, status: 'manual' } };
   assert.throws(() => buildExpansionInventory({ inventory: manualMismatch, decisions: { ...TYPE_DECISIONS, certificateBasedAuthConfiguration: { decision: 'automated', reason: 'x' } } }),
     /certificateBasedAuthConfiguration is manual in its batch but automated/);
-  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, roleAssignmentSchedule: { decision: 'automated', reason: 'x' } } }),
-    /roleAssignmentSchedule is marked automated but has no registered write capability/);
+  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, accessPackage: { decision: 'automated', reason: 'x' } } }),
+    /accessPackage is marked automated but has no registered write capability/);
 });
 
 // ------------------------------------------------- the qualified subset, through applyWave
@@ -338,7 +343,7 @@ test('the identity batch runner drives every qualified operation through applyWa
 
   assert.ok(report.refused.some((entry) => entry.resourceType === 'application' && entry.operation === 'delete' && entry.claim === 'unsupported'));
   const remaining = new Map(report.remaining.map((entry) => [entry.resourceType, entry]));
-  for (const type of ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'accessPackage']) {
+  for (const type of ['certificateBasedAuthConfiguration', 'accessPackage', 'connectedOrganization']) {
     assert.ok(remaining.has(type), `${type} stays listed`);
     assert.equal(remaining.get(type).restoreScope, 'none');
     assert.ok(remaining.get(type).permission);

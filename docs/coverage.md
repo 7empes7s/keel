@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 104 at least in part and 9 hold nothing to restore; the other 71 are restored by hand from the backup.
+KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 105 at least in part and 9 hold nothing to restore; the other 70 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -36,7 +36,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Admin role templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-09) |
 | Eligible admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
-| Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Admin role activation settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -107,9 +107,9 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 - **Eligible admin roles.** Makes people eligible for an admin role again, keeping the original end date.
   - *Not brought back:* changing or removing an eligibility, and ones inherited through a group (in the backup, but KEEL does not write it yet).
   - *You do:* Expired eligibilities and ones inherited through a group are not restored. Changing or removing an eligibility is done by hand.
-- **Time-limited active admin roles** (not built yet). Restoring a time-limited active role safely needs an expiry check and a guard against replaying a past activation. That is not built yet. Permanent assignments are covered by admin role assignments.
-  - *Not brought back:* activations people made themselves (no tool can write it).
-  - *You do:* Use the backup to see who held which role until when, then assign it again in Privileged Identity Management.
+- **Time-limited active admin roles.** Gives an admin back a time-limited active role an admin assigned, keeping the original end date. It waits for a second person to approve "Changes admin access", unless you turned restore approvals off for Entra ID.
+  - *Not brought back:* activations people made themselves (no tool can write it); changing or removing an active assignment, and ones inherited through a group (in the backup, but KEEL does not write it yet).
+  - *You do:* Roles people activated themselves are never replayed. Expired ones and ones inherited through a group are not restored. Permanent ones are restored as admin role assignments. Changing or removing an active role is done by hand.
 - **Admin role activation settings.** Puts activation rules back: how long a role lasts, what activation needs, and who approves.
   - *You do:* A restore that would weaken protection waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID. Approvers must still exist.
 - **Role-to-settings links** (Nothing to restore). Entra links exactly one settings policy to each role itself. Nobody writes the link.

@@ -333,6 +333,8 @@ const namedAccessValue = (field) => (payload, resource) => {
   if (field === 'roleDefinition' && shown && typeof shown === 'object' && !Array.isArray(shown)) return shown.id ?? null;
   return typeof shown === 'object' ? canonical(shown) : shown;
 };
+/** The fields of an active Entra role assignment that decide admin access (issue #991). */
+export const ACTIVE_ASSIGNMENT_ACCESS_FIELDS = Object.freeze(['principalId', 'roleDefinitionId', 'directoryScopeId']);
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
   .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field, resourceType)));
 
@@ -598,6 +600,13 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // Batch 2: a role assignment or an approval policy is judged on create too:
   // recreating it gives access back (or names who approves admin changes).
   ...Object.fromEntries([...NAMED_ACCESS_KINDS].map((kind) => [kind, { reviewed: true, judgesCreates: true, rules: accessRules(kind) }])),
+  // Issue #991: an active time-bound Entra role assignment gives admin access back
+  // from the moment it is created, so who, which role and where are each a
+  // "changes admin access" effect, shown by name. Its writer (adminRoleOperations.mjs)
+  // is not a record, so it is not one of APPROVAL_HELD_FIELDS' kinds; it runs the
+  // same gate (approvalHeldRefusal) before any write.
+  roleAssignmentSchedule: { reviewed: true, judgesCreates: true, rules: ACTIVE_ASSIGNMENT_ACCESS_FIELDS
+    .map((field) => rule(field, 'access-changing', accessChanges, namedAccessValue(field))) },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to

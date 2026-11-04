@@ -100,6 +100,8 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   accepted gap.
 - Entra (#148): 197 registered writes; 123 have a record from another build, 72 have none, and 2 are demoted
   (`defenderRoleAssignment.update`, `tenantAppManagementPolicy.update`): fix, then recapture.
+- `roleAssignmentSchedule.create` (#991, time-limited active admin roles) has no live record yet: capture it with
+  a KEEL-RT- fixture (carla, the fixture role, the fixture unit, ending in 2 days), approved as "Changes admin access".
 - Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in
   `docs/roadmap/release-signoff.md`.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and

@@ -16,6 +16,14 @@
  *    cannot name, or that the target does not hold, is refused. An eligibility a
  *    principal holds through a group is not written; the group's own
  *    eligibility is. Removal and update are not registered.
+ *  - PIM active time-bound assignments (roleAssignmentSchedule): create only,
+ *    through a schedule request with action 'adminAssign', under the same
+ *    expiry, scope and match contract as an eligibility. Only a schedule an
+ *    admin assigned (assignmentType "Assigned") is restored: an activation a
+ *    person made of their eligibility is never replayed. A permanent schedule
+ *    is restored as a roleAssignment, so it is not requested here. The write
+ *    changes admin access, so it is held until the restore's dry run is
+ *    approved (restore/approvalHeld.mjs). Removal and update are not registered.
  *  - PIM role settings (unifiedRoleManagementPolicy): update of the reviewed
  *    rules only, one PATCH per changed rule: expiration, enablement (MFA,
  *    justification, ticket on activation) and approval. A change that would
@@ -56,6 +64,8 @@ const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
 const ROLE_DEFINITIONS = '/roleManagement/directory/roleDefinitions';
 const ELIGIBILITY_REQUESTS = '/roleManagement/directory/roleEligibilityScheduleRequests';
 const ELIGIBILITY_SCHEDULES = '/roleManagement/directory/roleEligibilitySchedules';
+const ASSIGNMENT_REQUESTS = '/roleManagement/directory/roleAssignmentScheduleRequests';
+const ASSIGNMENT_SCHEDULES = '/roleManagement/directory/roleAssignmentSchedules';
 const ROLE_POLICIES = '/policies/roleManagementPolicies';
 
 const record = (fields) => Object.freeze({ ...fields, writableFields: Object.freeze(fields.writableFields) });
@@ -96,6 +106,18 @@ export const ADMIN_ROLE_RECORDS = Object.freeze([
     writableFields: ['action', 'justification', 'principalId', 'roleDefinitionId', 'directoryScopeId', 'scheduleInfo'],
   }),
   record({
+    resourceType: 'roleAssignmentSchedule',
+    operation: 'create',
+    subtype: null,
+    route: ASSIGNMENT_REQUESTS,
+    method: 'POST',
+    permission: 'RoleAssignmentSchedule.ReadWrite.Directory',
+    docs: `${DOCS}/rbacapplication-post-roleassignmentschedulerequests?view=graph-rest-1.0`,
+    // The same request body as an eligibility: action and justification are set
+    // by KEEL, the rest comes from the snapshot.
+    writableFields: ['action', 'justification', 'principalId', 'roleDefinitionId', 'directoryScopeId', 'scheduleInfo'],
+  }),
+  record({
     resourceType: 'unifiedRoleManagementPolicy',
     operation: 'update',
     subtype: null,
@@ -114,6 +136,7 @@ const GOVERNED_TYPES = new Set(ADMIN_ROLE_RECORDS.map((entry) => entry.resourceT
 export const ADMIN_ROLE_PATHS = Object.freeze({
   roleDefinition: ROLE_DEFINITIONS,
   roleEligibilitySchedule: ELIGIBILITY_REQUESTS,
+  roleAssignmentSchedule: ASSIGNMENT_REQUESTS,
   unifiedRoleManagementPolicy: ROLE_POLICIES,
 });
 
@@ -135,8 +158,24 @@ export const PIM_REVIEWED_RULES = Object.freeze({
   Approval_EndUser_Assignment: 'approval',
 });
 
-/** The justification every eligibility request carries. */
+/** The justification every eligibility and active assignment request carries. */
 export const ELIGIBILITY_JUSTIFICATION = 'Restored by KEEL from a backup snapshot';
+
+/** The schedule kinds a schedule request restores, with how each is named in a reason. */
+const SCHEDULE_KINDS = Object.freeze({
+  roleEligibilitySchedule: Object.freeze({ noun: 'eligibility', requests: ELIGIBILITY_REQUESTS, schedules: ELIGIBILITY_SCHEDULES }),
+  roleAssignmentSchedule: Object.freeze({ noun: 'active assignment', requests: ASSIGNMENT_REQUESTS, schedules: ASSIGNMENT_SCHEDULES }),
+});
+
+/** Whether a type is restored through a PIM schedule request. */
+export function isScheduleRequestType(resourceType) {
+  return Object.hasOwn(SCHEDULE_KINDS, resourceType);
+}
+
+/** The schedule request route of a schedule type. */
+export function scheduleRequestPath(resourceType) {
+  return SCHEDULE_KINDS[resourceType].requests;
+}
 
 /** Request states that mean the eligibility was not (or not yet) granted. */
 const UNGRANTED_REQUEST_STATES = new Set(['Canceled', 'Denied', 'Failed', 'PendingApproval', 'PendingAdminDecision', 'Revoked']);
@@ -205,14 +244,15 @@ const ADMINISTRATIVE_UNIT_SCOPE = /^\/administrativeUnits\/[^/]+$/;
  * resolution itself fails the write when the target lacks the unit). Any
  * other scope is refused.
  */
-export function eligibilityScopeRefusal(scope, references = []) {
+export function eligibilityScopeRefusal(scope, references = [], noun = 'eligibility') {
   if (scope === '/') return null;
+  const article = /^[aeiou]/.test(noun) ? 'an' : 'a';
   if (!ADMINISTRATIVE_UNIT_SCOPE.test(scope)) {
-    return `unsupported: an eligibility scoped to ${scope} is not restored; only directory-wide (scope "/") and administrative-unit scopes are qualified`;
+    return `unsupported: ${article} ${noun} scoped to ${scope} is not restored; only directory-wide (scope "/") and administrative-unit scopes are qualified`;
   }
   const ref = (references ?? []).find((entry) => entry?.field === 'directoryScopeId');
   if (!ref || typeof ref.symbol !== 'string' || !ref.symbol.startsWith('administrativeUnit:') || ref.prefix !== '/administrativeUnits/') {
-    return `unresolvable scope: the eligibility is scoped to ${scope}, an administrative unit the snapshot cannot name, so the scope cannot be mapped to the target and the eligibility is not restored`;
+    return `unresolvable scope: the ${noun} is scoped to ${scope}, an administrative unit the snapshot cannot name, so the scope cannot be mapped to the target and the ${noun} is not restored`;
   }
   return null;
 }
@@ -278,6 +318,8 @@ export function adminRoleWriteRefusal(resource, verb, { now = new Date() } = {})
     return null;
   }
 
+  if (resource.resourceType === 'roleAssignmentSchedule') return activeAssignmentRefusal(desired, resource.references, now);
+
   // unifiedRoleManagementPolicy
   for (const [side, policy] of [['snapshot', desired], ['live', live]]) {
     if (policy.scopeId !== '/' || policy.scopeType !== 'DirectoryRole') {
@@ -286,6 +328,41 @@ export function adminRoleWriteRefusal(resource, verb, { now = new Date() } = {})
   }
   if (!Array.isArray(desired.rules) || !Array.isArray(live.rules)) {
     return refusal('failed', 'the policy was read without its rules, so they cannot be compared');
+  }
+  return null;
+}
+
+/**
+ * Why an active time-bound assignment is not restored, or null. Only one an
+ * admin assigned is written: an activation a person made of their own
+ * eligibility is never replayed (that would hand back access nobody assigned),
+ * and a schedule that does not say which it is is refused, never guessed.
+ */
+function activeAssignmentRefusal(desired, references, now) {
+  if (desired.assignmentType === 'Activated' || (desired.activatedUsing !== undefined && desired.activatedUsing !== null)) {
+    return refusal('skipped', 'activation: this active assignment came from a person activating their eligible role, so it is not replayed; restoring the eligibility lets them activate it again');
+  }
+  if (desired.assignmentType !== 'Assigned') {
+    return refusal('failed', `the active assignment does not say an admin assigned it (assignmentType ${desired.assignmentType ?? 'missing'}), so it is not restored`);
+  }
+  if (desired.memberType && desired.memberType !== 'Direct') {
+    return refusal('skipped', `active assignment held through a group (memberType ${desired.memberType}): the group's own assignment is restored, never a copy for each member`);
+  }
+  if (typeof desired.principalId !== 'string' || typeof desired.roleDefinitionId !== 'string') {
+    return refusal('failed', 'the active assignment names no principal or no role');
+  }
+  if (desired.appScopeId && desired.appScopeId !== '/') {
+    return refusal('failed', 'unsupported: an active assignment scoped to an application (appScopeId) is not restored');
+  }
+  const scopeRefusal = eligibilityScopeRefusal(desired.directoryScopeId ?? '/', references, 'active assignment');
+  if (scopeRefusal) return refusal('failed', scopeRefusal);
+  const end = scheduleEnd(desired.scheduleInfo);
+  if (end.error) return refusal('failed', `the active assignment schedule cannot be kept: ${end.error}`);
+  if (!end.end) {
+    return refusal('skipped', 'permanent: an active assignment with no end date is restored as an admin role assignment (roleAssignment), not through a schedule request');
+  }
+  if (end.end.getTime() <= now.getTime()) {
+    return refusal('skipped', `expired: the active assignment ended on ${end.end.toISOString()}, so it is not restored`);
   }
   return null;
 }
@@ -356,9 +433,9 @@ export function roleDefinitionPostStateRefusal(desired, live, fields) {
 }
 
 /** The schedule a request asks for: the snapshot's end date. */
-function requestedExpiration(scheduleInfo) {
+function requestedExpiration(scheduleInfo, noun = 'eligibility') {
   const end = scheduleEnd(scheduleInfo);
-  if (end.error) throw new Error(`the eligibility schedule cannot be kept: ${end.error}`);
+  if (end.error) throw new Error(`the ${noun} schedule cannot be kept: ${end.error}`);
   return end.end ? { type: 'afterDateTime', endDateTime: end.end.toISOString() } : { type: 'noExpiration' };
 }
 
@@ -372,23 +449,27 @@ function requestedStart(scheduleInfo, now) {
   return Number.isNaN(start) || start <= now.getTime() ? now : new Date(start);
 }
 
-/** The roleEligibilityScheduleRequests body for one snapshot eligibility. */
-export function eligibilityRequestBody(desired, { now = new Date() } = {}) {
+/**
+ * The schedule request body for one snapshot eligibility, or (with
+ * `resourceType` roleAssignmentSchedule) one active time-bound assignment.
+ */
+export function eligibilityRequestBody(desired, { now = new Date(), resourceType = 'roleEligibilitySchedule' } = {}) {
+  const { noun } = SCHEDULE_KINDS[resourceType];
   return {
     action: 'adminAssign',
     justification: ELIGIBILITY_JUSTIFICATION,
     principalId: desired.principalId,
     roleDefinitionId: desired.roleDefinitionId,
     directoryScopeId: desired.directoryScopeId ?? '/',
-    scheduleInfo: { startDateTime: requestedStart(desired.scheduleInfo, now).toISOString(), expiration: requestedExpiration(desired.scheduleInfo) },
+    scheduleInfo: { startDateTime: requestedStart(desired.scheduleInfo, now).toISOString(), expiration: requestedExpiration(desired.scheduleInfo, noun) },
   };
 }
 
 const odataString = (value) => `'${String(value).replace(/'/g, "''")}'`;
 
-/** The read that finds the target's eligibilities for one principal and role. */
-export function eligibilityLookupPath(body) {
-  return `${ELIGIBILITY_SCHEDULES}?$filter=principalId eq ${odataString(body.principalId)} and roleDefinitionId eq ${odataString(body.roleDefinitionId)}`;
+/** The read that finds the target's eligibilities (or active schedules) for one principal and role. */
+export function eligibilityLookupPath(body, resourceType = 'roleEligibilitySchedule') {
+  return `${SCHEDULE_KINDS[resourceType].schedules}?$filter=principalId eq ${odataString(body.principalId)} and roleDefinitionId eq ${odataString(body.roleDefinitionId)}`;
 }
 
 /**
@@ -407,17 +488,42 @@ export function ungrantedRequest(response) {
   return UNGRANTED_REQUEST_STATES.has(response?.status) ? response.status : null;
 }
 
+/**
+ * The target's direct active assignment an admin made for the same principal,
+ * role and scope, or null. An activation, or a copy held through a group, is
+ * not this assignment (activeAssignmentConflict reports an activation).
+ */
+export function matchingActiveAssignment(schedules, body) {
+  return (schedules ?? []).find((schedule) => sameSchedule(schedule, body) && schedule?.assignmentType !== 'Activated') ?? null;
+}
+
+/**
+ * An activation the target holds now for the same principal, role and scope,
+ * or null. Requesting an assignment over it is refused, never sent: the
+ * activation ends on its own, and the restore is run again after that.
+ */
+export function activeAssignmentConflict(schedules, body) {
+  return (schedules ?? []).find((schedule) => sameSchedule(schedule, body) && schedule?.assignmentType === 'Activated') ?? null;
+}
+
+function sameSchedule(schedule, body) {
+  return sameId(schedule?.principalId, body.principalId)
+    && sameId(schedule?.roleDefinitionId, body.roleDefinitionId)
+    && sameId(schedule?.directoryScopeId ?? '/', body.directoryScopeId)
+    && (!schedule?.memberType || schedule.memberType === 'Direct');
+}
+
 /** After the request: the schedule exists with the requested end. */
-export function eligibilityPostStateRefusal(body, schedule) {
-  if (!schedule) return 'post-state: the eligibility did not read back after the request';
+export function eligibilityPostStateRefusal(body, schedule, noun = 'eligibility') {
+  if (!schedule) return `post-state: the ${noun} did not read back after the request`;
   const want = body.scheduleInfo.expiration;
   const got = schedule.scheduleInfo?.expiration ?? null;
   if (want.type === 'noExpiration') {
-    return got?.type === 'noExpiration' ? null : `post-state: the eligibility reads back with expiration ${got?.type ?? 'missing'}, not noExpiration`;
+    return got?.type === 'noExpiration' ? null : `post-state: the ${noun} reads back with expiration ${got?.type ?? 'missing'}, not noExpiration`;
   }
   const end = scheduleEnd(schedule.scheduleInfo);
   return end.end && end.end.getTime() === Date.parse(want.endDateTime) ? null
-    : `post-state: the eligibility reads back ending ${end.end?.toISOString() ?? 'never or unknown'}, not ${want.endDateTime}`;
+    : `post-state: the ${noun} reads back ending ${end.end?.toISOString() ?? 'never or unknown'}, not ${want.endDateTime}`;
 }
 
 function ruleKind(rule) {
@@ -596,7 +702,7 @@ export function policyPostStateRefusal(desired, live, writes) {
  */
 export function writtenReferences(resource) {
   const references = resource.references ?? [];
-  if (resource.resourceType === 'roleEligibilitySchedule') {
+  if (isScheduleRequestType(resource.resourceType)) {
     return references.filter((ref) => ref.field === 'principalId' || ref.field === 'roleDefinitionId' || ref.field === 'directoryScopeId');
   }
   if (resource.resourceType === 'unifiedRoleManagementPolicy') {
@@ -627,6 +733,9 @@ export function buildAdminRoleLedger() {
     refused: Object.freeze([
       'built-in roles (isBuiltIn: true) are never written',
       'role delete, eligibility removal and eligibility update are not registered',
+      'active assignment removal and update are not registered; a permanent active assignment is restored as a roleAssignment',
+      'an activation a person made of their eligible role is never replayed, and an expired or group-held active assignment is not restored',
+      'an active assignment changes admin access, so it is written only once the restore\'s dry run is approved (or restore approvals are off for Entra ID)',
       'an eligibility held through a group is restored on the group, not per member',
       'an expired eligibility is not restored',
       'an eligibility scoped to anything but the directory ("/") or an administrative unit the snapshot names is not restored',

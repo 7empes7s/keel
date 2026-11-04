@@ -127,7 +127,7 @@ export const DATA_SURFACES = {
   },
   intuneBaselinesPage: {
     capability: "read",
-    source: "compliance/intune-baselines/page.tsx",
+    source: "intune-baselines/page.tsx",
   },
   jobsPage: {
     capability: "read",

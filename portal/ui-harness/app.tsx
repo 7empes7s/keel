@@ -2960,9 +2960,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       {ANONYMOUS_NOTE}
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
     }
-    case "/compliance/intune-baselines": case "/compliance/intune-baselines/never": {
+    case "/intune-baselines": case "/intune-baselines/never": {
       const data = path.endsWith("/never") ? INTUNE_BASELINES_NEVER : INTUNE_BASELINES;
-      return <>{header("Baselines", "Intune security baselines", "Every setting of Microsoft's Intune security baselines, checked against all your settings catalog policies.", undefined, baselinesStatus(data), [{ href: "/compliance", label: "Compliance" }])}
+      return <>{header("Baselines", "Intune baselines", "Every setting of Microsoft's Intune security baselines, checked against all your settings catalog policies.", undefined, baselinesStatus(data))}
       <IntuneBaselinesPage data={data} /></>;
     }
     case "/compliance": case "/compliance/viewer": {

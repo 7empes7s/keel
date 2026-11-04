@@ -71,7 +71,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/approved-setups", label: "Approved setups", gate: null, aliases: "baselines approved setup" },
     { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare backups tenants differences side by side" },
     { href: "/compliance", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
-    { href: "/compliance/intune-baselines", label: "Intune baselines", gate: null, aliases: "intune security baselines microsoft recommended settings catalog windows defender edge" },
+    { href: "/intune-baselines", label: "Intune baselines", gate: null, aliases: "intune security baselines microsoft recommended settings catalog windows defender edge" },
   ],
   Reports: [
     { href: "/reports", label: "Value report", gate: "canRead", aliases: "reports outcomes verified value hours saved export" },

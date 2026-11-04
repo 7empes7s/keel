@@ -8,7 +8,6 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { baselinesStatus, type IntuneBaselineData } from "@/lib/intune-baselines-view";
 
 const DESCRIPTION = "Every setting of Microsoft's Intune security baselines, checked against all your settings catalog policies.";
-const BACK = [{ href: "/compliance", label: "Compliance" }];
 
 // Intune security baselines: read from the tenant's own Intune templates and matched
 // setting by setting against every settings catalog policy, so a setting applied by any
@@ -23,7 +22,7 @@ export default async function IntuneBaselinesRoute() {
   } catch {
     return (
       <>
-        <PageHeader parents={BACK} description={DESCRIPTION} section="Baselines" title="Intune security baselines" />
+        <PageHeader description={DESCRIPTION} section="Baselines" title="Intune baselines" />
         <DataUnavailable surface="Intune security baselines" />
       </>
     );
@@ -31,7 +30,7 @@ export default async function IntuneBaselinesRoute() {
 
   return (
     <>
-      <PageHeader parents={BACK} description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={baselinesStatus(data)} title="Intune security baselines" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={baselinesStatus(data)} title="Intune baselines" />
       <IntuneBaselinesPage data={data} />
     </>
   );

@@ -45,8 +45,8 @@ const PAGES = [
   { name: "baselines-new", hash: "/approved-setups/new" },
   { name: "baselines-put-back", hash: "/approved-setups/put-back" },
   { name: "benchmarks", hash: "/compliance" },
-  { name: "intune-baselines", hash: "/compliance/intune-baselines" },
-  { name: "intune-baselines-never", hash: "/compliance/intune-baselines/never" },
+  { name: "intune-baselines", hash: "/intune-baselines" },
+  { name: "intune-baselines-never", hash: "/intune-baselines/never" },
   { name: "benchmarks-scuba-lists", hash: "/compliance/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/compliance/scuba?lists=edit" },
   { name: "principals", hash: "/people" },
@@ -3843,8 +3843,8 @@ for (const width of [390, 1440]) {
 
 test("Intune security baselines · every setting matched, tiles add up, baseline filter, values highlighted", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/compliance/intune-baselines");
-  await expect(page.locator("main#main-content h1")).toHaveText("Intune security baselines");
+  await open(page, "/intune-baselines");
+  await expect(page.locator("main#main-content h1")).toHaveText("Intune baselines");
   await expect(page.locator(".status-pill")).toHaveText("4 differ");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 settings differ from Microsoft's security baselines.");
   // A baseline that could not be read is said first, in amber.
@@ -3886,7 +3886,7 @@ test("Intune security baselines · every setting matched, tiles add up, baseline
 });
 
 test("Intune security baselines · nothing read yet says what happens next", async ({ page }) => {
-  await open(page, "/compliance/intune-baselines/never");
+  await open(page, "/intune-baselines/never");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Microsoft's security baselines have not been read yet.");
   await expect(page.locator(".cp-empty")).toContainText("No baseline has been read from the tenant yet.");
   await expect(page.locator(".cp-tile")).toHaveCount(0);

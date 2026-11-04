@@ -1,0 +1,48 @@
+{
+  "restoreRef": "ecfc55d5-62d3-886f-b130-38f6c2c29778",
+  "entry": {
+    "naturalKey": "defenderRoleDefinition:8efb55dc-4e35-8ab5-bed7-4a4faa3ac449",
+    "resourceType": "defenderRoleDefinition",
+    "operation": "update",
+    "targetId": "d8183185-461f-8a39-bc76-b0d81ba401e5",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-04T01:54:24.937Z",
+    "priorState": {
+      "id": "d8183185-461f-8a39-bc76-b0d81ba401e5",
+      "description": "KEEL-RT drifted (Q258)",
+      "displayName": "KEEL-RT-258-defender-role",
+      "rolePermissions": [
+        {
+          "allowedResourceActions": [
+            "microsoft.xdr/secops/securitydata/basics/read"
+          ]
+        }
+      ]
+    },
+    "intendedState": {
+      "description": "KEEL-RT test fixture (Q258)",
+      "displayName": "KEEL-RT-258-defender-role",
+      "rolePermissions": [
+        {
+          "allowedResourceActions": [
+            "microsoft.xdr/secops/securitydata/basics/read"
+          ]
+        }
+      ]
+    },
+    "postState": {
+      "id": "d8183185-461f-8a39-bc76-b0d81ba401e5",
+      "description": "KEEL-RT test fixture (Q258)",
+      "displayName": "KEEL-RT-258-defender-role",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleDefinitions/$entity",
+      "rolePermissions": [
+        {
+          "allowedResourceActions": [
+            "microsoft.xdr/secops/securitydata/basics/read"
+          ]
+        }
+      ]
+    }
+  }
+}

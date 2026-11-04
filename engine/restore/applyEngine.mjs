@@ -46,6 +46,7 @@ import {
 } from './adminRoleOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
 import { assertNoPlannedIds, isPlannedId } from './plannedIds.mjs';
+import { journalIntendedState, trustFieldStep } from './recordWriter.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
   namedLocationTrustKept, namedLocationTrustRefusal, skippedLocationPolicyRefusal, withoutNamedLocationTrust,
@@ -208,6 +209,27 @@ async function writeAfterCreate(writer, version, path, body, {
 }
 
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
+
+/**
+ * The generic Entra writer never sends a trust, certificate or sign-in field
+ * (writableProjection.mjs#trustFieldsOf). The one exception is the setting an
+ * approved named-location compliance fix changes (namedLocationTrust.mjs).
+ */
+const keptTrust = (resource) => (resource.resourceType === 'namedLocation' && resource.complianceFix?.field
+  ? { keepTrust: [resource.complianceFix.field] } : {});
+
+/** What a generic write intends, for the rollback journal: its trust fields as the write leaves them (top-level only, as sent). */
+const genericJournalState = (resource, desired, live, verb) => journalIntendedState(resource.resourceType, desired, live, {
+  verb, nested: false, keep: keptTrust(resource).keepTrust ?? [],
+});
+
+/** The manual step for the trust fields a generic write leaves out, as an applied entry's `completion`, or nothing. */
+function genericTrustCompletion(resource, desired, live, verb, excluded = []) {
+  const step = trustFieldStep(resource.resourceType, desired, live, verb, {
+    excluded: [...excluded, ...(keptTrust(resource).keepTrust ?? [])], nested: false,
+  });
+  return step ? { completion: [step] } : {};
+}
 
 const THROTTLE_RETRY_MAX_ATTEMPTS = 3;
 
@@ -876,12 +898,14 @@ export async function applyWave(writer, governor, wave, {
         }
       }
 
+      // The restored object comes back as it was deleted; its trust fields are never PATCHed.
+      const restoreTrust = (live) => genericTrustCompletion(resource, desired, live ?? resource.live?.payload ?? null, 'update');
       if (mode === 'dry-run') {
-        applied.push({ naturalKey: resource.naturalKey, targetId });
+        applied.push({ naturalKey: resource.naturalKey, targetId, ...restoreTrust() });
         return;
       }
       if (prior && prior.outcome === 'succeeded') {
-        applied.push({ naturalKey: resource.naturalKey, targetId, resumed: true });
+        applied.push({ naturalKey: resource.naturalKey, targetId, resumed: true, ...restoreTrust() });
         return;
       }
       if (prior && prior.outcome !== 'failed') {
@@ -892,7 +916,8 @@ export async function applyWave(writer, governor, wave, {
       const journal = await journalBeforeMutation(rollbackClient, {
         runId, restoreRef, resource, operation: 'restore-soft-deleted', targetId,
         priorState: resource.live?.payload ?? resource.payload,
-        intendedState: desired,
+        // Trust fields are never PATCHed: the journal holds them as live has them.
+        intendedState: genericJournalState(resource, desired, resource.live?.payload ?? null, 'update'),
       });
       if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to restore: rollback journal write failed' });
@@ -948,7 +973,7 @@ export async function applyWave(writer, governor, wave, {
         === canonicalHash(desiredView, resource.resourceType);
       if (live && matchesDesired(live)) {
         await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
-        applied.push({ naturalKey: resource.naturalKey, targetId });
+        applied.push({ naturalKey: resource.naturalKey, targetId, ...restoreTrust(live) });
         return;
       }
 
@@ -990,7 +1015,7 @@ export async function applyWave(writer, governor, wave, {
         if (residual.length === 0) {
           // The hashes differ only where an empty array or object meets an absent field.
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
-          applied.push({ naturalKey: resource.naturalKey, targetId });
+          applied.push({ naturalKey: resource.naturalKey, targetId, ...restoreTrust(live) });
           return;
         }
         const immutable = immutableDrift(desiredView, liveView, resource.resourceType);
@@ -1007,7 +1032,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
-      applied.push({ naturalKey: resource.naturalKey, targetId });
+      applied.push({ naturalKey: resource.naturalKey, targetId, ...restoreTrust(live) });
       return;
     }
 
@@ -1037,10 +1062,12 @@ export async function applyWave(writer, governor, wave, {
       desired = withLiveAppId(desired, resource.resourceType, resource.live);
       // Verification compares what a write can set: server-owned fields, OData
       // annotations and nulls are left out on both sides (verificationView).
-      const normalisedDesired = verificationView(desired, resource.resourceType);
+      const view = (object) => verificationView(object, resource.resourceType, keptTrust(resource));
+      const normalisedDesired = view(desired);
       // A named location's trust fields match live here (namedLocationTrustRefusal)
       // and are still never sent, so a change made since the plan read is kept.
-      const payload = withoutNamedLocationTrust(writableProjection(desired, resource.resourceType), resource);
+      // No other type's trust field is sent either (writableProjection drops it).
+      const payload = withoutNamedLocationTrust(writableProjection(desired, resource.resourceType, keptTrust(resource)), resource);
       const patchRefusal = isPolicyGoverned(resource.resourceType) ? policyPatchRefusal(resource.resourceType, payload)
         : isAdministrativeGoverned(resource.resourceType) ? administrativePatchRefusal(resource.resourceType, payload) : null;
       if (patchRefusal) {
@@ -1048,8 +1075,9 @@ export async function applyWave(writer, governor, wave, {
         return;
       }
 
+      const updateTrust = (live) => genericTrustCompletion(resource, desired, live, 'update');
       if (mode === 'dry-run') {
-        applied.push({ naturalKey: resource.naturalKey, targetId, changes: plannedUpdateChanges(resource, desired, payload, normalisedDesired) });
+        applied.push({ naturalKey: resource.naturalKey, targetId, changes: plannedUpdateChanges(resource, desired, payload, normalisedDesired), ...updateTrust(resource.live?.payload ?? null) });
         return;
       }
 
@@ -1066,15 +1094,15 @@ export async function applyWave(writer, governor, wave, {
       // missing a licence is written.
       const licencesMissing = resource.resourceType === 'group' && liveBefore
         && licencePlan(desired, liveBefore, { resourceType: 'group' }).add.length > 0;
-      if (liveBefore && !licencesMissing && converged(normalisedDesired, verificationView(forVerification(liveBefore, resource), resource.resourceType), resource.resourceType)) {
-        applied.push({ naturalKey: resource.naturalKey, targetId, unchanged: true, ...(prior ? { resumed: true } : {}) });
+      if (liveBefore && !licencesMissing && converged(normalisedDesired, view(forVerification(liveBefore, resource)), resource.resourceType)) {
+        applied.push({ naturalKey: resource.naturalKey, targetId, unchanged: true, ...(prior ? { resumed: true } : {}), ...updateTrust(liveBefore) });
         return;
       }
 
       const journal = await journalBeforeMutation(rollbackClient, {
         runId, restoreRef, resource, operation: 'update', targetId,
         priorState: resource.live?.payload ?? resource.payload,
-        intendedState: desired,
+        intendedState: genericJournalState(resource, desired, liveBefore ?? resource.live?.payload ?? null, 'update'),
       });
       if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to update: rollback journal write failed' });
@@ -1101,13 +1129,14 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(verificationView(forVerification(r.body, resource), resource.resourceType), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
+        isNotFound(r) || (r?.ok === true && canonicalHash(view(forVerification(r.body, resource)), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
       if (reRead?.ok === false) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         return;
       }
-      const live = verificationView(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
+      const live = view(forVerification(reRead?.body ?? reRead, resource));
+      const writtenTrust = updateTrust(reRead?.body ?? reRead);
       // Roadmap task-109: a governed update also verifies its own post-state
       // (every written value, and a setting still bound to its template) before
       // the hash comparison, so a template that changed under the write fails
@@ -1125,7 +1154,7 @@ export async function applyWave(writer, governor, wave, {
         if (residual.length === 0) {
           // The hashes differ only where an empty array or object meets an absent field.
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
-          applied.push({ naturalKey: resource.naturalKey, targetId });
+          applied.push({ naturalKey: resource.naturalKey, targetId, ...writtenTrust });
           return;
         }
         const immutable = immutableDrift(normalisedDesired, live, resource.resourceType);
@@ -1142,7 +1171,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
-      applied.push({ naturalKey: resource.naturalKey, targetId });
+      applied.push({ naturalKey: resource.naturalKey, targetId, ...writtenTrust });
       return;
     }
 
@@ -1161,9 +1190,15 @@ export async function applyWave(writer, governor, wave, {
       return;
     }
 
+    // A create never sends a trust field (createBodyProjection drops it): one the
+    // backup sets that the created object does not hold is a step for a person.
+    // Before anything is written (a dry run) every one the backup sets is listed.
+    // Fields a create never sends anyway (CREATE_EXCLUDED_FIELDS) are not.
+    const createExcluded = CREATE_EXCLUDED_FIELDS[resource.resourceType] ?? null;
+    const createTrust = (created = null) => genericTrustCompletion(resource, payload, created, created ? 'update' : 'create', createExcluded ?? []);
     const existingId = existingTargetIds.get(resource.naturalKey);
     if (existingId) {
-      if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); return; }
+      if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: existingId, ...createTrust() }); return; }
       const path = `${pathFor(resource.resourceType)}/${existingId}`;
       const reRead = await retryOperation(() => writer.read('v1.0', path));
       if (reRead?.ok === false) {
@@ -1182,13 +1217,12 @@ export async function applyWave(writer, governor, wave, {
       return;
     }
 
-    if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: null }); return; }
+    if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: null, ...createTrust() }); return; }
 
     const path = pathFor(resource.resourceType);
     // Roadmap task-107: for a type with CREATE_EXCLUDED_FIELDS the body leaves out
     // what Entra assigns and the credential material KEEL can never read back,
     // and verification compares exactly the fields that were written.
-    const createExcluded = CREATE_EXCLUDED_FIELDS[resource.resourceType] ?? null;
     // Roadmap task-108: a policy-governed create sends only its record's
     // writable fields; unknown fields are never sent and are reported.
     const policyCreate = isPolicyGoverned(resource.resourceType) ? policyCreateBody(resource.resourceType, payload) : null;
@@ -1217,7 +1251,7 @@ export async function applyWave(writer, governor, wave, {
         const createdLive = onlyFields(verificationView(forVerification(body, resource), resource.resourceType), desiredView);
         if (residualDiff(desiredView, createdLive, resource.resourceType).length === 0) {
           const identifiers = createdIdentifiers(resource.resourceType, body, body);
-          applied.push({ naturalKey: resource.naturalKey, targetId: prior.targetId, resumed: true, ...(identifiers ? { identifiers } : {}) });
+          applied.push({ naturalKey: resource.naturalKey, targetId: prior.targetId, resumed: true, ...(identifiers ? { identifiers } : {}), ...createTrust(body) });
           return;
         }
       }
@@ -1228,7 +1262,7 @@ export async function applyWave(writer, governor, wave, {
     const journal = await journalBeforeMutation(rollbackClient, {
       runId, restoreRef, resource, operation: 'create',
       priorState: null,
-      intendedState: payload,
+      intendedState: genericJournalState(resource, payload, null, 'create'),
     });
     if (!journal.ok) {
       failed.push({ naturalKey: resource.naturalKey, error: 'refusing to create: rollback journal write failed' });
@@ -1319,7 +1353,7 @@ export async function applyWave(writer, governor, wave, {
     await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState });
     const entry = identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId };
     if (policyCreate?.unknown.length > 0) entry.unwrittenFields = policyCreate.unknown;
-    applied.push(entry);
+    applied.push({ ...entry, ...createTrust(postState) });
   };
 
   // Wave 2 RST: resources inside one wave do not depend on each other, so they
@@ -1607,7 +1641,7 @@ async function applyIntuneWrite(writer, resource, verb, {
   if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes(), ...trustCompletion } };
 
   const journal = await journalBeforeMutation(rollbackClient, {
-    runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
+    runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: journalIntendedState(resourceType, desired, before, { verb }),
   });
   if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
 

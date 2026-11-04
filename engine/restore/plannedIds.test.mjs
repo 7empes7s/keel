@@ -65,7 +65,9 @@ test('a dry run plans a service principal whose application this run creates (#7
 
   const first = await applyWave(noWriter, governor, [app], options);
   assert.deepEqual(first.failed, []);
-  assert.deepEqual(first.applied, [{ naturalKey: app.naturalKey, targetId: null }]);
+  // A create never sends signInAudience (a sign-in field): the plan lists it for a person.
+  assert.deepEqual(first.applied.map(({ completion, ...entry }) => [entry, completion?.map((step) => step.fields)]),
+    [[{ naturalKey: app.naturalKey, targetId: null }, [['signInAudience']]]]);
   recordAppliedIds(appliedIds, first.applied);
   recordPlannedCreates(appliedIds, first.applied, [app], 'dry-run');
 

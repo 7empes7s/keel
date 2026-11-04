@@ -60,6 +60,18 @@ function appRoleGrantProject(item) {
   return { edgeKey: `${resourceId}:${appRoleId}`, targetId: resourceId, targetType: 'servicePrincipal', attributes: null };
 }
 
+// Issue #994: a group a staged rollout applies to. Its name and mail nickname
+// are kept with the edge, so a restore finds the same group in the target by
+// its natural key (the mail nickname, else the name).
+function rolloutGroupProject(item) {
+  const edge = idProject(item);
+  if (!edge) return null;
+  const attributes = {};
+  if (typeof item.displayName === 'string') attributes.displayName = item.displayName;
+  if (typeof item.mailNickname === 'string') attributes.mailNickname = item.mailNickname;
+  return { ...edge, attributes: Object.keys(attributes).length > 0 ? attributes : null };
+}
+
 const ASSIGNMENT_KINDS = {
   groupAssignmentTarget: { kind: 'group', mode: 'include' },
   exclusionGroupAssignmentTarget: { kind: 'group', mode: 'exclude' },
@@ -140,6 +152,11 @@ export const RELATIONSHIP_FAMILIES = Object.freeze({
     family: 'servicePrincipalOwner', edgeType: 'owner', parentType: 'servicePrincipal', project: idProject,
     pathFor: (id) => `/servicePrincipals/${encodeURIComponent(id)}/owners?$select=id`,
     requires: ['Application.Read.All'],
+  }),
+  rolloutAppliesTo: simple({
+    family: 'rolloutAppliesTo', edgeType: 'appliesTo', parentType: 'featureRolloutPolicy', project: rolloutGroupProject,
+    pathFor: (id) => `/policies/featureRolloutPolicies/${encodeURIComponent(id)}/appliesTo?$select=id,displayName,mailNickname`,
+    requires: ['Policy.Read.All'],
   }),
   appRoleGrant: simple({
     family: 'appRoleGrant', edgeType: 'appRoleGrant', parentType: 'servicePrincipal', project: appRoleGrantProject,

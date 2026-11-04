@@ -96,7 +96,9 @@ export const TYPE_DECISIONS = Object.freeze({
   // Wave 2 ENTRA: written through engine/restore/directoryPolicyOperations.mjs.
   oauth2PermissionGrant: automated('oauth2permissiongrant', 'Wave 2 ENTRA subset: create and update of a delegated consent (scopes as the backup had them), matched on app, resource, consent type and user so a re-run never adds a second grant; delete is not registered'),
   identityProvider: manual('client secrets are never readable'),
-  certificateBasedAuthConfiguration: incomplete('a wrong certificate trust setting can lock every user out, and there is no simulation gate for it yet'),
+  // Issue #994: manual by design. The certificate list is never written; a restore
+  // lists each backed-up authority and what differs live (signInSettingsOperations.mjs).
+  certificateBasedAuthConfiguration: manual('manual by design: a wrong trusted certificate authority lets anyone holding a certificate from it sign in, or locks every certificate user out, so the list is never written; a restore lists each backed-up authority (issuer, root or intermediate, expiry, revocation list) and whether it is missing or different live, to fix by hand in the Entra admin center'),
   directoryRole: manual('built-in roles are activated from templates, never authored'),
   roleDefinition: automated('unifiedroledefinition', 'task-151 subset: create and update of custom roles; built-in roles are immutable and refused, delete is not registered'),
   directoryRoleTemplate: manual('Microsoft-published template catalogue'),
@@ -113,7 +115,8 @@ export const TYPE_DECISIONS = Object.freeze({
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate'),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
   namedLocation: automated('namedlocation', 'create/update/delete are registered'),
-  authenticationContextClassReference: incomplete('ids c1..c99 are fixed per tenant and referenced by Conditional Access policies and SharePoint labels'),
+  // Issue #994: written through engine/restore/signInSettingsOperations.mjs.
+  authenticationContextClassReference: automated('authenticationcontextclassreference', 'issue-994 subset: upsert of the name, description and availability, always to the backup\'s own id (c1..c99); the dry run lists the Conditional Access policies in the backup and live that use it; making a used context available or unavailable is written only once approved under the restore approval setting; delete is not registered'),
   authenticationMethodsPolicy: automated('authenticationmethodspolicy', 'task-149: update of the policy and its method configurations, only behind the break-glass lockout gate'),
   identitySecurityDefaultsEnforcementPolicy: automated('identitysecuritydefaultsenforcementpolicy', 'task-149: update of isEnabled, only behind the break-glass lockout gate', {
     liveFailures: {
@@ -138,7 +141,7 @@ export const TYPE_DECISIONS = Object.freeze({
   homeRealmDiscoveryPolicy: automated('homerealmdiscoverypolicy', STS_SUBSET),
   tokenIssuancePolicy: automated('tokenissuancepolicy', STS_SUBSET),
   tokenLifetimePolicy: automated('tokenlifetimepolicy', STS_SUBSET),
-  featureRolloutPolicy: incomplete('the groups a rollout applies to are a separate edge not yet collected'),
+  featureRolloutPolicy: automated('featurerolloutpolicy', 'issue-994 subset: create and update of the name, description, feature and organization-wide flag, plus add-only groups found live by their natural key, only behind the break-glass lockout gate and once approved under the restore approval setting; a recreated rollout lands switched off and switching it on is a separate approved step; delete is not registered'),
   accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
   // Issue #992: entitlement management, part 1.
   accessPackage: automated('accesspackage', 'create and update of the name, description and whether it is hidden, in its catalog (the restored or live catalog, matched by natural key); a create waits for its catalog and is refused when the catalog is in neither; delete is not registered; its policies and assignments are their own types'),
@@ -924,8 +927,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   oauth2PermissionGrant: subset('identity-application', 'POST /oauth2PermissionGrants; PATCH /oauth2PermissionGrants/{id}', 'DelegatedPermissionGrant.ReadWrite.All',
     'create and update are fixture-tested; a grant is written only inside an approved restore, matched on app, resource, consent type and user, and its scopes are written as backed up; delete is refused'),
   identityProvider: byHand('identity-application', 'POST /identity/identityProviders', 'IdentityProvider.ReadWrite.All', 'client secrets are never readable'),
-  certificateBasedAuthConfiguration: research('identity-application', 'POST /organization/{id}/certificateBasedAuthConfiguration', 'Organization.ReadWrite.All',
-    'tenant-lockout blast radius; no simulation gate for certificate trust changes exists'),
+  certificateBasedAuthConfiguration: byHand('identity-application', 'POST /organization/{id}/certificateBasedAuthConfiguration', 'Organization.ReadWrite.All',
+    'manual by design (issue #994): a trusted certificate authority decides who can sign in with a certificate, so the list is never written; a restore reports each backed-up authority and what differs live'),
   directoryRole: byHand('identity-application', 'POST /directoryRoles (activate from template)', 'RoleManagement.ReadWrite.Directory', 'built-in roles are activated from templates, never authored'),
   // Roadmap task-151: the admin role model. Records, routes and the rule
   // review live in engine/restore/adminRoleOperations.mjs.
@@ -987,8 +990,9 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'create and update of custom strengths are fixture-tested; built-in strengths are immutable and refused; allowedCombinations changes only through updateAllowedCombinations, which is not qualified, so its drift is reported not remediable; delete is refused'),
   // The remaining policy family ledger after task-108: each stays research-needed
   // for the reason named, and every write to it is refused.
-  authenticationContextClassReference: research('policy', 'PATCH /identity/conditionalAccess/authenticationContextClassReferences/{id}', 'Policy.ReadWrite.ConditionalAccess',
-    'ids c1..c99 are fixed per tenant and referenced by CA policies and SharePoint labels; an upsert contract and a check of what consumes each id do not exist'),
+  // Issue #994: records live in engine/restore/signInSettingsOperations.mjs.
+  authenticationContextClassReference: subset('policy', 'PATCH /identity/conditionalAccess/authenticationContextClassReferences/{id}', 'Policy.ReadWrite.ConditionalAccess',
+    'upsert of displayName, description and isAvailable to the backup\'s own id (c1..c99) is fixture-tested; the dry run lists the Conditional Access policies in the backup and live that use the id; an availability change on a used id is held behind the restore approval; delete is refused'),
   // Roadmap task-149: the tenant-wide security policies. Records, routes and the
   // lockout gate binding live in engine/restore/tenantPolicyOperations.mjs.
   authenticationMethodsPolicy: subset('policy', 'PATCH /policies/authenticationMethodsPolicy; PATCH /policies/authenticationMethodsPolicy/authenticationMethodConfigurations/{id}', 'Policy.ReadWrite.AuthenticationMethod',
@@ -1022,8 +1026,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
   tokenLifetimePolicy: subset('policy', 'POST /policies/tokenLifetimePolicies; PATCH /policies/tokenLifetimePolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
     'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
-  featureRolloutPolicy: research('policy', 'POST /policies/featureRolloutPolicies', 'Policy.ReadWrite.FeatureRollout',
-    'staged rollout of sign-in features; applies-to group membership is a separate edge with no qualified writer'),
+  featureRolloutPolicy: subset('policy', 'POST /policies/featureRolloutPolicies; PATCH /policies/featureRolloutPolicies/{id}; POST .../{id}/appliesTo/$ref', 'Policy.ReadWrite.FeatureRollout',
+    'create and update are fixture-tested behind the break-glass lockout gate and the restore approval; the backup\'s groups are added (never removed) when they exist live; a recreated rollout lands switched off and switching it on is a separate approved step; delete is refused'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.
   appManagementPolicy: subset('policy', 'POST /policies/appManagementPolicies; PATCH .../{id}', 'Policy.ReadWrite.ApplicationConfiguration',
     'create and update are fixture-tested; assignment to applications and service principals is a separate edge with no qualified writer'),

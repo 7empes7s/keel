@@ -102,7 +102,11 @@ test('every catalogue type sits in exactly one expansion batch with an explicit 
   assert.equal(seen.get('roleAssignmentSchedule').status, 'qualified-subset');
   // Wave 2 ENTRA: delegated consents are now a registered subset.
   assert.equal(seen.get('oauth2PermissionGrant').status, 'qualified-subset');
-  assert.equal(seen.get('certificateBasedAuthConfiguration').status, 'research-needed');
+  // Issue #994: certificate authorities are manual by design; authentication
+  // contexts and staged rollout are registered subsets.
+  assert.equal(seen.get('certificateBasedAuthConfiguration').status, 'manual');
+  assert.equal(seen.get('authenticationContextClassReference').status, 'qualified-subset');
+  assert.equal(seen.get('featureRolloutPolicy').status, 'qualified-subset');
 });
 
 test('scopes are derived from registered operations only; no new family is fully restorable', () => {
@@ -120,7 +124,14 @@ test('scopes are derived from registered operations only; no new family is fully
   assert.equal(active.completeness.state, 'incomplete');
   assert.deepEqual({ status: active.expansion.status, restoreScope: active.expansion.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });
   assert.equal(restoreScopeFor('certificateBasedAuthConfiguration'), 'none');
-  const unit = qualificationFor('certificateBasedAuthConfiguration');
+  // Issue #994: certificate authorities are manual by design, never written.
+  const certificates = qualificationFor('certificateBasedAuthConfiguration');
+  assert.equal(certificates.decision, 'manual');
+  assert.deepEqual({ status: certificates.expansion.status, restoreScope: certificates.expansion.restoreScope }, { status: 'manual', restoreScope: 'none' });
+  // Issue #993 gave connected organizations a writer; access package assignments stay by hand.
+  assert.equal(qualificationFor('connectedOrganization').decision, 'automated');
+  assert.equal(restoreScopeFor('accessPackageAssignment'), 'none');
+  const unit = qualificationFor('accessPackageAssignment');
   // Coverage plan v3: no longer 'unknown'; restored by hand until a writer exists.
   assert.equal(unit.decision, 'manual');
   assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });
@@ -130,21 +141,23 @@ test('scopes are derived from registered operations only; no new family is fully
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
   // Roadmap task-109 registered administrativeUnit and groupSetting, and
   // task-151 roleEligibilitySchedule; the research-needed examples are now
-  // certificateBasedAuthConfiguration and accessPackageAssignment (Wave 2 ENTRA
-  // registered oauth2PermissionGrant, issue #991 roleAssignmentSchedule, issue #992
-  // accessPackage and issue #993 accessPackageAssignmentPolicy).
+  // accessPackageAssignment (Wave 2 ENTRA registered oauth2PermissionGrant, issue
+  // #991 roleAssignmentSchedule, issue #992 accessPackage and issue #993
+  // accessPackageAssignment and accessPackageAssignment; issue #994 made
+  // certificateBasedAuthConfiguration manual by design).
   const asQualified = { ...EXPANSION_INVENTORY, accessPackageAssignment: { ...EXPANSION_INVENTORY.accessPackageAssignment, status: 'qualified-subset' } };
   assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /accessPackageAssignment is marked qualified-subset but has no registered write capability/);
-  const flagged = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, fullyRestorable: true } };
+  const certificatesQualified = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, status: 'qualified-subset' } };
+  assert.throws(() => buildExpansionInventory({ inventory: certificatesQualified }), /certificateBasedAuthConfiguration is marked qualified-subset but has no registered write capability/);
+  const flagged = { ...EXPANSION_INVENTORY, accessPackageAssignment: { ...EXPANSION_INVENTORY.accessPackageAssignment, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
   const { accessPackageAssignment: _omitted, ...missing } = EXPANSION_INVENTORY;
   assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: accessPackageAssignment\b/);
   const demoted = { ...EXPANSION_INVENTORY, application: { ...EXPANSION_INVENTORY.application, status: 'research-needed' } };
   assert.throws(() => buildExpansionInventory({ inventory: demoted }), /application has a registered write capability but is marked research-needed/);
-  const noRoute = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, api: null } };
+  const noRoute = { ...EXPANSION_INVENTORY, accessPackageAssignment: { ...EXPANSION_INVENTORY.accessPackageAssignment, api: null } };
   assert.throws(() => buildExpansionInventory({ inventory: noRoute }), /must name the API route/);
-  const manualMismatch = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, status: 'manual' } };
-  assert.throws(() => buildExpansionInventory({ inventory: manualMismatch, decisions: { ...TYPE_DECISIONS, certificateBasedAuthConfiguration: { decision: 'automated', reason: 'x' } } }),
+  assert.throws(() => buildExpansionInventory({ decisions: { ...TYPE_DECISIONS, certificateBasedAuthConfiguration: { decision: 'automated', reason: 'x' } } }),
     /certificateBasedAuthConfiguration is manual in its batch but automated/);
   assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, accessPackageAssignment: { decision: 'automated', reason: 'x' } } }),
     /accessPackageAssignment is marked automated but has no registered write capability/);

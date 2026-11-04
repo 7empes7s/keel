@@ -104,6 +104,11 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   a KEEL-RT- fixture (carla, the fixture role, the fixture unit, ending in 2 days), approved as "Changes admin access".
 - Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in
   `docs/roadmap/release-signoff.md`.
+- Sign-in settings (#994, fixture-tested only): authentication context upsert and staged rollout create and
+  update need live captures. Contexts: a `KEEL-RT-994-context` in a slot nothing uses, left not available.
+  Rollout: `KEEL-RT-994-rollout` (switched off) applied to the empty group `KEEL-RT-994-rollout-group`, behind
+  the lockout gate with its "Changes sign-in" effects approved. `authenticationMethodsPolicy.update` now writes
+  less (no x509 binding or mode fields); its existing record still holds.
 - Entitlement management part 1 (#992): `accessPackage` create and update and
   `accessPackageResourceRoleScope` create are fixture-tested with no live record yet. Capture needs a
   KEEL-RT-992-catalog holding one KEEL-RT group (steps in the #992 PR body); the role write is approval-held.

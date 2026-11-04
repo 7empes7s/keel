@@ -109,6 +109,10 @@ import {
   observedTurnedOn, pendingEnforcementSteps, planConditionalAccessEnforcement,
 } from '../engine/restore/conditionalAccessEnforcement.mjs';
 import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
+import {
+  SIGN_IN_LOCKOUT_TYPES, attachAuthenticationContextConsumers, attachRolloutAppliesTo,
+} from '../engine/restore/signInSettingsOperations.mjs';
+import { rolloutGroupsToAdd } from '../engine/safety/signInSettingEffects.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import { recordPlannedCreates } from '../engine/restore/plannedIds.mjs';
@@ -252,6 +256,7 @@ export async function lockoutGateFor(client, resources, {
     && !offWhenDeleted(resource));
   const planned = comingBackOn.length > 0 || resources.some((resource) => resource.verb && resource.verb !== 'noop'
     && (tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true
+      || SIGN_IN_LOCKOUT_TYPES.includes(resource.resourceType)
       || (resource.verb === 'delete' && resource.blastRadius === 'tenant-lockout')));
   if (!planned) return null;
   try {
@@ -310,6 +315,17 @@ export function changeLine(entry) {
 }
 function logFailures(logger, failed) {
   for (const entry of failed) logger.log(`  failed ${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`);
+}
+
+/** Issue #994: how the snapshot's read of one type ended ('complete', ...), or null when not known. */
+export async function snapshotTypeOutcome(client, { snapshotId, resourceType }) {
+  try {
+    const { rows } = await client.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [snapshotId]);
+    const outcome = rows?.[0]?.coverage_digest?.[resourceType]?.outcome;
+    return typeof outcome === 'string' ? outcome : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
@@ -887,6 +903,43 @@ export async function runRestore({
           recoveryFor: (resource) => selectRecoveryMechanism(resource),
         });
       }
+      // Issue #994: a staged rollout carries the groups its backup applied to and
+      // the live ones, so its writer adds the missing groups (never removes one) and
+      // the approval effects name them. A rollout whose only change is a missing
+      // group is planned as an update. Selection scope only, like Intune assignments.
+      const rollouts = resources.filter((resource) => resource.resourceType === 'featureRolloutPolicy' && resource.verb !== 'delete');
+      if (rollouts.length > 0) {
+        const desiredGroups = await loadSnapshotRelationshipsFn(client, {
+          snapshotId: sourceSnapshot, families: ['rolloutAppliesTo'], parentNaturalKeys: rollouts.map((resource) => resource.naturalKey),
+        });
+        const liveRollouts = rollouts.filter((resource) => resource.live?.state === 'present');
+        const liveGroups = liveRollouts.length === 0 ? [] : await collectRelationshipsFn(targetReader, {
+          tenantRef: collectorConfig.tenantId,
+          parents: liveRollouts.map((resource) => ({ type: resource.resourceType, sourceId: resource.live.targetId, naturalKey: resource.naturalKey })),
+          families: ['rolloutAppliesTo'],
+        });
+        resources = attachRolloutAppliesTo(resources, {
+          desired: desiredGroups,
+          live: new Map(liveGroups.map((obs) => [`${obs.parentNaturalKey}|${obs.family}`, obs])),
+        }).map((resource) => {
+          if (resource.resourceType !== 'featureRolloutPolicy' || resource.verb !== 'noop' || (rolloutGroupsToAdd(resource) ?? []).length === 0) return resource;
+          const update = { ...resource, verb: 'update' };
+          return { ...update, recovery: selectRecoveryMechanism(update) };
+        });
+      }
+    }
+    // Issue #994: each authentication context carries what uses it (the backup's and
+    // the live Conditional Access policies), for the dry run and its approval effects.
+    // The backup's policies count only when its Conditional Access read was complete;
+    // otherwise they are unknown, and the context is treated as used.
+    if (resources.some((resource) => resource.resourceType === 'authenticationContextClassReference')) {
+      const caRead = await snapshotTypeOutcome(client, { snapshotId: sourceSnapshot, resourceType: 'conditionalAccessPolicy' });
+      resources = await attachAuthenticationContextConsumers(resources, {
+        snapshotPolicies: ['complete', 'complete-empty'].includes(caRead)
+          ? (versions ?? []).filter((version) => version.resource_type === 'conditionalAccessPolicy').map((version) => version.payload)
+          : null,
+        reader: targetReader,
+      });
     }
     // Roadmap task-149: a lockout-sensitive tenant policy (authentication methods,
     // security defaults, authorization policy) is written only when the target's
@@ -1285,6 +1338,8 @@ export async function runRestore({
       for (const entry of result.applied) {
         const line = changeLine(entry);
         if (line) logger.log(line);
+        // Issue #994: what uses an authentication context, in plain English.
+        if (typeof entry.usedBy === 'string') logger.log(`  used by ${entry.naturalKey}: ${entry.usedBy}`);
       }
       for (const entry of [...result.applied, ...result.skipped]) {
         for (const line of completionStepLines(entry)) logger.log(line);

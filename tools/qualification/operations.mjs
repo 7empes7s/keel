@@ -132,6 +132,9 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   organizationalBrandingLocalization: { id: 'fr-FR', signInPageText: 'Bienvenue chez Fixture', usernameHintText: 'nom@fixture.example' },
   groupLifecyclePolicy: { id: 'fixture-lifecycle', groupLifetimeInDays: 180, managedGroupTypes: 'Selected', alternateNotificationEmails: 'admins@fixture.example' },
   authenticationFlowsPolicy: { id: 'authenticationFlowsPolicy', displayName: 'Authentication flows policy', selfServiceSignUp: { isEnabled: false } },
+  // Issue #994: an authentication context (named by its fixed id) and a staged rollout, switched off.
+  authenticationContextClassReference: { id: 'c7', displayName: 'Fixture context', description: 'Fixture step-up', isAvailable: false },
+  featureRolloutPolicy: { displayName: 'Fixture rollout', description: 'Fixture', feature: 'passwordHashSync', isAppliedToOrganization: false, isEnabled: false },
   // Issue #155: an Intune compliance policy (with the actions Graph needs on
   // create), a device restriction profile and a settings catalog policy.
   deviceCompliancePolicy: {
@@ -573,7 +576,13 @@ const LISTED_BEFORE_CREATE = new Set([
   '/roleManagement/exchange/roleAssignments', '/roleManagement/defender/roleAssignments',
   '/identityGovernance/entitlementManagement/accessPackages',
   '/identityGovernance/entitlementManagement/connectedOrganizations', '/identityGovernance/entitlementManagement/assignmentPolicies',
+  // Issue #994: a staged rollout create looks for one with the same name and feature.
+  '/policies/featureRolloutPolicies',
 ]);
+
+// Issue #994: an authentication context is written under its own id, so the
+// fixture's live object has that id too.
+const FIXTURE_OBJECT_IDS = Object.freeze({ authenticationContextClassReference: 'c7' });
 
 /** An in-memory Graph that honours create/PATCH/DELETE/soft-restore and read-back. */
 export function fakeGraph() {
@@ -741,6 +750,11 @@ export function fakeGraph() {
         objects.set(policyPath, { ...policy, rules: policy.rules.map((rule) => (rule.id === ruleId ? { ...rule, ...fields } : rule)) });
         return { ok: true, status: 204, body: null };
       }
+      // Issue #994: PATCH of an authentication context creates it under that id when it is absent.
+      if (method === 'PATCH' && /^\/identity\/conditionalAccess\/authenticationContextClassReferences\/[^/]+$/.test(path)) {
+        objects.set(path, { id: decodeURIComponent(path.split('/').pop()), ...(objects.get(path) ?? {}), ...body });
+        return { ok: true, status: 204, body: null };
+      }
       // Issue #992: a catalog request adds a resource to the catalog, and a
       // resource role is added inside its package, for a resource in the catalog.
       if (method === 'POST' && path === '/identityGovernance/entitlementManagement/resourceRequests') {
@@ -889,7 +903,7 @@ export function fixtureFor(resourceType, operation, graph) {
   const blastRadius = CATALOG.find((entry) => entry.type === resourceType)?.blastRadius ?? null;
   const base = { naturalKey: `${resourceType}:fixture`, resourceType, references: FIXTURE_REFERENCES[resourceType] ?? [], blastRadius };
   FIXTURE_SEEDS[resourceType]?.(graph);
-  const existingId = 'fixture-existing';
+  const existingId = FIXTURE_OBJECT_IDS[resourceType] ?? 'fixture-existing';
   if (TENANT_POLICY_TYPES.has(resourceType)) {
     if (operation === 'create') return { ...base, verb: 'create', payload };
     if (operation !== 'update') return null;

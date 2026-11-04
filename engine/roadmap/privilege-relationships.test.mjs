@@ -102,7 +102,8 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
 test('every family pins endpoint, version and the credential it needs; Intune settings catalog is beta', async () => {
   for (const spec of Object.values(RELATIONSHIP_FAMILIES)) {
     assert.ok(spec.requires.length > 0, `${spec.family} declares a required Graph permission`);
-    assert.match(spec.pathFor(APP), /^\/(groups|applications|servicePrincipals)\//);
+    // Issue #994: a staged rollout's groups are read under the rollout.
+    assert.match(spec.pathFor(APP), /^\/(groups|applications|servicePrincipals|policies\/featureRolloutPolicies)\//);
     assert.equal(spec.version, 'v1.0');
   }
   const calls = [];

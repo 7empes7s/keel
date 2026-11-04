@@ -177,8 +177,8 @@ export function planCompensation({ restoreRef, entries, current }) {
       live: entry.priorState ? { state: 'present', payload: entry.priorState } : null,
     }]);
     for (const effect of forward.effects) {
-      // An access change is put back by the undo itself; only content effects stay.
-      if (effect.effect === 'access-changing') continue;
+      // An access or sign-in change is put back by the undo itself; only content effects stay.
+      if (effect.effect === 'access-changing' || effect.effect === 'changes-sign-in') continue;
       irrecoverable.push({ naturalKey, effect: effect.effect, field: effect.field, reason: effect.disclosure });
     }
 

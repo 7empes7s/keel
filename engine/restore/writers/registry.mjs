@@ -18,7 +18,7 @@
  *
  *   mode, targetTenant, targetId, existingTargetIds, referenceContext, retryOperation,
  *   rollbackClient, runId, restoreRef, now, approvedContentEffects, readAfterWriteOptions,
- *   deletionGuardOptions, observedCoverage,
+ *   deletionGuardOptions, observedCoverage, lockoutGate (the break-glass gate, or null),
  *   journalBeforeMutation(fields) -> { ok, entryId }, noteOutcome(journal, outcome, extras),
  *   rewriteReferences(payload) -> payload (throws UnresolvedReferenceError),
  *   graphFailure(naturalKey, result) -> failed entry,

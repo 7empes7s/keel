@@ -109,9 +109,9 @@ export const TYPE_GUIDE = Object.freeze({
   identityProvider: manual('External identity providers', MS,
     'Microsoft never lets anyone read the client secret of an identity provider.',
     'Recreate the provider in the Entra admin center using the settings in the backup, and enter a fresh secret from the provider.'),
-  certificateBasedAuthConfiguration: manual('Certificate sign-in settings', NOT_BUILT,
-    'A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.',
-    'Restore the certificate authorities by hand in the Entra admin center using the backup, and test sign-in before closing the session.'),
+  certificateBasedAuthConfiguration: manual('Certificate sign-in settings', KEEL,
+    'A wrong trusted certificate authority lets anyone holding a certificate from it sign in, or locks every certificate user out, so KEEL never writes the list.',
+    'A restore lists each backed-up authority (issuer, root or intermediate, expiry, revocation list) and whether it is missing or different now. Upload or correct those by hand in the Entra admin center, and test a certificate sign-in before closing the session.'),
   directoryRole: manual('Built-in admin roles', MS,
     'Microsoft provides the built-in roles. They are switched on from Microsoft\'s templates, never written.',
     'Nothing to restore. Who holds each role is restored with role assignments.'),
@@ -219,9 +219,10 @@ export const TYPE_GUIDE = Object.freeze({
   namedLocation: auto('Named locations', {
     keeps: 'Recreates named locations, puts their settings back and removes ones added since the backup.',
   }),
-  authenticationContextClassReference: manual('Authentication contexts', NOT_BUILT,
-    'Each context has a fixed slot that Conditional Access policies and SharePoint labels point to. KEEL cannot yet check what uses a slot before changing it.',
-    'Restore the name and description by hand in the Entra admin center, keeping each one in the same slot as in the backup.'),
+  authenticationContextClassReference: auto('Authentication contexts', {
+    keeps: 'Puts back each context\'s name, description and whether it is available, always in the same slot (c1 to c99) as in the backup (tested against a simulated tenant only).',
+    todo: 'The dry run lists the Conditional Access policies that use each slot. Making a used context available or unavailable needs the restore approval. Check SharePoint sites and sensitivity labels that require a context by hand.',
+  }),
   authenticationMethodsPolicy: auto('Authentication methods', {
     keeps: 'Puts the authentication methods policy and each method\'s settings back, only when the break-glass accounts can still sign in afterwards.',
     todo: 'A method that no longer exists in your tenant is not added back.',
@@ -277,9 +278,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates the policy and puts its name and settings back (tested against a simulated tenant only).',
     todo: 'Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.',
   }),
-  featureRolloutPolicy: manual('Staged rollout of sign-in features', NOT_BUILT,
-    'Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.',
-    'Recreate the rollout by hand using the backup, then add the same groups.'),
+  featureRolloutPolicy: auto('Staged rollout of sign-in features', {
+    keeps: 'Recreates the rollout and puts its name, feature and scope back, and adds the groups it covered when they exist (tested against a simulated tenant only). Only after the break-glass check and the restore approval.',
+    todo: 'A recreated rollout comes back switched off; switching it on is a separate approved step. A group that no longer exists is added by hand. Groups added since the backup are not removed.',
+  }),
   appManagementPolicy: auto('App credential policies', {
     keeps: 'Recreates the policies and puts their rules back.',
     todo: 'Which apps each policy applies to is not backed up yet, so assign the policies again by hand.',

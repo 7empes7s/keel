@@ -14777,3 +14777,52 @@ item that needs it stays untouched.
 - **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, and every
   `[keel-portal] slow query` line. Expected: `/api/alerts` well under 3 s; no `SELECT DISTINCT ON (rv.natural_key)` line and
   no `WITH wanted AS` line over 1 s; the Changes feed no slower than Q307 (658 / 565 / 541 ms).
+
+### Q314: Finish the per-site settings proof from Q310: label after a wait, restricted access switched on for the capture only, then put back (test tenant, after 2026-11-04 10:00 UTC), about 30 minutes plus waits
+- Drafted by the "Show licence-gated SharePoint reads plainly" thread (2026-11-04), from the Q310 Result. Q310 proved the
+  not-licensed half. `sharepoint.site-settings` is still not proven ("no listed site carried: sensitivityLabel,
+  restrictedAccessControlGroups"), for two reasons:
+  - the label `KEEL-RT-20261104-site-label` was accepted on `/sites/KEEL-RT-20261104-site-settings` but did not show on
+    `Get-PnPTenantSite` within 17 minutes. A new label can take hours to become usable on sites;
+  - restricted access was refused: "Restricted Access Control can't be set for this site because it is not enabled for the
+    tenant." SPO `EnableRestrictedAccessControl` is False.
+- **Decision (coordinator, 2026-11-04, under the user's standing rule of 2026-10-22):** tenant-wide setting changes in the test
+  tenant are approved provided each value is put back right after. So switch `EnableRestrictedAccessControl` on for this capture
+  and put it back. No user approval line is needed (user rule 2026-10-27).
+- Needs: not before **2026-11-04 10:00 UTC** (five hours after the label was published), and Q310 done (it is, partial).
+- Status: todo
+- **Tenant (test tenant only):** writes to the KEEL-RT fixtures from Q310, plus at most two tenant-wide settings
+  (`EnableRestrictedAccessControl`, and `EnableMIPLabels` only if step 2 needs it), each put back and read back right after the
+  capture. Nothing bought, assigned or granted. Never touch break-glass, the user's account, a CA policy, or any trust,
+  federation, certificate or sign-in setting. Global admin not used unless a step names it. Log every change with before/after.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, site changes from your own admin session (never through
+  KEEL's run-cmdlet.ps1, which allows Get cmdlets only):
+  1. **Read first:** `Get-PnPTenantSite -Identity <fixture site> | select SensitivityLabel, RestrictedAccessControl,
+     RestrictedAccessControlGroups`, SPO `EnableRestrictedAccessControl`, and whether the Entra `Group.Unified` setting exists
+     (Q310 deleted it; `EnableMIPLabels` default false). Report the values (label guid shown as "set" or "empty" only).
+  2. **Label.** If `SensitivityLabel` is still empty: create the `Group.Unified` setting with `EnableMIPLabels` true again, re-run
+     `Set-PnPTenantSite -Identity <fixture site> -SensitivityLabel <KEEL-RT-20261104-site-label guid>`, and poll every 5 minutes
+     for up to 60 minutes. If it still does not show, report that and go on with step 3 (the capture still tells us the rest).
+  3. **Restricted access.** `Set-SPOTenant -EnableRestrictedAccessControl $true` and read it back. If SharePoint refuses it for
+     a licence (SharePoint Advanced Management), report the text verbatim, skip to step 6 and buy nothing. Otherwise, allow up to
+     60 minutes for it to take effect, then `Set-SPOSite -Identity <fixture site> -RestrictedAccessControl $true
+     -AddRestrictedAccessControlGroups <KEEL-RT-20261104-rac-group id>` (or the PnP switches of the same names), retrying every
+     10 minutes while it answers "not enabled for the tenant".
+  4. **Key check** as Q310 step 4 (counts only, never values or URLs) for `SensitivityLabel` and `RestrictedAccessControlGroups`.
+  5. **Capture `sharepoint-site-settings`** exactly as Q276 step 1, pseudonymize check (stop and file an issue if not exit 0).
+     Report exit code, `outcome`, `proven`, `notProven` and diagnostics verbatim. Expected: proves `sharepoint.site-sharing`
+     and `sharepoint.site-settings`.
+  6. **Put back, in this order, and read each back:** on the fixture site remove the group and set `RestrictedAccessControl`
+     false (`-RemoveRestrictedAccessControlGroups`, then `-RestrictedAccessControl $false`); `Set-SPOTenant
+     -EnableRestrictedAccessControl $false`; delete the `Group.Unified` setting if step 2 created it. Keep the site, label and
+     group. Report whether the site still carries the label after the put-back.
+  7. **Evidence, import, run, proof** as Q310 steps 7–10 (`claude/live-evidence-sharepoint-tenant`, that record only, secret
+     scan; import; one `run`; `proof`). For `sharepoint-site-settings` report outcome and, per new field (lockState,
+     conditionalAccessPolicy, sensitivityLabel, denyAddAndCustomizePages, restrictedAccessControl,
+     restrictedAccessControlGroups, storageQuota, externalUserExpirationInDays), how many sites are observed vs unknown.
+- **Note for the 30-day recapture:** with restricted access put back off, no site carries `restrictedAccessControlGroups`, so a
+  plain recapture will not prove `sharepoint.site-settings` again. A recapture repeats steps 3, 5 and 6 here. If that is too
+  costly, report it and a code thread decides whether that field counts as read when every site answers it empty.
+- **Report:** B; every tenant change with before/after and its put-back with read-back times; the step 4 counts; the capture
+  result; evidence branch and commit; import counts; the run details; the proof listing; anything left in the tenant
+  (expected: the KEEL-RT fixtures only, no tenant-wide change).

@@ -3236,6 +3236,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
+    case "/alerts/change-flag": {
+      const alert: AlertItem = { ...INBOX_ALERTS[0], control: "change-flag", condition: "ca-turned-off", state: "open", occurrence: 1,
+        flags: [{ key: "ca-turned-off", sentence: "Turned off: Block legacy auth.", name: "Block legacy auth", person: { name: "Person K7Q2" }, changeId: "drift:flagged-policy", resolved: false }] };
+      return <AlertsPage alerts={[alert]} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} now={now} />;
+    }
     case "/alerts/anonymous": {
       const alerts = hiddenAlerts();
       return <AlertsPage alerts={alerts} canMute canRespond header={{ description: "Changes that need someone, who owns each one, and when it is due.", generatedAt: now }} notice={ANONYMOUS_NOTE} now={now} />;

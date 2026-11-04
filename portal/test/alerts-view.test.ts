@@ -141,3 +141,14 @@ test("the page body: tiles filter by state, closed groups stay counted, a viewer
   const rows = html.replace(/<details[\s\S]*?<\/details>/g, "").replace(/(data-row-id|href|title|id|for|aria-labelledby)="[^"]*"/g, "");
   assert.doesNotMatch(rows, GUID);
 });
+
+test("a flagged alert names the object, the flag and the code-named actor without ids", async () => {
+  const entry = alert({ control: "change-flag", condition: "ca-turned-off", resourceKey: "conditionalAccessPolicy:ca000000-0000-4000-8000-000000000001", name: "Require MFA for admins", cause: { changeType: "modified", resourceType: "conditionalAccessPolicy", snapshotId: null }, flags: [{ key: "ca-turned-off", sentence: "Turned off: Require MFA for admins.", name: "Require MFA for admins", person: { name: "Person K7Q2" }, changeId: "drift:ca000000-0000-4000-8000-000000000002", resolved: false }] });
+  const html = await renderAlertsAt("", { alerts: [entry], now: NOW, canRespond: true, canMute: true });
+  const visible = html.split("Technical details for these alerts")[0].replace(/<[^>]*>/g, " ");
+  assert.match(visible, /Require MFA for admins/);
+  assert.match(visible, /Turned off: Require MFA for admins/);
+  assert.match(visible, /Changed by Person K7Q2/);
+  assert.doesNotMatch(visible, GUID);
+  assert.equal(changeLink(entry).href, `/changes?view=feed&change=${encodeURIComponent(entry.flags![0].changeId)}`);
+});

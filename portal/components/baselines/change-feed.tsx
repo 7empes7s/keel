@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
@@ -181,6 +182,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
 
       <section aria-labelledby="feed-heading" className="bl-section">
         <h2 className="visually-hidden" id="feed-heading">Every change</h2>
+        {view.get("change") ? <p>Showing the change linked from an alert. <Link href="/changes?view=feed">Show every change</Link></p> : null}
         {feed.rows.length === 0 ? (
           <div className="bl-card bl-empty">
             <span aria-hidden="true" className="bl-kind-icon" data-tone="fine"><Icon name="check" /></span>

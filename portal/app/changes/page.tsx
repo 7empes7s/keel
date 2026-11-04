@@ -33,7 +33,7 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
     const wanted = first(input.days);
     const period: FeedPeriod = FEED_PERIODS.includes(wanted as FeedPeriod) ? (wanted as FeedPeriod) : "30";
     try {
-      const [feed, anonymity] = await Promise.all([getChangeFeed({ days: Number(period) }), getAnonymitySetting()]);
+      const [feed, anonymity] = await Promise.all([getChangeFeed({ days: Number(period), changeId: first(input.change) }), getAnonymitySetting()]);
       return (
         <>
           <PageHeader description={FEED_DESCRIPTION} generatedAt={feed.generatedAt} section="Baselines" title="Changes" />

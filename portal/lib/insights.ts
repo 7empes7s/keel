@@ -34,7 +34,14 @@ export async function getFlaggedThisWeek({ now = new Date() }: { now?: Date } = 
     if (!flagged.length) return { flagged: 0, alerted: 0 };
     const keys = [...new Set(flagged.map((row) => row.object.key))];
     const alertedKeys = new Set((await client.query(OPEN_ALERT_KEYS_SQL, [ref, keys])).rows.map((row) => String(row.resource_key)));
-    return { flagged: flagged.length, alerted: flagged.filter((row) => alertedKeys.has(row.object.key)).length };
+    // Audit feed rows use Microsoft's target id, while their alerts use the object's
+    // natural key. The durable source link also covers flags folded into baseline drift.
+    const alertedSources = new Set((await client.query(`SELECT DISTINCT e.source_id FROM change_flag_event e
+      JOIN alert a ON a.id=e.alert_id AND a.tenant_ref=e.tenant_ref
+      WHERE e.tenant_ref=$1 AND e.source_id=ANY($2::text[]) AND e.resolved_at IS NULL
+        AND e.alert_occurrence=a.occurrence AND a.state IN ('open','reopened','acknowledged')`,
+    [ref, flagged.map((row) => row.id)])).rows.map((row) => String(row.source_id)));
+    return { flagged: flagged.length, alerted: flagged.filter((row) => alertedKeys.has(row.object.key) || alertedSources.has(row.id)).length };
   } finally {
     await client.end();
   }

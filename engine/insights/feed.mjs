@@ -136,12 +136,14 @@ const OBJECT_IDS_SQL = `(ARRAY(SELECT lower(m[1]) FROM regexp_matches(CASE WHEN 
 // role someone was given, whether a group someone joined can hold admin roles, and the name
 // of an app permission (the API's appRoles list).
 // A link key is edge:<type>:<parent id>:<target> (diffSnapshots.mjs); an app permission's
-// target is <API id>:<permission id>. Read only for added rows of those kinds.
+// target is <API id>:<permission id>. Read only for added rows of those kinds, each through
+// the resource_version (lower(payload->>'id'), snapshot_id) index (schema.d/93).
 const KEY_PART = (index) => `lower(split_part(r.natural_key, ':', ${index}))`;
 const FLAG_CONTEXT_SQL = `CASE
     WHEN r.change_type = 'added' AND r.after_payload ? 'roleDefinitionId' AND r.resource_type IN (${ROLE_ASSIGNMENT_KINDS.map((kind) => `'${kind}'`).join(', ')}) THEN jsonb_build_object(
       'roleName', (SELECT rd.payload->>'displayName' FROM resource_version rd
                     WHERE lower(rd.payload->>'id') = lower(r.after_payload->>'roleDefinitionId') AND rd.snapshot_id = r.observed_snapshot
+                      AND rd.resource_type = 'roleDefinition'
                     LIMIT 1))
     WHEN r.change_type = 'added' AND r.natural_key LIKE 'edge:%' AND r.resource_type IN (${MEMBERSHIP_KINDS.map((kind) => `'${kind}'`).join(', ')}) THEN (
       SELECT jsonb_build_object('roleAssignable', g.payload->'isAssignableToRole', 'groupName', g.payload->>'displayName')

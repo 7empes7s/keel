@@ -16,7 +16,7 @@
  *  - audit rows (the Microsoft audit log): the activity, the operation, the target's type
  *    and the changed field names. Never values, so an audit rule cannot tell a policy turned
  *    off from one renamed; it flags only what the activity itself says (a policy deleted,
- *    someone added to an admin role, a new app secret, a new app permission).
+ *    someone added to an admin role, enterprise app credentials added, a new app permission).
  *
  * evaluateFlags is pure (one change in, flags out), so the alerts and Insights work can
  * call it on full payloads through flagValues(). docs/insights.md lists every rule.
@@ -135,6 +135,7 @@ const named = (input, fallback) => input.name ?? fallback;
 const words = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 const ACTIVE_CA = (state) => state === 'enabled' || state === 'enabledForReportingButNotEnforced';
 const requiresMfa = (values) => list(values?.['grantControls.builtInControls']).map(lower).includes('mfa') || Boolean(values?.['grantControls.authenticationStrength.id']);
+const blocks = (values) => list(values?.['grantControls.builtInControls']).map(lower).includes('block');
 
 // Sign-in methods that are easy to phish or intercept, by their Graph configuration id.
 const WEAK_METHODS = Object.freeze({ sms: 'text message (SMS)', voice: 'voice call', email: 'email one-time passcode' });
@@ -215,7 +216,8 @@ export const FLAG_RULES = Object.freeze([
   // 2. Conditional Access policy leaves out more people or places, or stops asking for MFA.
   {
     key: 'ca-exclusions-added', severity: 'critical', sources: ['drift'], kinds: ['conditionalAccessPolicy'],
-    test: ({ change, before, after }) => change === 'modified' && ACTIVE_CA(after?.state)
+    // A policy that was off enforced nothing, so turning it on with exclusions weakens nothing.
+    test: ({ change, before, after }) => change === 'modified' && ACTIVE_CA(before?.state) && ACTIVE_CA(after?.state)
       && Object.keys(CA_EXCLUSIONS).some((path) => gained(before?.[path], after?.[path]).length > 0),
     sentence: (input) => {
       const what = Object.entries(CA_EXCLUSIONS).filter(([path]) => gained(input.before?.[path], input.after?.[path]).length > 0).map(([, noun]) => noun);
@@ -224,7 +226,9 @@ export const FLAG_RULES = Object.freeze([
   },
   {
     key: 'ca-mfa-removed', severity: 'critical', sources: ['drift'], kinds: ['conditionalAccessPolicy'],
-    test: ({ change, before, after }) => change === 'modified' && ACTIVE_CA(after?.state) && requiresMfa(before) && !requiresMfa(after),
+    // Swapping MFA for a block is stricter, not weaker.
+    test: ({ change, before, after }) => change === 'modified' && ACTIVE_CA(before?.state) && ACTIVE_CA(after?.state)
+      && requiresMfa(before) && !requiresMfa(after) && !blocks(after),
     sentence: (input) => (input.before?.['grantControls.authenticationStrength.id'] && !list(input.before?.['grantControls.builtInControls']).map(lower).includes('mfa')
       ? `No longer asks for an authentication strength: ${named(input, 'a Conditional Access policy')}.`
       : `No longer asks for MFA: ${named(input, 'a Conditional Access policy')}.`),
@@ -234,7 +238,8 @@ export const FLAG_RULES = Object.freeze([
     key: 'admin-role-added', severity: 'critical', sources: ['drift'], kinds: ROLE_ASSIGNMENT_KINDS,
     test: ({ change }) => change === 'added',
     sentence: (input) => {
-      const role = input.context?.roleName ?? roleNameFromKey(input.key) ?? input.name;
+      // Never the assignment's own name: some services name it after the person it holds.
+      const role = input.context?.roleName ?? roleNameFromKey(input.key);
       return role ? `Someone was given an admin role: ${role}.` : 'Someone was given an admin role.';
     },
   },
@@ -269,7 +274,9 @@ export const FLAG_RULES = Object.freeze([
   },
   {
     key: 'app-credential-added-audit', severity: 'high', sources: ['audit'], kinds: null,
-    test: activityIs(/certificates and secrets management|^add service principal credentials/i),
+    // Only an activity that can mean nothing but an addition: Entra logs "Update application –
+    // Certificates and secrets management" for removals too, and gives no values.
+    test: activityIs(/^add service principal credentials/i),
     sentence: (input) => `New secret or certificate on: ${named(input, 'an app')}.`,
   },
   // 5. A new application permission granted to an app.

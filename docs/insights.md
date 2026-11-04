@@ -36,14 +36,14 @@ two different things.
 | 1 | `ca-report-only` | critical | Approved setup | A policy goes from on to report-only | Report-only turned on |
 | 1 | `ca-deleted` | critical | Approved setup | A policy that was on or report-only is deleted | Deleting a policy that was already off |
 | 1 | `ca-deleted-audit` | critical | Audit log | "Delete conditional access policy" | Any other policy activity |
-| 2 | `ca-exclusions-added` | critical | Approved setup | A policy that is on or report-only gains excluded users, groups, roles or locations | Exclusions removed |
-| 2 | `ca-mfa-removed` | critical | Approved setup | Grant controls asked for MFA or an authentication strength and now ask for neither | MFA swapped for an authentication strength |
-| 3 | `admin-role-added` | critical | Approved setup | A role assignment is added: Entra (`roleAssignment`, `roleAssignmentSchedule`, `roleEligibilitySchedule`) or any `…RoleAssignment` type in `PRIVILEGED_DRIFT_TYPES` (`engine/govern/dispositionReview.mjs`) | A role assignment removed |
+| 2 | `ca-exclusions-added` | critical | Approved setup | A policy that was and stays on (or report-only) gains excluded users, groups, roles or locations | Exclusions removed; a policy that was off turned on with exclusions |
+| 2 | `ca-mfa-removed` | critical | Approved setup | Grant controls of a policy that was and stays on asked for MFA or an authentication strength and now ask for neither | MFA swapped for an authentication strength or for a block |
+| 3 | `admin-role-added` | critical | Approved setup | A role assignment is added: Entra (`roleAssignment`, `roleAssignmentSchedule`, `roleEligibilitySchedule`) or any `…RoleAssignment` type in `PRIVILEGED_DRIFT_TYPES` (`engine/govern/dispositionReview.mjs`). The sentence names the role from the backup, never the assignment's own name (some services name it after the person). | A role assignment removed |
 | 3 | `role-group-member-added` | critical | Approved setup | Someone is added to a group whose `isAssignableToRole` is true | Added to an ordinary group |
 | 3 | `role-group-member-added-service` | critical | Service read | An Exchange role group (`PRIVILEGED_SERVICE_WORKLOADS`) gains a member | A member removed |
 | 3 | `admin-role-added-audit` | critical | Audit log | "Add (eligible / scoped) member to role", on the role's row | "Remove member from role"; the person's own row of the same record |
 | 4 | `app-credential-added` | high | Approved setup | An app registration or enterprise app gains a client secret or certificate (a new `keyId`), or is created with one | A secret or certificate removed |
-| 4 | `app-credential-added-audit` | high | Audit log | "Certificates and secrets management" or "Add service principal credentials" | "Update application" |
+| 4 | `app-credential-added-audit` | high | Audit log | "Add service principal credentials" | "Remove service principal credentials"; "Update application – Certificates and secrets management", which Entra logs for removals too |
 | 5 | `app-permission-tenant-write` | critical | Approved setup | An application permission is granted (`appRoleGrant` link added) that writes tenant-wide: `*.ReadWrite.All`, `Directory.*`, `RoleManagement.*`, `AppRoleAssignment.*` | The permission removed |
 | 5 | `app-permission-granted` | high | Approved setup | Any other application permission granted, including one whose name the backup does not hold | The permission removed |
 | 5 | `app-permission-granted-audit` | high | Audit log | "Add app role assignment to service principal" | "Remove app role assignment…" |
@@ -71,6 +71,8 @@ two different things.
   on any of them needs a second person.
 - **Enterprise app secrets** are read only where the backup keeps credentials. Service principals
   are read without them, so their new secrets are seen through the audit log.
+- **App registration secrets from the audit log** do not flag. Entra logs adding and removing one
+  under the same activity, so only the backup's before and after can tell them apart.
 - **Anyone-link expiry** is read from the PnP tenant read (`sharepoint-tenant`). The Graph SharePoint
   read does not carry it.
 - **Link rows (memberships, app permissions)** need the parent group or the API's app in the same

@@ -133,8 +133,8 @@ const CASES = [
     drift('application', 'modified', application(), application({ passwordCredentials: [] })),
     'New client secret on: CRM sync.'],
   ['app-credential-added-audit',
-    audit('Update application Certificates and secrets management', { targetType: 'application', name: 'CRM sync' }),
-    audit('Update application', { targetType: 'application', name: 'CRM sync' }),
+    audit('Add service principal credentials', { targetType: 'servicePrincipal', name: 'CRM sync' }),
+    audit('Remove service principal credentials', { targetType: 'servicePrincipal', name: 'CRM sync' }),
     'New secret or certificate on: CRM sync.'],
   ['app-permission-tenant-write',
     drift('appRoleGrant', 'added', null, null, { context: { permission: 'Directory.ReadWrite.All', appName: 'CRM sync' } }),
@@ -210,6 +210,19 @@ for (const [key, flagged, harmless, sentence] of CASES) {
   });
 }
 
+test('changes that look alike but are not weaker raise no flag', () => {
+  // Entra logs this activity for a secret removed as well as one added.
+  assert.deepEqual(evaluateFlags(audit('Update application Certificates and secrets management', { targetType: 'application', name: 'CRM sync' })), []);
+  // A policy that was off enforced nothing: turning it on with exclusions, or without MFA, weakens nothing.
+  const offWithMfa = caPolicy({ state: 'disabled' });
+  assert.deepEqual(evaluateFlags(drift('conditionalAccessPolicy', 'modified', offWithMfa, caPolicy({ grantControls: { builtInControls: ['compliantDevice'] }, conditions: { users: { ...caPolicy().conditions.users, excludeGroups: [FINANCE] } } }))), []);
+  // MFA swapped for a block is stricter.
+  assert.deepEqual(evaluateFlags(drift('conditionalAccessPolicy', 'modified', caPolicy(), caPolicy({ grantControls: { builtInControls: ['block'] } }))), []);
+  // An assignment's own name is never used for the role: some services name it after the person.
+  const [exchange] = evaluateFlags({ source: 'drift', type: 'exchangeRoleAssignment', change: 'added', name: 'Mail Recipients-Ada Admin', key: 'exchangeRoleAssignment:x', before: null, after: null });
+  assert.equal(exchange.sentence, 'Someone was given an admin role.');
+});
+
 test('a rename, the most common harmless change, raises no flag', () => {
   assert.deepEqual(evaluateFlags(drift('conditionalAccessPolicy', 'modified', caPolicy(), caPolicy({ displayName: 'Require MFA for all admins' }))), []);
   assert.deepEqual(evaluateFlags(drift('namedLocation', 'modified', namedLocation({ isTrusted: true }), namedLocation({ isTrusted: true, displayName: 'Head office' }))), []);
@@ -239,7 +252,7 @@ test('sentences use the name as given, so a code name stays a code name, and nev
 });
 
 test('several flags on one change: the most severe first, and each says its own part', () => {
-  const after = caPolicy({ conditions: { users: { ...caPolicy().conditions.users, excludeRoles: [GLOBAL_ADMIN] } }, grantControls: { builtInControls: ['block'] } });
+  const after = caPolicy({ conditions: { users: { ...caPolicy().conditions.users, excludeRoles: [GLOBAL_ADMIN] } }, grantControls: { builtInControls: ['compliantDevice'] } });
   const flags = evaluateFlags(drift('conditionalAccessPolicy', 'modified', caPolicy(), after));
   assert.deepEqual(flags.map((flag) => flag.key), ['ca-exclusions-added', 'ca-mfa-removed']);
   const both = evaluateFlags(drift('application', 'modified', application(), application({ passwordCredentials: [...application().passwordCredentials, secret('k3')], keyCredentials: [certificate('c1')] })));

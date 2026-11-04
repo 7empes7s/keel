@@ -10,6 +10,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { enqueue } from '../jobs/queue.mjs';
 import { BlockedDestinationError, assertDestinationAllowed, guardedRequest } from '../safety/outboundDestination.mjs';
+import { SUMMARY_EVENT_KIND, summaryText } from '../insights/summary.mjs';
 import {
   ADAPTER_KINDS, ChannelConfigError, MAX_RETRY_AFTER_MS, NotificationSendError, createAdapterTransports,
   validateChannelConfig,
@@ -58,9 +59,51 @@ function globToRegExp(glob) {
   return new RegExp(`^${escaped.replaceAll('*', '.*').replaceAll('?', '.')}$`);
 }
 
+// Issue #980: kinds a channel gets only when a rule names them exactly. "All alerts" (`*`)
+// and any other pattern match alerts and tests only, so a channel set up for alerts never
+// starts getting summaries on its own.
+export const OPT_IN_EVENT_KINDS = Object.freeze([SUMMARY_EVENT_KIND]);
+
+// Channels that cannot carry the weekly summary, with the reason a person reads.
+export const SUMMARY_REFUSED_CHANNEL_KINDS = Object.freeze({
+  pagerduty: 'PagerDuty opens an incident for every event it gets, so it cannot get the weekly summary. Send the summary to email, Teams, Slack or a web address instead.',
+  sms: 'A text message is too short for the weekly summary. Send the summary to email, Teams, Slack or a web address instead.',
+});
+
+export class SubscriptionRefusedError extends Error {
+  constructor(message) { super(message); this.name = 'SubscriptionRefusedError'; }
+}
+
+/** Why a channel of this kind cannot get these events, or null when it can. Pure. */
+export function subscriptionRefusal(channelKind, eventGlob) {
+  return OPT_IN_EVENT_KINDS.includes(eventGlob) ? SUMMARY_REFUSED_CHANNEL_KINDS[channelKind] ?? null : null;
+}
+
+/**
+ * Checks a rule before it is stored (created or changed): the channel must exist, and a
+ * summary rule may not point at PagerDuty or a text message. A summary is always a
+ * notice, so a summary rule is stored at notice whatever severity was asked for.
+ * Returns the severity to store.
+ */
+export async function checkSubscription(client, { channelId, eventGlob, minSeverity }) {
+  requireNonEmptyString(channelId, 'channelId');
+  requireNonEmptyString(eventGlob, 'eventGlob');
+  requireSeverity(minSeverity, 'minSeverity');
+  if (!OPT_IN_EVENT_KINDS.includes(eventGlob)) return minSeverity;
+  const { rows: [channel] } = await client.query('SELECT kind FROM channel WHERE id = $1', [channelId]);
+  if (!channel) throw new Error(CHANNEL_NOT_FOUND);
+  const refusal = subscriptionRefusal(channel.kind, eventGlob);
+  if (refusal) throw new SubscriptionRefusedError(refusal);
+  return 'notice';
+}
+
 export function eventMatches(subscription, event) {
-  return globToRegExp(subscription.event_glob).test(event.kind)
-    && SEVERITY_RANK[event.severity] >= SEVERITY_RANK[subscription.min_severity];
+  const severityOk = SEVERITY_RANK[event.severity] >= SEVERITY_RANK[subscription.min_severity];
+  if (OPT_IN_EVENT_KINDS.includes(event.kind)) {
+    return subscription.event_glob === event.kind && severityOk
+      && !subscriptionRefusal(subscription.channel_kind, event.kind);
+  }
+  return globToRegExp(subscription.event_glob).test(event.kind) && severityOk;
 }
 
 export function retryDelayMs(attempt) {
@@ -95,14 +138,12 @@ export async function createChannel(client, { kind, config, enabled = true }) {
 }
 
 export async function createSubscription(client, { channelId, eventGlob, minSeverity }) {
-  requireNonEmptyString(channelId, 'channelId');
-  requireNonEmptyString(eventGlob, 'eventGlob');
-  requireSeverity(minSeverity, 'minSeverity');
+  const severity = await checkSubscription(client, { channelId, eventGlob, minSeverity });
   const { rows } = await client.query(
     `INSERT INTO subscription (channel_id, event_glob, min_severity)
      VALUES ($1,$2,$3)
      RETURNING *`,
-    [channelId, eventGlob, minSeverity],
+    [channelId, eventGlob, severity],
   );
   return rows[0];
 }
@@ -135,8 +176,10 @@ export async function sendTestAlert(client, { channelId, requestedBy, maxAttempt
 // Create the durable delivery rows before enqueuing the jobs. The transaction ensures
 // an event cannot be recorded as queued without a corresponding notify job (or the
 // reverse). Multiple matching subscriptions for one channel produce one delivery.
+// `dedupKey` (issue #980) makes the dispatch idempotent per channel: a channel that
+// already has a delivery with that key gets no second one.
 export async function dispatchAlert(client, {
-  event, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS,
+  event, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS, dedupKey = null,
 }) {
   requireEvent(event);
   requireNonEmptyString(requestedBy, 'requestedBy');
@@ -155,8 +198,8 @@ export async function dispatchAlert(client, {
   let committed = false;
   try {
     const { rows: subscriptions } = await client.query(
-      `SELECT s.id AS subscription_id, s.event_glob, s.min_severity,
-              c.id AS channel_id, c.kind AS channel_kind, c.config AS channel_config
+      `SELECT s.id AS subscription_id, s.event_glob, s.min_severity, c.kind AS channel_kind,
+              c.id AS channel_id, c.config AS channel_config
          FROM subscription s
          JOIN channel c ON c.id = s.channel_id
         WHERE c.enabled = true
@@ -171,9 +214,10 @@ export async function dispatchAlert(client, {
 
     const deliveries = [];
     for (const subscription of selectedChannels.values()) {
-      deliveries.push(await queueDelivery(client, {
-        event, channelId: subscription.channel_id, requestedBy, maxAttempts,
-      }));
+      const queued = await queueDelivery(client, {
+        event, channelId: subscription.channel_id, requestedBy, maxAttempts, dedupKey,
+      });
+      if (queued) deliveries.push(queued);
     }
     await client.query('COMMIT');
     committed = true;
@@ -186,17 +230,21 @@ export async function dispatchAlert(client, {
 // One durable delivery and its first notify job, inside the caller's transaction. The
 // caller has already authorized `requestedBy` (dispatchAlert, or task-83 escalation,
 // which addresses its configured channel directly instead of through subscriptions).
+// With a `dedupKey`, a channel that already has a delivery with that key gets none, and
+// this returns null.
 export async function queueDelivery(client, {
-  event, channelId, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS,
+  event, channelId, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS, dedupKey = null,
 }) {
   requireEvent(event);
   const { rows } = await client.query(
-    `INSERT INTO delivery (event, channel_id, requested_by, max_attempts)
-     VALUES ($1,$2,$3,$4)
+    `INSERT INTO delivery (event, channel_id, requested_by, max_attempts, dedup_key)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (channel_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
      RETURNING *`,
-    [event, channelId, requestedBy, maxAttempts],
+    [event, channelId, requestedBy, maxAttempts, dedupKey],
   );
   const delivery = rows[0];
+  if (!delivery) return null;
   const job = await enqueue(client, {
     kind: 'notify',
     params: { deliveryId: delivery.id },
@@ -293,20 +341,32 @@ export function createWebhookTransport({
   };
 }
 
-async function sendEmail({ channel, event }) {
+// A header value on one line: a newline in a subject would start a new header.
+const headerText = (value) => String(value).replace(/[\r\n]+/g, ' ').trim();
+
+/** The message sendmail gets for one event. Exported for tests. */
+export function emailMessage({ channel, event }) {
   const to = requireNonEmptyString(channel.config?.to, 'channel.config.to');
   const from = requireNonEmptyString(channel.config?.from, 'channel.config.from');
-  const subject = channel.config?.subject
-    ?? `[KEEL ${String(event.severity).toUpperCase()}] ${event.kind}`;
-  const message = [
+  // Issue #980: the weekly summary is written for people, so it goes as plain text with
+  // the link; alerts keep their JSON body.
+  const summary = event.kind === SUMMARY_EVENT_KIND;
+  const subject = summary
+    ? `${event.title ?? 'Keel weekly summary'}: ${event.verdict ?? ''}`
+    : channel.config?.subject ?? `[KEEL ${String(event.severity).toUpperCase()}] ${event.kind}`;
+  return [
     `To: ${to}`,
     `From: ${from}`,
-    `Subject: ${subject}`,
-    'Content-Type: application/json; charset=utf-8',
+    `Subject: ${headerText(subject)}`,
+    summary ? 'Content-Type: text/plain; charset=utf-8' : 'Content-Type: application/json; charset=utf-8',
     '',
-    JSON.stringify(event),
+    summary ? (typeof event.text === 'string' ? event.text : summaryText(event)) : JSON.stringify(event),
     '',
   ].join('\n');
+}
+
+async function sendEmail({ channel, event }) {
+  const message = emailMessage({ channel, event });
 
   await new Promise((resolve, reject) => {
     const child = spawn('/usr/sbin/sendmail', ['-t', '-i'], { stdio: ['pipe', 'ignore', 'pipe'] });

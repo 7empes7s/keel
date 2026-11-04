@@ -19,6 +19,7 @@
 //    unconfigured (missing credential, unsupported endpoint or provider: nothing is sent).
 //  - Retry-After is normalized to milliseconds (delta-seconds or HTTP date) and capped.
 //  - Payloads are capped per provider before they are sent.
+import { SUMMARY_EVENT_KIND } from '../insights/summary.mjs';
 import { isCredentialReference } from './channels/common.mjs';
 import * as teams from './channels/teams.mjs';
 import * as slack from './channels/slack.mjs';
@@ -35,6 +36,8 @@ export { boundedKey, capText, eventSummary, isCredentialReference } from './chan
 
 export const CHANNEL_ADAPTERS = Object.freeze({ teams, slack, pagerduty, sms });
 export const ADAPTER_KINDS = Object.freeze(Object.keys(CHANNEL_ADAPTERS));
+// The adapters that never send the weekly summary (notifications.mjs says why to people).
+export const SUMMARY_ADAPTERS_REFUSED = Object.freeze(['pagerduty', 'sms']);
 
 export class ChannelConfigError extends Error {
   constructor(message) { super(message); this.name = 'ChannelConfigError'; }
@@ -125,6 +128,15 @@ export function createAdapterTransport(kind, {
   if (!adapter) throw new Error(`no adapter for channel kind: ${kind}`);
   return async function send({ channel, event, delivery }) {
     const base = { channel: kind, provider: adapter.PROVIDER, semantics: adapter.SEMANTICS };
+    // Issue #980: PagerDuty and text messages never carry the weekly summary. A rule
+    // cannot ask for it; this keeps a stray delivery from being sent anyway.
+    if (event?.kind === SUMMARY_EVENT_KIND && SUMMARY_ADAPTERS_REFUSED.includes(kind)) {
+      throw new NotificationSendError({
+        outcome: 'unconfigured',
+        detail: `${adapter.LABEL} cannot get the weekly summary`,
+        receipt: { ...base, outcome: 'unconfigured' },
+      });
+    }
     const problems = channelConfigProblems(kind, channel.config);
     if (problems.length) {
       throw new NotificationSendError({

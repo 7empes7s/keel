@@ -720,6 +720,22 @@ export const JOB_HANDLERS = {
       return ['--approval-id', match[1], '--actor', requireString(job.requested_by, 'job.requested_by')];
     },
   },
+  // Issue #980: the weekly summary. Read-only on the change feed; it queues one notify
+  // delivery per channel with a "Weekly summary" rule. The scheduler sends only the
+  // tenant; the requester is the job's own, checked again here for configuration.
+  'insights-summary': {
+    script: join(__dirname, 'keel-insights-summary.mjs'),
+    argsFor(params = {}, job = {}) {
+      if (params === null || typeof params !== 'object' || Array.isArray(params)
+          || Object.keys(params).some((key) => key !== 'tenantRef')) {
+        throw new Error('insights-summary params may contain only tenantRef');
+      }
+      return [
+        '--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'),
+        '--requested-by', requireString(job.requested_by, 'job.requested_by'),
+      ];
+    },
+  },
   notify: {
     script: join(__dirname, 'keel-notify.mjs'),
     argsFor(params = {}) {

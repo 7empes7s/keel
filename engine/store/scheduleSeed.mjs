@@ -31,6 +31,10 @@ export function initialSchedules(now = new Date()) {
   // metadata comparison and clear of the hourly and nightly collections' heavy minutes.
   const weeklyDiscovery = new Date(weekly);
   weeklyDiscovery.setUTCHours(4, 0, 0, 0);
+  // Issue #980: the weekly summary to admins' channels, Monday 07:00 UTC, after the
+  // night's backups and the Monday checks, before the working day.
+  const weeklySummary = new Date(weekly);
+  weeklySummary.setUTCHours(7, 0, 0, 0);
   return [
     { jobKind: 'collect', tier: 'tier1', cadence: { every: 'hour', n: 1, atTime: null }, nextDueAt: hourly },
     { jobKind: 'collect', tier: 'tier2', cadence: { every: 'day', n: 1, atTime: '00:00' }, nextDueAt: daily },
@@ -41,6 +45,7 @@ export function initialSchedules(now = new Date()) {
     { jobKind: 'workload-collect', tier: null, cadence: { every: 'day', n: 1, atTime: '02:00' }, nextDueAt: workload },
     { jobKind: 'content-collect', tier: null, cadence: { every: 'day', n: 1, atTime: '01:00' }, nextDueAt: content },
     { jobKind: 'discover', tier: null, cadence: { every: 'week', n: 1, atTime: '04:00' }, cronOverride: '0 4 * * 1', nextDueAt: weeklyDiscovery },
+    { jobKind: 'insights-summary', tier: null, cadence: { every: 'week', n: 1, atTime: '07:00' }, cronOverride: '0 7 * * 1', nextDueAt: weeklySummary },
   ];
 }
 

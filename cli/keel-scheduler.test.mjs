@@ -131,7 +131,7 @@ try {
     await seedSchedules(client, { tenantRef: 'seed-fixture', now: due });
     try {
       const seeded = (await client.query("SELECT * FROM schedule WHERE tenant_ref = 'seed-fixture'")).rows;
-      assert.equal(seeded.length, 9, "collect tiers 1-3, prune, offsite, api-drift, workload-collect, content-collect and discover");
+      assert.equal(seeded.length, 10, "collect tiers 1-3, prune, offsite, api-drift, workload-collect, content-collect, discover and insights-summary");
       for (const schedule of seeded) assert.doesNotThrow(() => validateSchedule(schedule), schedule.job_kind);
       const apiDrift = seeded.find((schedule) => schedule.job_kind === 'api-drift');
       const jobs = await tick(client, { now: apiDrift.next_due_at });
@@ -139,6 +139,17 @@ try {
       assert.ok(jobs.some((job) => job.kind === 'collect'), 'the other due kinds run in the same tick');
       const advanced = (await client.query('SELECT next_due_at FROM schedule WHERE id = $1', [apiDrift.id])).rows[0].next_due_at;
       assert.equal(advanced.valueOf() - apiDrift.next_due_at.valueOf(), 7 * 24 * 3_600_000);
+      // Issue #980: the weekly summary runs Monday 07:00 UTC as a job of its own kind, with
+      // only the tenant as its params, and comes round again a week later.
+      const summary = seeded.find((schedule) => schedule.job_kind === 'insights-summary');
+      assert.equal(summary.next_due_at.getUTCDay(), 1);
+      assert.equal(summary.next_due_at.toISOString().slice(11, 16), '07:00');
+      const summaryJobs = await tick(client, { now: summary.next_due_at });
+      const summaryJob = summaryJobs.find((job) => job.kind === 'insights-summary');
+      assert.ok(summaryJob, 'the insights-summary job is enqueued');
+      assert.deepEqual(summaryJob.params, { tenantRef: 'seed-fixture' });
+      const summaryNext = (await client.query('SELECT next_due_at FROM schedule WHERE id = $1', [summary.id])).rows[0].next_due_at;
+      assert.equal(summaryNext.valueOf() - summary.next_due_at.valueOf(), 7 * 24 * 3_600_000);
     } finally {
       await clearJobs();
       await client.query("DELETE FROM schedule WHERE tenant_ref = 'seed-fixture'");

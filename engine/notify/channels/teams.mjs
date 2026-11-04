@@ -9,6 +9,7 @@
 // the workflow answers 202 (some tenants 200) once it has accepted the request. Whether
 // the flow then posts to the channel is not reported back. Retired Office 365
 // connector addresses (*.webhook.office.com) are not supported and stay unconfigured.
+import { SUMMARY_EVENT_KIND, startLine } from '../../insights/summary.mjs';
 import { capText, configProblems, eventSummary, httpOutcome, httpsUrl, snippet } from './common.mjs';
 
 export const PROVIDER = 'microsoft-teams';
@@ -23,7 +24,42 @@ export function validateConfig(config) {
   return configProblems(config, { references: ['endpointRef'] });
 }
 
+const adaptiveCard = (body, actions = []) => ({
+  type: 'message',
+  attachments: [{
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    contentUrl: null,
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body,
+      ...(actions.length ? { actions } : {}),
+    },
+  }],
+});
+
+// Issue #980: the weekly summary as a card: the verdict, where to start, the services,
+// and a button to Insights when the link is a full address.
+export function summaryCard(event) {
+  const text = (value, extra = {}) => ({ type: 'TextBlock', text: capText(value, TEXT_LIMIT), wrap: true, ...extra });
+  const body = [
+    text(event.title ?? 'Keel weekly summary', { weight: 'Bolder', size: 'Medium' }),
+    text(event.verdict ?? ''),
+  ];
+  const items = Array.isArray(event.whereToStart) ? event.whereToStart : [];
+  if (items.length) {
+    body.push(text('Where to start', { weight: 'Bolder', spacing: 'Medium' }));
+    for (const item of items) body.push(text(`- ${startLine(item)}`, { spacing: 'Small' }));
+  }
+  for (const line of [event.byServiceLine, event.quietLine]) if (line) body.push(text(line, { spacing: 'Medium', isSubtle: true }));
+  const link = typeof event.link === 'string' ? event.link : '';
+  if (!/^https:\/\//.test(link)) body.push(text(`Open Insights in Keel: ${link}`, { spacing: 'Medium' }));
+  return adaptiveCard(body, /^https:\/\//.test(link) ? [{ type: 'Action.OpenUrl', title: 'Open Insights', url: link }] : []);
+}
+
 function card(event) {
+  if (event.kind === SUMMARY_EVENT_KIND) return summaryCard(event);
   const facts = [
     ['Event', event.kind],
     ['Severity', event.severity],
@@ -34,22 +70,10 @@ function card(event) {
     ['Alert ID', event.alertId],
   ].filter(([, value]) => value !== undefined && value !== null && value !== '')
     .map(([title, value]) => ({ title, value: capText(value, 200) }));
-  return {
-    type: 'message',
-    attachments: [{
-      contentType: 'application/vnd.microsoft.card.adaptive',
-      contentUrl: null,
-      content: {
-        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-        type: 'AdaptiveCard',
-        version: '1.4',
-        body: [
-          { type: 'TextBlock', text: capText(eventSummary(event), TEXT_LIMIT), weight: 'Bolder', wrap: true },
-          { type: 'FactSet', facts },
-        ],
-      },
-    }],
-  };
+  return adaptiveCard([
+    { type: 'TextBlock', text: capText(eventSummary(event), TEXT_LIMIT), weight: 'Bolder', wrap: true },
+    { type: 'FactSet', facts },
+  ]);
 }
 
 export async function prepare({ config, event, secret }) {

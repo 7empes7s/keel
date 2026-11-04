@@ -25,9 +25,9 @@ try {
   const now = new Date();
   await seedSchedules(client, { tenantRef: 'seed-test', now });
   const { rows } = await client.query('SELECT * FROM schedule WHERE tenant_ref = $1 ORDER BY job_kind, tier', ['seed-test']);
-  assert.equal(rows.length, 9);
+  assert.equal(rows.length, 10);
   assert.deepEqual(rows.map((row) => [row.job_kind, row.tier]), [
-    ['api-drift', null], ['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3'], ['content-collect', null], ['discover', null], ['offsite', null], ['prune', null], ['workload-collect', null],
+    ['api-drift', null], ['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3'], ['content-collect', null], ['discover', null], ['insights-summary', null], ['offsite', null], ['prune', null], ['workload-collect', null],
   ]);
   for (const row of rows) assert.ok(row.next_due_at > now);
   await seedSchedules(client, { tenantRef: 'seed-test', now: new Date(now.valueOf() + 86400000) });
@@ -37,7 +37,7 @@ try {
   const partial = (await client.query('SELECT job_kind, tier FROM schedule WHERE tenant_ref = $1 ORDER BY tier', ['seed-partial'])).rows;
   assert.deepEqual(partial.map((row) => [row.job_kind, row.tier]), [['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3']]);
   await seedSchedules(client, { tenantRef: 'seed-partial', now });
-  assert.equal((await client.query('SELECT * FROM schedule WHERE tenant_ref = $1', ['seed-partial'])).rows.length, 9);
+  assert.equal((await client.query('SELECT * FROM schedule WHERE tenant_ref = $1', ['seed-partial'])).rows.length, 10);
   for (const jobKinds of [[], ['backup'], 'collect']) {
     await assert.rejects(() => seedSchedules(client, { tenantRef: 'seed-bad', now, jobKinds }), /jobKinds must be/);
   }
@@ -45,15 +45,16 @@ try {
   assert.deepEqual(boundary.map((row) => row.nextDueAt.toISOString()), [
     '2026-09-14T01:00:00.000Z', '2026-09-15T00:00:00.000Z', '2026-09-21T00:00:00.000Z',
     '2026-09-15T00:00:00.000Z', '2026-09-14T05:00:00.000Z', '2026-09-21T03:00:00.000Z', '2026-09-14T02:00:00.000Z',
-    '2026-09-14T01:00:00.000Z', '2026-09-21T04:00:00.000Z',
+    '2026-09-14T01:00:00.000Z', '2026-09-21T04:00:00.000Z', '2026-09-21T07:00:00.000Z',
   ]);
   assert.deepEqual(boundary.map((row) => row.cadence), [
     { every: 'hour', n: 1, atTime: null }, { every: 'day', n: 1, atTime: '00:00' },
     { every: 'week', n: 1, atTime: '00:00' }, { every: 'day', n: 1, atTime: '00:00' },
     { every: 'day', n: 1, atTime: '05:00' }, { every: 'week', n: 1, atTime: '03:00' },
     { every: 'day', n: 1, atTime: '02:00' }, { every: 'day', n: 1, atTime: '01:00' },
-    { every: 'week', n: 1, atTime: '04:00' },
+    { every: 'week', n: 1, atTime: '04:00' }, { every: 'week', n: 1, atTime: '07:00' },
   ]);
+  assert.equal(boundary[9].cronOverride, '0 7 * * 1');
   assert.equal(boundary[2].cronOverride, '0 0 * * 1');
   assert.equal(boundary[5].cronOverride, '0 3 * * 1');
   assert.equal(initialSchedules(new Date('2026-09-20T23:59:59Z'))[2].nextDueAt.toISOString(), '2026-09-21T00:00:00.000Z');
@@ -71,7 +72,12 @@ try {
   assert.equal(boundary[8].tier, null);
   assert.equal(boundary[8].cronOverride, '0 4 * * 1');
   assert.equal(initialSchedules(new Date('2026-09-21T04:00:00Z'))[8].nextDueAt.toISOString(), '2026-09-28T04:00:00.000Z');
-  console.log('schedule.test.mjs — all assertions passed (nine future seed rows incl. weekly api-drift, daily workload-collect, nightly content-collect and weekly discover, duplicate NULL tiers rejected, offsite CHECK accepted)');
+  // Issue #980: the weekly summary, Monday 07:00 UTC, a job kind the schema accepts.
+  assert.equal(boundary[9].jobKind, 'insights-summary');
+  assert.equal(boundary[9].tier, null);
+  assert.equal(initialSchedules(new Date('2026-09-21T07:00:00Z'))[9].nextDueAt.toISOString(), '2026-09-28T07:00:00.000Z');
+  await client.query("INSERT INTO job (kind, requested_by) VALUES ('insights-summary', 'schema-test')");
+  console.log('schedule.test.mjs — all assertions passed (ten future seed rows incl. weekly api-drift, daily workload-collect, nightly content-collect, weekly discover and the weekly summary, duplicate NULL tiers rejected, offsite CHECK accepted)');
 } finally {
   await client.end();
   await database.cleanup();

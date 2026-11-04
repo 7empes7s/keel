@@ -44,6 +44,9 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   // that dispatched its event, so the same configuration grant is checked again when
   // the notify job executes.
   notify: 'configuration',
+  // Issue #980: the weekly summary reads the change feed and queues notify deliveries,
+  // so it needs what dispatching any notification needs. The scheduler holds it.
+  'insights-summary': 'configuration',
 });
 
 export function capabilityForJobKind(kind) {

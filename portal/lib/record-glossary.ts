@@ -648,6 +648,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Roles as stored": fact("Roles", "The access roles granted."),
   "Web address": fact("Web address", "The site's address."),
   "Name as stored": fact("Name", "The name as Microsoft stores it."),
+  "Everyone grants and link counts": support("Saved sharing exposure", "Everyone grants and sharing-link scope counts saved by the content backup."),
   "Value as stored": fact("Sharing setting", "The site's own sharing setting, as SharePoint names it."),
   "Tenant default as stored": fact("Organisation default", "The organisation-wide sharing setting this site is compared with."),
 

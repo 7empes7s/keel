@@ -156,6 +156,7 @@ const NOW = "2026-10-15T12:00:00.000Z";
 const RUN = { id: "c0110000-0000-4000-8000-0000000000c1", outcome: "complete" as const, observedTo: "2026-10-15T02:00:00.000Z" };
 const NIGHTLY: SitesContentRun = { outcome: "succeeded", completedAt: "2026-10-15T01:30:00.000Z", namePrefix: null, reasons: [] };
 const PEOPLE: PeopleSummary = {
+  exposure: { everyone: [], links: { anyone: { view: 0, edit: 0 }, organisation: { view: 0, edit: 0 }, specificPeople: { view: 0, edit: 0 }, unknown: 0 } },
   inherits: false, groups: [{ name: "Finance Owners", members: 1, roles: ["Full Control"] }, { name: "Finance Members", members: 5, roles: ["Edit"] }],
   owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-15T01:10:00.000Z",
 };
@@ -317,4 +318,63 @@ test("each site's own sharing setting reads against the tenant default; more ope
   const detail = renderToStaticMarkup(createElement(SiteDetail, { site: named, run: RUN, latest: null, now: NOW, contentRun: NIGHTLY, tenantSharing: tenant }));
   assert.match(detail, /Organisation default: Guests who sign in/);
   assert.match(detail, /data-tone="urgent"[^>]*>\s*<span class="st-status-label">.*?Sharing setting/);
+});
+
+test('exposure verdicts, urgency, tiles and older backups stay honest', () => {
+  const exposure = { everyone: [{ audience: 'everyone-except-external', roles: ['Edit'] }], links: { anyone: { view: 12, edit: 0 }, organisation: { view: 2, edit: 1 }, specificPeople: { view: 1, edit: 0 }, unknown: 0 } };
+  const open: SitePermissions = { ...QUIET, people: { ...PEOPLE, exposure } };
+  assert.deepEqual(siteVerdict(open, NIGHTLY), { text: 'Everyone in the company can edit this site. 12 links anyone can open.', tone: 'critical' });
+  for (const key of ['everyone', 'anyone-links', 'attention']) assert.equal(SITE_TILES.find((tile) => tile.key === key)!.test(open, NIGHTLY), true);
+  const read = { ...open, people: { ...PEOPLE, exposure: { ...exposure, everyone: [{ audience: 'everyone', roles: ['Read'] }], links: { ...exposure.links, anyone: { view: 0, edit: 0 } } } } };
+  assert.equal(siteVerdict(read, NIGHTLY).tone, 'attention');
+  const links = { ...open, people: { ...PEOPLE, exposure: { ...exposure, everyone: [] } } };
+  assert.deepEqual(siteVerdict(links, NIGHTLY), { text: '12 links anyone can open.', tone: 'critical' });
+  const unknownScope = { ...QUIET, people: { ...PEOPLE, exposure: { ...exposure, everyone: [], links: { ...exposure.links, anyone: { view: 0, edit: 0 }, unknown: 1 } } } };
+  assert.equal(siteVerdict(unknownScope, NIGHTLY).tone, 'attention');
+  assert.match(siteVerdict(unknownScope, NIGHTLY).text, /not checked/);
+  const old = { ...QUIET, people: { ...PEOPLE, exposure: undefined } };
+  assert.match(siteVerdict(old, NIGHTLY).text, /not checked in this backup/);
+  const list = renderToStaticMarkup(createElement(SiteList, { data: { generatedAt: NOW, run: RUN, latest: null, sites: [old], contentRun: NIGHTLY } }));
+  assert.doesNotMatch(list, /0 known/);
+  assert.match(list, /Not checked in this backup/);
+  const detail = renderToStaticMarkup(createElement(SiteDetail, { site: open, run: RUN, latest: null, now: NOW, contentRun: NIGHTLY }));
+  assert.match(detail, /Anyone: 12 view, 0 edit/);
+  assert.match(detail, /Organisation: 2 view, 1 edit. Specific people: 1 view, 0 edit/);
+  const data = { generatedAt: NOW, run: RUN, latest: null, sites: [open], contentRun: NIGHTLY, oneDrives: [{ name: 'Amara’s OneDrive', exposure }] };
+  assert.deepEqual(sitesVerdict(data), { text: '2 sites or OneDrives are open to everyone in the company; 2 have links anyone can open.', tone: 'critical' });
+  const partial = sitesVerdict({ ...data, sites: [old], oneDrives: [{ name: 'Amara’s OneDrive', exposure: { ...exposure, everyone: [] } }] });
+  assert.equal(partial.text, '1 site or OneDrive has links anyone can open. Others were not checked.');
+  assert.doesNotMatch(partial.text, /\b0\b/);
+
+});
+
+test('OneDrive exposure uses latest records, deduplicates inherited links, excludes deletions and preserves findings alongside old records', async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    const exposure = { everyone: [{ audience: 'everyone', roles: ['write'] }], links: { anyone: { view: 1, edit: 0 }, organisation: { view: 0, edit: 0 }, specificPeople: { view: 0, edit: 0 }, unknown: 0 }, linkGrants: [{ id: 'same-link', scope: 'anonymous', type: 'view' }] };
+    const record = async (key: string, version: string, metadata: unknown, at = '2026-10-15T01:00:00Z', tenant = TENANT) => client.query(
+      `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, metadata, sha256, bytes, chunks, key_id, created_at)
+       VALUES ($1, 'onedrive', 'drive:one', $2, $3, $4, $5, 1, '[]'::jsonb, 'k1', $6)`,
+      [tenant, key, version, { kind: 'drive-record', ownerName: 'Amara', ...metadata as object }, 'a'.repeat(64), at],
+    );
+    await record('file', 'v1', { exposure });
+    await record('folder', 'v1', { exposure });
+    await record('old', 'v1', {});
+    await record('deleted', 'v1', { exposure: { ...exposure, linkGrants: [{ id: 'gone', scope: 'anonymous', type: 'edit' }] } });
+    await record('deleted', 'v2', { deleted: true }, '2026-10-16T01:00:00Z');
+    await record('other', 'v1', { exposure }, undefined, 'other-tenant');
+    const data = await loadSitePermissions(client, { tenantRef: TENANT, now: new Date(NOW) });
+    assert.equal(data.oneDrives?.length, 1);
+    assert.equal(data.oneDrives![0].name, 'Amara’s OneDrive');
+    assert.equal(data.oneDrives![0].exposure?.links.anyone.view, 1);
+    assert.equal(data.oneDrives![0].exposure?.links.anyone.edit, 0);
+    assert.equal(data.oneDrives![0].exposure?.checked, false);
+    assert.ok(data.oneDrives![0].exposure?.everyone?.length);
+    assert.equal(sitesVerdict(data).tone, 'critical');
+  } finally {
+    await client.end();
+    await database.cleanup();
+  }
 });

@@ -2502,6 +2502,7 @@ const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e17000
 const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
 const SITE_TEAM = `${SITE_HOST},5e170000-0000-4000-8000-000000000007,5e170000-0000-4000-8000-000000000008`;
 const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
+  exposure: { everyone: [], links: { anyone: { view: 0, edit: 0 }, organisation: { view: 0, edit: 0 }, specificPeople: { view: 0, edit: 0 }, unknown: 0 } },
   inherits: false, owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-02T01:10:00Z",
   groups: [
     { name: "Owners", members: 1, roles: ["Full Control"] },
@@ -2513,6 +2514,10 @@ const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
 // Each site's own sharing setting (one PnP read), compared with the tenant default below.
 const SITE_SHARING_READ = { status: "observed", operation: "sharepoint.site-sharing" };
 const SITES_READ: SitePermissionsData = {
+  oneDrives: [
+    { name: "Amara’s OneDrive", exposure: { everyone: [], links: { anyone: { view: 1, edit: 0 }, organisation: { view: 2, edit: 0 }, specificPeople: { view: 0, edit: 1 }, unknown: 0 } } },
+    { name: "Dev’s OneDrive", exposure: null },
+  ],
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
@@ -2527,7 +2532,7 @@ const SITES_READ: SitePermissionsData = {
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
     ] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
-    people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
+    people: SITE_PEOPLE({ exposure: { everyone: [{ audience: "everyone-except-external", roles: ["Edit"] }], links: { anyone: { view: 2, edit: 1 }, organisation: { view: 1, edit: 0 }, specificPeople: { view: 0, edit: 1 }, unknown: 0 } }, owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
     { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, sharingCapability: "Disabled", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
     { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, sharingCapability: "ExternalUserSharingOnly", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
@@ -2582,11 +2587,11 @@ const SERVICE_CHANGES: DriftRecord[] = [
   }, "a1e70000-0000-4000-8000-0000000000a9"),
 ];
 
-function sitesPage() {
-  const verdict = sitesVerdict(SITES);
+function sitesPage(data: SitePermissionsData = SITES) {
+  const verdict = sitesVerdict(data);
   return <>{header("Backup", "Sites", "Every SharePoint site: is it backed up, who owns it, and which apps and guests can reach it. Problems first.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><SiteList data={SITES} /></div></>;
+    <div data-layer="explanation"><SiteList data={data} /></div></>;
 }
 
 function sitePage(path: string) {
@@ -2916,6 +2921,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/reports/many": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_MANY} />;
     case "/reports/capped": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_CAPPED} />;
     case "/sites": return sitesPage();
+    case "/sites/old-backup": return sitesPage({ ...SITES, oneDrives: [{ name: "Amara’s OneDrive", exposure: null }], sites: SITES.sites.map((site) => ({ ...site, people: site.people ? { ...site.people, exposure: null } : null })) });
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);

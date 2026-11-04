@@ -2103,8 +2103,8 @@ test("sites list and a site's page fit a phone without sideways scrolling", asyn
   await expect(rows).toHaveCount(4);
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.locator("main#main-content h1")).toHaveText("Finance");
-  await expect(page.locator('[data-layer="verdict"]')).toContainText("It is shared more widely than your organisation's default, and 1 app has full control.");
-  await expect(page.locator(".st-status")).toHaveCount(5);
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("Everyone in the company can edit this site. 3 links anyone can open.");
+  await expect(page.locator(".st-status")).toHaveCount(7);
   await expect(page.locator('.st-status[data-tone="urgent"]', { hasText: "Sharing setting" })).toContainText("More open than your organisation's default");
   await expect(page.getByRole("rowheader", { name: "Payroll connector" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Edit" })).toBeVisible();

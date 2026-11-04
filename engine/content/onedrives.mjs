@@ -79,7 +79,7 @@ export async function backupOneDrives({
     const ref = { tenantRef, workload: ONEDRIVE_WORKLOAD, key: `drive:${drive.driveId}` };
     try {
       const { stats } = await syncDrive({
-        transport: send, store, driveId: drive.driveId, tenantRef, ownerName: user.displayName ?? name, workload: ONEDRIVE_WORKLOAD,
+        transport: send, store, driveId: drive.driveId, tenantRef, ownerName: user.displayName ?? user.userPrincipalName ?? user.mail ?? null, workload: ONEDRIVE_WORKLOAD,
         state: await syncState.load(ref),
         checkpoint: (state) => syncState.save({ ...ref, state }),
         sleep, now,

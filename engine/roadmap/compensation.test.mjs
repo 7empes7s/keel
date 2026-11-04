@@ -195,6 +195,35 @@ test('mutation check: a concurrent admin update is never overwritten — the inv
   assert.match(replaced.conflicts[0].reason, /different object/);
 });
 
+for (const operation of ['create', 'restore-soft-deleted']) {
+  for (const outcome of ['succeeded', 'uncertain']) {
+    test(`${operation} (${outcome}) compensation refuses deletion after an observed signInAudience changes`, () => {
+      const naturalKey = 'application:restored';
+      const targetId = 'application-id';
+      const intendedState = { displayName: 'Restored application' };
+      // Trust fields were never sent, but Graph returned the actual audience.
+      const postState = { ...intendedState, id: targetId, signInAudience: 'AzureADMyOrg' };
+      const journal = entry({ naturalKey, resourceType: 'application', targetId,
+        operation, outcome, intendedState, postState });
+      const planFor = (payload) => planCompensation({
+        restoreRef: 'trust-field-undo', entries: [journal],
+        current: new Map([[naturalKey, present(payload, targetId)]]),
+      });
+
+      const unchanged = planFor(postState);
+      assert.deepEqual(unchanged.conflicts, []);
+      assert.deepEqual(unchanged.operations.map((op) => op.verb), ['delete']);
+      assert.equal(unchanged.operations[0].payload, null);
+
+      const changed = planFor({ ...postState, signInAudience: 'AzureADMultipleOrgs' });
+      assert.deepEqual(changed.operations, []);
+      assert.equal(changed.conflicts.length, 1);
+      assert.deepEqual(changed.conflicts[0].fields, ['signInAudience']);
+      assert.match(changed.conflicts[0].reason, /concurrent-change: signInAudience/);
+    });
+  }
+}
+
 // ------------------------------------------------------------- irrecoverable
 
 test('irrecoverable effects remain explicit: deleted objects, content consequences and edges', () => {

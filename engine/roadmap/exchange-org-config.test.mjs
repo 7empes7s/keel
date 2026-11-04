@@ -6,8 +6,11 @@
 //    the read-only probe, and ships disabled (fixture proof never enables it);
 //  - only the Get cmdlets run, with no parameters; the Node and container allowlists
 //    match; no write exists;
-//  - org-wide settings are one observation keyed `organization`, the rest one per Guid,
-//    with declared fields only (the OME logo bytes are dropped);
+//  - org-wide settings are one observation keyed `organization`, message encryption one per
+//    Identity (it answers without a Guid), the rest one per Guid, with declared fields only
+//    (the OME logo bytes are dropped);
+//  - the shapes the live read (Q275) returned are kept whole: OME without a Guid, IRM
+//    without DecryptAttachmentOnDownload;
 //  - collection stays off until Exchange and every read here are qualified, and never
 //    waits on the other Exchange cmdlet workloads;
 //  - the audit log being switched off between two reads is a change (workload drift);
@@ -203,7 +206,7 @@ test('org-wide settings are one observation each, the rest one per Guid, declare
   assert.deepEqual(exchange.calls, CMDLETS.map((cmdlet) => ({ cmdlet, parameters: {} })));
   assert.equal(result.outcome, 'complete', JSON.stringify(result.discovery));
   assert.deepEqual(result.resources.map((resource) => resource.resourceKey), [
-    'admin-audit-log:organization', 'irm:organization', `ome:${guid(3)}`, 'perimeter:organization',
+    'admin-audit-log:organization', 'irm:organization', 'ome:ome configuration', 'perimeter:organization',
     `message-classification:${guid(5)}`, `message-classification:${guid(6)}`, 'resource-config:organization',
   ]);
   const audit = result.resources[0];
@@ -213,6 +216,25 @@ test('org-wide settings are one observation each, the rest one per Guid, declare
   const ome = result.resources[2];
   assert.equal(ome.fields.Image, undefined, 'the logo bytes are never kept');
   assert.equal(ome.fields.Identity, 'OME Configuration');
+
+  // The live shapes (Q275): OME has no Guid, IRM has no DecryptAttachmentOnDownload.
+  // Both are kept whole, so the run is complete rather than partial.
+  const live = BASE();
+  delete live['Get-OMEConfiguration'][0].Guid;
+  delete live['Get-IRMConfiguration'][0].DecryptAttachmentOnDownload;
+  const liveShape = await readExchangeOrgConfig({ powershell: fakeExchange({ output: live }).powershell, now: () => NOW });
+  assert.equal(liveShape.outcome, 'complete', JSON.stringify(liveShape.discovery));
+  assert.deepEqual(liveShape.discovery.empty, []);
+  assert.equal(liveShape.discovery.unidentified, 0);
+  assert.deepEqual(liveShape.unknownFields, {});
+  assert.ok(liveShape.resources.some((resource) => resource.resourceKey === 'ome:ome configuration'));
+  // An OME answer with no usable Identity is still unidentified, never guessed.
+  const nameless = BASE();
+  nameless['Get-OMEConfiguration'] = [{ ...answer('messageEncryption', 3), Identity: '' }];
+  const unnamed = await readExchangeOrgConfig({ powershell: fakeExchange({ output: nameless }).powershell, now: () => NOW });
+  assert.equal(unnamed.outcome, 'partial');
+  assert.equal(unnamed.discovery.unidentified, 1);
+  assert.deepEqual(unnamed.discovery.empty, ['messageEncryption']);
 
   // A second, different org-wide answer is a conflict; an unidentified object is counted.
   const odd = BASE();

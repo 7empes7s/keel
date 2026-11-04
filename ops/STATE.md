@@ -105,6 +105,10 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
 - Entitlement management part 1 (#992): `accessPackage` create and update and
   `accessPackageResourceRoleScope` create are fixture-tested with no live record yet. Capture needs a
   KEEL-RT-992-catalog holding one KEEL-RT group (steps in the #992 PR body); the role write is approval-held.
+- Entitlement management part 2 (#993): `connectedOrganization` and `accessPackageAssignmentPolicy` create
+  and update are fixture-tested with no live record yet. Capture needs KEEL-RT-993-org (proposed, one
+  operator-owned domain) and KEEL-RT-993-policy on KEEL-RT-992-package (steps in the #993 PR body); both
+  writes are approval-held.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

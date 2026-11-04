@@ -139,7 +139,7 @@ test('each writer type is a fixture-tested create and update, delete is unsuppor
 
 test('the formerly unknown Entra types without a writer stay manual and are restored by hand', () => {
   const stillManual = ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'authenticationContextClassReference',
-    'activityBasedTimeoutPolicy', 'featureRolloutPolicy', 'accessReviewScheduleDefinition', 'connectedOrganization'];
+    'activityBasedTimeoutPolicy', 'featureRolloutPolicy', 'accessReviewScheduleDefinition'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);
@@ -147,6 +147,12 @@ test('the formerly unknown Entra types without a writer stay manual and are rest
   // Issue #992: access packages now have a writer; their policies and assignments are still by hand.
   assert.equal(TYPE_DECISIONS.accessPackage.decision, 'automated');
   assert.equal(completenessFor('accessPackage', TYPE_DECISIONS.accessPackage).recreate, 'keel');
+  // Issue #993: connected organizations and package policies have writers too; assignments stay by hand.
+  for (const type of ['connectedOrganization', 'accessPackageAssignmentPolicy']) {
+    assert.equal(TYPE_DECISIONS[type].decision, 'automated', type);
+    assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'keel', type);
+  }
+  assert.equal(TYPE_DECISIONS.accessPackageAssignment.decision, 'manual');
 });
 
 // ------------------------------------------------------- token and routing policies

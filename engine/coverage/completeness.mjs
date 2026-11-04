@@ -144,7 +144,7 @@ export const COMPLETENESS = Object.freeze({
   roleAssignmentSchedule: { whole: 'not-written', missing: [part('Activations people made themselves', 'read-only')] },
   accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
   accessPackage: { missing: [part('Its assignment policies and who holds it, which are restored separately', 'not-written')] },
-  connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
+  connectedOrganization: { missing: [part('A federated domain identity source, whose sign-in settings a restore never writes', 'not-written'), part('Sponsors who do not exist in the target', 'not-written')] },
   // Wave 1 CAT-ENTRA: Entra governance.
   lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only')] },
   lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route'), part('Which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person', 'not-written')] },
@@ -153,7 +153,7 @@ export const COMPLETENESS = Object.freeze({
   customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route'), part('An attribute that no longer exists, which needs a review before it is created', 'not-written')] },
   accessPackageCatalog: { missing: [part('The groups, apps and sites in the catalog, which are backed up separately', 'not-written')] },
   accessPackageCatalogResource: { whole: 'not-written', missing: [part('A SharePoint site, or a group or app no access package grants, which is added to the catalog by hand', 'not-written')] },
-  accessPackageAssignmentPolicy: { whole: 'not-written', missing: [part('Approval and request history', 'read-only')] },
+  accessPackageAssignmentPolicy: { missing: [part('Approval and request history', 'read-only'), part('Custom extensions (Logic Apps) the policy calls', 'not-written')] },
   accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
   entitlementManagementSettings: {},
   agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },

@@ -547,6 +547,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the resource role id KEEL shows for the fixture', drift: 'remove the role from the package; for the catalog request step also remove the group from the catalog',
     note: 'The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. Only the fixture group, never a real group, app or site. The package has no policy, so nobody gains access.',
   },
+  // Issue #993: a connected organization and one policy on the #992 package.
+  connectedOrganization: {
+    kind: 'named-object', fixture: 'a connected organization KEEL-RT-993-org in state proposed, with one domain identity source (a domain the operator controls, never a customer or partner domain), no federated domain, and the fixture user keel-rt-20260908-carla as its only internal sponsor',
+    select: 'the connected organization id KEEL shows for the fixture', drift: 'change its description and remove carla as a sponsor; for create, delete the organization',
+    note: 'The write is approval-held: run the dry run, check it names the fixture domain in plain words, have a second person approve "Changes admin access", then enforce. Keep it proposed, so no policy lets its users in. Delete it at the end.',
+  },
+  accessPackageAssignmentPolicy: {
+    kind: 'named-object', fixture: `a policy KEEL-RT-993-policy on KEEL-RT-992-package: requests only from members of ${FIXTURE_PREFIX}-group (no members), one approval stage with keel-rt-20260908-carla as the approver, no custom extension, no access review`,
+    select: 'the policy id KEEL shows for the fixture', drift: 'change its description; for the weakening check, turn approval off by hand and see the restore hold it; for create, delete the policy (keep the package)',
+    note: `The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. The requestor group has no members, so nobody can request the package. Delete the policy before the package and catalog.`,
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

@@ -338,8 +338,8 @@ test('the identity batch runner drives every qualified operation through applyWa
 
   assert.ok(report.refused.some((entry) => entry.resourceType === 'application' && entry.operation === 'delete' && entry.claim === 'unsupported'));
   const remaining = new Map(report.remaining.map((entry) => [entry.resourceType, entry]));
-  // Issue #992 qualified accessPackage; its assignment policy is still research-needed.
-  for (const type of ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'accessPackageAssignmentPolicy']) {
+  // Issues #992 and #993 qualified access packages and their policies; assignments are still research-needed.
+  for (const type of ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'accessPackageAssignment']) {
     assert.ok(remaining.has(type), `${type} stays listed`);
     assert.equal(remaining.get(type).restoreScope, 'none');
     assert.ok(remaining.get(type).permission);

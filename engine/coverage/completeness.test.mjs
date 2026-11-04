@@ -29,8 +29,9 @@ test('no type is left unknown: every catalogue type has one of the four coverage
 });
 
 // Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs),
-// and issue #992 one for access packages (accessPackageOperations.mjs).
-const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage']);
+// issue #992 one for access packages (accessPackageOperations.mjs), and issue
+// #993 one for connected organizations (entitlementPolicyOperations.mjs).
+const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage', 'connectedOrganization']);
 
 test('the 14 formerly unclassified Entra types are incomplete configurations, recreated by hand until a writer exists', () => {
   for (const type of FORMERLY_UNCLASSIFIED) {

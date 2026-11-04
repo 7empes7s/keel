@@ -17,6 +17,7 @@ const EDGES = 'engine/restore/identityObjectOperations.mjs#applyIdentityEdges';
 const IDENTITY_PROOF = 'engine/restore/identityObjectOperations.test.mjs';
 const INTUNE_PROOF = 'engine/restore/intuneExtended.test.mjs';
 const ACCESS_PACKAGE_PROOF = 'engine/restore/accessPackageOperations.test.mjs';
+const POLICY_PROOF = 'engine/restore/entitlementPolicyOperations.test.mjs';
 
 export default [
   { resourceType: 'servicePrincipal', operation: 'update', path: '/servicePrincipals', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
@@ -33,6 +34,11 @@ export default [
   { resourceType: 'accessPackage', operation: 'create', path: '/identityGovernance/entitlementManagement/accessPackages', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: ACCESS_PACKAGE_PROOF },
   { resourceType: 'accessPackage', operation: 'update', path: '/identityGovernance/entitlementManagement/accessPackages', handler: IDENTITY, idOutcome: 'preserved', proofRef: ACCESS_PACKAGE_PROOF },
   { resourceType: 'accessPackageResourceRoleScope', operation: 'create', path: '/identityGovernance/entitlementManagement/accessPackages', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: ACCESS_PACKAGE_PROOF },
+  // Issue #993: connected organizations and access package policies.
+  { resourceType: 'connectedOrganization', operation: 'create', path: '/identityGovernance/entitlementManagement/connectedOrganizations', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: POLICY_PROOF },
+  { resourceType: 'connectedOrganization', operation: 'update', path: '/identityGovernance/entitlementManagement/connectedOrganizations', handler: IDENTITY, idOutcome: 'preserved', proofRef: POLICY_PROOF },
+  { resourceType: 'accessPackageAssignmentPolicy', operation: 'create', path: '/identityGovernance/entitlementManagement/assignmentPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: POLICY_PROOF },
+  { resourceType: 'accessPackageAssignmentPolicy', operation: 'update', path: '/identityGovernance/entitlementManagement/assignmentPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: POLICY_PROOF },
   { resourceType: 'entitlementManagementSettings', operation: 'update', path: '/identityGovernance/entitlementManagement/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'create', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'update', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

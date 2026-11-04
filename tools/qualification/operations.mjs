@@ -215,6 +215,25 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     scope: { displayName: 'Root', originId: 'fixture-source-group', originSystem: 'AadGroup', isRootScope: true },
     accessPackageId: 'fixture-source-package',
   },
+  // Issue #993: a connected organization for a domain, and a policy on a package
+  // that one user approves.
+  connectedOrganization: {
+    displayName: 'Fixture organization', description: 'Fixture organization', state: 'proposed',
+    identitySources: [{ '@odata.type': '#microsoft.graph.domainIdentitySource', domainName: 'fixture.example', displayName: 'fixture.example' }],
+  },
+  accessPackageAssignmentPolicy: {
+    displayName: 'Fixture policy', description: 'Fixture policy', allowedTargetScope: 'specificDirectoryUsers',
+    specificAllowedTargets: [{ '@odata.type': '#microsoft.graph.groupMembers', groupId: 'fixture-source-group', description: 'Fixture group' }],
+    expiration: { type: 'afterDuration', duration: 'P7D' },
+    requestorSettings: { enableTargetsToSelfAddAccess: true, enableOnBehalfRequestorsToAddAccess: false, onBehalfRequestors: [] },
+    requestApprovalSettings: {
+      isApprovalRequiredForAdd: true, isApprovalRequiredForUpdate: false,
+      stages: [{ durationBeforeAutomaticDenial: 'P2D', isApproverJustificationRequired: false, isEscalationEnabled: false,
+        primaryApprovers: [{ '@odata.type': '#microsoft.graph.singleUser', userId: 'fixture-source-user', description: 'Fixture approver' }],
+        fallbackPrimaryApprovers: [], escalationApprovers: [], fallbackEscalationApprovers: [] }],
+    },
+    accessPackage: { id: 'fixture-source-package' },
+  },
   entitlementManagementSettings: { externalUserLifecycleAction: 'blockSignInAndDelete', durationUntilExternalUserDeletedAfterBlocked: 'P30D' },
   appManagementPolicy: {
     displayName: 'Fixture credential policy', description: 'Fixture', isEnabled: true,
@@ -513,6 +532,8 @@ const FIXTURE_TARGET_IDS = Object.freeze({
   // Issue #992: the catalog, package and group live in the target under other ids.
   accessPackage: [['accessPackageCatalog:fixture-source-catalog', 'fixture-catalog']],
   accessPackageResourceRoleScope: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group']],
+  // Issue #993: the package, group and approver live in the target under other ids.
+  accessPackageAssignmentPolicy: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group'], ['user:approver@fixture.example', 'fixture-user']],
 });
 
 // The references canonicalize gives these fixtures (issue #992).
@@ -521,6 +542,11 @@ const FIXTURE_REFERENCES = Object.freeze({
   accessPackageResourceRoleScope: [
     { field: 'accessPackageId', symbol: 'accessPackage:fixture-source-package', required: true },
     { field: 'scope.originId', symbol: 'group:fixture-group', required: true },
+  ],
+  accessPackageAssignmentPolicy: [
+    { field: 'accessPackage.id', symbol: 'accessPackage:fixture-source-package', required: true },
+    { field: 'specificAllowedTargets[0].groupId', symbol: 'group:fixture-group', required: true },
+    { field: 'requestApprovalSettings.stages[0].primaryApprovers[0].userId', symbol: 'user:approver@fixture.example', required: true },
   ],
 });
 
@@ -541,6 +567,7 @@ const LISTED_BEFORE_CREATE = new Set([
   '/deviceManagement/roleAssignments',
   '/roleManagement/exchange/roleAssignments', '/roleManagement/defender/roleAssignments',
   '/identityGovernance/entitlementManagement/accessPackages',
+  '/identityGovernance/entitlementManagement/connectedOrganizations', '/identityGovernance/entitlementManagement/assignmentPolicies',
 ]);
 
 /** An in-memory Graph that honours create/PATCH/DELETE/soft-restore and read-back. */

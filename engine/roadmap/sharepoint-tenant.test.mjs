@@ -7,7 +7,8 @@
 //  - each read is one tenant-wide object with declared fields only; enum numbers are stored
 //    by name, time spans in seconds, lists sorted, so the same settings always compare equal;
 //  - an empty answer for a setting every tenant has is a gap, an empty allowed site list is
-//    not; a failure is a failure; a tenant without Copilot is "not licensed", not failed;
+//    not; a failure is a failure; a tenant without Copilot is "not licensed", not failed,
+//    whether the module hides the cmdlet or refuses it for the licence (Q276);
 //  - each read turns on with its own proof; a changed setting is a change on the Changes page;
 //  - the read capture tool can qualify it, with no extra arguments;
 //  - it sits in SharePoint's "Tenant settings" group, first, and its rows have plain names.
@@ -206,6 +207,18 @@ test('gaps are never silent: empty, missing fields, failures, and no Copilot lic
   assert.equal(noCopilot.outcome, 'partial');
   assert.deepEqual(noCopilot.unavailable.map((item) => [item.family, item.status]), [['restrictedSearchMode', 'not-licensed'], ['restrictedSearchAllowedSites', 'not-licensed']]);
   assert.equal(noCopilot.failures.length, 0);
+
+  // Q276: the module offers the cmdlet and refuses it for the licence. Still not licensed, never a failure.
+  const refused = await read(fakeTenant({
+    'Get-PnPTenantRestrictedSearchAllowedList': { error: { message: 'You do not have the required license to perform this operation.', category: 'NotSpecified', errorId: 'PnP.PowerShell.Commands.GetTenantRestrictedSearchAllowedList' } },
+  }));
+  assert.equal(refused.outcome, 'partial');
+  assert.deepEqual(refused.unavailable.map((item) => [item.family, item.status, item.license]), [['restrictedSearchAllowedSites', 'not-licensed', 'Microsoft 365 Copilot']]);
+  assert.equal(refused.failures.length, 0);
+  assert.equal(refused.discovery.families.restrictedSearchAllowedSites.status, 'not-licensed');
+  // The same words on a read that needs no licence stay a failure: only Copilot reads are licence-gated.
+  const notGated = await read(fakeTenant({ 'Get-PnPTenant': { error: { message: 'You do not have the required license to perform this operation.', category: 'NotSpecified', errorId: 'x' } } }), { families: ['tenantSettings'] });
+  assert.equal(notGated.outcome, 'failed');
 
   const odd = await read(fakeTenant({ 'Get-PnPTenantRestrictedSearchAllowedList': [{ nope: 1 }] }), { families: ['restrictedSearchAllowedSites'] });
   assert.equal(odd.outcome, 'failed', 'an answer KEEL cannot read as site URLs is never kept as an empty list');

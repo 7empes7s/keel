@@ -58,7 +58,7 @@ import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '..
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
   READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION,
-  declaredRestVersion, isRestWorkload, knownWorkload, provenReads, readModule, readTransport, workloadReads, workloadReadsCapturePlan,
+  declaredRestVersion, isRestWorkload, knownWorkload, provenReads, readModule, readTransport, unlicensedReads, workloadReads, workloadReadsCapturePlan,
   workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
 import { DEFENDER_INDICATORS_WORKLOAD, defenderIndicatorsTransportFor, readDefenderIndicators } from '../../engine/collect/workloads/defenderIndicators.mjs';
@@ -71,7 +71,7 @@ import {
 } from '../../engine/collect/workloads/teamsVoiceNetwork.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
-import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
+import { NOT_LICENSED_ERROR, WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 
 /**
  * The SharePoint per-site sharing read, in the shape the written workloads' readers
@@ -197,7 +197,9 @@ export async function captureWorkloadReads({
     // A REST read fails with an HTTP status rather than a PowerShell error id.
     const code = [detail?.code, detail?.errorId].filter(Boolean).join(':') || (detail?.httpStatus ? `HTTP ${detail.httpStatus}` : null);
     if (status === 'not-sent') diagnostics.push({ operationId, status, message: 'no request was sent for this read (nothing to read it for), so it proves nothing' });
-    else if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
+    else if (status === 'not-licensed') {
+      diagnostics.push({ operationId, status, message: `needs a licence this tenant does not have${failed?.license ? ` (${failed.license})` : ''}, so it was not read: ${detail?.message ?? 'no message'}` });
+    } else if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
     return {
       operationId, family, version: rest ? declaredRestVersion(operationId) : moduleVersion, synthetic: false, capturedAt,
       ok: status === 'read', status, objects: summary?.objects ?? 0, error: status === 'read' ? null : (code ?? status),
@@ -238,10 +240,17 @@ export function ledgerEvidenceFromWorkloadReadsAcceptance(evidence, options = {}
   return {
     ok: true,
     failures: [],
-    reads: provenReads(subject).map((item) => ({
-      operationId: item.operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: item.capturedAt,
-      version: item.version, ok: true, error: null, observed: { objects: item.objects }, proofRef,
-    })),
+    reads: [
+      ...provenReads(subject).map((item) => ({
+        operationId: item.operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: item.capturedAt,
+        version: item.version, ok: true, error: null, observed: { objects: item.objects }, proofRef,
+      })),
+      // Not proof: it puts the read's ledger row in the not-licensed state, so runs say so.
+      ...unlicensedReads(subject).map((item) => ({
+        operationId: item.operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: item.capturedAt,
+        version: item.version, ok: false, error: NOT_LICENSED_ERROR, observed: { objects: 0 }, proofRef,
+      })),
+    ],
     writes: [],
     grants: null,
     restorerGrants: null,

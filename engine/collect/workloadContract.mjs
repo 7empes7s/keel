@@ -63,7 +63,10 @@ export const WORKLOADS = Object.freeze([
   'purview-classifiers', 'purview-audit-retention',
   'defender-email-protection',
 ]);
-export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
+export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'not-licensed', 'live-qualified']);
+// The error a live capture stores for a read the tenant has no licence for
+// (tools/qualification/workloadReadsAcceptance.mjs, unlicensedReads).
+export const NOT_LICENSED_ERROR = 'not-licensed';
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
 export const PAGING = Object.freeze(['none', 'odata-nextLink', 'cmdlet-unbounded', 'next-link']);
 export const LIVE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -880,6 +883,10 @@ export function workloadRow(descriptor, { evidence = [], grants = null, runtime 
   }
   const deniedCapture = current.find((item) => item.kind === 'live-capture' && item.synthetic === false && item.ok === false
     && AUTHZ_FAILURE.test(String(item.error ?? '')));
+  // A current live capture that found the tenant has no licence for the read: the same
+  // tenant, version and 30 days as proof, only the answer was "no licence".
+  const unlicensedCapture = current.find((item) => item.ok === false && item.error === NOT_LICENSED_ERROR
+    && evidenceProblems(descriptor, { ...item, ok: true }, { tenantRef, version, now }).length === 0) ?? null;
   const rbac = rbacState(descriptor, grants);
 
   let state;
@@ -894,6 +901,9 @@ export function workloadRow(descriptor, { evidence = [], grants = null, runtime 
     prerequisite = { ...missing, source: 'authorization failure', message: prerequisiteSentence(descriptor, missing) };
   } else if (live) {
     state = 'live-qualified';
+  } else if (unlicensedCapture) {
+    state = 'not-licensed';
+    reasons.push(`the tenant has no licence for this read (live capture ${unlicensedCapture.proofRef ?? 'without a reference'})`);
   } else if (fixture) {
     state = 'fixture-tested';
     reasons.push('fixture proof only: a live capture from this tenant is required');

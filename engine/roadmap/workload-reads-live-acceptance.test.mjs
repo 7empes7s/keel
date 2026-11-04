@@ -41,7 +41,9 @@ import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { pnpSiteReadsActivation } from '../collect/workloads/sharepoint.mjs';
 import { purviewAuditRetentionActivation, purviewClassifiersActivation } from '../collect/workloads/purviewDlpSupport.mjs';
 import { sharePointStructureActivation } from '../collect/workloads/sharepointStructure.mjs';
-import { sharePointTenantActivation } from '../collect/workloads/sharepointTenant.mjs';
+import { readSharePointTenant, sharePointTenantActivation } from '../collect/workloads/sharepointTenant.mjs';
+import { workloadGapReasons } from '../collect/workloads/gaps.mjs';
+import { proofExpiry } from '../collect/workloadLedgerStore.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsCollaborationActivation, teamsMeetingSettingsActivation } from '../collect/workloads/teamsCollaboration.mjs';
@@ -196,6 +198,66 @@ test('a read that fails is not proof, keeps its message out of the record, and t
   const activation = mailFlowActivation(ledger(seam.reads));
   assert.equal(activation.enabled, false);
   assert.match(activation.reasons.join(' '), /mailflow\.transport-rules/);
+});
+
+test('a read the tenant has no licence for is not proof; the import records it so runs say "not licensed" and never send it', async () => {
+  // Q276: Get-PnPTenantRestrictedSearchAllowedList on a tenant without Microsoft 365 Copilot.
+  const live = fakeTenant('sharepoint-tenant', {
+    'Get-PnPTenantRestrictedSearchAllowedList': { error: { message: 'You do not have the required license to perform this operation.', category: 'NotSpecified', errorId: 'PnP.PowerShell.Commands.GetTenantRestrictedSearchAllowedList' } },
+  });
+  const { record, diagnostics } = await capture('sharepoint-tenant', live);
+  const gated = record.subject.reads.find((item) => item.operationId === 'sharepoint-tenant.restricted-search-allowed-sites');
+  assert.equal(gated.ok, false);
+  assert.equal(gated.status, 'not-licensed');
+  assert.deepEqual(diagnostics.map((item) => [item.operationId, item.status]), [['sharepoint-tenant.restricted-search-allowed-sites', 'not-licensed']]);
+  assert.match(diagnostics[0].message, /^needs a licence this tenant does not have \(Microsoft 365 Copilot\), so it was not read: You do not have the required license/);
+
+  const evidence = signed(record);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions()).failures, []);
+  const seam = ledgerEvidenceFromWorkloadReadsAcceptance(evidence, { tenantRef, build, hmacKey: KEY, now: NOW });
+  assert.deepEqual(seam.failures, []);
+  const unlicensed = seam.reads.filter((item) => item.ok === false);
+  assert.deepEqual(unlicensed.map((item) => [item.operationId, item.error]), [['sharepoint-tenant.restricted-search-allowed-sites', 'not-licensed']]);
+  assert.equal(seam.reads.filter((item) => item.ok === true).length, 4, 'the other four reads are proof');
+
+  const rows = ledger(seam.reads).rows;
+  const row = rows.find((entry) => entry.id === 'sharepoint-tenant.restricted-search-allowed-sites');
+  assert.equal(row.state, 'not-licensed');
+  assert.equal(row.enabled, false, 'never proof, so never switched on');
+  const activation = sharePointTenantActivation(ledger(seam.reads));
+  assert.equal(activation.enabled, true);
+  assert.deepEqual(activation.unlicensed, ['restrictedSearchAllowedSites']);
+  assert.deepEqual(activation.skipped, [], 'not listed as "not switched on yet"');
+
+  // The run lists it as not licensed, in plain words, and does not send it.
+  const run = fakeTenant('sharepoint-tenant');
+  const result = await readSharePointTenant({ powershell: run.powershell, families: activation.families, skipped: activation.skipped, unlicensed: activation.unlicensed, now });
+  assert.ok(!run.calls.some((call) => call.cmdlet === 'Get-PnPTenantRestrictedSearchAllowedList'));
+  assert.equal(result.discovery.families.restrictedSearchAllowedSites.status, 'not-licensed');
+  const lines = workloadGapReasons(result);
+  assert.ok(lines.includes('Restricted search allowed sites: not licensed in this tenant (Microsoft 365 Copilot)'), lines.join('; '));
+  assert.ok(!lines.some((line) => /restricted search allowed sites: not switched on/i.test(line)));
+  assert.ok(!proofExpiry(seam.reads, { now: NOW }).some((entry) => entry.operations.includes('sharepoint-tenant.restricted-search-allowed-sites')), 'not listed as live proof');
+
+  // A licence finding lapses like proof: after 30 days the read is back to needing a capture.
+  const later = new Date(NOW.getTime() + 31 * 24 * 60 * 60 * 1000);
+  const old = buildWorkloadLedger({ evidence: [...BASE, ...seam.reads], grants: GRANTS, runtime: RUNTIME, tenantRef, now: later });
+  assert.equal(old.rows.find((entry) => entry.id === 'sharepoint-tenant.restricted-search-allowed-sites').state, 'disabled');
+
+  // Once the tenant has the licence, a capture that reads it wins.
+  const licensed = signed((await capture('sharepoint-tenant', fakeTenant('sharepoint-tenant'))).record);
+  const proof = ledgerEvidenceFromWorkloadReadsAcceptance(licensed, { tenantRef, build, hmacKey: KEY, now: NOW }).reads;
+  assert.equal(ledger([...seam.reads, ...proof]).rows.find((entry) => entry.id === 'sharepoint-tenant.restricted-search-allowed-sites').state, 'live-qualified');
+});
+
+test('a read only counts as not licensed when a live capture found it so', async () => {
+  const live = fakeTenant('sharepoint-tenant', {
+    'Get-PnPTenantRestrictedSearchAllowedList': { error: { message: 'You do not have the required license to perform this operation.', category: 'NotSpecified', errorId: 'x' } },
+  });
+  const { record } = await capture('sharepoint-tenant', live);
+  const gated = record.subject.reads.find((item) => item.status === 'not-licensed');
+  gated.ok = true;
+  assert.match(verifyEvidence(signed(record), verifyOptions()).failures.join('; '), /counts as not licensed only when a live capture/);
 });
 
 test('a record that overclaims, uses another credential or is unsigned fails the gate', async () => {

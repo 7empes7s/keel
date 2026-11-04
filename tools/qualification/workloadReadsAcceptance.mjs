@@ -182,6 +182,9 @@ export function validateWorkloadReadsLiveSubject(evidence, { tenantRef, build, r
     if (item?.ok === true && (item.status !== 'read' || item.version !== version || item.synthetic !== false)) {
       failures.push(`${item?.operationId}: a read counts only when it answered in full, live, at the ${rest ? 'declared API' : 'recorded module'} version`);
     }
+    if (item?.status === 'not-licensed' && (item.ok !== false || item.version !== version || item.synthetic !== false)) {
+      failures.push(`${item?.operationId}: a read counts as not licensed only when a live capture at the ${rest ? 'declared API' : 'recorded module'} version found it so`);
+    }
   }
   return failures;
 }
@@ -189,5 +192,10 @@ export function validateWorkloadReadsLiveSubject(evidence, { tenantRef, build, r
 /** The reads a verified record proves: one per read that answered. */
 export function provenReads(subject) {
   return (subject?.reads ?? []).filter((item) => item.ok === true && item.status === 'read');
+}
+
+/** The reads a verified record found the tenant has no licence for (never proof). */
+export function unlicensedReads(subject) {
+  return (subject?.reads ?? []).filter((item) => item.ok === false && item.status === 'not-licensed' && item.synthetic === false);
 }
 

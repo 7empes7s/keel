@@ -48,6 +48,14 @@ export function notExposed(error) {
   return error instanceof CmdletError && NOT_FOUND.test(`${error.detail.errorId ?? ''} ${error.detail.message ?? ''}`);
 }
 
+// A session that offers the cmdlet but refuses it because the tenant lacks the licence it
+// needs (Get-PnPTenantRestrictedSearchAllowedList without Copilot, Q276): "You do not have
+// the required license to perform this operation."
+const LICENCE_REFUSED = /required licen[cs]e|not licen[cs]ed|licen[cs]e (?:is )?required/i;
+export function refusedForLicence(error) {
+  return error instanceof CmdletError && LICENCE_REFUSED.test(String(error.detail.message ?? ''));
+}
+
 export const NOT_SET_REASON = 'not set: Microsoft leaves this setting out when it is not set';
 
 /**

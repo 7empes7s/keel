@@ -31,6 +31,7 @@ import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/open
 import { MEMBERSHIP_KINDS, ROLE_ASSIGNMENT_KINDS, evaluateFlags, flagPathsSql, flaggedPriority, serviceFlagFieldsSql, serviceFlagValues } from './flags.mjs';
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
+import { loadNextSteps } from './nextSteps.mjs';
 import { ONEDRIVE_ACCESS_KIND, SITE_ACCESS_KIND, compareDriveExposure, compareSiteExposure, exposureActivity } from './sharingExposure.mjs';
 import { builtInOf, objectTypeName, settingKind, typeInfo } from './taxonomy.mjs';
 import { templateFamilySql } from './templateAreas.mjs';
@@ -335,9 +336,13 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
   const onlyActor = (keys) => (Array.isArray(keys) && keys.length === 1 ? person(actorFrom(keys[0])) : null);
 
   // One row per change a backup found in who can reach a site or OneDrive.
+  // What the next step of each row is read by (nextSteps.mjs): the stored key and object
+  // id, before any name is hidden.
+  const raw = new Map();
   const backupRows = ({ id, at, type, service: serviceName, key, name, changes }) => changes.map((exposure) => {
     const object = { key, name, status: 'found' };
     const suffix = exposure.what === 'everyone' ? `${exposure.what}:${exposure.audience}` : exposure.what;
+    raw.set(`backup:${id}:${suffix}`, { key, backup: type === SITE_ACCESS_KIND ? 'site' : 'onedrive' });
     return {
       ...row({
         id: `backup:${id}:${suffix}`,
@@ -388,6 +393,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
     ...drift.map((entry) => {
       const type = String(entry.resource_type);
       const object = shown(type, entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' });
+      raw.set(`drift:${entry.id}`, { key: String(entry.natural_key), objectId: text(entry.object_id), deleted: entry.change_type === 'removed' });
       const context = entry.flag_context ? { ...entry.flag_context, roleName: shownName(entry.flag_context.roleName), groupName: shownName(entry.flag_context.groupName), appName: shownName(entry.flag_context.appName) } : null;
       return row({
         id: `drift:${entry.id}`,
@@ -404,6 +410,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       });
     }),
     ...service.map((entry) => {
+      raw.set(`service:${entry.id}`, { key: `${entry.workload}:${entry.resource_key}`, deleted: entry.change_type === 'removed' });
       const object = shown(String(entry.workload), null, {
         key: `${entry.workload}:${entry.resource_key}`,
         name: serviceObjectName(String(entry.resource_key), entry.change_type === 'removed' ? entry.previous_names : entry.current_names ?? entry.previous_names),
@@ -427,6 +434,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       const type = known ? target.type : String(entry.target_type);
       const object = shown(known ? target.type : null, String(entry.target_id), { key: String(entry.target_id), name: known ? target.name : null, status: known ? target.status : 'unknown' });
       const change = OPERATION_CHANGE[entry.operation] ?? 'modified';
+      raw.set(`audit:${eventId}`, { key: String(entry.target_id), objectId: text(entry.target_id), deleted: change === 'removed' });
       return row({
         id: `audit:${eventId}`,
         source: 'audit',
@@ -444,5 +452,15 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       });
     }),
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
-  return { since: since.toISOString(), until: until.toISOString(), rows: rows.slice(0, cap), truncated: rows.length > cap };
+  const kept = rows.slice(0, cap);
+  // One next step per row, read for the whole page at once.
+  const steps = await loadNextSteps(client, {
+    tenantRef, now: until, namer,
+    items: kept.map((entry) => ({ id: entry.id, source: entry.source, occurredAt: entry.occurredAt, objectId: null, deleted: false, backup: null, ...raw.get(entry.id) })),
+  });
+  return {
+    since: since.toISOString(), until: until.toISOString(),
+    rows: kept.map((entry) => ({ ...entry, nextStep: steps.get(entry.id) ?? null })),
+    truncated: rows.length > cap,
+  };
 }

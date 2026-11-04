@@ -12365,8 +12365,16 @@ item that needs it stays untouched.
   role list holds only roles an admin made or imported). Only the Defender part of Q239 is in scope. The app creation policy part
   is Q256; not run here.
 - Needs: PR #935 (which carries #747's fix; #747 was closed as superseded) merged and deployed (build B). Check: `grep -q 'lists only roles an admin made' /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
-- Status: todo
-- Result:
+- Status: done
+- Result: done, both promoted (2026-11-04 02:05 UTC, keel-operator). Build **B = 7cb46d1a** (`lists only roles an admin made` present). Restorer for writes, Collector for reads; global admin not used; nothing granted. Role assigned to nobody. No CA, no break-glass.
+  - Step 1: 0 Defender custom roles before.
+  - Step 2: fixture `KEEL-RT-258-defender-role` created (201). **S = `d6700b9c`** (exit 3, incomplete only on todoSettings and the other known reads). The role is in S, stored `rolePermissions` `[{"allowedResourceActions":["microsoft.xdr/secops/securitydata/basics/read"]}]`.
+  - **Create round:** role deleted (204, then 404). Dry run `1b3cc9a4`: **not refused**, one create (description, displayName, rolePermissions). Approval `5267d801`. Enforce exit 0: `create | succeeded`, new id. Read back equal to S (name, description, permission). Captured `defenderRoleDefinition.create` (exit 0). **Promoted.**
+  - **Update round:** description drifted (PATCH 204). Dry run `9f7a18c6` (description only), approval `8b5aa51c`. Enforce exit 0: `update | succeeded`; description back. **Graph accepted the PATCH.** Captured `defenderRoleDefinition.update` (exit 0). **Promoted.**
+  - Step 5: dry run `63d68d7d`: **0 writes** planned for the role.
+  - Step 6: role deleted (204). 0 Defender custom roles after, as in step 1.
+  - Step 7: `claude/live-evidence-q258` **2934fff8**, 4 files (pseudonymize exit 0, secret scan 0). **PR #941** (automerge). `operations.mjs --live-evidence`: `defenderRoleDefinition.create.json` and `.update.json`: fixture-tested -> live-qualified.
+  - Left in the tenant: nothing.
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q239 (log every approval
   id). Restorer for writes (`RoleManagement.ReadWrite.Defender`, held per Q239), Collector for reads. Global admin not used. Grant
   nothing. The role is **assigned to nobody**. No CA, no break-glass.
@@ -13039,8 +13047,17 @@ item that needs it stays untouched.
   to merge and deploy (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedExchangeOrgConfig`); scripts are mounted from the checkout, so no image rebuild
   is expected. Independent of Q280 (either can run first).
-- Status: todo
-- Result:
+- Status: done (partial: message encryption empty, 1 unknown irm field)
+- Result: done, partial on two families (2026-11-04 02:05 UTC, keel-operator). Build **B = 7cb46d1a** (#938). Reads only; no New/Set/Add/Remove cmdlet; nothing granted or created; global admin not used. Scripts mounted from the checkout at B, no image rebuild. Collector config `/etc/keel/exchange-collector.json` (`powershellConfigs.exchange`).
+  - **Step 1, capture** `exchange-org-config`: exit **0**, outcome **partial**, proven all 11 (admin-audit-log, irm, message-encryption, perimeter, availability, availability-address-spaces, message-classifications, policy-tips, resource-config, partner-applications, on-premises-organizations); notProven `[]`; verify ok. pseudonymize exit 0. No cmdlet missing or denied.
+  - **Step 2:** `claude/live-evidence-exchange-org-config` **2ba8d010** (that record only, secret scan 0). No PR.
+  - **Step 3, import** (dir = master's records + the Q275/Q276/Q281 records): exit **0**, imported **24**, refused `[]`, absent 15 (older records kept on evidence branches, listed only). This record: reads 11.
+  - **Step 4, `run`:** exit **3** (partials). `exchange-org-config` **partial**: "Message encryption: Microsoft returned nothing, though a working tenant always has some; 1 object: returned without an identity, so it could not be kept; Irm: decrypt attachment on download was not returned (1 object)".
+    - Families, all `read`: irm 1, perimeter 1, adminAuditLog 1, resourceConfig 1; 0 for policyTip, availability, messageEncryption, partnerApplication, messageClassification, onPremisesOrganization, availabilityAddressSpace.
+    - `discovery.empty` `["messageEncryption"]`; unidentified 1. fieldCounts `{"unknown":1,"observed":32}`.
+    - **unknownFields:** `{"irm":{"DecryptAttachmentOnDownload":1}}`.
+  - **Step 5, `proof`:** listed as current (expires 2026-12-04). Exit 1 only from the four older proofs expiring 2026-11-06.
+  - Left in the tenant: nothing.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
   cmdlet. Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -13082,8 +13099,19 @@ item that needs it stays untouched.
   notes where they differ from this item (`test -f /opt/keel-live/engine/collect/workloads/sharepointTenant.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedPnPTenant`); as in Q266 the scripts are mounted from the checkout, so no image
   rebuild is expected.
-- Status: todo
-- Result:
+- Status: done (2 reads not proven: restricted search needs a licence; no site has a label or restricted-access groups)
+- Result: done, two reads not proven (2026-11-04 02:05 UTC, keel-operator). Build **B = 7cb46d1a** (#938). Reads only; no Set/New/Add/Remove cmdlet; nothing granted or created; global admin not used. PnP config `/etc/keel/purview-collector.json` (`powershellConfigs.sharepoint`).
+  - **Step 1, capture:**
+    - `sharepoint-tenant`: exit **0**, outcome **partial**, proven tenant, sync-client-restriction, idle-sign-out, restricted-search-mode. **notProven** `sharepoint-tenant.restricted-search-allowed-sites`: failed, `CMDLET_ERROR:PnP.PowerShell.Commands.GetTenantRestrictedSearchAllowedList`, "You do not have the required license to perform this operation." pseudonymize exit 0.
+    - `sharepoint-site-settings`: exit **0**, outcome **partial**, proven `sharepoint.site-sharing` (still proven, 21 sites). **notProven** `sharepoint.site-settings`: partial, `NOT_RETURNED`, "no listed site carried: sensitivityLabel, restrictedAccessControlGroups". pseudonymize exit 0.
+    - Note for the thread: the item says the row counts as read if at least one site carries **one** of the fields, but the capture asks for **every** field to be carried by some site. No test-tenant site has a sensitivity label or restricted-access groups.
+  - **Step 2:** `claude/live-evidence-sharepoint-tenant` **34576352** (both records only, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **24**, refused `[]` (shared with Q275/Q281). sharepoint-tenant reads 4; sharepoint-site-settings reads 1.
+  - **Step 4, `run`:**
+    - `sharepoint-tenant` **partial**: "Restricted search allowed sites: not switched on yet, so it was not read". Families, all `read` with 1 object: tenantSettings, browserIdleSignout, restrictedSearchMode, syncClientRestriction. skipped: restrictedSearchAllowedSites (disabled). fieldCounts `{"observed":63}`; **unknownFields: none**.
+    - `sharepoint-site-settings` **complete**, 0 new changes. The `site-settings` family is not switched on (not proven), so none of the 8 new fields was read: lockState, conditionalAccessPolicy, sensitivityLabel, denyAddAndCustomizePages, restrictedAccessControl, restrictedAccessControlGroups, storageQuota and externalUserExpirationInDays are each observed on 0 sites. sharingCapability observed on 21 of 22 rows, as in Q158. fieldCounts `{"observed":152}`.
+  - **Step 5, `proof`:** sharepoint-tenant and sharepoint-site-settings listed as current (expire 2026-12-04).
+  - Left in the tenant: nothing.
 - **Tenant:** reads only, Collector credential (Sites.FullControl.All + SharePoint Administrator, already held, as Q158). No
   `Set-`, `New-`, `Add-` or `Remove-` cmdlet. Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -13299,8 +13327,17 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the #805 merge or later (`test -f /opt/keel-live/engine/collect/workloads/defenderEmail.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedDefenderEmail`); as in Q266 the scripts are mounted from the checkout, so no
   image rebuild is expected.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-11-04 02:05 UTC, keel-operator). Build **B = 7cb46d1a** (#938 carries #805). Reads only; no New/Set/Add/Remove cmdlet; nothing granted or created; global admin not used. Collector config `/etc/keel/exchange-collector.json`.
+  - **Step 1, capture** `defender-email-protection`: exit **0**, outcome **complete**, proven all 16 (allow-block senders, urls, file-hashes, ips, spoofed-senders; phish-sim override policies, rules, urls; secops override policies, rules; built-in-protection-rules; teams-protection policies, rules; report-submission policies, rules; arc-trusted-sealers); notProven `[]`; verify ok. pseudonymize exit 0.
+  - **Step 2:** `claude/live-evidence-defender-email-protection` **58dfeeaf** (that record only, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **24**, refused `[]` (shared with Q275/Q276). This record: reads 16.
+  - **Step 4, `run`:** `defender-email-protection` **complete**.
+    - Families, all `read`: builtInProtectionRule 1, teamsProtectionPolicy 1, reportSubmissionPolicy 1; 0 for the others. Both licensed families **answered** (none reported "not licensed").
+    - `discovery.empty` `[]`; entries with no usable identity: **0**. fieldCounts `{"observed":37}`; **unknownFields: none**.
+  - **Step 5, `proof`:** listed as current (expires 2026-12-04).
+  - **Step 6:** from the full backup at B (snapshot `d6700b9c`, taken for Q258 at 01:44 UTC; not a scheduled one): attackSimulationPayload, attackSimulationLoginPage, attackSimulationLandingPage and attackSimulationNotification are each `complete-empty`, 0 items.
+  - Left in the tenant: nothing.
 - **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
   cmdlet. Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from

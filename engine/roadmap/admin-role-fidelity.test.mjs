@@ -11,6 +11,8 @@
  * - Restore an expired eligibility, or one held through a group.
  * - Request an eligibility the target already has.
  * - Write a PIM rule change that weakens protection.
+ * - Replay an activation as an active assignment, or write one without an
+ *   approved "changes admin access" effect (issue #991).
  * - Require approval from an approver who no longer exists.
  */
 import { strict as assert } from 'node:assert';
@@ -26,7 +28,7 @@ import { OPERATIONS, capabilityFor } from '../coverage/capabilities.mjs';
 import { qualificationFor, remappingFor } from '../coverage/qualification.mjs';
 import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
-import { protectionEffects } from '../safety/contentEffects.mjs';
+import { classifyContentEffects, protectionEffects } from '../safety/contentEffects.mjs';
 import {
   ADMIN_ROLE_RECORDS, ELIGIBILITY_JUSTIFICATION, PIM_RULE_KINDS, buildAdminRoleLedger, durationSeconds, ruleWeakening,
 } from '../restore/adminRoleOperations.mjs';
@@ -40,6 +42,8 @@ const APPROVER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 const ROLES = '/roleManagement/directory/roleDefinitions';
 const SCHEDULES = '/roleManagement/directory/roleEligibilitySchedules';
 const REQUESTS = '/roleManagement/directory/roleEligibilityScheduleRequests';
+const ACTIVE_SCHEDULES = '/roleManagement/directory/roleAssignmentSchedules';
+const ACTIVE_REQUESTS = '/roleManagement/directory/roleAssignmentScheduleRequests';
 const POLICY_ID = 'DirectoryRole_fixture-tenant_00000000-aaaa-bbbb-cccc-000000000001';
 
 /** fakeGraph plus the method, path and body of every write, and every read path. */
@@ -142,7 +146,9 @@ const eligibilityCreate = (payload = eligibility, extra = {}) => ({
 // ------------------------------------------------------------------ registry
 
 test('custom role create/update, eligibility create and PIM settings update are fixture-tested; every sibling stays unsupported', () => {
-  const expected = { roleDefinition: ['create', 'update'], roleEligibilitySchedule: ['create'], unifiedRoleManagementPolicy: ['update'] };
+  const expected = {
+    roleDefinition: ['create', 'update'], roleEligibilitySchedule: ['create'], roleAssignmentSchedule: ['create'], unifiedRoleManagementPolicy: ['update'],
+  };
   for (const [type, operations] of Object.entries(expected)) {
     for (const operation of OPERATIONS) {
       const capability = capabilityFor(type, operation);
@@ -158,20 +164,23 @@ test('custom role create/update, eligibility create and PIM settings update are 
   }
   assert.equal(capabilityFor('roleDefinition', 'create').subtype, 'custom', 'only custom roles are covered');
   assert.equal(qualificationFor('unifiedRoleManagementPolicyAssignment').decision, 'manual');
-  assert.equal(qualificationFor('roleAssignmentSchedule').expansion.status, 'research-needed');
+  // Issue #991: an active time-bound assignment is now a qualified subset (create only).
+  assert.equal(qualificationFor('roleAssignmentSchedule').expansion.status, 'qualified-subset');
   assert.equal(remappingFor('roleEligibilitySchedule', 'create').qualified, true);
+  assert.equal(remappingFor('roleAssignmentSchedule', 'create').qualified, true);
   assert.equal(remappingFor('unifiedRoleManagementPolicy', 'update').qualified, false, 'approvers are never remapped to other ids');
 
   const ledger = buildAdminRoleLedger();
-  assert.equal(ledger.operations.length, 4);
+  assert.equal(ledger.operations.length, 5);
   assert.ok(ledger.operations.every((op) => op.claim === 'fixture-tested'));
 });
 
 test('every record writes only fields its type\'s reviewed field projection knows', () => {
-  for (const type of ['roleDefinition', 'roleEligibilitySchedule', 'unifiedRoleManagementPolicy']) {
+  for (const type of ['roleDefinition', 'roleEligibilitySchedule', 'roleAssignmentSchedule', 'unifiedRoleManagementPolicy']) {
     assert.equal(reviewStateFor(type), 'reviewed-empty', type);
   }
-  for (const entry of ADMIN_ROLE_RECORDS.filter((record) => record.resourceType !== 'roleEligibilitySchedule')) {
+  const scheduleTypes = new Set(['roleEligibilitySchedule', 'roleAssignmentSchedule']);
+  for (const entry of ADMIN_ROLE_RECORDS.filter((record) => !scheduleTypes.has(record.resourceType))) {
     const known = knownFieldsFor(entry.resourceType);
     for (const field of entry.writableFields) assert.ok(known.includes(field), `${entry.resourceType} ${field}`);
   }
@@ -179,6 +188,9 @@ test('every record writes only fields its type\'s reviewed field projection know
   const known = knownFieldsFor('roleEligibilitySchedule');
   const request = ADMIN_ROLE_RECORDS.find((record) => record.resourceType === 'roleEligibilitySchedule').writableFields;
   assert.deepEqual(request.filter((field) => !known.includes(field)), ['action', 'justification']);
+  const activeKnown = knownFieldsFor('roleAssignmentSchedule');
+  const activeRequest = ADMIN_ROLE_RECORDS.find((record) => record.resourceType === 'roleAssignmentSchedule').writableFields;
+  assert.deepEqual(activeRequest.filter((field) => !activeKnown.includes(field)), ['action', 'justification']);
 });
 
 // ------------------------------------------------------------------ collection and keys
@@ -525,6 +537,205 @@ test('eligibility update and removal stay unsupported', async () => {
   assert.equal(graph.bodies.length, 0);
 });
 
+// ------------------------------------------------------------------ active time-bound assignments (issue #991)
+
+// The fake Graph refuses a request whose end is already past by the wall clock,
+// so these schedules are dated relative to the run, and the restore runs at RUN_NOW.
+const DAY = 86400000;
+const RUN_NOW = new Date(Math.floor(Date.now() / 1000) * 1000);
+const at = (days) => new Date(RUN_NOW.getTime() + days * DAY).toISOString();
+const runActive = (graph, wave, options = {}) => run(graph, wave, { now: () => RUN_NOW, ...options });
+
+const activeAssignment = Object.freeze({
+  id: 'active-old', principalId: ADA, roleDefinitionId: GLOBAL_ADMIN, directoryScopeId: '/', appScopeId: null,
+  memberType: 'Direct', assignmentType: 'Assigned', status: 'Provisioned', createdUsing: 'request-old',
+  scheduleInfo: { startDateTime: at(-3), expiration: { type: 'afterDateTime', endDateTime: at(2) } },
+});
+
+const activeCreate = (payload = activeAssignment, extra = {}) => ({
+  naturalKey: `roleAssignmentSchedule:${payload.id}`, resourceType: 'roleAssignmentSchedule', verb: 'create', payload,
+  references: [], blastRadius: 'tenant-lockout', ...extra,
+});
+
+/** As a promotion whose dry run's "changes admin access" effects were approved. */
+const approvedFor = (...resources) => ({ approvedContentEffects: classifyContentEffects(resources).effects });
+
+test('active assignment: requested as adminAssign with a justification and the snapshot end date, then read back', async () => {
+  const graph = recordingGraph();
+  const resource = activeCreate();
+  const result = await runActive(graph, [resource], approvedFor(resource));
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(graph.bodies, [{
+    method: 'POST', path: ACTIVE_REQUESTS,
+    body: {
+      action: 'adminAssign', justification: ELIGIBILITY_JUSTIFICATION, principalId: ADA, roleDefinitionId: GLOBAL_ADMIN, directoryScopeId: '/',
+      scheduleInfo: { startDateTime: RUN_NOW.toISOString(), expiration: { type: 'afterDateTime', endDateTime: at(2) } },
+    },
+  }]);
+  assert.ok(graph.reads.every((path) => path.startsWith(`${ACTIVE_SCHEDULES}?$filter=principalId eq '${ADA}' and roleDefinitionId eq '${GLOBAL_ADMIN}'`)));
+  const schedule = graph.objects.get(`${ACTIVE_SCHEDULES}/${result.applied[0].targetId}`);
+  assert.equal(schedule.assignmentType, 'Assigned');
+  assert.equal(schedule.scheduleInfo.expiration.endDateTime, at(2), 'the end date is kept');
+  // An after-duration schedule keeps the same end date.
+  const duration = recordingGraph();
+  const byDuration = activeCreate({ ...activeAssignment, scheduleInfo: { startDateTime: at(-3), expiration: { type: 'afterDuration', duration: 'P7D' } } });
+  await runActive(duration, [byDuration], approvedFor(byDuration));
+  assert.deepEqual(duration.bodies[0].body.scheduleInfo.expiration, { type: 'afterDateTime', endDateTime: at(4) });
+});
+
+test('mutation: an expired active assignment, or one that ends by restore time, is not restored', async () => {
+  const graph = recordingGraph();
+  for (const endDateTime of [at(-1), RUN_NOW.toISOString()]) {
+    const resource = activeCreate({ ...activeAssignment, scheduleInfo: { startDateTime: at(-3), expiration: { type: 'afterDateTime', endDateTime } } });
+    const result = await runActive(graph, [resource], approvedFor(resource));
+    assert.match(result.skipped[0].reason, /expired: the active assignment ended on/, endDateTime);
+  }
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(graph.reads.length, 0);
+});
+
+test('mutation: an activation is never replayed as an active assignment', async () => {
+  const graph = recordingGraph();
+  for (const payload of [
+    { ...activeAssignment, assignmentType: 'Activated' },
+    // An origin that shows activation counts too, whatever assignmentType says.
+    { ...activeAssignment, activatedUsing: { id: 'eligibility-1' } },
+  ]) {
+    const resource = activeCreate(payload);
+    const result = await runActive(graph, [resource], approvedFor(resource));
+    assert.match(result.skipped[0]?.reason ?? '', /activation: this active assignment came from a person activating their eligible role, so it is not replayed/);
+  }
+  // A schedule that does not say who made it is refused, never guessed.
+  const { assignmentType: _type, ...unknown } = activeAssignment;
+  const resource = activeCreate(unknown);
+  const result = await runActive(graph, [resource], approvedFor(resource));
+  assert.match(result.failed[0].error, /does not say an admin assigned it \(assignmentType missing\)/);
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(graph.reads.length, 0);
+});
+
+test('mutation: a group-held or permanent active assignment is not requested', async () => {
+  const graph = recordingGraph();
+  let resource = activeCreate({ ...activeAssignment, memberType: 'Group' });
+  let result = await runActive(graph, [resource], approvedFor(resource));
+  assert.match(result.skipped[0].reason, /active assignment held through a group/);
+  resource = activeCreate({ ...activeAssignment, scheduleInfo: { startDateTime: at(-3), expiration: { type: 'noExpiration' } } });
+  result = await runActive(graph, [resource], approvedFor(resource));
+  assert.match(result.skipped[0].reason, /permanent: .* restored as an admin role assignment \(roleAssignment\)/);
+  assert.equal(graph.bodies.length, 0);
+});
+
+test('mutation: an active assignment the target already has is matched and never requested again', async () => {
+  const graph = recordingGraph();
+  graph.objects.set(`${ACTIVE_SCHEDULES}/active-new`, { ...activeAssignment, id: 'active-new' });
+  const resource = activeCreate();
+  const result = await runActive(graph, [resource], approvedFor(resource));
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(result.applied[0].targetId, 'active-new');
+  assert.equal(result.applied[0].changes.existing, true);
+  // A group-inherited copy, or another scope, is not the same assignment.
+  const other = recordingGraph();
+  other.objects.set(`${ACTIVE_SCHEDULES}/inherited`, { ...activeAssignment, id: 'inherited', memberType: 'Group' });
+  other.objects.set(`${ACTIVE_SCHEDULES}/scoped`, { ...activeAssignment, id: 'scoped', directoryScopeId: '/administrativeUnits/au-1' });
+  await runActive(other, [resource], approvedFor(resource));
+  assert.equal(other.bodies.length, 1);
+  // A live activation of the same role is not this assignment, and nothing is requested over it.
+  const activated = recordingGraph();
+  activated.objects.set(`${ACTIVE_SCHEDULES}/activation`, { ...activeAssignment, id: 'activation', assignmentType: 'Activated' });
+  const conflict = await runActive(activated, [resource], approvedFor(resource));
+  assert.match(conflict.failed[0].error, /conflict: the principal holds this role now through an activation/);
+  assert.equal(activated.bodies.length, 0);
+});
+
+test('a failed active assignment lookup is never read as absent', async () => {
+  const graph = recordingGraph();
+  const read = graph.read;
+  graph.read = async (version, path) => (path.startsWith(ACTIVE_SCHEDULES) ? { ok: false, status: 403, body: null } : read(version, path));
+  const resource = activeCreate();
+  const result = await runActive(graph, [resource], approvedFor(resource));
+  assert.match(result.failed[0].error, /lookup-failed: the target's active assignments/);
+  assert.equal(graph.bodies.length, 0);
+});
+
+test('mutation: an active assignment is held until its "changes admin access" effects are approved', async () => {
+  const resource = activeCreate(activeAssignment, {
+    references: [{ field: 'principalId', symbol: 'user:ada@contoso.example', required: true }],
+  });
+  const { effects } = classifyContentEffects([resource]);
+  assert.deepEqual(effects.map((effect) => [effect.field, effect.effect]), [
+    ['directoryScopeId', 'access-changing'], ['principalId', 'access-changing'], ['roleDefinitionId', 'access-changing'],
+  ]);
+  assert.equal(effects.find((effect) => effect.field === 'principalId').after, 'user:ada@contoso.example', 'the reviewer sees the name');
+  // A schedule the writer skips (an activation, a group-held or permanent one) asks for no approval.
+  for (const payload of [
+    { ...activeAssignment, assignmentType: 'Activated' }, { ...activeAssignment, memberType: 'Group' },
+    { ...activeAssignment, scheduleInfo: { startDateTime: at(-3), expiration: { type: 'noExpiration' } } },
+  ]) assert.deepEqual(classifyContentEffects([activeCreate(payload)]).effects, []);
+  // No approval: held, nothing read or written, and a manual step says what to do.
+  let graph = recordingGraph();
+  let result = await runActive(graph, [resource]);
+  assert.match(result.skipped[0].reason, /changes admin access \(.*principalId.*\)/);
+  assert.equal(result.skipped[0].completion[0].requirement, 'accessApproval');
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(graph.reads.length, 0);
+  // Approving all but one effect still holds it.
+  graph = recordingGraph();
+  result = await runActive(graph, [resource], { approvedContentEffects: effects.slice(1) });
+  assert.deepEqual(result.skipped[0].completion[0].fields, [effects[0].field]);
+  assert.equal(graph.bodies.length, 0);
+  // An approval for another principal does not cover this one.
+  graph = recordingGraph();
+  result = await runActive(graph, [resource], { approvedContentEffects: effects.map((effect) => ({ ...effect, after: effect.field === 'principalId' ? 'user:eve@contoso.example' : effect.after })) });
+  assert.equal(result.skipped.length, 1);
+  assert.equal(graph.bodies.length, 0);
+  // The dry run plans it without writing or reading; the approved run writes it.
+  const existingTargetIds = new Map([['user:ada@contoso.example', ADA]]);
+  graph = recordingGraph();
+  result = await runActive(graph, [resource], { mode: 'dry-run', existingTargetIds });
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied.length, 1);
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(graph.reads.length, 0);
+  graph = recordingGraph();
+  result = await runActive(graph, [resource], { approvedContentEffects: effects, existingTargetIds });
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+  assert.equal(graph.bodies[0].body.principalId, ADA);
+});
+
+test('admin-unit scope: an active assignment is requested in the target\'s unit of the same name', async () => {
+  const scoped = { ...activeAssignment, directoryScopeId: `/administrativeUnits/${SOURCE_UNIT}` };
+  const resources = canonicalizeAll([['administrativeUnit', [unit]], ['roleAssignmentSchedule', [scoped]]]);
+  const canonical = resources.find((resource) => resource.resourceType === 'roleAssignmentSchedule');
+  const references = canonical.references.filter((ref) => ref.field === 'directoryScopeId');
+  assert.equal(references[0].symbol, 'administrativeUnit:EU Region');
+  const resource = activeCreate(scoped, { references });
+  const graph = recordingGraph();
+  const result = await runActive(graph, [resource], {
+    ...approvedFor(resource), existingTargetIds: new Map([['administrativeUnit:EU Region', TARGET_UNIT]]),
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies[0].body.directoryScopeId, `/administrativeUnits/${TARGET_UNIT}`);
+  // A unit the snapshot cannot name is refused.
+  const unnamed = activeCreate(scoped);
+  const refused = await runActive(recordingGraph(), [unnamed], approvedFor(unnamed));
+  assert.match(refused.failed[0].error, /unresolvable scope: the active assignment is scoped to/);
+});
+
+test('active assignment update and removal stay unsupported', async () => {
+  const graph = recordingGraph();
+  for (const verb of ['update', 'delete']) {
+    const result = await runActive(graph, [{
+      ...activeCreate(), verb, payload: verb === 'delete' ? null : activeAssignment, targetId: 'active-old',
+      live: { state: 'present', targetId: 'active-old', payload: activeAssignment },
+    }], { approvedContentEffects: [] });
+    assert.match(result.failed[0].error, new RegExp(`unsupported operation: roleAssignmentSchedule ${verb}`));
+  }
+  assert.equal(graph.bodies.length, 0);
+});
+
 // ------------------------------------------------------------------ PIM role settings
 
 test('PIM settings: only the changed reviewed rules are PATCHed, each with its type, id and target', async () => {
@@ -730,7 +941,7 @@ test('the dry run sends nothing and reads nothing', async () => {
 });
 
 test('the fixture harness passes every task-151 operation', async () => {
-  const results = await runFixtureHarness({ types: ['roleDefinition', 'roleEligibilitySchedule', 'unifiedRoleManagementPolicy'] });
-  assert.equal(results.length, 4);
+  const results = await runFixtureHarness({ types: ['roleDefinition', 'roleEligibilitySchedule', 'roleAssignmentSchedule', 'unifiedRoleManagementPolicy'] });
+  assert.equal(results.length, 5);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
 });

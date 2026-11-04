@@ -182,6 +182,15 @@ registerFieldProjection('roleEligibilitySchedule', {
   ],
 });
 
+// Issue #991: an active time-bound assignment. assignmentType says whether an
+// admin assigned it or a person activated an eligibility (never replayed).
+registerFieldProjection('roleAssignmentSchedule', {
+  knownFields: [
+    'id', 'principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId', 'createdUsing', 'createdDateTime',
+    'modifiedDateTime', 'status', 'scheduleInfo', 'memberType', 'assignmentType',
+  ],
+});
+
 registerFieldProjection('unifiedRoleManagementPolicy', {
   knownFields: [
     'id', 'displayName', 'description', 'isOrganizationDefault', 'scopeId', 'scopeType', 'lastModifiedDateTime',

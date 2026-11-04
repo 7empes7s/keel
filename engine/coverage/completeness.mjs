@@ -141,7 +141,10 @@ export const COMPLETENESS = Object.freeze({
   roleAssignment: {},
   roleEligibilitySchedule: { missing: [part('Changing or removing an eligibility, and ones inherited through a group', 'not-written')] },
   unifiedRoleManagementPolicyAssignment: { managed: true },
-  roleAssignmentSchedule: { whole: 'not-written', missing: [part('Activations people made themselves', 'read-only')] },
+  roleAssignmentSchedule: { missing: [
+    part('Activations people made themselves', 'read-only'),
+    part('Changing or removing an active assignment, and ones inherited through a group', 'not-written'),
+  ] },
   accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
   accessPackage: { missing: [part('Its assignment policies and who holds it, which are restored separately', 'not-written')] },
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },

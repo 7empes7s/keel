@@ -125,6 +125,13 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the eligibility id KEEL shows for carla and the fixture role',
     breakGlass: 'Never a built-in privileged role and never a break-glass principal: only the fixture role and the fixture user. The capture checks both names in the snapshot.',
   },
+  // Issue #991: an active time-bound assignment an admin made (never an activation).
+  roleAssignmentSchedule: {
+    kind: 'by-reference', fixture: `a time-bound active PIM assignment (assigned by an admin, not activated) for keel-rt-20260908-carla to ${FIXTURE_PREFIX}-role, scoped to ${FIXTURE_PREFIX}-unit, ending in 2 days`,
+    select: 'the active assignment id KEEL shows for carla and the fixture role',
+    breakGlass: 'Never a built-in privileged role and never a break-glass principal: only the fixture role and the fixture user. The capture checks both names in the snapshot.',
+    note: 'Remove the active assignment after the snapshot, then restore: the dry run must list "Changes admin access" and a second person approves it before the write. Use a short end date so a leftover expires on its own.',
+  },
   oauth2PermissionGrant: {
     kind: 'by-reference',
     fixture: `a delegated consent (consentType Principal) for a KEEL-RT- app with no other permissions, for one keel-rt- fixture user, to Microsoft Graph with scope openid only`,

@@ -166,11 +166,27 @@ export function notifyNobodyRow(notify: DashboardData["notify"], openAlerts: num
 }
 
 /**
+ * Flagged changes of the last 7 days that no open alert shows yet, as one row that opens
+ * Insights. Null when there are none, or for a reader who cannot see the change feed.
+ */
+export function flaggedChangesRow(flagged: DashboardData["flaggedThisWeek"]): AttentionRow | null {
+  const count = flagged ? Math.max(flagged.flagged - flagged.alerted, 0) : 0;
+  if (!count) return null;
+  return {
+    key: "flagged-changes", tone: "soon", icon: "alert",
+    title: `${plural(count, "flagged change", "flagged changes")} this week`,
+    detail: "A rule knows what these do, such as a rule turned off or a new admin. Start with them.",
+    href: "/insights",
+  };
+}
+
+/**
  * "Needs attention": the computed problems that the verdict does not already state, the
- * changes that could lock out admins, and the work that waits on a person. Urgent first.
+ * changes that could lock out admins, flagged changes no alert shows yet, and the work
+ * that waits on a person. Urgent first.
  * Each row opens the list behind it. pendingApprovals is null for viewers who cannot approve.
  */
-export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | "openDriftByBlastRadius" | "waiting"> & Partial<Pick<DashboardData, "notify">>, pendingApprovals: number | null): AttentionRow[] {
+export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | "openDriftByBlastRadius" | "waiting"> & Partial<Pick<DashboardData, "notify" | "flaggedThisWeek">>, pendingApprovals: number | null): AttentionRow[] {
   const rows: AttentionRow[] = [];
   const unrouted = notifyNobodyRow(data.notify, data.waiting?.openAlerts ?? 0);
   if (unrouted) rows.push(unrouted);
@@ -194,6 +210,8 @@ export function attentionRows(data: Pick<DashboardData, "alerts" | "headline" | 
       href: "/changes?risk=tenant-lockout",
     });
   }
+  const flagged = flaggedChangesRow(data.flaggedThisWeek);
+  if (flagged) rows.push(flagged);
   if (pendingApprovals) {
     rows.push({
       key: "approvals", tone: "soon", icon: "inbox",

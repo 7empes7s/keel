@@ -114,9 +114,9 @@ Four open (2026-10-27). The other operator reports were triaged and closed that 
 
 - **Backlog (after the redesign):** guided-setup browser extension, training center and page Companion;
   permissions exposure (oversharing report, sharing-link drift, owner access review).
-- **Redesign Track A (Insights):** A1 taxonomy (#354) shipped and object names exist. Not started: A3
-  anonymity setting (next, no dependencies), A4 change feed, A5 grouped changes, A6 risk flags, A7 "where to
-  start" panel, A8 Insights page, A9 names-not-ids everywhere, A10 alerts from flags.
+- **Redesign Track A (Insights):** A1 taxonomy (#354), A3 anonymity, A4 change feed, A6 risk flags (#962)
+  and A7 and A8, the Insights page with "where to start" (#967), shipped. Not started: A9 names-not-ids
+  everywhere, A10 alerts from flags (key alerts by the feed row's object key so the Overview row skips them).
 - **Track E:** automation center. **Track F:** notifications. Both wait on the shell redesign and saved reports.
 - **Host:** the prune schedule is not enabled (needs review first); the nightly database dump outside Keel
   overwrites its file in place.

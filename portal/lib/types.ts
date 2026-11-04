@@ -742,6 +742,16 @@ export interface DashboardData {
   // alerts to them. With no rule on an enabled channel, every alert reaches nobody.
   // Absent in fixtures that predate it.
   notify?: NotifyRoutes;
+  // Changes a risk rule flagged in the last 7 days (lib/insights.ts), for one "Needs
+  // attention" row. Read for tenant-wide readers only: null or absent for everyone else,
+  // and when it could not be read.
+  flaggedThisWeek?: FlaggedThisWeek | null;
+}
+
+export interface FlaggedThisWeek {
+  flagged: number;
+  // How many of them an open alert on the same setting already shows.
+  alerted: number;
 }
 
 // What the menu's badges and bell read (GET /api/menu-status): the Overview's own

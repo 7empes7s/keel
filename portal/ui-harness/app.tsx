@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApprovalModeProvider } from "@/components/approval-mode-context";
@@ -9,9 +9,11 @@ import { EMPTY_PREFS } from "@/lib/menu-prefs";
 import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
 import { ChangeFeed } from "@/components/baselines/change-feed";
+import { InsightsBody } from "@/components/insights/insights-body";
 import { ChangesViews } from "@/components/baselines/changes-views";
 import { openChangeCount } from "@/lib/changes-view";
-import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
+import type { ChangeFeedData, FeedPeriod, FeedRow } from "@/lib/change-feed-view";
+import { TENANT_WIDE_ONLY } from "@/lib/insights-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
@@ -1615,6 +1617,15 @@ const CHANGE_FEED_HIDDEN: ChangeFeedData = {
   ],
 };
 
+// Insights (A7 and A8): the change feed's rows for the last week, with flags, without
+// them, with names hidden, capped by the feed's limit, and an empty tenant.
+const INSIGHTS_DESCRIPTION = "What changed in the tenant in a period, which changes to look at first, and where the changes came from.";
+const INSIGHTS_NONE: ChangeFeedData = { ...CHANGE_FEED, rows: CHANGE_FEED.rows.map((row) => ({ ...row, flags: [] })) };
+const INSIGHTS_CAPPED: ChangeFeedData = { ...CHANGE_FEED, since: "2026-07-04T09:40:00Z", truncated: true };
+const insightsPage = (feed: ChangeFeedData, period: FeedPeriod = "7", notice: ReactNode = null) => <>{header("Dashboards", "Insights", INSIGHTS_DESCRIPTION)}
+  {notice}
+  <InsightsBody feed={feed} period={period} /></>;
+
 const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
   <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
 
@@ -2964,7 +2975,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 }, flaggedThisWeek: posture === 0 ? { flagged: 3, alerted: 0 } : null }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity/anonymous": {
       const all = activityJobs(jobs).map(hidePeople);
       return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}
@@ -3033,6 +3044,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/emergency-access/ready": return readinessPage(READINESS_READY);
     case "/emergency-access/empty": return readinessPage(READINESS_EMPTY);
     case "/emergency-access/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
+    case "/insights": return insightsPage(CHANGE_FEED);
+    case "/insights/none": return insightsPage(INSIGHTS_NONE);
+    case "/insights/anonymous": return insightsPage(CHANGE_FEED_HIDDEN, "7", ANONYMOUS_NOTE);
+    case "/insights/capped": return insightsPage(INSIGHTS_CAPPED, "90");
+    case "/insights/empty": return insightsPage({ ...CHANGE_FEED, rows: [] });
+    case "/insights/scoped": return <>{header("Dashboards", "Insights", INSIGHTS_DESCRIPTION)}<Verdict text={TENANT_WIDE_ONLY} tone="neutral" /></>;
     case "/changes/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;

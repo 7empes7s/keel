@@ -55,7 +55,10 @@ interface SectionRoute {
 }
 
 export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
-  Dashboards: [{ href: "/", label: "Overview", gate: null, aliases: "overview dashboard home" }],
+  Dashboards: [
+    { href: "/", label: "Overview", gate: null, aliases: "overview dashboard home" },
+    { href: "/insights", label: "Insights", gate: "canRead", aliases: "what changed this week risk flags where to start flagged changes busiest" },
+  ],
   Backup: [
     { href: "/protect", label: "What's protected", gate: null, aliases: "protect backups coverage setting types" },
     { href: "/schedules", label: "Schedules", gate: "canRead" },

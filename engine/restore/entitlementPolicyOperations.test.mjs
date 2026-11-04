@@ -260,6 +260,40 @@ test('a connected organization update sends only the changed fields and adds a m
   assert.deepEqual(writes(graph)[0].body, { description: 'Partner' }, 'identity sources in another order are no change');
 });
 
+test('an update whose live organization holds a federated domain lists the other sources as a manual step, never a silent no-op', async () => {
+  const live = { id: TARGET_ORG, displayName: 'KEEL-RT-Fabrikam', description: 'Partner', state: 'configured', identitySources: [domainSource, federationSource] };
+  const graph = entitlementGraph({ orgs: [live] });
+  const base = orgResource();
+  const resource = orgResource({
+    payload: { ...base.payload, identitySources: [tenantSource, federationSource], internalSponsors: [] },
+    references: [], live: { state: 'present', targetId: TARGET_ORG, payload: live },
+  });
+  const ctx = withRefs(context());
+  const planned = await applyIdentityObjectWrite(graph, resource, 'update', { ...ctx, mode: 'dry-run' });
+  assert.equal(planned.applied.changes.identitySources, undefined, 'not listed as a change the restore makes');
+  assert.match(planned.applied.completion.find((step) => step.requirement === 'trustFields').description, /add the Microsoft Entra organization "Fabrikam"/);
+
+  const written = await applyIdentityObjectWrite(graph, resource, 'update', { ...ctx, approvedContentEffects: approved(resource, 'update') });
+  assert.equal(written.failed, undefined, written.failed?.error);
+  for (const { body } of writes(graph)) assert.equal('identitySources' in (body ?? {}), false, 'identity sources are never sent here');
+  const step = (written.applied ?? written.skipped)?.completion?.find((entry) => entry.requirement === 'trustFields');
+  assert.ok(step, JSON.stringify(written));
+  assert.deepEqual(step.fields, ['identitySources']);
+  assert.match(step.description, /add the Microsoft Entra organization "Fabrikam" \(tenant ID .*\).*and remove the domain fabrikam.example/);
+  assert.deepEqual(graph.state.orgs.get(TARGET_ORG).identitySources, [domainSource, federationSource], 'the live sources are left as they are');
+});
+
+test('a policy re-run does not take a policy with the same name on another access package for its own', async () => {
+  const other = { ...policyPayload(), id: 'other-policy', accessPackage: { id: 'another-package' } };
+  const graph = entitlementGraph({ policies: [other] });
+  const resource = policyResource();
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', withRefs(context(POLICY_TARGETS), { approvedContentEffects: approved(resource) }));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.skipped, undefined, result.skipped?.reason);
+  assert.equal(graph.calls.filter((call) => call.method === 'POST').length, 1);
+  assert.equal(graph.state.policies.size, 2);
+});
+
 test('a second restore of the same organization finds the first one and does not create it twice', async () => {
   const graph = entitlementGraph();
   const resource = orgResource();

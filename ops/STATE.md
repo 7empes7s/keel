@@ -3,7 +3,7 @@
 Read this first if you are a new session. It says where the live system, the queues and the open work stand.
 Keep it current: update it in the same PR as any change to the facts below, and refresh the date.
 
-- **Last updated:** 2026-10-27
+- **Last updated:** 2026-11-04
 - **Older history:** an earlier version of this file (to 2026-10-09) lives on branch `claude/operator-queue`.
   It is out of date; use it only for history.
 
@@ -91,24 +91,31 @@ so queue edits never deploy.
 
 ## Open live gates
 
-| Gate | Queue items | State | Needs |
-|---|---|---|---|
-| Exchange undo and Defender "Make it pass" (#548, closes #542) | K14 then K15 (moved from root Q159 step 4 and Q161) | `todo` on the keelops queue | Marouane's K14 and K15 lines under Operator decisions |
-| App with API permissions restores; replaced follow-up steps drop off (#563, #565) | K6 via K13 | In progress; decision filled in | keelops result |
-| Teams channel message restore through the import API (#596) | Q188 (root queue) | Waits on the grant | `Teamwork.Migrate.All` on the Restorer (Marouane); backing up messages still waits on Microsoft's export API approval |
-| Portal visuals for #572–#575, #577–#579 | none | Not seen live (keelops can't open pages) | Playwright screenshots at 390 and 1440, light and dark |
+The release sign-off (task-124, #985) is generated: `node tools/release/readiness.mjs signoff --build <candidate>`.
+On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
 
-Done on keelops: K1 (2026-10-25), K2–K4 and K7–K12 (2026-10-27) (K7, own compliance checks for #567, green at 20:11 UTC). K5 (Ask month questions) failed on the 5 s
-budget and passed on re-check K10 after #577.
+- 48 gates hold readiness: 24 have a record from another build, 2 are stale (deployed acceptance, 27 days
+  against its 7-day limit; ScubaGear, 38 days) and 22 have no record (19 Wave 2 read workloads, the
+  onedrive-site-settings writer, the Exchange role and Purview unpublish writers). Sentinel (117) is an
+  accepted gap.
+- Entra (#148): 197 registered writes; 123 have a record from another build, 72 have none, and 2 are demoted
+  (`defenderRoleAssignment.update`, `tenantAppManagementPolicy.update`): fix, then recapture.
+- Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in
+  `docs/roadmap/release-signoff.md`.
+- What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
+  verify command (the operator runs it; builders never do). Whether the existing records verify, and which
+  build is live, **needs the operator** (the key and the live tree are on the server).
+
+Queue items open on 2026-10-27 (K6/K13, K14/K15, Q188, portal visuals for #572-#579): their fixes (#548, #563,
+#565, #596) are merged and #542 is closed; whether each queue item is done **needs the operator** (the queues
+live on their own branches).
 
 ## Open issues
 
-Four open (2026-10-27). The other operator reports were triaged and closed that day.
-
-- #542 Exchange/Purview undo uses the wrong PowerShell config (fix #548 is live; closes on the K14/K15 gate above).
-- #411 Run now routes accept arbitrary config and scope file paths (security).
-- #294 Consent policy create fails live: the include condition set is posted before the new policy replicates.
-- #148 Prove Entra restore on the test tenant (task).
+Six open (2026-11-04), all feature or landing work: #985 (this sign-off), #983 and #982 (land open PRs), #981
+(Insights scoped to the admin's entities), #980 (weekly summary), #979 (act on a flagged change). #411, #294,
+#542 and #148 are closed (#411 and #294 fixed on 2026-10-27; #148's live proof continues under "Open live
+gates").
 
 ## Parked work
 

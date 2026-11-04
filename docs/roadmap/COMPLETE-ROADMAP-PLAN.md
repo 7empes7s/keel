@@ -264,12 +264,12 @@ The remaining full-suite failures need the VPS: `/opt/keel`, `/opt/mimoun` and
 | task-116 | WS10 | Bounded same-tenant drill and Keel recovery acceptance | task-72, task-76 | External evidence hold |
 | task-117 | WS12 | Sentinel workspace ingestion qualification | task-80 | External evidence hold |
 | task-118 | WS8 | ServiceNow non-default workflow qualification | task-97 | External evidence hold |
-| task-119 | WS5 | CIS distribution rights and licensed pack qualification | task-86 | External evidence hold |
+| task-119 | WS5 | NIST SP 800-53 benchmark pack qualification (replaced CIS, 2026-09-24) | task-86 | External evidence hold |
 | task-120 | WS2 | SharePoint configuration workload qualification | task-103 | External evidence hold |
 | task-121 | WS2 | Teams configuration workload qualification | task-104, task-120 | External evidence hold |
 | task-122 | WS2 | Exchange configuration workload qualification | task-105, task-121 | External evidence hold |
 | task-123 | WS2 | OneDrive and Purview configuration qualification | task-106, task-122 | External evidence hold |
-| task-124 | Release | Verify complete roadmap release without overclaiming readiness | task-112, task-113, task-114, task-115, task-116, task-117, task-118, task-119, task-120, task-121, task-122, task-123 | Dependency-gated |
+| task-124 | Release | Verify complete roadmap release without overclaiming readiness | task-112, task-113, task-114 (local-copy recovery read only, no lock canary), task-115, task-116, task-118, task-119, task-120, task-121, task-122, task-123 | Dependency-gated |
 | task-129 | Portal | Portal experience contract: shell, navigation, overview sentence, mechanical checks | task-46 | Dependency-gated |
 | task-130 | Portal | Named objects and labelled technical records for policies, principals, approvals, jobs, evidence, baselines | task-129 | Dependency-gated |
 | task-131 | Portal | Protect page with per-type drawer; Changes and Restore in plain words | task-129, task-54 | Dependency-gated |
@@ -2464,7 +2464,7 @@ set -a && . /etc/keel/db.env && set +a && node --test engine/roadmap/onedrive-pu
 
 ### Task 124: Verify complete roadmap release without overclaiming readiness
 
-**Workstream:** Release. **Depends on:** task-112, task-113, task-114, task-115, task-116, task-117, task-118, task-119, task-120, task-121, task-122, task-123.
+**Workstream:** Release. **Depends on:** task-112, task-113, task-114 (its local-copy recovery read only; the lock canary is not required, retention lock and immutability stay unqualified, operator decision 2026-09-30), task-115, task-116, task-118, task-119, task-120, task-121, task-122, task-123. task-117 (Sentinel) is not a dependency: it is an accepted gap (operator decisions 2026-09-30 and 2026-10-04).
 
 **Files:** `tools/release/readiness.mjs`, `docs/release/final-acceptance.json`; new boundary tests in `engine/roadmap/release-signoff.test.mjs`.
 

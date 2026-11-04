@@ -8,6 +8,7 @@ import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import type { ApprovalModeName } from "@/lib/approval-words";
 import type { RiskTone } from "@/lib/menu-status";
 import { formatTimestamp } from "@/lib/presentation";
+import { APPROVAL_SOON_HOURS, approvalSeverity } from "@/lib/severity";
 import { approvalSentence, personLabel } from "@/lib/sentences";
 
 export type ApprovalKind = "restore" | "undo" | "rollback" | "decision" | "setup" | "other";
@@ -79,7 +80,7 @@ export function approvalUnnamedRefs(request: Pick<ApprovalRequestRecord, "refere
 }
 
 const HOUR = 3_600_000;
-export const EXPIRING_SOON_HOURS = 4;
+export const EXPIRING_SOON_HOURS = APPROVAL_SOON_HOURS;
 
 export function hoursLeft(request: Pick<ApprovalRequestRecord, "expiresAt">, now: string): number | null {
   if (!request.expiresAt) return null;
@@ -90,6 +91,16 @@ export function hoursLeft(request: Pick<ApprovalRequestRecord, "expiresAt">, now
 export function expiringSoon(request: Pick<ApprovalRequestRecord, "expiresAt">, now: string): boolean {
   const left = hoursLeft(request, now);
   return left !== null && left > 0 && left <= EXPIRING_SOON_HOURS;
+}
+
+/** Lapses within the hour: the only waiting request that is red (lib/severity.ts). */
+export function expiringNow(request: Pick<ApprovalRequestRecord, "expiresAt">, now: string): boolean {
+  return approvalSeverity(hoursLeft(request, now)) === "urgent";
+}
+
+/** The expiry badge's colour: red within the hour, amber within 4 hours, plain otherwise. */
+export function expiryTone(request: Pick<ApprovalRequestRecord, "expiresAt">, now: string): "urgent" | "soon" | "neutral" {
+  return expiringNow(request, now) ? "urgent" : expiringSoon(request, now) ? "soon" : "neutral";
 }
 
 /** "3 h left", "22 h left", "2 days left", "Expired". */
@@ -104,8 +115,10 @@ export function timeLeft(request: Pick<ApprovalRequestRecord, "expiresAt">, now:
   return `${Math.round(hours / 24)} days left`;
 }
 
+// What approving would change. A request changes nothing while it waits, so even the
+// worst impact is amber here, never red (lib/severity.ts).
 const IMPACT: Record<string, { tone: BadgeTone; label: string; icon: IconName }> = {
-  "tenant-lockout": { tone: "urgent", label: "Could lock out admins", icon: "alert" },
+  "tenant-lockout": { tone: "soon", label: "Could lock out admins", icon: "alert" },
   "access-affecting": { tone: "soon", label: "Changes who can sign in", icon: "alert" },
   cosmetic: { tone: "low", label: "Cosmetic only", icon: "info" },
 };
@@ -118,14 +131,14 @@ export function impactBadge(request: Pick<ApprovalRequestRecord, "references">):
   return worst ? IMPACT[worst] : null;
 }
 
-/** The row's risk stripe: urgent when it expires within 4 hours or could lock admins
- * out, soon when it changes access or is a restore, low otherwise. */
+/** The row's risk stripe (lib/severity.ts): urgent only when it lapses within the hour;
+ * soon when it lapses within 4 hours, would change sign-in or admin access, or is a
+ * restore; low otherwise. */
 export function requestTone(request: Pick<ApprovalRequestRecord, "expiresAt" | "references" | "status" | "action">, now: string): RiskTone {
   if (request.status !== "pending") return "fine";
-  if (expiringSoon(request, now)) return "urgent";
-  const impact = impactBadge(request);
-  if (impact?.tone === "urgent") return "urgent";
-  if (impact?.tone === "soon") return "soon";
+  if (expiringNow(request, now)) return "urgent";
+  if (expiringSoon(request, now)) return "soon";
+  if (impactBadge(request)?.tone === "soon") return "soon";
   return approvalKind(request) === "setup" ? "low" : "soon";
 }
 
@@ -145,6 +158,8 @@ export interface ApprovalCounts {
   // them while approvals need two people.
   waitingOnOthers: number;
   expiringSoon: number;
+  // Of those, the ones that lapse within the hour: the only red count.
+  expiringNow: number;
   contentEffects: number;
   decidedThisWeek: { approved: number; rejected: number; expired: number };
 }
@@ -188,6 +203,7 @@ export function approvalCounts(data: { pending: ApprovalRequestRecord[]; awaitin
     waiting: pending.forYou.length + effects.forYou.length,
     waitingOnOthers: pending.onOthers.length + effects.onOthers.length,
     expiringSoon: pending.forYou.filter((request) => expiringSoon(request, now)).length,
+    expiringNow: pending.forYou.filter((request) => expiringNow(request, now)).length,
     contentEffects: effects.forYou.length,
     decidedThisWeek: {
       approved: week.filter((request) => request.status === "approved").length,
@@ -222,7 +238,7 @@ export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequest
   const soon = counts.expiringSoon === 0 ? "" : counts.expiringSoon === 1 ? ` One expires ${inWords}.` : ` ${counts.expiringSoon} expire within ${EXPIRING_SOON_HOURS} hours.`;
   return {
     text: `${count} waiting for you.${soon}`,
-    tone: counts.expiringSoon ? "urgent" : "soon",
+    tone: counts.expiringNow ? "urgent" : "soon",
     detail: approvalMode === "solo"
       ? "Nothing changes until it is approved. Approval mode is Solo, so you can approve your own requests; each is marked self-approved."
       : "Nothing changes until someone other than the person who asked approves.",
@@ -231,7 +247,7 @@ export function approvalsVerdict(counts: ApprovalCounts, oldest: ApprovalRequest
 
 export function approvalsStatus(counts: ApprovalCounts): { tone: RiskTone; label: string } {
   if (counts.waiting === 0) return { tone: "fine", label: "Nothing waiting" };
-  return { tone: counts.expiringSoon ? "urgent" : "soon", label: `${counts.waiting} waiting` };
+  return { tone: counts.expiringNow ? "urgent" : "soon", label: `${counts.waiting} waiting` };
 }
 
 /** Why a decision was refused, in words next to the button. */

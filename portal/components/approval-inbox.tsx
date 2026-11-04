@@ -31,6 +31,7 @@ import {
   approveOutcome,
   decisionError,
   expiringSoon,
+  expiryTone,
   hoursLeft,
   impactBadge,
   outcomeBadge,
@@ -428,7 +429,7 @@ export function ApprovalInbox({
   const clear = { show: null, soon: null, effects: null, week: null, outcome: null, open: null };
   const tiles: { key: string; label: string; icon: "inbox" | "clock" | "page" | "check-circle"; value: string; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
     { key: "waiting", label: "Waiting for you", icon: "inbox", value: String(counts.waiting), small: "Restores, undo changes and switches", changes: clear, active: show === "waiting" && !soonOnly && !effectsOnly },
-    { key: "soon", label: "Expiring within 4 hours", icon: "clock", value: String(counts.expiringSoon), small: counts.expiringSoon ? "Decide, or they must be asked again" : "Nothing expires soon", changes: { show: null, week: null, outcome: null, open: null, soon: soonOnly ? null : "1" }, tone: counts.expiringSoon ? "urgent" : undefined, active: show === "waiting" && soonOnly },
+    { key: "soon", label: "Expiring within 4 hours", icon: "clock", value: String(counts.expiringSoon), small: counts.expiringSoon ? "Decide, or they must be asked again" : "Nothing expires soon", changes: { show: null, week: null, outcome: null, open: null, soon: soonOnly ? null : "1" }, tone: counts.expiringNow ? "urgent" : counts.expiringSoon ? "soon" : undefined, active: show === "waiting" && soonOnly },
     { key: "effects", label: "Waiting on content changes", icon: "page", value: String(counts.contentEffects), small: counts.contentEffects ? "Approved, but kept content changes too" : "No restore waits on content changes", changes: { show: null, week: null, outcome: null, open: null, effects: effectsOnly ? null : "1" }, tone: counts.contentEffects ? "soon" : undefined, active: show === "waiting" && effectsOnly },
     { key: "decided", label: "Decided this week", icon: "check-circle", value: String(counts.decidedThisWeek.approved + counts.decidedThisWeek.rejected + counts.decidedThisWeek.expired), small: `${counts.decidedThisWeek.approved} approved · ${counts.decidedThisWeek.rejected} rejected · ${counts.decidedThisWeek.expired} expired`, changes: { ...clear, show: "decided", week: weekOnly && show === "decided" ? null : "1" }, active: show === "decided" && weekOnly },
   ];
@@ -450,8 +451,7 @@ export function ApprovalInbox({
     // Starts from the reason given when it was asked for; the server checks it either way.
     const selfReason = selfReasons[request.id] ?? request.justification ?? "";
     const title = titleOf(request);
-    const left = hoursLeft(request, now);
-    const expiryTone = left !== null && left <= 4 ? "urgent" : "neutral";
+    const expiry = expiryTone(request, now);
     const required = request.requiredApprovals ?? 1;
     const signed = request.signoffs?.length ?? 0;
     const line = awaitingEffects
@@ -473,7 +473,7 @@ export function ApprovalInbox({
             <span className="ap-row-line">{line}</span>
           </span>
           <span className="ap-row-acts">
-            {!awaitingEffects ? <span className="ap-left" data-tone={expiryTone}>{timeLeft(request, now)}</span> : null}
+            {!awaitingEffects ? <span className="ap-left" data-tone={expiry === "neutral" ? undefined : expiry}>{timeLeft(request, now)}</span> : null}
             <Link aria-expanded={false} className="btn btn-sm" href={href({ open: request.id })} onClick={(event) => openRequest(event, request.id)}>Open</Link>
           </span>
         </div>
@@ -507,7 +507,7 @@ export function ApprovalInbox({
           <div className="ap-card-badges">
             {impact ? <Badge icon={impact.icon} tone={impact.tone}>{impact.label}</Badge> : null}
             {selfApproval && !awaitingEffects ? <Badge icon="person" tone="soon">You can self-approve</Badge> : null}
-            {awaitingEffects ? <Badge tone="soon" icon="page">Waiting on content changes</Badge> : <Badge icon="clock" tone={expiryTone === "urgent" ? "urgent" : "neutral"} title={`Expires ${formatTimestamp(request.expiresAt)}`}>Expires {timeLeft(request, now).replace(" left", "").replace(/^(\d+ (?:min|h|days?))$/, "in $1")}</Badge>}
+            {awaitingEffects ? <Badge tone="soon" icon="page">Waiting on content changes</Badge> : <Badge icon="clock" tone={expiry} title={`Expires ${formatTimestamp(request.expiresAt)}`}>Expires {timeLeft(request, now).replace(" left", "").replace(/^(\d+ (?:min|h|days?))$/, "in $1")}</Badge>}
           </div>
           <button aria-expanded className="icon-button ap-collapse" onClick={closeRequest} title="Collapse" type="button"><Icon name="up" /><span className="visually-hidden">Collapse</span></button>
         </header>

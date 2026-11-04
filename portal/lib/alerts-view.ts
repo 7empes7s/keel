@@ -5,6 +5,7 @@ import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { itemService, typeService } from "@/lib/baselines-view";
 import { workloadLabel, WORKLOAD_LABELS } from "@/lib/compare-view";
+import { ACK_TARGET_HOURS } from "@/lib/severity";
 import { holdsObjectId, namedResource } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import type { ObjectFacts } from "@/lib/object-label";
@@ -405,7 +406,8 @@ export function shortSpan(ms: number): string {
 export function deadlineWords(alert: AlertItem, now: string): { text: string; tone: RiskTone | null } {
   const at = (value: string) => new Date(value).valueOf() - new Date(now).valueOf();
   if (isWaiting(alert)) {
-    if (!alert.ackDeadlineAt) return { text: "No deadline", tone: null };
+    // A Critical alert nobody is chasing is a gap in the setup (lib/severity.ts).
+    if (!alert.ackDeadlineAt) return alert.severity === "critical" ? { text: "No deadline set", tone: "soon" } : { text: "No deadline", tone: null };
     const left = at(alert.ackDeadlineAt);
     return left <= 0 ? { text: `Overdue ${shortSpan(left)}`, tone: "urgent" } : { text: `Due in ${shortSpan(left)}`, tone: left < 60 * 60 * 1000 ? "soon" : null };
   }
@@ -420,7 +422,11 @@ export function deadlineWords(alert: AlertItem, now: string): { text: string; to
 /** The panel's deadline sentence. */
 export function deadlineSentence(alert: AlertItem, now: string, ago: (value: string, now: string) => string, fromNow: (value: string, now: string) => string): string | null {
   if (!isWaiting(alert)) return null;
-  if (!alert.ackDeadlineAt) return "No acknowledgement deadline is set for alerts like this one.";
+  if (!alert.ackDeadlineAt) {
+    return alert.severity === "critical"
+      ? `Critical alerts should be acknowledged within ${ACK_TARGET_HOURS.critical} hours, but no escalation rule covers this one, so nobody is chased while it waits. Add a rule in Settings, Notifications.`
+      : "No acknowledgement deadline is set for alerts like this one.";
+  }
   if (isOverdue(alert, now)) {
     return alert.escalated
       ? `It missed its acknowledgement deadline ${ago(alert.ackDeadlineAt, now)} and was escalated.`

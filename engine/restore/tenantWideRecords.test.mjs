@@ -16,7 +16,7 @@ const TEST_TENANT = Object.freeze({
 const ENTRA = Object.freeze([
   'lifecycleManagementSettings', 'entitlementManagementSettings', 'multiTenantOrganization', 'externalIdentitiesPolicy',
   'accessReviewPolicy', 'directoryRoleAccessReviewPolicy', 'multiTenantOrganizationIdentitySyncPolicyTemplate',
-  'multiTenantOrganizationPartnerConfigurationTemplate', 'b2bManagementPolicy', 'sharepointSettings',
+  'multiTenantOrganizationPartnerConfigurationTemplate', 'sharepointSettings',
   'formsSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings', 'adminReportSettings', 'pronounsSettings',
 ]);
 const INTUNE = Object.freeze(['deviceManagementSettings', 'microsoftTunnelHealthThreshold', 'onPremisesConditionalAccessSettings']);

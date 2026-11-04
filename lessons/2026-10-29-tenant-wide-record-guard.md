@@ -3,7 +3,7 @@
 The vps-deployer review of #673 found five admin center settings written through the
 record writer with no test tenant fixture guard; #675 gated those five. The same gap held
 for every other one-per-tenant record: the Entra governance, guest and cross-tenant
-settings, the SharePoint tenant settings, the guest domain policy and the batch 17 Intune
+settings, the SharePoint tenant settings and the batch 17 Intune
 tenant settings. The workload writers had the guard (`fixtureGuard.mjs`), but the record
 writer only got it when someone remembered to mark a record.
 

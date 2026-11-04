@@ -42,8 +42,8 @@ export const ID_KEY_TYPES = new Set([
   'accessPackageCatalog', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'agreement',
   'appManagementPolicy', 'b2xIdentityUserFlow', 'identityApiConnector',
   // Read per parent: a sync job id embeds its template and service principal,
-  // and a resource role scope id is a GUID.
-  'synchronizationJob', 'accessPackageResourceRoleScope',
+  // and a resource role scope id (and a catalog resource id) is a GUID.
+  'synchronizationJob', 'accessPackageResourceRoleScope', 'accessPackageCatalogResource',
   // Remaining kinds, batch 1: names are unmeasured, and built-in app categories
   // carry the same name in every tenant.
   'mobileThreatDefenseConnector', 'deviceManagementPartner', 'complianceManagementPartner', 'remoteAssistancePartner',

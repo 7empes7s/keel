@@ -211,6 +211,13 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     status: 'Available', type: 'String', usePreDefinedValuesOnly: false,
   },
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
+  // Issue #992: a package in its catalog, and the group role it grants.
+  accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
+  accessPackageResourceRoleScope: {
+    role: { displayName: 'Member', originId: 'Member_fixture-source-group', originSystem: 'AadGroup' },
+    scope: { displayName: 'Root', originId: 'fixture-source-group', originSystem: 'AadGroup', isRootScope: true },
+    accessPackageId: 'fixture-source-package',
+  },
   entitlementManagementSettings: { externalUserLifecycleAction: 'blockSignInAndDelete', durationUntilExternalUserDeletedAfterBlocked: 'P30D' },
   appManagementPolicy: {
     displayName: 'Fixture credential policy', description: 'Fixture', isEnabled: true,
@@ -506,6 +513,29 @@ const FIXTURE_COVERAGE = Object.freeze(Object.fromEntries(
 // principal's explicit appId reference resolves against its application).
 const FIXTURE_TARGET_IDS = Object.freeze({
   servicePrincipal: [['application:fixture-existing-appid', 'fixture-app-object']],
+  // Issue #992: the catalog, package and group live in the target under other ids.
+  accessPackage: [['accessPackageCatalog:fixture-source-catalog', 'fixture-catalog']],
+  accessPackageResourceRoleScope: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group']],
+});
+
+// The references canonicalize gives these fixtures (issue #992).
+const FIXTURE_REFERENCES = Object.freeze({
+  accessPackage: [{ field: 'catalog.id', symbol: 'accessPackageCatalog:fixture-source-catalog', required: true }],
+  accessPackageResourceRoleScope: [
+    { field: 'accessPackageId', symbol: 'accessPackage:fixture-source-package', required: true },
+    { field: 'scope.originId', symbol: 'group:fixture-group', required: true },
+  ],
+});
+
+// Objects the target already holds for a fixture (issue #992: the catalog,
+// with the group in it, and the package a role is added to).
+const EM = '/identityGovernance/entitlementManagement';
+const FIXTURE_SEEDS = Object.freeze({
+  accessPackage: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
+  accessPackageResourceRoleScope: (graph) => {
+    graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [{ id: 'fixture-catalog-group', originId: 'fixture-group', originSystem: 'AadGroup' }] });
+    graph.objects.set(`${EM}/accessPackages/fixture-package`, { id: 'fixture-package', catalog: { id: 'fixture-catalog' }, resourceRoleScopes: [] });
+  },
 });
 
 // Collections a record lists before it creates, to find one an earlier restore made.
@@ -513,6 +543,7 @@ const LISTED_BEFORE_CREATE = new Set([
   '/deviceManagement/groupPolicyUploadedDefinitionFiles', '/roleManagement/defender/roleDefinitions',
   '/deviceManagement/roleAssignments',
   '/roleManagement/exchange/roleAssignments', '/roleManagement/defender/roleAssignments',
+  '/identityGovernance/entitlementManagement/accessPackages',
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
 ]);
@@ -678,6 +709,27 @@ export function fakeGraph() {
         objects.set(path, { id: decodeURIComponent(path.split('/').pop()), ...(objects.get(path) ?? {}), ...body });
         return { ok: true, status: 204, body: null };
       }
+      // Issue #992: a catalog request adds a resource to the catalog, and a
+      // resource role is added inside its package, for a resource in the catalog.
+      if (method === 'POST' && path === '/identityGovernance/entitlementManagement/resourceRequests') {
+        const catalogPath = `/identityGovernance/entitlementManagement/catalogs/${body?.catalog?.id}`;
+        const catalog = objects.get(catalogPath);
+        if (!catalog || body.requestType !== 'adminAdd') return { ok: false, status: 400, body: { error: { code: 'BadRequest' } } };
+        next += 1;
+        objects.set(catalogPath, { ...catalog, resources: [...(catalog.resources ?? []), { id: `fixture-${next}`, ...body.resource }] });
+        return { ok: true, status: 201, body: { id: `fixture-request-${next}`, requestState: 'delivered' } };
+      }
+      const roleScopes = /^(\/identityGovernance\/entitlementManagement\/accessPackages\/[^/]+)\/resourceRoleScopes$/.exec(path);
+      if (roleScopes && method === 'POST') {
+        const pkg = objects.get(roleScopes[1]);
+        if (!pkg) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
+        const catalog = objects.get(`/identityGovernance/entitlementManagement/catalogs/${pkg.catalog?.id}`);
+        if (!(catalog?.resources ?? []).some((resource) => resource.id === body.role?.resource?.id)) return { ok: false, status: 400, body: { error: { code: 'ResourceNotInCatalog' } } };
+        next += 1;
+        const created = { ...body, id: `fixture-${next}` };
+        objects.set(roleScopes[1], { ...pkg, resourceRoleScopes: [...(pkg.resourceRoleScopes ?? []), created] });
+        return { ok: true, status: 201, body: created };
+      }
       if (method === 'PUT' && objects.has(path)) {
         objects.set(path, { ...body });
         return { ok: true, status: 204, body: null };
@@ -772,6 +824,13 @@ export function fakeGraph() {
           .filter((object) => !clientId || object.clientId === clientId);
         return { ok: true, status: 200, body: { value } };
       }
+      // Issue #992: a catalog lists its resources, filtered by origin.
+      const catalogResources = /^(\/identityGovernance\/entitlementManagement\/catalogs\/[^/]+)\/resources$/.exec(path);
+      if (catalogResources && objects.has(catalogResources[1])) {
+        const origin = /originId eq '((?:[^']|'')*)'/.exec(decodeURIComponent(requested.split('?')[1] ?? ''))?.[1]?.replace(/''/g, "'");
+        const value = (objects.get(catalogResources[1]).resources ?? []).filter((resource) => !origin || resource.originId === origin);
+        return { ok: true, status: 200, body: { value } };
+      }
       // Roadmap task-151: the eligibility collection answers a filter of
       // `field eq 'value'` terms joined by `and`.
       if (path === '/roleManagement/directory/roleEligibilitySchedules') {
@@ -796,7 +855,8 @@ export function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);
   const payload = FIXTURE_PAYLOADS[resourceType];
   const blastRadius = CATALOG.find((entry) => entry.type === resourceType)?.blastRadius ?? null;
-  const base = { naturalKey: `${resourceType}:fixture`, resourceType, references: [], blastRadius };
+  const base = { naturalKey: `${resourceType}:fixture`, resourceType, references: FIXTURE_REFERENCES[resourceType] ?? [], blastRadius };
+  FIXTURE_SEEDS[resourceType]?.(graph);
   const existingId = FIXTURE_OBJECT_IDS[resourceType] ?? 'fixture-existing';
   if (TENANT_POLICY_TYPES.has(resourceType)) {
     if (operation === 'create') return { ...base, verb: 'create', payload };

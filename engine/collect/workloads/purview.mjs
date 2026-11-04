@@ -121,6 +121,35 @@ export async function purviewCmdlet({ cmdlet, parameters = {} }, powershell = {}
   return runCmdlet({ module: PURVIEW_MODULE, cmdlet, parameters, tenantConfigPath }, { ...options, allowedCmdlets: PURVIEW_CMDLETS });
 }
 
+// Unpublishing labels: Set-LabelPolicy -RemoveLabels. It is not in
+// PURVIEW_CMDLET_PARAMETERS, so assertPurviewCmdlet and every ordinary call still refuse
+// it. Only purviewUnpublishCmdlet sends it, and only the label policy restore calls that,
+// for a removal whose high-impact approval (restore approvals) was checked first.
+// ops/powershell/run-cmdlet.ps1 ($AllowedPurview) lists RemoveLabels for Set-LabelPolicy.
+export const PURVIEW_UNPUBLISH_CMDLET = 'Set-LabelPolicy';
+export const PURVIEW_UNPUBLISH_PARAMETERS = Object.freeze(['Identity', 'RemoveLabels']);
+
+/** Throws unless this is exactly one unpublish: a policy id and a non-empty list of label names. */
+export function assertPurviewUnpublish({ cmdlet, parameters = {} }) {
+  if (cmdlet !== PURVIEW_UNPUBLISH_CMDLET) throw new PurviewScopeError(`${cmdlet} is not the unpublish cmdlet`);
+  for (const name of Object.keys(parameters)) {
+    if (!PURVIEW_UNPUBLISH_PARAMETERS.includes(name)) throw new PurviewScopeError(`an unpublish does not take ${name} from KEEL`);
+  }
+  if (typeof parameters.Identity !== 'string' || !parameters.Identity) throw new PurviewScopeError('an unpublish names one label policy');
+  const labels = parameters.RemoveLabels;
+  if (!Array.isArray(labels) || labels.length === 0 || labels.some((name) => typeof name !== 'string' || !name)) {
+    throw new PurviewScopeError('an unpublish names at least one label');
+  }
+  return true;
+}
+
+/** Sends one Set-LabelPolicy -RemoveLabels through the bounded job transport. */
+export async function purviewUnpublishCmdlet(parameters, powershell = {}) {
+  assertPurviewUnpublish({ cmdlet: PURVIEW_UNPUBLISH_CMDLET, parameters });
+  const { tenantConfigPath = null, ...options } = powershell;
+  return runCmdlet({ module: PURVIEW_MODULE, cmdlet: PURVIEW_UNPUBLISH_CMDLET, parameters, tenantConfigPath }, { ...options, allowedCmdlets: PURVIEW_CMDLETS });
+}
+
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The immutable id of a label or policy answer; null when it has none KEEL trusts. */
 export function objectId(body) {

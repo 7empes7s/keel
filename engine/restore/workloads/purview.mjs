@@ -6,12 +6,16 @@
  * evidence row:
  *  - label:  one Set-Label with the changed display text (DisplayName, Tooltip, Comment);
  *  - policy: one Set-LabelPolicy -AddLabels with the labels the source published and
- *            the live policy no longer does.
- * Everything else stays manual, and nothing KEEL writes can weaken protection:
+ *            the live policy no longer does;
+ *  - unpublish: one Set-LabelPolicy -RemoveLabels with the labels the live policy
+ *            publishes and the source did not. Removing a label stops people applying
+ *            it, so it is a 'weakens-protection' effect (restore approvals): it is sent
+ *            only once a second person approved it, or when the customer turned restore
+ *            approvals off for Purview. Only this operation waits for that approval.
+ * Everything else stays manual:
  *  - encryption, content marking, site and group protection, priority, disabling,
- *    removing a label from a policy, policy locations and settings are a compliance
- *    administrator's to change. A difference is listed, with whether it would weaken
- *    protection, and never written;
+ *    policy locations and settings are a compliance administrator's to change. A
+ *    difference is listed, with whether it would weaken protection, and never written;
  *  - a label or policy that no longer exists is not recreated (it would get a new
  *    id, and items labeled with the old one are not relabeled); one that is new is
  *    never deleted;
@@ -32,25 +36,28 @@
  *  - Errors are structured; an ambiguous outcome is reconciled by re-reading and is
  *    never sent a second time.
  *  - Test tenant fixtures only (fixtureGuard.mjs). On the test tenant the label or policy
- *    written, and every label a policy publishes again, must be a KEEL-RT- fixture, at
- *    plan time and again before writing.
+ *    written, and every label a policy publishes again or unpublishes, must be a
+ *    KEEL-RT- fixture, at plan time and again before writing.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
-  PURVIEW_EXCLUDED_CONTENT, PURVIEW_GROUPS, PURVIEW_WORKLOAD, definitionFingerprint, purviewCmdlet, readPurview,
+  PURVIEW_EXCLUDED_CONTENT, PURVIEW_GROUPS, PURVIEW_WORKLOAD, definitionFingerprint, purviewCmdlet, purviewUnpublishCmdlet, readPurview,
 } from '../../collect/workloads/purview.mjs';
 import { structuredFailure } from '../../collect/workloads/exchange.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { CmdletError } from '../../powershell/jobQueue.mjs';
-import { assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
+import {
+  assertContentEffectApproval, classifyContentEffects, effectApproved, isPreservationLockFailure, protectionEffects,
+} from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 
 export const PURVIEW_LABEL_WRITE = 'purview.label.update';
 export const PURVIEW_POLICY_WRITE = 'purview.label-policy.update';
-export const PURVIEW_WRITE_OPERATIONS = Object.freeze([PURVIEW_LABEL_WRITE, PURVIEW_POLICY_WRITE]);
+export const PURVIEW_UNPUBLISH_WRITE = 'purview.label-policy.remove-labels';
+export const PURVIEW_WRITE_OPERATIONS = Object.freeze([PURVIEW_LABEL_WRITE, PURVIEW_POLICY_WRITE, PURVIEW_UNPUBLISH_WRITE]);
 export const PURVIEW_RESTORE_EVIDENCE_KIND = 'workload-restore';
 const CONFIG_PATH = 'workload:purview-labels';
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,6 +67,7 @@ for (const id of PURVIEW_WRITE_OPERATIONS) if (!WORKLOAD_WRITE_OPERATIONS[id]) t
 const OPERATIONS = Object.freeze({
   label: { operationId: PURVIEW_LABEL_WRITE, resourceType: 'purviewLabel', cmdlet: 'Set-Label' },
   policy: { operationId: PURVIEW_POLICY_WRITE, resourceType: 'purviewLabelPolicy', cmdlet: 'Set-LabelPolicy' },
+  unpublish: { operationId: PURVIEW_UNPUBLISH_WRITE, resourceType: 'purviewLabelPolicy', cmdlet: 'Set-LabelPolicy' },
 });
 const LABEL_WRITABLE = Object.freeze(WORKLOAD_WRITE_OPERATIONS[PURVIEW_LABEL_WRITE].fields);
 // Identity and save time: not configuration KEEL compares.
@@ -123,9 +131,15 @@ function manualReason(group, field, live, source) {
   return { reason: 'KEEL does not write this setting; a compliance administrator applies it', weakensProtection: false };
 }
 
+/**
+ * The changes for one target, and the labels a policy would unpublish. `changes` are
+ * the label's display text or the policy's AddLabels; `removed` the labels the live
+ * policy publishes and the source did not.
+ */
 function planTarget({ observation, live, manual }) {
   const group = live.kind;
   const changes = [];
+  let removed = [];
   for (const field of PURVIEW_GROUPS[group].fields) {
     if (NOT_COMPARED.has(field)) continue;
     const sourceStatus = observation.fieldCoverage?.[field]?.status ?? 'unknown';
@@ -138,18 +152,15 @@ function planTarget({ observation, live, manual }) {
       const now = lower(list(before));
       const then = lower(list(after));
       const add = list(after).filter((label) => !now.includes(label.toLowerCase()));
-      const removed = list(before).filter((label) => !then.includes(label.toLowerCase()));
+      removed = list(before).filter((label) => !then.includes(label.toLowerCase()));
       if (add.length) changes.push({ field: 'AddLabels', before: list(before), after: add });
-      if (removed.length) {
-        manual.push({ resourceKey: live.resourceKey, field, reason: `removing ${removed.join(', ')} from this policy would unpublish them and weaken protection; KEEL never does that`, weakensProtection: true });
-      }
       continue;
     }
     if (same(before, after)) continue;
     if (group === 'label' && LABEL_WRITABLE.includes(field)) { changes.push({ field, before, after }); continue; }
     manual.push({ resourceKey: live.resourceKey, field, ...manualReason(group, field, before, after) });
   }
-  return changes;
+  return { changes, removed };
 }
 
 /**
@@ -164,7 +175,23 @@ function purviewFixtureProblem(op, entries, { tenantRef, testTenantRefs }) {
     if (problem) return problem;
   }
   const added = op.changes.find((change) => change.field === 'AddLabels')?.after ?? [];
-  return added.length ? fixtureProblem({ tenantRef, testTenantRefs, label: 'a label published', names: added }) : null;
+  if (added.length) {
+    const problem = fixtureProblem({ tenantRef, testTenantRefs, label: 'a label published', names: added });
+    if (problem) return problem;
+  }
+  const removed = op.changes.find((change) => change.field === 'RemoveLabels')?.after ?? [];
+  return removed.length ? fixtureProblem({ tenantRef, testTenantRefs, label: 'a label unpublished', names: removed }) : null;
+}
+
+/**
+ * The effects whose approval decides whether `op` may be sent: an unpublish owns its
+ * policy's 'weakens-protection' effect on Labels; every other operation owns the rest
+ * of its target's effects (none today), so adding labels never waits on a removal.
+ */
+const unpublishEffect = (effect) => effect.field === 'Labels' && effect.effect === 'weakens-protection';
+function effectsOf(plan, op) {
+  return plan.contentEffects.filter((effect) => effect.naturalKey === op.naturalKey
+    && (op.operationId === PURVIEW_UNPUBLISH_WRITE ? unpublishEffect(effect) : !unpublishEffect(effect)));
 }
 
 /**
@@ -210,25 +237,38 @@ export function planPurviewRestore({ source, live, tenantId, targets, tenantRef,
       manual.push({ resourceKey: key, field: null, reason: 'it no longer exists; KEEL does not recreate it (a new object gets a new id, and items labeled with the old one are not relabeled)' });
       continue;
     }
-    const changes = planTarget({ observation, live: current, manual });
-    if (!changes.length) continue;
-    const spec = OPERATIONS[group];
-    const values = Object.fromEntries(changes.map(({ field, after }) => [field, after]));
-    const op = {
-      key: `${group}:${key}`, kind: group, group, resourceKey: key, operationId: spec.operationId, naturalKey: `purview:${key}`,
-      cmdlet: spec.cmdlet, changes, parameters: { Identity: current.id, ...values },
-    };
-    const notFixture = purviewFixtureProblem(op, [current, observation], { tenantRef, testTenantRefs });
+    const { changes, removed } = planTarget({ observation, live: current, manual });
+    const naturalKey = `purview:${key}`;
+    const planned = [];
+    if (changes.length) {
+      const spec = OPERATIONS[group];
+      const values = Object.fromEntries(changes.map(({ field, after }) => [field, after]));
+      planned.push({
+        key: `${group}:${key}`, kind: group, group, resourceKey: key, operationId: spec.operationId, naturalKey,
+        cmdlet: spec.cmdlet, changes, parameters: { Identity: current.id, ...values },
+      });
+    }
+    if (removed.length) {
+      planned.push({
+        key: `unpublish:${key}`, kind: 'unpublish', group, resourceKey: key, operationId: PURVIEW_UNPUBLISH_WRITE, naturalKey,
+        cmdlet: OPERATIONS.unpublish.cmdlet, changes: [{ field: 'RemoveLabels', before: list(current.fields.Labels), after: removed }],
+        parameters: { Identity: current.id, RemoveLabels: removed },
+      });
+    }
+    if (!planned.length) continue;
+    const notFixture = planned.map((op) => purviewFixtureProblem(op, [current, observation], { tenantRef, testTenantRefs })).find(Boolean);
     if (notFixture) {
-      notFixtures.push({ naturalKey: op.naturalKey, reason: `not-a-fixture: ${notFixture}` });
+      notFixtures.push({ naturalKey, reason: `not-a-fixture: ${notFixture}` });
       continue;
     }
-    operations.push(op);
+    operations.push(...planned);
+    const values = Object.fromEntries(changes.map(({ field, after }) => [field, after]));
+    const gone = new Set(lower(removed));
     const payload = group === 'policy'
-      ? { ...current.fields, Labels: [...list(current.fields.Labels), ...values.AddLabels ?? []] }
+      ? { ...current.fields, Labels: [...list(current.fields.Labels).filter((name) => !gone.has(name.toLowerCase())), ...values.AddLabels ?? []] }
       : { ...current.fields, ...values };
     resources.push({
-      naturalKey: `purview:${key}`, resourceType: spec.resourceType, verb: 'update', payload,
+      naturalKey, resourceType: OPERATIONS[group].resourceType, verb: 'update', payload,
       live: { state: 'present', payload: { ...current.fields, ...(current.lock === 'locked' ? { isPreservationLocked: true } : {}) } },
     });
   }
@@ -337,14 +377,16 @@ export async function executePurviewRestore(client, {
       await settle(op, { outcome: 'disabled', reasons: [...(qualification?.reasons ?? [`no write qualification was supplied for ${op.operationId}`])] });
     } else runnable.push(op);
   }
-  if (runnable.length && plan.contentEffects.length) {
+  // Restore approvals: an operation that makes an effect waits for its approval (or the
+  // customer's waiver for Purview). One approval covers the plan's effects as a whole.
+  if (runnable.some((op) => effectsOf(plan, op).length)) {
     try {
       await assertContentEffectApproval(client, { artifact, effects: plan.contentEffects });
     } catch (error) {
-      for (const op of runnable.filter((item) => plan.contentEffects.some((effect) => effect.naturalKey === item.naturalKey))) {
+      for (const op of runnable.filter((item) => effectsOf(plan, item).length)) {
         await settle(op, { outcome: 'blocked-content-effect', reasons: [error.message] });
       }
-      runnable = runnable.filter((item) => !plan.contentEffects.some((effect) => effect.naturalKey === item.naturalKey));
+      runnable = runnable.filter((item) => !effectsOf(plan, item).length);
     }
   }
   if (runnable.length) await runOperations(plan, runnable, { powershell, settle, tenantRef, testTenantRefs });
@@ -382,8 +424,25 @@ async function runOperations(plan, runnable, { powershell, settle, tenantRef, te
       await settle(op, { outcome: 'refused', reasons: [notFixture] });
       continue;
     }
+    // An unpublish is sent only as the plan listed it: the removal it makes over the
+    // policy read now must be exactly an effect whose approval was checked above.
+    if (op.operationId === PURVIEW_UNPUBLISH_WRITE && !unpublishListed(plan, op, entry)) {
+      await settle(op, { outcome: 'refused', reasons: ['the labels this would unpublish are not the ones the approved plan lists; a new dry run is required'] });
+      continue;
+    }
     await runCmdletOperation(op, { powershell, settle });
   }
+}
+
+function unpublishListed(plan, op, entry) {
+  const gone = new Set(lower(op.parameters.RemoveLabels));
+  const after = { ...entry.fields, Labels: list(entry.fields.Labels).filter((name) => !gone.has(name.toLowerCase())) };
+  // The plan's payload also carries any labels added in the same restore.
+  const resource = { naturalKey: op.naturalKey, resourceType: OPERATIONS.unpublish.resourceType, verb: 'update', live: { state: 'present', payload: entry.fields } };
+  const listed = effectsOf(plan, op);
+  const added = plan.operations.find((item) => item.naturalKey === op.naturalKey && item.operationId === PURVIEW_POLICY_WRITE)?.parameters.AddLabels ?? [];
+  const found = protectionEffects({ ...resource, payload: { ...after, Labels: [...after.Labels, ...added] } });
+  return found.length > 0 && found.every((effect) => effectApproved(effect, listed));
 }
 
 function verifiedFields(op, entry) {
@@ -393,6 +452,9 @@ function verifiedFields(op, entry) {
     if (field === 'AddLabels') {
       const now = lower(list(entry.fields.Labels));
       (entry.fieldCoverage.Labels?.status === 'observed' && after.every((label) => now.includes(label.toLowerCase())) ? verified : mismatched).push(field);
+    } else if (field === 'RemoveLabels') {
+      const now = lower(list(entry.fields.Labels));
+      (entry.fieldCoverage.Labels?.status === 'observed' && after.every((label) => !now.includes(label.toLowerCase())) ? verified : mismatched).push(field);
     } else {
       (entry.fieldCoverage[field]?.status === 'observed' && same(entry.fields[field], after) ? verified : mismatched).push(field);
     }
@@ -429,7 +491,8 @@ async function verify(op, { powershell, settle }, { ambiguous, cause }) {
 
 async function runCmdletOperation(op, context) {
   try {
-    await purviewCmdlet({ cmdlet: op.cmdlet, parameters: op.parameters }, context.powershell);
+    if (op.operationId === PURVIEW_UNPUBLISH_WRITE) await purviewUnpublishCmdlet(op.parameters, context.powershell);
+    else await purviewCmdlet({ cmdlet: op.cmdlet, parameters: op.parameters }, context.powershell);
   } catch (error) {
     if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') {
       const failed = structuredFailure(error);

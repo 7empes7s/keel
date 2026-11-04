@@ -63,7 +63,9 @@
  *    carry a KEEL-RT- fixture name. On the test tenant it is planned and
  *    written only with the separate tenant-wide option (`ctx.allowTenantWide`),
  *    the same gate the workload writers use (workloads/fixtureGuard.mjs). A
- *    write whose tenant is not known is refused.
+ *    write whose tenant is not known is refused. It may be a function of the
+ *    resource, for a kind where only some objects are tenant-wide (the default
+ *    Company Portal branding profile).
  *
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
@@ -594,13 +596,18 @@ function readRecordObject(io, record, payload, targetId) {
   return io.retryOperation(() => io.writer.read(record.version, withQuery(record, recordObjectPath(record, payload, targetId))));
 }
 
+/** Whether this record (for this resource, when it depends on it) is a tenant-wide setting. */
+export function isTenantWideRecord(record, resource = null) {
+  return typeof record.tenantWide === 'function' ? record.tenantWide(resource) === true : record.tenantWide === true;
+}
+
 /**
  * Why a tenant-wide record may not be planned or written here, or null.
  * `ctx.tenantRef` is the target tenant's reference; `ctx.allowTenantWide` the
  * separate tenant-wide option, off by default.
  */
-export function tenantWideRecordProblem(record, ctx = {}) {
-  if (!record.tenantWide) return null;
+export function tenantWideRecordProblem(record, ctx = {}, resource = null) {
+  if (!isTenantWideRecord(record, resource)) return null;
   if (typeof ctx.tenantRef !== 'string' || !ctx.tenantRef) {
     return `${record.resourceType} is a tenant-wide setting and the target tenant is not known, so it is not written`;
   }
@@ -665,7 +672,9 @@ function remapRecordReferences(record, resource, verb, ctx) {
   if (changed.length > 0 && !remappingFor(resource.resourceType, verb).qualified) {
     return { error: `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation` };
   }
-  return { resource: { ...resource, payload } };
+  // The backup as it was, for the approval gate (approvalHeld.mjs), which judges
+  // the effects the reviewed dry run listed.
+  return { resource: { ...resource, payload, backupPayload: resource.backupPayload ?? resource.payload } };
 }
 
 /**
@@ -754,7 +763,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // A tenant-wide setting with something to write passes the test tenant's
   // fixture guard first, in the dry run and again before the write.
   if (fields.length > 0 || record.afterWrite) {
-    const tenantWide = tenantWideRecordProblem(record, ctx);
+    const tenantWide = tenantWideRecordProblem(record, ctx, resource);
     if (tenantWide) return skip({ reason: tenantWide });
   }
   // A dry run never reads the tenant for an object this run only plans to

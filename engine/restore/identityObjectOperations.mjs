@@ -35,10 +35,11 @@ import { randomBytes } from 'node:crypto';
 
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 import {
-  applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
+  applyRecordWrite, defineRecord, graphFailure, holdsNestedTrust, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
-import { PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects } from '../safety/contentEffects.mjs';
+import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects } from '../safety/contentEffects.mjs';
+import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -679,9 +680,80 @@ async function defenderRoleCreatePreflight(io, { payload, verb }) {
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
 const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
+// Approval-held kinds: which certificate authorities a key credential restriction
+// trusts (certificateBasedApplicationConfigurationIds) is a trust field, never
+// written. Graph replaces a restriction list whole, so a list that carries that
+// setting, in the backup or live, is left as it is and listed for a person
+// (the record writer would otherwise leave it out without a word).
+const APP_RESTRICTION_FIELDS = ['applicationRestrictions', 'servicePrincipalRestrictions'];
+
+// The device registration policy is replaced whole (PUT): a setting the tenant has
+// that the backup does not hold (an older backup) would be reset, so that restore is
+// a manual step rather than an access change nobody saw as a reset.
+function deviceRegistrationReplaceRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const unset = (value) => value === null || value === undefined;
+  const fields = APPROVAL_HELD_FIELDS.deviceRegistrationPolicy.filter((field) => unset(payload[field]) && !unset(live[field]));
+  if (fields.length === 0) return null;
+  const description = `The backup does not hold ${fields.join(', ')}, and the device registration policy is replaced whole, so a restore would reset ${fields.length === 1 ? 'it' : 'them'}. `
+    + 'Nothing was written: compare the backup with the current settings in the Entra admin center, under Devices, Device settings, and change them there.';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'wholeReplace', fields: Object.freeze(fields), description })]),
+  });
+}
+function appCredentialTrustRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const trusts = (value) => holdsNestedTrust('tenantAppManagementPolicy', value) || /trustedCertificateAuthority/i.test(JSON.stringify(value ?? null));
+  const fields = APP_RESTRICTION_FIELDS.filter((field) => !sameValue(payload[field], live[field]) && (trusts(payload[field]) || trusts(live[field])));
+  if (fields.length === 0) return null;
+  const description = `The default app credential rules differ in ${fields.join(' and ')}, where a restriction carries its trusted certificate authority setting. `
+    + 'A restore never writes which certificate authorities are trusted, and Graph replaces these rules whole, so nothing was written. '
+    + 'Compare the backup with the current rules and set them by hand with Microsoft Graph (PATCH /policies/defaultAppManagementPolicy).';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(fields), description })]),
+  });
+}
+
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
 
-/** The records, one per type this module writes through recordWriter. */
+// Approval-held kinds, batch 2: who holds an Exchange or Defender admin role.
+// An Exchange assignment names its principal as a path. A user, group or app is
+// matched in the target (canonicalize.mjs reads the id inside the path); an
+// Exchange role group, or anything else, is not a directory object, so it is
+// given its roles again by hand.
+const EXCHANGE_PRINCIPAL = /^\/(users|groups|servicePrincipals)\/[0-9a-f-]{36}$/i;
+const EXCHANGE_ROLES_PORTAL = 'the Exchange admin center, under Roles, Admin roles';
+function exchangeAssignmentRefusal(resource, verb) {
+  const undo = undoOnlyDelete('an Exchange role assignment', EXCHANGE_ROLES_PORTAL)(resource, verb);
+  if (undo || verb === 'delete') return undo;
+  const principal = String(resource.payload?.principalId ?? '');
+  if (!EXCHANGE_PRINCIPAL.test(principal)) {
+    const description = `This Exchange role is held by ${principal.toLowerCase().startsWith('/rolegroups/') ? 'an Exchange role group' : 'something that is not a user, group or app'}, which a restore does not write. `
+      + `Give the role group its roles again by hand in ${EXCHANGE_ROLES_PORTAL}.`;
+    return { outcome: 'skipped', reason: `manual: ${description}`, completion: [{ kind: 'manual-setting', requirement: 'exchangeRoleGroup', fields: ['principalId'], description }] };
+  }
+  return null;
+}
+const sameText = (left, right) => String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
+const EXCHANGE_ASSIGNMENT_FIELDS = ['principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId'];
+
+const DEFENDER_ASSIGNMENTS = '/roleManagement/defender/roleAssignments';
+const DEFENDER_LISTS = ['principalIds', 'directoryScopeIds', 'appScopeIds'];
+
+/**
+ * The records, one per type this module writes through recordWriter. A record
+ * marked tenantWide is one setting for the whole tenant (it cannot carry a
+ * KEEL-RT- name): on the test tenant it is written only with the tenant-wide
+ * option (recordWriter.mjs#tenantWideRecordProblem).
+ */
 export const IDENTITY_RECORDS = Object.freeze({
   servicePrincipal: defineRecord({
     resourceType: 'servicePrincipal', version: 'v1.0', collection: '/servicePrincipals', operations: ['update', 'delete'],
@@ -701,7 +773,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecycleworkflowscontainer-post-customtaskextensions'),
   }),
   lifecycleManagementSettings: defineRecord({
-    resourceType: 'lifecycleManagementSettings', version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/settings',
+    resourceType: 'lifecycleManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/settings',
     singleton: true, operations: ['update'], permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecyclemanagementsettings-update'),
   }),
   attributeSet: defineRecord({
@@ -720,7 +792,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagement-post-catalogs'),
   }),
   entitlementManagementSettings: defineRecord({
-    resourceType: 'entitlementManagementSettings', version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
+    resourceType: 'entitlementManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
     singleton: true, operations: ['update'], permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagementsettings-update'),
   }),
   appManagementPolicy: defineRecord({
@@ -728,7 +800,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], excluded: ['appliesTo'], permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('appmanagementpolicy-post'),
   }),
   multiTenantOrganization: defineRecord({
-    resourceType: 'multiTenantOrganization', version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
+    resourceType: 'multiTenantOrganization', tenantWide: true, version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
     singleton: true, operations: ['update'], writable: ['displayName', 'description'],
     permission: 'MultiTenantOrganization.ReadWrite.All', docs: v1('multitenantorganization-update'),
   }),
@@ -736,30 +808,30 @@ export const IDENTITY_RECORDS = Object.freeze({
   // tenant. Each is only updated in place, and only its settings are written
   // (its name and description are Microsoft's).
   externalIdentitiesPolicy: defineRecord({
-    resourceType: 'externalIdentitiesPolicy', version: 'beta', collection: '/policies/externalIdentitiesPolicy',
+    resourceType: 'externalIdentitiesPolicy', tenantWide: true, version: 'beta', collection: '/policies/externalIdentitiesPolicy',
     singleton: true, operations: ['update'], writable: ['allowExternalIdentitiesToLeave', 'allowDeletedIdentitiesDataRemoval'],
     permission: 'Policy.ReadWrite.ExternalIdentities', docs: beta('externalidentitiespolicy-update'),
   }),
   accessReviewPolicy: defineRecord({
-    resourceType: 'accessReviewPolicy', version: 'beta', collection: '/policies/accessReviewPolicy',
+    resourceType: 'accessReviewPolicy', tenantWide: true, version: 'beta', collection: '/policies/accessReviewPolicy',
     singleton: true, operations: ['update'], writable: ['isGroupOwnerManagementEnabled'],
     permission: 'Policy.ReadWrite.AccessReview', docs: beta('accessreviewpolicy-update'),
   }),
   directoryRoleAccessReviewPolicy: defineRecord({
-    resourceType: 'directoryRoleAccessReviewPolicy', version: 'beta', collection: '/policies/directoryRoleAccessReviewPolicy',
+    resourceType: 'directoryRoleAccessReviewPolicy', tenantWide: true, version: 'beta', collection: '/policies/directoryRoleAccessReviewPolicy',
     singleton: true, operations: ['update'], writable: ['settings'],
     permission: 'RoleManagement.ReadWrite.Directory', docs: beta('directoryroleaccessreviewpolicy-update'),
   }),
   // The multitenant organization templates only shape the settings a tenant
   // gets when it joins later; partners already in place keep their own.
   multiTenantOrganizationIdentitySyncPolicyTemplate: defineRecord({
-    resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', version: 'v1.0',
+    resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', tenantWide: true, version: 'v1.0',
     collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization',
     singleton: true, operations: ['update'], writable: ['templateApplicationLevel', 'userSyncInbound'],
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationidentitysyncpolicytemplate-update'),
   }),
   multiTenantOrganizationPartnerConfigurationTemplate: defineRecord({
-    resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', version: 'v1.0',
+    resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', tenantWide: true, version: 'v1.0',
     collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration',
     singleton: true, operations: ['update'], writable: PARTNER_TEMPLATE_WRITABLE_FIELDS,
     refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
@@ -800,8 +872,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
   // description and permissions. The API has no isBuiltIn and lists only
   // custom roles, so only a role marked isBuiltIn true is skipped (#742).
-  // Who holds the role is a separate kind
-  // (defenderRoleAssignment), restored by hand after a privilege review.
+  // Who holds the role is a separate kind (defenderRoleAssignment, below),
+  // written behind the restore approval.
   // Graph documents the create; the update uses the same PATCH as the other
   // role providers and is confirmed by the live proof.
   defenderRoleDefinition: defineRecord({
@@ -810,13 +882,46 @@ export const IDENTITY_RECORDS = Object.freeze({
     preflight: defenderRoleCreatePreflight,
     permission: 'RoleManagement.ReadWrite.Defender', docs: beta('rbacapplication-post-roledefinitions'),
   }),
+  // Approval-held kinds, batch 2 (restore/approvalHeld.mjs): who holds an Exchange
+  // admin role, written only once its "changes admin access" effects are approved
+  // (or approvals are off for the service). The user, group or app is matched in
+  // the target (remapsReferences); the role and app scope are written by id, so
+  // into another tenant only a role with the same id is found (else it fails). Graph has no update of an assignment. A delete is
+  // only the undo of an assignment this restore created.
+  exchangeRoleAssignment: defineRecord({
+    resourceType: 'exchangeRoleAssignment', version: 'beta', collection: EXCHANGE_ROLE_ASSIGNMENTS,
+    operations: ['create', 'delete'], writable: EXCHANGE_ASSIGNMENT_FIELDS, remapsReferences: true,
+    refusal: withApprovalGate(exchangeAssignmentRefusal),
+    preflight: createdOnce({
+      version: 'beta', path: EXCHANGE_ROLE_ASSIGNMENTS, label: 'Exchange role assignment',
+      // The same principal may hold the same role over another scope: a separate assignment.
+      matches: (row, payload) => EXCHANGE_ASSIGNMENT_FIELDS.every((field) => sameText(row?.[field] ?? '/', payload[field] ?? '/')),
+      same: () => true,
+    }),
+    permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('rbacapplication-post-roleassignments'),
+  }),
+  // Who holds a Defender XDR admin role: the people and groups (matched in the
+  // target), the role and the data sources it covers.
+  defenderRoleAssignment: defineRecord({
+    resourceType: 'defenderRoleAssignment', version: 'beta', collection: DEFENDER_ASSIGNMENTS,
+    operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', 'principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds'],
+    remapsReferences: true, sameField: sameIdLists(DEFENDER_LISTS),
+    refusal: withApprovalGate(undoOnlyDelete('a Defender role assignment', 'the Microsoft Defender portal, under System, Permissions, Roles')),
+    preflight: createdOnce({
+      version: 'beta', path: DEFENDER_ASSIGNMENTS, label: 'Defender role assignment',
+      matches: (row, payload) => sameText(row?.displayName, payload.displayName),
+      same: (row, payload) => sameText(row?.roleDefinitionId, payload.roleDefinitionId)
+        && DEFENDER_LISTS.every((field) => sameIdLists(DEFENDER_LISTS)(field, payload[field], row?.[field])),
+    }),
+    permission: 'RoleManagement.ReadWrite.Defender', docs: beta('unifiedrbacapplicationmultiple-post-roleassignments'),
+  }),
   // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).
   // The SharePoint tenant settings other than sharing: sync app limits, idle
   // session sign-out, site creation, Loop, legacy authentication and default
   // storage. The five sharing fields stay with the SharePoint workload, which
   // reviews their content effects, so this record never sends them.
   sharepointSettings: defineRecord({
-    resourceType: 'sharepointSettings', version: 'v1.0', collection: '/admin/sharepoint/settings',
+    resourceType: 'sharepointSettings', tenantWide: true, version: 'v1.0', collection: '/admin/sharepoint/settings',
     singleton: true, operations: ['update'], writable: SHAREPOINT_SETTINGS_WRITABLE_FIELDS, refusal: sharepointAccessRefusal,
     permission: 'SharePointTenantSettings.ReadWrite.All', docs: v1('sharepointsettings-update'),
   }),
@@ -824,9 +929,6 @@ export const IDENTITY_RECORDS = Object.freeze({
   // since PR #604, each one object per tenant and updated in place. A backup
   // that loosens access is withheld (adminCenterLooseningRefusal). To Do
   // settings wait for their read to work (GET /beta/admin/todo answers 500).
-  // Each is tenant-wide: on the test tenant it is written only with the
-  // tenant-wide option, which no restore run sets yet, so a person's approval
-  // comes first (recordWriter.mjs#tenantWideRecordProblem).
   formsSettings: defineRecord({
     resourceType: 'formsSettings', tenantWide: true, version: 'beta', collection: '/admin/forms',
     singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
@@ -861,6 +963,25 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['update'], writable: ['displayName', 'description', 'privacy'], refusal: adminCenterLooseningRefusal,
     permission: 'Community.ReadWrite.All', docs: v1('community-update'),
   }),
+  // Approval-held kinds (restore/approvalHeld.mjs). Each was backed up only,
+  // because a change decides who has access. They are written now, and an
+  // enforce write is made only when the restore's dry run listed its
+  // "changes admin access" effects and they were approved (or the customer
+  // turned restore approvals off for Entra ID). Both are one object per tenant.
+  // The device registration policy is replaced whole (Graph routes PUT only);
+  // its name and description are Microsoft's and read back unchanged.
+  deviceRegistrationPolicy: defineRecord({
+    resourceType: 'deviceRegistrationPolicy', tenantWide: true, version: 'v1.0', collection: '/policies/deviceRegistrationPolicy',
+    singleton: true, operations: ['update'], updateMethod: 'PUT',
+    writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceRegistrationPolicy], refusal: withApprovalGate(deviceRegistrationReplaceRefusal),
+    permission: 'Policy.ReadWrite.DeviceConfiguration', docs: v1('deviceregistrationpolicy-update'),
+  }),
+  tenantAppManagementPolicy: defineRecord({
+    resourceType: 'tenantAppManagementPolicy', tenantWide: true, version: 'v1.0', collection: '/policies/defaultAppManagementPolicy',
+    singleton: true, operations: ['update'], writable: APPROVAL_HELD_FIELDS.tenantAppManagementPolicy,
+    refusal: withApprovalGate(appCredentialTrustRefusal),
+    permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('tenantappmanagementpolicy-update'),
+  }),
 });
 
 /**
@@ -870,7 +991,6 @@ export const IDENTITY_RECORDS = Object.freeze({
 export const IDENTITY_NEEDS_REVIEW = Object.freeze({
   attributeSet: 'create only: an attribute set can never be deleted once created (update is written)',
   customSecurityAttributeDefinition: 'create only: a definition can never be deleted once created (update is written)',
-  tenantAppManagementPolicy: 'a stricter default can stop every app from adding a secret or certificate',
   crossTenantIdentitySyncPolicyPartner: 'it lets a partner tenant sync its users into this one',
 });
 

@@ -235,9 +235,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates partner organization entries and puts their tenant restrictions back.',
     todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust, automatic consent and the guest collaboration and direct connect lists are never changed by a restore; change them by hand if they differ.',
   }),
-  deviceRegistrationPolicy: manual('Device join and registration settings', KEEL,
-    'These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.',
-    'Compare the backup with the current settings in the Entra admin center under Devices, and change them there.'),
+  deviceRegistrationPolicy: auto('Device join and registration settings', {
+    keeps: 'Puts back who may join and register devices, how many devices each user may have, whether joining needs MFA, and local admin passwords.',
+    todo: 'These settings decide who may join devices, so a restore that changes them waits for a second approver while restore approvals are on for Entra ID.',
+  }),
   authenticationFlowsPolicy: auto('External user self sign-up', {
     keeps: 'Puts back whether external users may sign themselves up.',
     todo: 'The sign-up user flows themselves are restored by hand (see guest sign-up user flows).',
@@ -275,9 +276,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates the policies and puts their rules back.',
     todo: 'Which apps each policy applies to is not backed up yet, so assign the policies again by hand.',
   }),
-  tenantAppManagementPolicy: manual('Default app credential rules', NOT_BUILT,
-    'A stricter default can stop every app from adding a secret or certificate, so KEEL will not write it without a review step, which is not built yet.',
-    'Set the default rules again in the Entra admin center using the backup.'),
+  tenantAppManagementPolicy: auto('Default app credential rules', {
+    keeps: 'Puts back the default rules for the secrets and certificates apps may add, and whether they are on.',
+    todo: 'A stricter rule can stop apps from adding secrets, so a restore that changes them waits for a second approver while restore approvals are on for Entra ID. Which certificate authorities a rule trusts is never put back: set that by hand. There is no admin center page for these rules.',
+  }),
   multiTenantOrganization: auto('Multitenant organization', {
     keeps: 'Puts the name and description back.',
     todo: 'Member tenants and their acceptance are set by each tenant, so add or re-invite them by hand.',
@@ -302,9 +304,10 @@ export const TYPE_GUIDE = Object.freeze({
   deviceEnrollmentConfiguration: manual('Enrollment restrictions', MS,
     'The default restrictions exist in every tenant and cannot be created by anyone, and the order of custom ones is set by a separate action KEEL does not write.',
     'Restore by hand in the Intune admin center from the backup, which includes each restriction\'s assignments and order.'),
-  deviceManagementRoleDefinition: manual('Intune admin roles', KEEL,
-    'These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is backed up as Intune admin role assignments.',
-    'Review the roles in the backup and recreate them in the Intune admin center, then assign them again.'),
+  deviceManagementRoleDefinition: auto('Intune admin roles', {
+    keeps: 'Recreates custom Intune roles and puts back their name, description and permissions.',
+    todo: 'A change to a role\'s permissions waits for a second approver while restore approvals are on for Intune. Who holds each role is not restored: assign it again in the Intune admin center, under Tenant administration, Roles, after a privilege review.',
+  }),
   deviceCategory: auto('Device categories', {
     keeps: 'Recreates categories and puts their names and descriptions back.',
     todo: 'Devices are put in a category when they enroll, which no restore can redo. Devices pick it up at their next enrollment, or an admin sets it on each device.',
@@ -394,9 +397,10 @@ export const TYPE_GUIDE = Object.freeze({
   windowsAutopilotDeviceIdentity: manual('Windows Autopilot devices', MS,
     'Microsoft never returns the hardware hash that registers a device, so no tool can register it again from a backup.',
     'Use the backup as the list of devices. Import each device again from its hardware hash, taken on the device or from your vendor.'),
-  deviceManagementRoleAssignment: manual('Intune admin role assignments', KEEL,
-    'These decide who can manage devices, so a change needs a person to review it.',
-    'Review who held each Intune admin role in the backup and assign the roles again in the Intune admin center.'),
+  deviceManagementRoleAssignment: auto('Intune admin role assignments', {
+    keeps: 'Puts back who holds each Intune admin role, over which groups and scope tags. Groups are found in the target by name.',
+    todo: 'These decide who can manage devices, so a restore that changes them waits for a second approver while restore approvals are on for Intune. Backups made before 2026-10-30 do not say which role an assignment gives: assign those by hand.',
+  }),
   applePushNotificationCertificate: manual('Apple push certificate', MS,
     'Apple issues this certificate. No tool can upload it from a backup, and a new certificate from a different Apple ID cuts off every Apple device.',
     'Use the backup for the Apple ID and expiry date. Renew the certificate at Apple with that same Apple ID and upload it in the Intune admin center before it expires.'),
@@ -456,9 +460,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates policies and puts their settings back.',
     todo: 'Who a policy is assigned to is not backed up yet, so assign it again by hand.',
   }),
-  operationApprovalPolicy: manual('Multi admin approval policies', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.',
-    'Recreate each policy in the Intune admin center from the backup, with the same approver groups.'),
+  operationApprovalPolicy: auto('Multi admin approval policies', {
+    keeps: 'Puts back which admin changes need a second admin, and the groups whose members approve them. Groups are found in the target by name.',
+    todo: 'A restore that changes them waits for a second approver while restore approvals are on for Intune. A policy that now covers a different kind of change is made again by hand.',
+  }),
   // Restore gaps batch 5: the script body is backed up per script.
   deviceCustomAttributeShellScript: auto('macOS custom attribute scripts', {
     keeps: 'Recreates scripts and puts the script, its settings and who it runs on back.',
@@ -505,9 +510,10 @@ export const TYPE_GUIDE = Object.freeze({
   exchangeRoleDefinition: manual('Exchange admin roles', KEEL,
     'KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.',
     'For a custom role that still exists but differs from the backup, the restore lists what differs: fix its entries with Exchange Online PowerShell. Then give recreated roles back to their role groups or apps, after a privilege review.'),
-  exchangeRoleAssignment: manual('Exchange admin role assignments', NOT_BUILT,
-    'KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.',
-    'Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.'),
+  exchangeRoleAssignment: auto('Exchange admin role assignments', {
+    keeps: 'Puts back the Exchange roles held by people, groups and apps, over the same scope. They are found in the target by name.',
+    todo: 'A restore that adds them waits for a second approver while restore approvals are on. Roles held by an Exchange role group are given again by hand in the Exchange admin center, under Roles, Admin roles.',
+  }),
   exchangeCustomAppScope: auto('Exchange app access scopes', {
     keeps: 'Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).',
     todo: 'An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.',
@@ -516,9 +522,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates custom Defender roles and puts back their name, description and permissions.',
     todo: 'Who holds each role is not restored: add the assignments again in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, after a privilege review.',
   }),
-  defenderRoleAssignment: manual('Defender admin role assignments', NOT_BUILT,
-    'KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.',
-    'Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.'),
+  defenderRoleAssignment: auto('Defender admin role assignments', {
+    keeps: 'Puts back who holds each Defender role and for which data sources. People and groups are found in the target by name.',
+    todo: 'A restore that changes them waits for a second approver while restore approvals are on.',
+  }),
   defenderCustomAppScope: manual('Defender app access scopes', MS,
     'KEEL backs these up, but Microsoft offers no way for a tool to create or change them.',
     'Recreate each scope by hand from the backup, before the assignments that use it. There is no admin center page for it.'),
@@ -718,7 +725,7 @@ export const WORKLOAD_GUIDE = Object.freeze({
   'onedrive-site-settings': Object.freeze({ name: 'OneDrive settings',
     todo: 'KEEL puts back a OneDrive\'s own sharing settings, default link type and permission, and guest and link expiry. A setting the backup shows following the tenant\'s OneDrive default is not pinned on the site. A locked site is never changed or unlocked. The owner, storage quota, sensitivity label and conditional access setting are changed by hand in the SharePoint admin center using the backup. Wider sharing needs a second approver.' }),
   'purview-labels': Object.freeze({ name: 'Purview sensitivity labels',
-    todo: 'KEEL only restores label names and tooltips, and adds labels back to a publishing policy. It never weakens a label or unpublishes one: those changes, and new labels, are made by hand in the Purview portal.' }),
+    todo: 'KEEL restores label names and tooltips, and which labels a publishing policy publishes: it adds labels back, and removes labels the backup did not publish. Removing a label needs a second approver while restore approvals are on. KEEL never weakens a label itself: those changes, and new labels, are made by hand in the Purview portal.' }),
   'exchange-mail-flow': Object.freeze({ name: 'Exchange mail flow and protection',
     todo: 'Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver while restore approvals are on. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.' }),
   'teams-org-policies': Object.freeze({ name: 'Teams organization policies',
@@ -781,7 +788,7 @@ const OPERATION_NOUNS = Object.freeze({
 const PROPER_START = /^(SharePoint|Exchange|OneDrive|Teams|DKIM|Safe|Microsoft)\b/;
 const TIER_WORDS = Object.freeze({ tier1: 'Tier 1, critical', tier2: 'Tier 2, important', tier3: 'Tier 3, low impact' });
 const EVERY = Object.freeze({ hour: 'every hour', day: 'daily', week: 'weekly' });
-const WRITE_VERBS = Object.freeze({ update: 'Put back', add: 'Add back', remove: 'Remove extras from' });
+const WRITE_VERBS = Object.freeze({ update: 'Put back', add: 'Add back', remove: 'Remove extras from', 'remove-labels': 'Remove labels the backup did not publish from' });
 
 function tierCadence() {
   const cadence = {};

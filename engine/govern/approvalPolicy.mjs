@@ -153,5 +153,8 @@ export function standingPolicyRefusal({ policy, tenantRef, request, artifact = n
   // Issue #317: a workload restore made with the tenant-wide option writes beyond the
   // KEEL-RT- fixtures; a person approves it, never a standing policy.
   if (artifact?.workloadRestore?.allowTenantWide === true) return `${policy} does not cover a tenant-wide workload write; a person approves it`;
+  // The same for an Entra or Intune tenant setting: a snapshot dry run made with the
+  // tenant-wide option (keel-restore --allow-tenant-wide-test-writes).
+  if (artifact?.allowTenantWide === true) return `${policy} does not cover a tenant-wide setting write; a person approves it`;
   return null;
 }

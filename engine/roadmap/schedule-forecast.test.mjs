@@ -34,6 +34,10 @@ const HOUR = 3_600_000;
 const NOW = new Date('2026-10-03T12:00:00Z');
 
 /** A fake Graph reader with the same counters GraphReader keeps. */
+// Item reads of one related object each, as path patterns ({item} is any id).
+const SINGLE_READS = CATALOG.filter((entry) => entry.itemReads?.single)
+  .map((entry) => new RegExp(`^${entry.itemReads.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\\{item\\}', '[^/]+')}$`));
+
 function countingReader({ pages = 1, throttlesPerType = 0 } = {}) {
   const reader = {
     stats: { requests: 0, throttled: 0 },
@@ -42,6 +46,8 @@ function countingReader({ pages = 1, throttlesPerType = 0 } = {}) {
       reader.stats.throttled += throttlesPerType;
       // A singleton read one field per request answers one object (issue #447).
       if (FIELD_READS.has(String(path).split('?')[0])) return { items: [{ id: 'singleton' }], pages, status: 200, error: null };
+      // A read of one related object per item (an Intune assignment's role) answers one object.
+      if (SINGLE_READS.some((pattern) => pattern.test(String(path)))) return { items: [{ id: 'related' }], pages, status: 200, error: null };
       return { items: Array.from({ length: 250 }, (_, i) => ({ id: `i-${i}`, displayName: `Item ${i}` })), pages, status: 200, error: null };
     },
   };
@@ -58,7 +64,7 @@ test('the collector records measured requests and throttles per type, separately
   const reads = (type) => {
     const entry = CATALOG.find((candidate) => candidate.type === type);
     if (entry?.selectEach) return entry.selectEach.length;
-    if (!entry?.parent) return 1;
+    if (!entry?.parent) return entry?.itemReads?.single ? 251 : 1;
     return 251 + (entry.itemReads ? 250 * 250 : 0);
   };
   const items = (type) => {

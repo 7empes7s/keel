@@ -14826,3 +14826,29 @@ item that needs it stays untouched.
 - **Report:** B; every tenant change with before/after and its put-back with read-back times; the step 4 counts; the capture
   result; evidence branch and commit; import counts; the run details; the proof listing; anything left in the tenant
   (expected: the KEEL-RT fixtures only, no tenant-wide change).
+
+### Q315: Rerun the Q268 default app credential rules update (part C) after PR #960 deploys (test tenant, tenant-wide setting put back), about 15 minutes
+- Drafted by the "Fix default app credential rules restore" thread (2026-11-04). In Q268 C the update was `uncertain`: Graph sets
+  `identifierUris.uriAdditionWithoutUniqueTenantIdentifier.isStateSetByMicrosoft` itself, so the dry run planned
+  `applicationRestrictions` and its read-back differed. PR #960 never sends that field and leaves it out of the plan, the read-back
+  check and the "changes admin access" effects. The dry run should now plan `isEnabled` only.
+- Needs: PR #960 merged and deployed (build B). Check: `grep -q withoutMicrosoftSet /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
+  Run the restore and the capture from the same build B, and pass that build to `--build`.
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
+  account. Tenant-wide change covered by the 2026-10-22 approval: put the value back right after. Effects approval under the
+  standing test-tenant self-approval; log its id.
+- **Steps (as Q268 C):**
+  1. Write the current policy down (`isEnabled`, restrictions, the identifier URI rule including `isStateSetByMicrosoft`). Take snapshot S.
+  2. Flip `isEnabled` (true to false, or false to true with no restrictions added). Never add a trusted certificate authority restriction.
+  3. Restore from S selecting `tenantAppManagementPolicy` (`--allow-tenant-wide-test-writes` on the dry run). Expect one `update`
+     with a single `access-changing` effect on **`isEnabled` only**. If `applicationRestrictions` is planned, stop and quote the
+     dry run's fields and effects.
+  4. Approve the effect, promote. Expect `update | succeeded` and `isEnabled` back as written down.
+  5. Capture `tenantAppManagementPolicy.update` (`--allow-tenant-setting`); this replaces the Q268 demotion record.
+  6. Re-run the dry run from S: expect 0 planned writes.
+- Evidence: commit the records on `claude/live-evidence-q315`, branched from `origin/master` (secret scan and `pseudonymize.mjs check`
+  first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
+- **Report:** B and S; the dry run's planned fields and effects; approval and request ids; enforce result (exact text if it fails);
+  capture exit code; evidence branch, commit and PR; the policy compared with what was written down.

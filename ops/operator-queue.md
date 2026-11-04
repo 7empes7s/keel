@@ -12906,7 +12906,7 @@ item that needs it stays untouched.
   `workloadWritesLive.mjs` (`--workload onedrive-site-settings --site <OneDrive>`): every field it writes is a sharing field, so the
   capture **narrows** one default link setting (`DefaultLinkPermission` Edit to View, else `DefaultSharingLinkType` to Direct), reads it
   back, puts back the exact value it read, and reads that back. Test tenant only; a locked site is skipped.
-- Needs: PR #782 merged and deployed (build B). Check: `grep -q NARROWING_CAPTURES /opt/keel-live/tools/qualification/workloadWritesAcceptance.mjs`.
+- Needs: PR #945 merged and deployed (build B); it carries #782, which was closed as superseded. Check: `grep -q NARROWING_CAPTURES /opt/keel-live/tools/qualification/workloadWritesAcceptance.mjs`.
   The `keel-powershell` image at B (no change to `run-cmdlet.ps1` since #776, so rebuild only if it is older than #776).
 - Status: todo
 - Result:

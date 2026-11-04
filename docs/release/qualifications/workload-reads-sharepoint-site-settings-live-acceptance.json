@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "build": "7cb46d1ad2302fbf7b8922d0352197ec68860552",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-30T01:30:27.524Z",
+  "observedAt": "2026-11-04T01:38:44.723Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -18,25 +18,36 @@
     "credentials": {
       "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
     },
-    "outcome": "complete",
+    "outcome": "partial",
     "reads": [
       {
         "operationId": "sharepoint.site-sharing",
         "family": "site-sharing",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T01:30:27.524Z",
+        "capturedAt": "2026-11-04T01:38:44.723Z",
         "ok": true,
         "status": "read",
         "objects": 21,
         "error": null
+      },
+      {
+        "operationId": "sharepoint.site-settings",
+        "family": "site-settings",
+        "version": "3.4.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-04T01:38:44.723Z",
+        "ok": false,
+        "status": "partial",
+        "objects": 21,
+        "error": "NOT_RETURNED"
       }
     ]
   },
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "3aa3aeeea3823a527cb2043da6142fb760ba83faa2f122bb02ecf350d1899992"
+      "signature": "8f3e145d354707658ce77b79734baccceefe4f15e47e2ae3b2c0a9eca683287c"
     }
   }
 }

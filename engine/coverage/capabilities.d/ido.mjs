@@ -16,6 +16,7 @@ const INTUNE = 'engine/restore/intuneOperations.mjs#applyIntuneExtendedWrite';
 const EDGES = 'engine/restore/identityObjectOperations.mjs#applyIdentityEdges';
 const IDENTITY_PROOF = 'engine/restore/identityObjectOperations.test.mjs';
 const INTUNE_PROOF = 'engine/restore/intuneExtended.test.mjs';
+const ACCESS_PACKAGE_PROOF = 'engine/restore/accessPackageOperations.test.mjs';
 
 export default [
   { resourceType: 'servicePrincipal', operation: 'update', path: '/servicePrincipals', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
@@ -28,6 +29,10 @@ export default [
   { resourceType: 'customSecurityAttributeDefinition', operation: 'update', path: '/directory/customSecurityAttributeDefinitions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'accessPackageCatalog', operation: 'create', path: '/identityGovernance/entitlementManagement/catalogs', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'accessPackageCatalog', operation: 'update', path: '/identityGovernance/entitlementManagement/catalogs', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Issue #992: access packages and the resource roles they grant.
+  { resourceType: 'accessPackage', operation: 'create', path: '/identityGovernance/entitlementManagement/accessPackages', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: ACCESS_PACKAGE_PROOF },
+  { resourceType: 'accessPackage', operation: 'update', path: '/identityGovernance/entitlementManagement/accessPackages', handler: IDENTITY, idOutcome: 'preserved', proofRef: ACCESS_PACKAGE_PROOF },
+  { resourceType: 'accessPackageResourceRoleScope', operation: 'create', path: '/identityGovernance/entitlementManagement/accessPackages', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: ACCESS_PACKAGE_PROOF },
   { resourceType: 'entitlementManagementSettings', operation: 'update', path: '/identityGovernance/entitlementManagement/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'create', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'update', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

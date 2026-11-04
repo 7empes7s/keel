@@ -140,7 +140,8 @@ export const TYPE_DECISIONS = Object.freeze({
   tokenLifetimePolicy: automated('tokenlifetimepolicy', STS_SUBSET),
   featureRolloutPolicy: incomplete('the groups a rollout applies to are a separate edge not yet collected'),
   accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
-  accessPackage: incomplete('its catalog, policies, assignments and resource roles are their own types, none of which has a writer yet'),
+  // Issue #992: entitlement management, part 1.
+  accessPackage: automated('accesspackage', 'create and update of the name, description and whether it is hidden, in its catalog (the restored or live catalog, matched by natural key); a create waits for its catalog and is refused when the catalog is in neither; delete is not registered; its policies and assignments are their own types'),
   connectedOrganization: incomplete('its sponsors are separate collections, and its identity sources point at tenants that cannot be checked from this one'),
   // Wave 1 CAT-ENTRA: Entra governance types, backed up in full with no writer yet.
   lifecycleWorkflow: automated('identitygovernance-workflow', 'Wave 2: created switched off with its tasks, updated in place or as a new version; a restore turns a workflow on only once that is approved (restore approvals)'),
@@ -148,7 +149,8 @@ export const TYPE_DECISIONS = Object.freeze({
   lifecycleManagementSettings: automated('identitygovernance-lifecyclemanagementsettings', 'Wave 2: update in place'),
   attributeSet: automated('attributeset', 'Wave 2: update only; an attribute set can never be deleted once created, so a create needs a review step'),
   customSecurityAttributeDefinition: automated('customsecurityattributedefinition', 'Wave 2: update, and allowed values added or switched off; a definition can never be deleted once created, so a create needs a review step'),
-  accessPackageCatalog: automated('accesspackagecatalog', 'Wave 2: create and update; the resources a catalog holds are a separate collection not yet collected'),
+  accessPackageCatalog: automated('accesspackagecatalog', 'Wave 2: create and update; the resources a catalog holds are their own type (accessPackageCatalogResource)'),
+  accessPackageCatalogResource: incomplete('a group or app is added to a catalog again (adminAdd) by the resource role restore when a package grants one of its roles and it exists in the target; a site, or a resource no package uses, is added by hand'),
   accessPackageAssignmentPolicy: incomplete('a policy belongs to an access package, which has no writer yet'),
   accessPackageAssignment: incomplete('an assignment is granted through a request against its policy, never copied'),
   entitlementManagementSettings: automated('entitlementmanagementsettings', 'Wave 2: update in place'),
@@ -163,7 +165,7 @@ export const TYPE_DECISIONS = Object.freeze({
   b2xIdentityUserFlow: incomplete('the languages, attributes and API connector bindings of a flow are separate collections not yet collected'),
   identityApiConnector: incomplete('the connector password or certificate is never returned'),
   // Read per parent object.
-  accessPackageResourceRoleScope: incomplete('a resource role is added through a request once its resource is in the catalog, and access packages have no writer yet'),
+  accessPackageResourceRoleScope: automated('accesspackageresourcerolescope', 'issue #992: create of a resource role on its access package, for a group or app matched in the target by natural key (never by an id from another tenant); a group or app missing from the catalog is added to it first (adminAdd), a site missing from it is a manual step; each role is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; an existing role is never added twice; update and delete are not registered'),
   synchronizationJob: incomplete('its schema is a separate collection, its credentials are never returned, and a started job writes accounts in another directory'),
   crossTenantIdentitySyncPolicyPartner: incomplete('it lets a partner tenant sync its users into this one, so an update needs a review step'),
   // Issue #155: the first Intune restore subset. Every other Intune type is
@@ -363,6 +365,10 @@ recordRemappingProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-
 // Restore gaps batch 19: a dependency or supersedence between apps recreated
 // in the same run is created between the NEW app ids.
 recordRemappingProof('mobileAppRelationship', 'create', 'engine/restore/intuneAppLinks.test.mjs');
+// Issue #992: an access package created in the catalog this run restored (or
+// the live one), and a resource role pointed at the target's package and group.
+recordRemappingProof('accessPackage', 'create', 'engine/restore/accessPackageOperations.test.mjs');
+recordRemappingProof('accessPackageResourceRoleScope', 'create', 'engine/restore/accessPackageOperations.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -927,8 +933,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'active time-bound assignments; permanent ones are restored as roleAssignment, and a time-bound restore needs the same request and expiry contract as eligibility plus a check that an activation is not replayed'),
   accessReviewScheduleDefinition: research('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
     'review history and decisions cannot be recreated; only the definition could be'),
-  accessPackage: research('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages', 'EntitlementManagement.ReadWrite.All',
-    'depends on its catalog, policies and resource roles, none of which is restored yet'),
+  accessPackage: subset('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',
+    'create in its catalog and update of the name, description and whether it is hidden are fixture-tested; a missing catalog refuses the create; policies and assignments are their own types'),
   connectedOrganization: research('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations', 'EntitlementManagement.ReadWrite.All',
     'identity sources reference external tenants that cannot be verified from this tenant'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.
@@ -943,7 +949,9 @@ export const EXPANSION_INVENTORY = Object.freeze({
   customSecurityAttributeDefinition: subset('identity-application', 'PATCH /directory/customSecurityAttributeDefinitions/{id}; POST/PATCH .../{id}/allowedValues', 'CustomSecAttributeDefinition.ReadWrite.All',
     'update and allowed values are fixture-tested; definitions cannot be deleted once created, so a create needs a review step that does not exist yet'),
   accessPackageCatalog: subset('identity-application', 'POST /identityGovernance/entitlementManagement/catalogs; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',
-    'create and update are fixture-tested; the resources a catalog holds are a separate collection that is not backed up'),
+    'create and update are fixture-tested; the resources a catalog holds are backed up as their own type'),
+  accessPackageCatalogResource: research('identity-application', 'POST /identityGovernance/entitlementManagement/resourceRequests (adminAdd)', 'EntitlementManagement.ReadWrite.All',
+    'added to a catalog only by the resource role restore, for a group or app a package grants that exists in the target; a site, or a resource no package uses, is added by hand'),
   accessPackageAssignmentPolicy: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentPolicies', 'EntitlementManagement.ReadWrite.All',
     'a policy belongs to an access package, which is not restored yet'),
   accessPackageAssignment: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentRequests', 'EntitlementManagement.ReadWrite.All',
@@ -956,8 +964,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'the languages, attributes and API connectors a flow uses are separate collections that are not backed up'),
   identityApiConnector: research('identity-application', 'POST /identity/apiConnectors', 'APIConnectors.ReadWrite.All',
     'the connector password or certificate is never readable'),
-  accessPackageResourceRoleScope: research('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages/{id}/resourceRoleScopes', 'EntitlementManagement.ReadWrite.All',
-    'the resource must be in the catalog first, and access packages are not restored yet'),
+  accessPackageResourceRoleScope: subset('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages/{id}/resourceRoleScopes', 'EntitlementManagement.ReadWrite.All',
+    'create is fixture-tested behind the restore approval; the group or app is matched in the target by natural key and added to the catalog first when it is missing there; a site missing from the catalog is a manual step'),
   synchronizationJob: research('identity-application', 'POST /servicePrincipals/{id}/synchronization/jobs', 'Synchronization.ReadWrite.All',
     'the schema is a separate collection that is not backed up, credentials are never readable, and a started job writes accounts in another directory'),
   // ---- policies (task-108)

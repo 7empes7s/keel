@@ -51,3 +51,9 @@ export function currentQuery(): string {
 export function currentPath(): string {
   return window.location.pathname;
 }
+
+/** The address as it is now, for code that runs after React's copy is out of date
+ * (an unmount). */
+export function currentUrl(): { pathname: string; search: string } {
+  return { pathname: window.location.pathname, search: window.location.search };
+}

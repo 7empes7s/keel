@@ -191,8 +191,6 @@ const CSS = `
 @media (max-width: 640px) { .bl-glance { grid-template-columns: minmax(0, 1fr); } }
 .bl-decision { display: grid; gap: var(--space-md); }
 .bl-decision-what { margin: 0; font-size: 0.9375rem; line-height: 1.5; }
-.bl-decision-scope { margin: 0; color: var(--text-soft); font-size: 0.875rem; overflow-wrap: anywhere; }
-.bl-decision-scope b { color: var(--text); }
 .bl-not-saved { font-size: 0.875rem; color: var(--text-soft); }
 .bl-not-saved summary { cursor: pointer; color: var(--text); }
 .bl-not-saved ul { margin: 0.5rem 0 0; padding-left: 1.25rem; max-height: 12rem; overflow: auto; }

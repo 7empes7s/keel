@@ -1,3 +1,4 @@
+import { flagLabel } from "../../engine/insights/flagLabels.mjs";
 // Roadmap task-130 (portal experience contract, identification rules): the generated
 // names and status sentences of objects that have no name column of their own — jobs,
 // approval requests, audit-record entries — built from their own fields and the
@@ -418,6 +419,8 @@ export const ACTION_PHRASES: Record<string, string> = {
   "principals:revoke": "take a role away from a person",
   "principals:disable": "turn off a person's Keel account",
   "principals:enable": "turn on a person's Keel account",
+  "change-flags:read": "view flagged change alert settings",
+  "change-flags:update": "change flagged change alert settings",
   "anonymity:read": "view the \"Hide people's names\" setting",
   "anonymity:update": "change the \"Hide people's names\" setting",
   breakglass: "update an emergency access account",
@@ -700,7 +703,8 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
     : "An off-site copy of the backups failed its check and does not count",
   // Alerts, people and emergency access
   "alert-action": (s, actor, names) => {
-    const verb = { acknowledged: "acknowledged", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(s.action)] ?? "changed";
+    if (s.action === "change-flag-setting") return `${actor} turned ${s.enabled ? "on" : "off"} alerts for “${flagLabel(String(s.flag))}”.`;
+    const verb = { acknowledged: "acknowledged", reviewed: "reviewed", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(s.action)] ?? "changed";
     const about = text(s.naturalKey) ? ` about ${namedResource(String(s.naturalKey), names)}` : "";
     return `${actor} ${verb} an alert${about}${quoted(s.note)}`;
   },

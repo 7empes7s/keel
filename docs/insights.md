@@ -78,3 +78,39 @@ two different things.
 - **Link rows (memberships, app permissions)** need the parent group or the API's app in the same
   backup to name the group or the permission. Without it, the flag still shows, with a general
   sentence.
+
+## Alerts from flags (#966)
+
+Each backup drift run, service collection and audit page evaluates its exact new rows.
+A critical flag raises a critical alert; a high flag raises a warning. Source row id plus
+flag key identifies the observation, so replay adds no alert or transition. Audit pages
+queue this work in the same transaction as the facts and cursor, then drain it after
+commit; a failed alert write retries on the next ingest.
+
+When the same object has active approved-setup drift, its flag sentences enrich that
+alert instead. Notifications use the existing channels, routing, mute and escalation,
+under the scheduler's existing notification capability. No new delivery channel exists.
+
+A later complete backup, or a covered service read, clears a flag when it proves the
+flagged state ended. Partial or missing fields prove nothing. In particular, an enterprise
+app backup without credential lists cannot prove that an audited secret was removed:
+that event remains for a person to review. Audit role and permission additions compare
+with the last complete backup before the event; only observed membership sets can clear
+them. Acting on the exact change also clears its flag. A rollback plan alone is not a
+completed rollback; only its verified applied resources, its recorded disposition or a later
+restored observation clear it.
+
+From Alerts, **Mark reviewed** closes a change-flag alert with a resolved observation.
+It needs `dispose-accept`; the reviewer and note commit with `alert-action` evidence.
+Acknowledging still leaves the alert active. Source replay after review cannot reopen it;
+a genuinely new flagged source row can.
+
+Alerts and Overview name the object, show the flag sentence and attribution, and link
+to Changes. The link selects the precise source row, including older rows outside the
+feed's default window. Labels are read using the current "Hide people's names" setting;
+source ids remain under Technical details. A pruned source falls back to a general flag
+sentence without names.
+
+In **Settings → Notifications → Flagged change alerts**, every key starts on. Changing
+a key needs `policies` and writes `alert-action` evidence in the same transaction. Turning
+a key off stops new firings and keeps existing alerts available for review.

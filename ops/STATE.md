@@ -116,7 +116,8 @@ Four open (2026-10-27). The other operator reports were triaged and closed that 
   permissions exposure (oversharing report, sharing-link drift, owner access review).
 - **Redesign Track A (Insights):** A1 taxonomy (#354) shipped and object names exist. Not started: A3
   anonymity setting (next, no dependencies), A4 change feed, A5 grouped changes, A6 risk flags, A7 "where to
-  start" panel, A8 Insights page, A9 names-not-ids everywhere, A10 alerts from flags.
+  start" panel, A8 Insights page, A9 names-not-ids everywhere. A10 alerts from flags is implemented
+  in the #966 PR, pending independent QA and CI.
 - **Track E:** automation center. **Track F:** notifications. Both wait on the shell redesign and saved reports.
 - **Host:** the prune schedule is not enabled (needs review first); the nightly database dump outside Keel
   overwrites its file in place.

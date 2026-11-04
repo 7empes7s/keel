@@ -15,6 +15,7 @@ export const DATA_SURFACES = {
   evidenceApi: { capability: "read", source: "api/evidence/route.ts" },
   evidenceVerifyApi: { capability: "read", source: "api/evidence/verify/route.ts" },
   evidencePage: { capability: "read", source: "evidence/page.tsx" },
+  changeFlagSettingsApi: { capability: "read", source: "api/change-flag-settings/route.ts" },
   anonymityApi: { capability: "read", source: "api/anonymity/route.ts" },
   restoreApprovalsApi: { capability: "read", source: "api/restore-approvals/route.ts" },
   approvalModeApi: { capability: "read", source: "api/approval-mode/route.ts" },

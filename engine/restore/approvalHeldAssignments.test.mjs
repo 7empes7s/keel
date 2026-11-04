@@ -277,3 +277,44 @@ test('batch 2 review: a role read that finds the assignment gone leaves the role
   assert.equal((await withItemReadsForTest(reader, entry, items)).error, null);
   assert.equal('roleDefinition' in items[0], false);
 });
+
+test('batch 2: a Defender assignment update sends the whole assignment, not only the changed field', async () => {
+  // Graph answers 400 "AppScopeIds must be provided; DisplayName was not provided;
+  // RoleDefinitionId was not provided" to a PATCH that holds only principalIds (Q271).
+  const graph = fakeGraph();
+  const path = `${KINDS.defenderRoleAssignment.collection}/target-defender`;
+  const live = {
+    id: 'target-defender', displayName: 'KEEL-RT-defender assignment', principalIds: [TARGET_USER],
+    roleDefinitionId: TARGET_ROLE, directoryScopeIds: ['/'], appScopeIds: ['/'],
+  };
+  graph.objects.set(path, structuredClone(live));
+  const sent = [];
+  const write = graph.write.bind(graph);
+  graph.write = async (version, writePath, request) => {
+    sent.push({ path: writePath, ...request });
+    return write(version, writePath, request);
+  };
+  // A restore into the same tenant, as in the live proof: no id is remapped.
+  const resource = {
+    naturalKey: 'defenderRoleAssignment:target-defender', resourceType: 'defenderRoleAssignment', verb: 'update', references: [],
+    payload: { ...structuredClone(live), principalIds: [TARGET_USER, TARGET_GROUP] },
+    targetId: 'target-defender', live: { state: 'present', payload: live, targetId: 'target-defender' },
+  };
+  const result = await applyWave(graph, governor, [resource], {
+    targetTenant: 'fixture-tenant', mode: 'enforce',
+    approvedContentEffects: classifyContentEffects([resource]).effects,
+  });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(result.applied[0].changes.fields, ['principalIds'], 'the plan still names only the changed field');
+  const patches = sent.filter((write) => write.method === 'PATCH');
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].path, path);
+  const { body } = patches[0];
+  assert.equal(body.displayName, 'KEEL-RT-defender assignment');
+  assert.equal(body.roleDefinitionId, TARGET_ROLE);
+  assert.deepEqual(body.appScopeIds, ['/']);
+  assert.deepEqual(body.directoryScopeIds, ['/']);
+  assert.deepEqual([...body.principalIds].sort(), [TARGET_USER, TARGET_GROUP].sort());
+  assert.equal(body.id, undefined, 'the id is never sent');
+});

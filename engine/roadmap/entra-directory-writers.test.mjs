@@ -139,11 +139,14 @@ test('each writer type is a fixture-tested create and update, delete is unsuppor
 
 test('the formerly unknown Entra types without a writer stay manual and are restored by hand', () => {
   const stillManual = ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'authenticationContextClassReference',
-    'activityBasedTimeoutPolicy', 'featureRolloutPolicy', 'accessReviewScheduleDefinition', 'accessPackage', 'connectedOrganization'];
+    'activityBasedTimeoutPolicy', 'featureRolloutPolicy', 'accessReviewScheduleDefinition', 'connectedOrganization'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);
   }
+  // Issue #992: access packages now have a writer; their policies and assignments are still by hand.
+  assert.equal(TYPE_DECISIONS.accessPackage.decision, 'automated');
+  assert.equal(completenessFor('accessPackage', TYPE_DECISIONS.accessPackage).recreate, 'keel');
 });
 
 // ------------------------------------------------------- token and routing policies

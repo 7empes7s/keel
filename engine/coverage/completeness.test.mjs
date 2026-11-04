@@ -28,8 +28,9 @@ test('no type is left unknown: every catalogue type has one of the four coverage
   assert.deepEqual(Object.keys(COMPLETENESS).sort(), CATALOG.map((entry) => entry.type).sort());
 });
 
-// Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs).
-const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy']);
+// Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs),
+// and issue #992 one for access packages (accessPackageOperations.mjs).
+const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage']);
 
 test('the 14 formerly unclassified Entra types are incomplete configurations, recreated by hand until a writer exists', () => {
   for (const type of FORMERLY_UNCLASSIFIED) {

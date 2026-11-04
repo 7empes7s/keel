@@ -17,6 +17,12 @@ export default [
     note: 'Definitions can be deactivated but never deleted.' },
   // Entitlement management, beside accessPackage and connectedOrganization.
   { type: 'accessPackageCatalog', path: '/identityGovernance/entitlementManagement/catalogs', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // The groups, apps and sites a catalog holds (issue #992), read per catalog
+  // with their roles and scopes, so a restore knows what a package can grant.
+  { type: 'accessPackageCatalogResource', path: '/identityGovernance/entitlementManagement/catalogs/{parent}/resources', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    parent: { path: '/identityGovernance/entitlementManagement/catalogs', select: 'id', key: 'id', as: 'catalogId' },
+    query: '$expand=roles,scopes',
+    note: 'Added to a catalog again by the resource role restore, for groups and apps that exist.' },
   // A policy names its access package only when expanded.
   { type: 'accessPackageAssignmentPolicy', path: '/identityGovernance/entitlementManagement/assignmentPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     query: '$expand=accessPackage' },

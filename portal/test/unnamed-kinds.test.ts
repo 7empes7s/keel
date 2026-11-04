@@ -32,7 +32,7 @@ const NAMED_BY_FIELD = new Set([
   "deviceEnrollmentConfiguration", "deviceManagementRoleDefinition", "deviceCategory", "termsAndConditions",
   "windowsAutopilotDeploymentProfile", "deviceManagementIntent", "deviceManagementTemplate", "mobileApp", "managedAppPolicy",
   "targetedManagedAppConfiguration", "mobileAppConfiguration", "lifecycleWorkflow", "lifecycleWorkflowCustomTaskExtension",
-  "customSecurityAttributeDefinition", "accessPackageCatalog", "accessPackageAssignmentPolicy", "agreement",
+  "customSecurityAttributeDefinition", "accessPackageCatalog", "accessPackageCatalogResource", "accessPackageAssignmentPolicy", "agreement",
   "appManagementPolicy", "identityApiConnector", "deviceManagementScript", "deviceShellScript", "deviceHealthScript",
   "deviceComplianceScript", "assignmentFilter", "roleScopeTag", "windowsFeatureUpdateProfile", "windowsQualityUpdateProfile",
   "windowsDriverUpdateProfile", "groupPolicyConfiguration", "groupPolicyUploadedDefinitionFile",

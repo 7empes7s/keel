@@ -24,6 +24,9 @@ export default [
   { type: 'tokenLifetimePolicy', path: '/policies/tokenLifetimePolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'featureRolloutPolicy', path: '/policies/featureRolloutPolicies', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
   { type: 'accessReviewScheduleDefinition', path: '/identityGovernance/accessReviews/definitions', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
-  { type: 'accessPackage', path: '/identityGovernance/entitlementManagement/accessPackages', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // A package names its catalog only when expanded (issue #992: a restore
+  // creates the package in its catalog).
+  { type: 'accessPackage', path: '/identityGovernance/entitlementManagement/accessPackages', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    query: '$expand=catalog' },
   { type: 'connectedOrganization', path: '/identityGovernance/entitlementManagement/connectedOrganizations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
 ];

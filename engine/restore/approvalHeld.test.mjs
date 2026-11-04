@@ -12,6 +12,8 @@ import { APPROVAL_HELD_KINDS, approvalHeldRefusal, unapprovedAccessEffects } fro
 import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
 import { INTUNE_EXTENDED_RECORDS } from './intuneOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
+import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
+import { TYPE_DECISIONS, qualificationFor } from '../coverage/qualification.mjs';
 
 const RECORDS = { ...IDENTITY_RECORDS, ...INTUNE_EXTENDED_RECORDS };
 
@@ -106,4 +108,14 @@ test('approval-held kinds: a write that changes no access field needs no approva
     live: { state: 'present', payload: { isBuiltIn: false, description: 'Old', rolePermissions: [{ resourceActions: [{ allowedResourceActions: ['a'] }] }] } },
   };
   assert.equal(approvalHeldRefusal(resource, 'update', { mode: 'enforce' }), null);
+});
+
+test('Q271 part B: a multi admin approval policy is never written, because Intune refuses app writes to it', () => {
+  assert.equal(Object.hasOwn(INTUNE_EXTENDED_RECORDS, 'operationApprovalPolicy'), false);
+  assert.ok(!APPROVAL_HELD_KINDS.includes('operationApprovalPolicy'));
+  for (const operation of ['create', 'update', 'delete']) {
+    assert.equal(isSupportedClaim(capabilityFor('operationApprovalPolicy', operation).claim), false, operation);
+  }
+  assert.equal(qualificationFor('operationApprovalPolicy').decision, 'manual');
+  assert.match(TYPE_DECISIONS.operationApprovalPolicy.reason, /Application only authentication is not allowed/);
 });

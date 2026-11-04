@@ -70,8 +70,7 @@ export const withApprovalGate = (own = null) => (resource, verb, ctx) => (own ? 
 
 // ------------------------------------------------ batch 2: who holds admin roles
 //
-// Intune, Exchange and Defender role assignments and Intune multi admin approval
-// policies. Each names users, groups or apps by id. Their records rewrite those
+// Intune, Exchange and Defender role assignments. Each names users, groups or apps by id. Their records rewrite those
 // ids to the target's (`remapsReferences`: a group found by its name, a user by
 // sign-in name, an app by app id, a role this run recreated), and the approval
 // effects name them (contentEffects.mjs namedAccessValue).

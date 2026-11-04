@@ -67,26 +67,26 @@ export async function computeBaselineScore(client, { tenantRef }) {
   assertTenantRef(tenantRef);
   const baseline = await getActiveBaseline(client, { tenantRef });
   if (!baseline) return null;
-  const [{ rows: heldRows }, { rows: heldServiceRows }, drift, { rows: latestReads }, totals] = await Promise.all([
-    client.query(
-      `SELECT rv.resource_type, count(*)::int AS count FROM baseline_resource br
-         JOIN resource_version rv ON rv.id = br.resource_version_id
-        WHERE br.baseline_id = $1
-        GROUP BY rv.resource_type`,
-      [baseline.id],
-    ),
-    client.query(
-      'SELECT workload, count(*)::int AS count FROM baseline_workload WHERE baseline_id = $1 GROUP BY workload',
-      [baseline.id],
-    ),
-    listLatestOpenDrift(client, { tenantRef, baselineId: baseline.id }),
-    client.query(
-      `SELECT DISTINCT ON (workload) workload, outcome FROM workload_collection
-        WHERE tenant_ref = $1 ORDER BY workload, created_at DESC, id DESC`,
-      [tenantRef],
-    ),
-    loadServiceReadTotals(client, tenantRef),
-  ]);
+  // One after another: these share one connection, and pg runs a connection's queries
+  // one at a time anyway. Sent together, pg warns (and pg 9 will refuse; operator queue Q308).
+  const { rows: heldRows } = await client.query(
+    `SELECT rv.resource_type, count(*)::int AS count FROM baseline_resource br
+       JOIN resource_version rv ON rv.id = br.resource_version_id
+      WHERE br.baseline_id = $1
+      GROUP BY rv.resource_type`,
+    [baseline.id],
+  );
+  const { rows: heldServiceRows } = await client.query(
+    'SELECT workload, count(*)::int AS count FROM baseline_workload WHERE baseline_id = $1 GROUP BY workload',
+    [baseline.id],
+  );
+  const drift = await listLatestOpenDrift(client, { tenantRef, baselineId: baseline.id });
+  const { rows: latestReads } = await client.query(
+    `SELECT DISTINCT ON (workload) workload, outcome FROM workload_collection
+      WHERE tenant_ref = $1 ORDER BY workload, created_at DESC, id DESC`,
+    [tenantRef],
+  );
+  const totals = await loadServiceReadTotals(client, tenantRef);
   const changes = {};
   for (const row of drift) {
     const tally = changes[row.resource_type] ??= { added: 0, modified: 0, removed: 0 };

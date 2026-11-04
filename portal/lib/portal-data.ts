@@ -501,10 +501,9 @@ async function baselinesFor(client: KeelClient, ref: string): Promise<BaselineRe
 // Roadmap task-87: every baseline with its capture, version chain and changes since
 // capture, computed by the engine reader at `now` from stored capture times.
 async function baselinesWithCapture(client: KeelClient, ref: string, now: Date): Promise<BaselineRecord[]> {
-  const [baselines, compliance] = await Promise.all([
-    baselinesFor(client, ref),
-    baselineCompliance(client, { tenantRef: ref, now }) as Promise<UnknownRecord[]>,
-  ]);
+  // One after another: both read on one connection (operator queue Q308).
+  const baselines = await baselinesFor(client, ref);
+  const compliance = (await baselineCompliance(client, { tenantRef: ref, now })) as UnknownRecord[];
   const byId = new Map(compliance.map((entry) => [String(entry.id), entry]));
   return baselines.map((baseline) => {
     const entry = byId.get(baseline.id);
@@ -567,10 +566,9 @@ export async function getComplianceData(): Promise<ComplianceData> {
   const now = new Date();
   const storage = storageFrom();
   return withClient(async (client) => {
-    const [{ findings, summary }, baselines] = await Promise.all([
-      complianceFindings(client, { tenantRef: ref, now }) as Promise<{ findings: ComplianceFinding[]; summary: ComplianceSummary }>,
-      baselinesWithCapture(client, ref, now),
-    ]);
+    // One after another: both read on this one connection (operator queue Q308).
+    const { findings, summary } = (await complianceFindings(client, { tenantRef: ref, now })) as { findings: ComplianceFinding[]; summary: ComplianceSummary };
+    const baselines = await baselinesWithCapture(client, ref, now);
     return {
       generatedAt: now.toISOString(),
       findings: await withExceptionPeople(client, findings),

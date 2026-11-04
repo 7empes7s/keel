@@ -235,7 +235,16 @@ export const TYPE_DECISIONS = Object.freeze({
   exchangeRoleAssignment: automated('unifiedroleassignment', 'approval-held kinds batch 2: create through Graph beta of who holds an Exchange role (a user, group or app, matched in the target), over which scope; each one is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; role group holders are a manual step', { view: 'graph-rest-beta' }),
   exchangeCustomAppScope: automated('customappscope', 'restore gaps batch 9: create and update of the name and recipient filter through Graph beta; the app role assignments that use it are not written', { view: 'graph-rest-beta' }),
   defenderRoleDefinition: automated('unifiedroledefinition', 'restore gaps batch 21: create and update through Graph beta of custom Defender roles (name, description and permissions); built-in roles are skipped; who holds the role is restored by hand', { view: 'graph-rest-beta' }),
-  defenderRoleAssignment: automated('unifiedroleassignmentmultiple', 'approval-held kinds batch 2: create and update through Graph beta of who holds a Defender role (people and groups, matched in the target) and the data sources it covers; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service', { view: 'graph-rest-beta' }),
+  defenderRoleAssignment: automated('unifiedroleassignmentmultiple', 'approval-held kinds batch 2: create and update through Graph beta of who holds a Defender role (people and groups, matched in the target) and the data sources it covers; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service', {
+    view: 'graph-rest-beta',
+    liveFailures: {
+      update: Object.freeze({
+        failedAt: '2026-11-04',
+        reason: 'Graph 400 on PATCH with only principalIds: "AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided". The Defender assignment PATCH needs the full body (displayName, roleDefinitionId, principalIds, directoryScopeIds, appScopeIds).',
+        fix: 'PR #954: an update sends the whole assignment (updateSendsWhole); live rerun queued as Q311',
+      }),
+    },
+  }),
   defenderCustomAppScope: manual('Graph has no write for Defender app access scopes (list only; create, update and delete are Exchange only)'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; no writer is built yet.
   deviceManagementSettings: automated('intune-shared-devicemanagement', 'restore gaps batch 17: update in place through Graph beta of the compliance settings; devices with no compliance policy are never turned compliant; the device cleanup window is the device cleanup rules', { view: 'graph-rest-beta' }),

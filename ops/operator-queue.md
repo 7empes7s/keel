@@ -13748,7 +13748,7 @@ item that needs it stays untouched.
   policy (`deviceManagementIntent`) under Defender by its template's `templateSubtype`, looked up when rows are read from the newest
   stored copy of the template (`engine/insights/templateAreas.mjs`); nothing is written onto the stored policy. Q283 found 0 intents,
   so a fixture is needed.
-- Needs: /opt/keel-live at the #828 merge or later (`test -f /opt/keel-live/engine/insights/templateAreas.mjs`).
+- Needs: /opt/keel-live at the #944 merge or later (#944 carries the #828 change; `test -f /opt/keel-live/engine/insights/templateAreas.mjs`).
 - Status: todo
 - Result:
 - **Tenant:** test tenant only. Restorer credential for the create and the delete (`DeviceManagementConfiguration.ReadWrite.All`;

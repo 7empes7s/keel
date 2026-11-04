@@ -1,6 +1,6 @@
 import type { DashboardData } from "@/lib/types";
 
-// The menu's badges come from the Overview's data, read in the background. One failed
+// The menu's badges come from the Overview's figures (GET /api/menu-status), read in the background. One failed
 // read (a busy database answers 503) used to leave the menu with no badges until the
 // next minute's poll, and every full page load started with none. Now the last good
 // answer is kept for the browser tab, and a failed read is tried again within seconds.
@@ -13,7 +13,7 @@ export const MENU_DATA_KEY = "keel-menu-data";
 /** Waits before each retry of a failed read; after the last, the regular poll takes over. */
 export const MENU_RETRY_MS = [2_000, 5_000, 15_000, 30_000] as const;
 
-export function menuDataOf(data: DashboardData): MenuData {
+export function menuDataOf(data: MenuData): MenuData {
   const { headline, coverage, openDriftByBlastRadius, openDriftTotal, evidence, waiting, alerts } = data;
   return { headline, coverage, openDriftByBlastRadius, openDriftTotal, evidence, waiting, alerts };
 }

@@ -13,7 +13,8 @@ import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
 import { setupStatus } from "@/lib/baselines-view";
 import { openChangeCount } from "@/lib/changes-view";
-import { getDashboardData, getDriftData } from "@/lib/portal-data";
+import { menuStatuses } from "@/lib/menu-status";
+import { getDashboardData, getDriftData, getMenuStatusData } from "@/lib/portal-data";
 import { getServiceChanges } from "@/lib/service-changes";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
@@ -423,6 +424,14 @@ test("the Overview counts open service setting changes beside the approved-setup
   assert.equal(setupStatus(drift.baseline, [...drift.items, ...service.items], after.openDriftTotal).label, `${after.openDriftTotal} ${after.openDriftTotal === 1 ? "change" : "changes"} to review`);
   const accessAffecting = (data: typeof after) => data.openDriftByBlastRadius.find((item) => item.blastRadius === "access-affecting")?.count ?? 0;
   assert.equal(accessAffecting(after), accessAffecting(before) + 1);
+
+  // The menu's poll (/api/menu-status) reads the same figures, and only those its badges
+  // and bell need: no approver names, trend, compliance score or setup details.
+  const menu = await getMenuStatusData();
+  assert.deepEqual(Object.keys(menu).sort(), ["alerts", "coverage", "evidence", "generatedAt", "headline", "openDriftByBlastRadius", "openDriftTotal", "waiting"]);
+  const { generatedAt: _menuAt, ...menuFigures } = menu;
+  for (const [key, value] of Object.entries(menuFigures)) assert.deepEqual(value, after[key as keyof typeof after], `${key} matches the Overview`);
+  assert.deepEqual(menuStatuses(menu, 1), menuStatuses(after, 1), "the badges say what the Overview says");
 });
 
 // PR #435 follow-up: a changed Intune script reaches read views as its size and a

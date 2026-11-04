@@ -18,7 +18,7 @@ import { appendEvidence } from './evidence.mjs';
 import { refuseSameContentDriftIds } from '../store/openDrift.mjs';
 import { canonicalDigest, getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 import { resolveRowReferences } from './references.mjs';
-import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnership } from '../authz/entityScope.mjs';
+import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnershipMany } from '../authz/entityScope.mjs';
 import { can, capabilityScope } from '../authz/can.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
@@ -425,14 +425,27 @@ const MAX_ROUTE_APPROVERS = 500;
  * @param {{ tenantRef: string, entityScope: any, requesterId?: string | null, at?: Date, approverCache?: Map<string, string[]> | null }} options
  */
 export async function routeApproval(client, { tenantRef, entityScope, requesterId = null, at = new Date(), approverCache = null }) {
+  const [route] = await routeApprovals(client, { tenantRef, entityScopes: [entityScope], requesterId, at, approverCache });
+  return route;
+}
+
+/** routeApproval for many captured scopes at once: ownership is re-read in one query
+ * and each set of approvers is read once (the Changes list routes every open change).
+ *
+ * @param {any} client
+ * @param {{ tenantRef: string, entityScopes: any[], requesterId?: string | null, at?: Date, approverCache?: Map<string, string[]> | null }} options
+ */
+export async function routeApprovals(client, { tenantRef, entityScopes, requesterId = null, at = new Date(), approverCache = null }) {
+  if (!entityScopes.length) return [];
   // Solo approval mode: the requester may decide their own request, so they count.
   const skipRequester = requesterId != null && !(await selfApprovalAllowed(client, { tenantRef }));
   // A reader routing many changes at once may share one cache across calls.
+  const cache = approverCache ?? new Map();
   const approvers = async (entityCode) => {
     const key = `${entityCode ?? '*'}|${skipRequester ? requesterId : ''}`;
-    if (approverCache?.has(key)) return approverCache.get(key);
+    if (cache.has(key)) return cache.get(key);
     const ids = await eligibleApprovers(entityCode);
-    approverCache?.set(key, ids);
+    cache.set(key, ids);
     return ids;
   };
   const eligibleApprovers = async (entityCode) => {
@@ -448,17 +461,25 @@ export async function routeApproval(client, { tenantRef, entityScope, requesterI
     return ids;
   };
   const central = async (reason) => ({ route: 'central', reason, approvers: await approvers(null), routedAt: at.toISOString() });
-  if (!entityScope) return central('no-captured-scope');
-  if (entityScope.version !== SCOPE_VERSION || !Array.isArray(entityScope.resources)) return { route: 'refused', reason: 'scope-unreadable', routedAt: at.toISOString() };
-  const current = await rereadApprovalOwnership(client, { tenantRef, entityScope, at });
-  if (current.changed) return { route: 'refused', reason: 'ownership-changed', routedAt: at.toISOString() };
-  if (current.expired) return central('ownership-expired');
-  if (current.centralOnly) return central('shared-or-unattributed');
-  if (current.entities.length !== 1) return central('cross-entity');
-  const [entityCode] = current.entities;
-  const entityApprovers = await approvers(entityCode);
-  if (!entityApprovers.length) return central('no-entity-approver');
-  return { route: 'entity', entityCode, approvers: entityApprovers, routedAt: at.toISOString() };
+  const readable = (entityScope) => entityScope && entityScope.version === SCOPE_VERSION && Array.isArray(entityScope.resources);
+  const reread = await rereadApprovalOwnershipMany(client, { tenantRef, entityScopes: entityScopes.filter(readable), at });
+  const results = [];
+  let next = 0;
+  for (const entityScope of entityScopes) {
+    if (!entityScope) { results.push(await central('no-captured-scope')); continue; }
+    if (!readable(entityScope)) { results.push({ route: 'refused', reason: 'scope-unreadable', routedAt: at.toISOString() }); continue; }
+    const current = reread[next++];
+    if (current.changed) { results.push({ route: 'refused', reason: 'ownership-changed', routedAt: at.toISOString() }); continue; }
+    if (current.expired) { results.push(await central('ownership-expired')); continue; }
+    if (current.centralOnly) { results.push(await central('shared-or-unattributed')); continue; }
+    if (current.entities.length !== 1) { results.push(await central('cross-entity')); continue; }
+    const [entityCode] = current.entities;
+    const entityApprovers = await approvers(entityCode);
+    results.push(entityApprovers.length
+      ? { route: 'entity', entityCode, approvers: entityApprovers, routedAt: at.toISOString() }
+      : await central('no-entity-approver'));
+  }
+  return results;
 }
 
 async function lockRequest(client, id) {

@@ -16,7 +16,7 @@ import type { MenuPrefs } from "@/lib/menu-prefs";
 import { loadMenuData, menuDataOf, menuRetryDelay, saveMenuData, type MenuData } from "@/lib/menu-data";
 import { menuStatuses, settingsStatus, type MenuStatuses } from "@/lib/menu-status";
 import type { ThemePreference } from "@/lib/theme";
-import type { DashboardData } from "@/lib/types";
+import type { MenuStatusData } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
 interface ShellProps {
@@ -32,8 +32,9 @@ interface ShellProps {
 
 // The page frame, direction A ("Chart room"): a navy menu on the left on a desktop
 // (hideable), a top bar and a bottom tab bar on a phone, where All opens the same menu
-// as a sheet. Section statuses come from the Overview's data, so a closed section or a
-// phone tab still says when something needs someone.
+// as a sheet. Section statuses come from the Overview's figures (GET /api/menu-status,
+// only what the badges read), so a closed section or a phone tab still says when
+// something needs someone.
 export function AppShell(props: ShellProps) {
   return (
     <ApprovalModeProvider mode={props.approvalMode ?? null}>
@@ -79,9 +80,9 @@ function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: numb
   async function readDashboard() {
     let retryAfter: string | null = null;
     try {
-      const response = await fetch("/api/dashboard", { cache: "no-store" });
+      const response = await fetch("/api/menu-status", { cache: "no-store" });
       if (response.ok) {
-        const data = menuDataOf(await response.json() as DashboardData);
+        const data = menuDataOf(await response.json() as MenuStatusData);
         setDashboard(data);
         saveMenuData(sessionStorageOrUndefined(), data);
         setReady(true);

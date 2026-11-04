@@ -4,7 +4,8 @@ import { connection } from "next/server";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
+import { approvalInboxScope } from "@/lib/approval-inbox";
+import { pendingApprovalCount } from "@/lib/pending-approvals";
 import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { getDashboardData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
@@ -35,7 +36,8 @@ export default async function Home() {
   const approverScope = approvalInboxScope(requestHeaders);
   if (approverScope) {
     try {
-      pendingApprovals = await getPendingApprovalCount(approverScope, requestHeaders.get(PRINCIPAL_ID_HEADER));
+      // The same request-cached count the menu reads: one count per page load.
+      pendingApprovals = await pendingApprovalCount(approverScope, requestHeaders.get(PRINCIPAL_ID_HEADER));
     } catch {
       pendingApprovals = null;
     }

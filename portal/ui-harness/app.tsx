@@ -182,10 +182,10 @@ const HARNESS_CALLS: { url: string; method: string; body: string | null }[] = []
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
-  // The menu's section statuses read the Overview's data; answer at once so every
-  // screenshot shows them.
+  // The menu's section statuses read the Overview's figures (/api/menu-status); answer
+  // at once so every screenshot shows them.
   // A test sets __harnessDashboardFailures to make that many reads answer as a busy server.
-  if (url.endsWith("/api/dashboard")) {
+  if (url.endsWith("/api/menu-status") || url.endsWith("/api/dashboard")) {
     const harness = window as unknown as { __harnessDashboardFailures?: number };
     if ((harness.__harnessDashboardFailures ?? 0) > 0) {
       harness.__harnessDashboardFailures! -= 1;

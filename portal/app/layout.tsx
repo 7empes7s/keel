@@ -11,7 +11,8 @@ import { DATA_SURFACES, readAccess } from "@/lib/read";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { Toaster } from "@/components/toaster";
-import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
+import { approvalInboxScope } from "@/lib/approval-inbox";
+import { pendingApprovalCount } from "@/lib/pending-approvals";
 import { getApprovalModeView } from "@/lib/approval-mode";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, principalDisplayName } from "@/lib/principal";
@@ -59,7 +60,7 @@ export default async function RootLayout({
   const [{ pendingApprovals, displayName }, approvalMode] = await Promise.all([
     loadShellLookups(
       { approverScope: approvalInboxScope(requestHeaders), principalId },
-      { pendingApprovalCount: getPendingApprovalCount, displayName: principalDisplayName },
+      { pendingApprovalCount, displayName: principalDisplayName },
     ),
     getApprovalModeView(),
   ]);

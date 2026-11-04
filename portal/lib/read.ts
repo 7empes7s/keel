@@ -50,6 +50,8 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/dashboard/route.ts",
   },
+  // The menu's badges: the Overview's figures, central readers only like the Overview.
+  menuStatusApi: { capability: "read", source: "api/menu-status/route.ts" },
   coverageApi: {
     capability: "read",
     source: "api/coverage/route.ts",

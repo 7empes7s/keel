@@ -166,6 +166,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('RoleEligibilitySchedule.ReadWrite.Directory', 'entra', 'Roles', 'Change who can activate a role', 'Restore role eligibility'),
   write('RoleManagementPolicy.ReadWrite.Directory', 'entra', 'Roles', 'Change role activation rules', 'Restore role activation settings'),
   write('RoleManagement.ReadWrite.Exchange', 'entra', 'Roles', 'Change Exchange admin roles', 'Restore Exchange role scopes and who holds Exchange admin roles'),
+  write('IdentityUserFlow.ReadWrite.All', 'entra', 'Policies', 'Change guest sign-up flows', 'Restore guest sign-up flows and their custom attributes'),
   write('RoleManagement.ReadWrite.Defender', 'entra', 'Roles', 'Change Defender admin roles', 'Restore custom Defender roles and who holds them'),
   write('Application.ReadWrite.All', 'entra', 'Apps', 'Change app registrations', 'Restore apps and enterprise apps'),
   write('DelegatedPermissionGrant.ReadWrite.All', 'entra', 'Apps', 'Change user consents to apps', 'Restore app consents'),

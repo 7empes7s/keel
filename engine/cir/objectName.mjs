@@ -25,8 +25,9 @@ export const OWN_NAME_FIELDS = Object.freeze({
   enterpriseCodeSigningCertificate: Object.freeze(['subjectName', 'subject', 'issuerName']),
   // A profile card field is named by the directory field it shows.
   profileCardProperty: Object.freeze(['directoryPropertyName']),
-  // An attribute set's id is its name.
+  // An attribute set's id is its name, and so is a user flow's (B2X_1_<name>).
   attributeSet: Object.freeze(['id']),
+  b2xIdentityUserFlow: Object.freeze(['id']),
 });
 
 /** Kinds named after the two apps they link. */

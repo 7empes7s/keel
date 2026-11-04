@@ -95,6 +95,8 @@ const OWN_NAME_FIELDS = Object.freeze({
   // An attribute set is named by its id. An attribute is named by its name, and
   // its set is checked by its key (looksDisposable).
   attributeSet: Object.freeze(['id']),
+  // A guest sign-up user flow is named by its id (B2X_1_<name>).
+  b2xIdentityUserFlow: Object.freeze(['id']),
 });
 
 /** The fields a kind's own name is read from when its fixture is checked. */

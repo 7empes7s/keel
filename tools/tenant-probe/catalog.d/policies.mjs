@@ -28,5 +28,11 @@ export default [
   // creates the package in its catalog).
   { type: 'accessPackage', path: '/identityGovernance/entitlementManagement/accessPackages', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     query: '$expand=catalog' },
-  { type: 'connectedOrganization', path: '/identityGovernance/entitlementManagement/connectedOrganizations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // Issue #993: its internal and external sponsors are their own lists, read per
+  // organization, so a restore can add them back (sorted: Graph keeps no order).
+  { type: 'connectedOrganization', path: '/identityGovernance/entitlementManagement/connectedOrganizations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    itemReads: [
+      { as: 'internalSponsors', path: '/identityGovernance/entitlementManagement/connectedOrganizations/{item}/internalSponsors', sortBy: 'id', omitEmpty: true },
+      { as: 'externalSponsors', path: '/identityGovernance/entitlementManagement/connectedOrganizations/{item}/externalSponsors', sortBy: 'id', omitEmpty: true },
+    ] },
 ];

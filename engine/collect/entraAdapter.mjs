@@ -278,7 +278,19 @@ const byText = (left, right) => {
   return a < b ? -1 : (a > b ? 1 : 0);
 };
 
-async function withItemReads(reader, entry, items, { dropWhenNotFound = false } = {}) {
+async function withItemReads(reader, entry, items, options = {}) {
+  // Issue #993: a kind may need more than one collection per object (a connected
+  // organization's internal and external sponsors): a list of reads, in order.
+  if (Array.isArray(entry.itemReads)) {
+    let pages = 0;
+    for (const itemReads of entry.itemReads) {
+      const result = await withItemReads(reader, { ...entry, itemReads }, items, options);
+      if (result.error) return result;
+      pages += result.pages;
+    }
+    return { pages, error: null };
+  }
+  const { dropWhenNotFound = false } = options;
   const { as, path, byType, sortBy, omitEmpty, single, fields } = entry.itemReads;
   let pages = 0;
   for (const item of [...items]) {

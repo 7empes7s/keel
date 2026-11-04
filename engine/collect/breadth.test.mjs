@@ -39,6 +39,7 @@ assert.equal(cases.length, 24);
 const respond = (body, status = 200) => ({
   ok: status === 200, status, headers: { get: () => null }, json: async () => body,
 });
+const itemReadPaths = (type) => [CATALOG.find((entry) => entry.type === type).itemReads ?? []].flat().map((read) => read.path).filter(Boolean);
 const originalFetch = globalThis.fetch;
 try {
   for (const [type, endpoint, criticality, blastRadius] of cases) {
@@ -60,8 +61,9 @@ try {
       assert.equal(opts.headers['Accept-Language'], 'en-US');
       // Restore gaps batch 13: a kind read with one more collection per object
       // (the apps a policy covers) reads it after the list.
-      const itemRead = CATALOG.find((entry) => entry.type === type).itemReads?.path;
-      if (itemRead && calls === 2) {
+      // Issue #993: a kind may read more than one (a connected organization's sponsors).
+      const itemRead = itemReadPaths(type)[calls - 2];
+      if (itemRead) {
         assert.equal(url, `https://graph.microsoft.com/${endpoint.split('/')[1]}${itemRead.replace('{item}', object.id)}`, `${type}: one read per object`);
         return respond({ value: [] });
       }
@@ -70,7 +72,7 @@ try {
     };
     const reader = new GraphReader(async () => 'fixture-token');
     const objects = await adapter.collect(reader, { tenantId });
-    assert.equal(calls, CATALOG.find((entry) => entry.type === type).itemReads?.path ? 2 : 1);
+    assert.equal(calls, 1 + itemReadPaths(type).length);
     assert.deepEqual(objects, [object], `${type}: singleton/collection decoded without dropping payload`);
     const resources = canonicalizeAll([[type, objects]]);
     assert.equal(resources.length, 1);

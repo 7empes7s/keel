@@ -188,7 +188,8 @@ assert.ok(perParent > 0);
 // Restore gaps batch 13: a kind with one more read per object (the apps an app
 // configuration policy targets) reads it for its one object; a read chosen by
 // @odata.type finds none here (the fake objects carry no kind).
-const perItem = CATALOG.filter((entry) => entry.itemReads?.path).length;
+// Issue #993: a kind may hold a list of item reads (a connected organization's two sponsor lists).
+const perItem = CATALOG.reduce((sum, entry) => sum + [entry.itemReads ?? []].flat().filter((read) => read.path).length, 0);
 // Issue #472: an administrative template's settings come from its item read
 // (one here), and each setting's values are one more read.
 const perChild = CATALOG.filter((entry) => entry.itemReads?.path && entry.childReads?.field === entry.itemReads.as).length;

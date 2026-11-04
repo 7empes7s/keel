@@ -65,12 +65,16 @@ function everyoneLevels(grants) {
 export function siteExposure(summary) {
   if (!summary || typeof summary !== 'object') return null;
   const exposure = Number(summary.v) >= EXPOSURE_SUMMARY_VERSION && summary.exposure && typeof summary.exposure === 'object' ? summary.exposure : null;
+  // A backup that could not read some group's members saves `checked: false`. Everyone
+  // grants (a group can hold Everyone), guests and owners all come from those members, so
+  // they are unknown for that backup. Anyone links come from group names and stay.
+  const membersRead = !exposure || exposure.checked !== false;
   return {
     // A site that inherits its roles saves `everyone: null`: not read, not none.
-    everyone: exposure ? everyoneLevels(exposure.everyone) : null,
+    everyone: exposure && membersRead ? everyoneLevels(exposure.everyone) : null,
     anyoneLinks: exposure ? anyoneLinks(exposure.links) : null,
-    guests: count(summary.guests),
-    owners: count(summary.ownerCount),
+    guests: membersRead ? count(summary.guests) : null,
+    owners: membersRead ? count(summary.ownerCount) : null,
   };
 }
 

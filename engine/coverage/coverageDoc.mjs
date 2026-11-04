@@ -153,8 +153,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Turning a workflow on runs its tasks on people\'s accounts, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Check who it applies to before approving.',
   }),
   lifecycleWorkflowCustomTaskExtension: auto('Lifecycle workflow extensions', {
-    keeps: 'Recreates extensions and puts their settings back.',
-    todo: 'Make sure the Logic App each extension calls still exists in its Azure subscription.',
+    keeps: 'Puts the settings of existing extensions back, except which Logic App each one calls and how it signs in.',
+    todo: 'Recreate a missing extension by hand. Check which Logic App each extension calls and how it signs in, and that the Logic App still exists in its Azure subscription.',
   }),
   lifecycleManagementSettings: auto('Lifecycle workflow settings', {
     keeps: 'Puts the settings back.',

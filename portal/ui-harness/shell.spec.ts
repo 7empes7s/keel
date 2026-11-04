@@ -427,7 +427,8 @@ test("the menu keeps the open page in view, flags Settings and names the person"
 test("menu: a section's pages show from its chevron without leaving the page", async ({ page }) => {
   await page.setViewportSize(desktop);
   await open(page, "/");
-  const backup = page.locator('section[data-group="everything"] .menu-section', { hasText: "Backup" });
+  // Matched by its own toggle: the Dashboards section's status can say "Backups" too.
+  const backup = page.locator('section[data-group="everything"] .menu-section').filter({ has: page.getByRole("button", { name: /the 3 Backup pages/ }) });
   const chevron = backup.getByRole("button", { name: "Show the 3 Backup pages" });
   await expect(chevron).toHaveAttribute("aria-expanded", "false");
   await expect(backup.locator("a.menu-sublink")).toHaveCount(0);
@@ -442,7 +443,7 @@ test("menu: a section's pages show from its chevron without leaving the page", a
   await backup.getByRole("button", { name: "Hide the 3 Backup pages" }).click();
   await expect(backup.locator("a.menu-sublink")).toHaveCount(0);
   // A one-page section has no chevron.
-  await expect(page.locator('section[data-group="everything"] .menu-section', { hasText: "Dashboards" }).locator(".menu-expand")).toHaveCount(0);
+  await expect(page.locator('section[data-group="everything"] .menu-section', { hasText: "Audit log" }).locator(".menu-expand")).toHaveCount(0);
 });
 
 test("breadcrumbs: every page says where it sits, and a detail page links back up", async ({ page }) => {

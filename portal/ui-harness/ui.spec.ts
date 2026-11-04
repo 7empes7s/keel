@@ -75,6 +75,11 @@ const PAGES = [
   { name: "policies-names-hidden", hash: "/rules/anonymous" },
   { name: "benchmarks-names-hidden", hash: "/compliance/anonymous" },
   { name: "sites", hash: "/sites" },
+  { name: "insights", hash: "/insights" },
+  { name: "insights-none-flagged", hash: "/insights/none" },
+  { name: "insights-names-hidden", hash: "/insights/anonymous" },
+  { name: "insights-capped", hash: "/insights/capped" },
+  { name: "insights-empty", hash: "/insights/empty" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
 
@@ -2608,6 +2613,72 @@ for (const hash of ["/changes/feed", "/changes/feed-anonymous"]) {
     }
   }
 }
+
+// Insights A7 and A8: some flagged, none flagged, names hidden and an empty tenant pass
+// the mechanical checks at the phone and laptop widths, in both themes: one h1, one
+// verdict, no ids.
+for (const hash of ["/insights", "/insights/none", "/insights/anonymous", "/insights/empty"]) {
+  for (const width of [375, 390, 1278]) {
+    for (const theme of ["light", "dark"] as const) {
+      test(`contract · insights · ${hash} · ${width} · ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await open(page, hash, theme);
+        await expect(page.locator("main#main-content h1")).toHaveCount(1);
+        await expect(page.locator("main#main-content h1")).toHaveText("Insights");
+        await expect(page.locator('[data-layer="verdict"]')).toHaveCount(1);
+        expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      });
+    }
+  }
+}
+
+// Insights: the verdict counts what needs a look, where to start lists flagged changes
+// first (most severe, newest), each a sentence that opens the change, and the shape of the
+// period names services, people and the services with no change.
+test("insights: verdict, where to start, the shape of the period and the record", async ({ page }) => {
+  await page.setViewportSize({ width: 1278, height: 900 });
+  await open(page, "/insights", "dark");
+  await expect(page.locator(".verdict-sentence")).toHaveText("10 changes in the last 7 days; 3 need a look.");
+  await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See every flagged change" })).toHaveAttribute("href", /changes\?view=feed&days=7&flagged=1$/);
+  const flagged = page.getByRole("list", { name: "Flagged changes" }).locator(".ov-row");
+  await expect(flagged).toHaveCount(3);
+  await expect(flagged.first()).toContainText("Switched to report-only, so it no longer blocks anything: Block legacy auth.");
+  await expect(flagged.first()).toContainText("Amara Okafor changed Block legacy auth, a Conditional Access policy,");
+  await expect(flagged.first()).toHaveAttribute("href", /changes\?view=feed&days=7&q=block\+legacy\+auth$/);
+  // High flags after the critical one, newest first.
+  await expect(flagged.nth(1)).toContainText("SharePoint sharing opened wider");
+  await expect(flagged.nth(2)).toContainText("Now trusted for sign-in: Branch offices.");
+  const watch = page.getByRole("list", { name: "Other changes to look at" }).locator(".ov-row");
+  await expect(watch).toHaveCount(2);
+  await expect(watch.first()).toContainText("Block legacy auth");
+  await expect(page.locator("#ins-services-heading").locator("xpath=ancestor::section[1]")).toContainText("Entra ID");
+  await expect(page.locator("#ins-people-heading").locator("xpath=ancestor::section[1]")).toContainText("Sam Lee");
+  await expect(page.locator("#ins-quiet-heading").locator("xpath=ancestor::section[1]")).toContainText("Teams");
+  // The period selector keeps the page and changes the address.
+  await page.getByRole("radio", { name: "30 days" }).click();
+  await expect(page).toHaveURL(/days=30/);
+
+  await open(page, "/insights/none", "light");
+  await expect(page.locator(".verdict-sentence")).toHaveText("10 changes in the last 7 days; none flagged.");
+  await expect(page.getByRole("list", { name: "Flagged changes" })).toHaveCount(0);
+
+  await open(page, "/insights/capped", "light");
+  await expect(page.locator(".verdict-sentence")).toHaveText("At least 10 changes in the last 90 days; 3 need a look.");
+  await expect(page.locator(".verdict-detail")).toContainText("Showing the newest 10 changes.");
+
+  await open(page, "/insights/empty", "light");
+  await expect(page.locator(".verdict-sentence")).toHaveText("No changes in the last 7 days.");
+
+  await open(page, "/insights/anonymous", "light");
+  const hidden = await textOutside(page, "main#main-content", '[data-layer="record"]');
+  expect(hidden).not.toContain("Amara Okafor");
+  expect(hidden).not.toContain("Sam Lee");
+
+  await open(page, "/insights/scoped", "light");
+  await expect(page.locator(".verdict-sentence")).toHaveText(/needs tenant-wide read access/);
+  await page.screenshot({ path: "test-results/insights-scoped.png" });
+});
 
 test("contract · shell: eight sections, plain words, the page's sub-pages under its section", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -5372,7 +5443,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "changes", "approvals", "alerts", "incidents", "approved-setups", "restore", "activity", "compliance", "notifications"];
+  const routes = ["protect", "resilience", "changes", "approvals", "alerts", "incidents", "approved-setups", "restore", "activity", "compliance", "notifications", "insights"];
   // Codex review: the Waiting tile never adds approvals, alerts and incidents into one
   // number; each part is its own link.
   const waiting = page.locator('.ov-tile[data-tile="waiting"]');
@@ -5398,6 +5469,8 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(nobody).toContainText("3 open alerts reach nobody.");
   await expect(nobody).toContainText("Urgent");
   await expect(nobody).toHaveAttribute("href", /\/notifications$/);
+  // Insights A7: flagged changes of the week that no open alert shows are one row.
+  await expect(page.locator(".ov-row", { hasText: "3 flagged changes this week" })).toHaveAttribute("href", /\/insights$/);
   await expect(page.locator(".ov-side-card", { hasText: "Approved setup" })).toContainText("by Marouane Defili");
   // The compliance score opens Compliance on what fails.
   const compliance = page.locator(".ov-score-card");

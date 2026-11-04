@@ -130,7 +130,7 @@ export const CONCEPT_WORDS = Object.freeze([
   {
     pattern: /\b(?:identity governance|entitlement management|access packages?|catalogs?)\b/i,
     label: 'access packages, catalogs, their policies and assignments',
-    kinds: ['accessPackage', 'accessPackageCatalog', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'accessPackageResourceRoleScope', 'connectedOrganization', 'entitlementManagementSettings', 'entitlementManagementRoleAssignment', 'externalOriginResourceConnector'],
+    kinds: ['accessPackage', 'accessPackageCatalog', 'accessPackageCatalogResource', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'accessPackageResourceRoleScope', 'connectedOrganization', 'entitlementManagementSettings', 'entitlementManagementRoleAssignment', 'externalOriginResourceConnector'],
   },
   {
     pattern: /\b(?:lifecycle workflows?|joiner|mover|leaver|jml|onboarding workflows?|offboarding)\b/i,

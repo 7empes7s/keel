@@ -78,6 +78,9 @@ const REGISTERED = Object.freeze({
   attributeSet: ['update'],
   customSecurityAttributeDefinition: ['update'],
   accessPackageCatalog: ['create', 'update'],
+  // Issue #992: access packages and the resource roles they grant.
+  accessPackage: ['create', 'update'],
+  accessPackageResourceRoleScope: ['create'],
   entitlementManagementSettings: ['update'],
   appManagementPolicy: ['create', 'update'],
   multiTenantOrganization: ['update'],

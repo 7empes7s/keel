@@ -146,7 +146,7 @@ export const COMPLETENESS = Object.freeze({
     part('Changing or removing an active assignment, and ones inherited through a group', 'not-written'),
   ] },
   accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
-  accessPackage: { whole: 'not-written' },
+  accessPackage: { missing: [part('Its assignment policies and who holds it, which are restored separately', 'not-written')] },
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
   // Wave 1 CAT-ENTRA: Entra governance.
   lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only')] },
@@ -154,7 +154,8 @@ export const COMPLETENESS = Object.freeze({
   lifecycleManagementSettings: {},
   attributeSet: { missing: [part('An attribute set that no longer exists, which needs a review before it is created', 'not-written')] },
   customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route'), part('An attribute that no longer exists, which needs a review before it is created', 'not-written')] },
-  accessPackageCatalog: { missing: [part('The groups, apps and sites in the catalog', 'other-route')] },
+  accessPackageCatalog: { missing: [part('The groups, apps and sites in the catalog, which are backed up separately', 'not-written')] },
+  accessPackageCatalogResource: { whole: 'not-written', missing: [part('A SharePoint site, or a group or app no access package grants, which is added to the catalog by hand', 'not-written')] },
   accessPackageAssignmentPolicy: { whole: 'not-written', missing: [part('Approval and request history', 'read-only')] },
   accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
   entitlementManagementSettings: {},
@@ -162,7 +163,7 @@ export const COMPLETENESS = Object.freeze({
   b2xIdentityUserFlow: { whole: 'not-written', missing: [part('Its languages, sign-up attributes and API connector links', 'other-route')] },
   identityApiConnector: { whole: 'not-written', missing: [part('Password or certificate', 'secret', always)] },
   // Read per parent object.
-  accessPackageResourceRoleScope: { whole: 'not-written' },
+  accessPackageResourceRoleScope: { missing: [part('A role on a SharePoint site that is not in the catalog, or on a group or app that does not exist in the target', 'not-written')] },
   synchronizationJob: { whole: 'not-written', missing: [
     part('Its attribute mappings (the sync schema)', 'other-route'),
     part('The sign-in details for the target app, if it uses any', 'secret'),

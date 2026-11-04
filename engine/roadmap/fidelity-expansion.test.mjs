@@ -130,14 +130,15 @@ test('scopes are derived from registered operations only; no new family is fully
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
   // Roadmap task-109 registered administrativeUnit and groupSetting, and
   // task-151 roleEligibilitySchedule; the research-needed examples are now
-  // certificateBasedAuthConfiguration and accessPackage (Wave 2 ENTRA registered
-  // oauth2PermissionGrant, and issue #991 roleAssignmentSchedule).
-  const asQualified = { ...EXPANSION_INVENTORY, accessPackage: { ...EXPANSION_INVENTORY.accessPackage, status: 'qualified-subset' } };
-  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /accessPackage is marked qualified-subset but has no registered write capability/);
+  // certificateBasedAuthConfiguration and accessPackageAssignmentPolicy (Wave 2 ENTRA
+  // registered oauth2PermissionGrant, issue #991 roleAssignmentSchedule and issue #992
+  // accessPackage).
+  const asQualified = { ...EXPANSION_INVENTORY, accessPackageAssignmentPolicy: { ...EXPANSION_INVENTORY.accessPackageAssignmentPolicy, status: 'qualified-subset' } };
+  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /accessPackageAssignmentPolicy is marked qualified-subset but has no registered write capability/);
   const flagged = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
-  const { accessPackage: _omitted, ...missing } = EXPANSION_INVENTORY;
-  assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: accessPackage/);
+  const { accessPackageAssignmentPolicy: _omitted, ...missing } = EXPANSION_INVENTORY;
+  assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: accessPackageAssignmentPolicy/);
   const demoted = { ...EXPANSION_INVENTORY, application: { ...EXPANSION_INVENTORY.application, status: 'research-needed' } };
   assert.throws(() => buildExpansionInventory({ inventory: demoted }), /application has a registered write capability but is marked research-needed/);
   const noRoute = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, api: null } };
@@ -145,8 +146,8 @@ test('adversarial inventory edits are refused: a research-needed family cannot b
   const manualMismatch = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, status: 'manual' } };
   assert.throws(() => buildExpansionInventory({ inventory: manualMismatch, decisions: { ...TYPE_DECISIONS, certificateBasedAuthConfiguration: { decision: 'automated', reason: 'x' } } }),
     /certificateBasedAuthConfiguration is manual in its batch but automated/);
-  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, accessPackage: { decision: 'automated', reason: 'x' } } }),
-    /accessPackage is marked automated but has no registered write capability/);
+  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, accessPackageAssignmentPolicy: { decision: 'automated', reason: 'x' } } }),
+    /accessPackageAssignmentPolicy is marked automated but has no registered write capability/);
 });
 
 // ------------------------------------------------- the qualified subset, through applyWave
@@ -343,7 +344,8 @@ test('the identity batch runner drives every qualified operation through applyWa
 
   assert.ok(report.refused.some((entry) => entry.resourceType === 'application' && entry.operation === 'delete' && entry.claim === 'unsupported'));
   const remaining = new Map(report.remaining.map((entry) => [entry.resourceType, entry]));
-  for (const type of ['certificateBasedAuthConfiguration', 'accessPackage', 'connectedOrganization']) {
+  // Issues #991 and #992 qualified roleAssignmentSchedule and accessPackage; the assignment policy is still research-needed.
+  for (const type of ['certificateBasedAuthConfiguration', 'accessPackageAssignmentPolicy', 'connectedOrganization']) {
     assert.ok(remaining.has(type), `${type} stays listed`);
     assert.equal(remaining.get(type).restoreScope, 'none');
     assert.ok(remaining.get(type).permission);

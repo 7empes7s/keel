@@ -22,7 +22,7 @@ const cases = [
   ['tokenIssuancePolicy', '/v1.0/policies/tokenIssuancePolicies', 'tier2', 'access-affecting'],
   ['tokenLifetimePolicy', '/v1.0/policies/tokenLifetimePolicies', 'tier2', 'access-affecting'],
   ['featureRolloutPolicy', '/v1.0/policies/featureRolloutPolicies', 'tier3', 'cosmetic'],
-  ['accessPackage', '/v1.0/identityGovernance/entitlementManagement/accessPackages', 'tier2', 'access-affecting'],
+  ['accessPackage', '/v1.0/identityGovernance/entitlementManagement/accessPackages?$expand=catalog', 'tier2', 'access-affecting'],
   ['connectedOrganization', '/v1.0/identityGovernance/entitlementManagement/connectedOrganizations', 'tier2', 'access-affecting'],
   ['deviceEnrollmentConfiguration', '/v1.0/deviceManagement/deviceEnrollmentConfigurations', 'tier2', 'access-affecting'],
   ['deviceCategory', '/v1.0/deviceManagement/deviceCategories', 'tier3', 'cosmetic'],

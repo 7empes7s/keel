@@ -252,6 +252,9 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   deviceManagementRoleAssignment: Object.freeze(['roleDefinition', 'members', 'scopeMembers', 'resourceScopes', 'scopeType', 'roleScopeTagIds']),
   exchangeRoleAssignment: Object.freeze(['principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId']),
   defenderRoleAssignment: Object.freeze(['principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds']),
+  // Issue #992: the group, app or site role an access package grants. Adding it
+  // lets everyone who can request the package get that access.
+  accessPackageResourceRoleScope: Object.freeze(['role', 'scope']),
 });
 // Nested fields Microsoft sets on its own, at any depth: a restore never sends
 // them, and they are no change. Graph sets a default app credential rules
@@ -271,7 +274,7 @@ export function withoutMicrosoftSet(resourceType, value) {
   return strip(value);
 }
 // The batch 2 kinds: their access values name principals and roles.
-const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment']);
+const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope']);
 // Compared in a canonical form with nulls dropped, so a value that reads back with
 // its keys in another order, or with empty fields Graph adds, is no change.
 const withoutNulls = (value) => {

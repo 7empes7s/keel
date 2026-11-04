@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Sparkline } from "@/components/dashboard/sparkline";
+import { NextStep } from "@/components/insights/next-step";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
 import { ScopeNote } from "@/components/scope-note";
@@ -20,7 +21,9 @@ import { serviceFor } from "@/lib/services";
 // Insights (insights track A7 and A8): one sentence on the period, where to start (flagged
 // changes, then unflagged changes to critical or high kinds), and the shape of the period:
 // changes by day and by service, who made the most, and which services had none. Built from
-// one change feed read; every row opens the change under Changes › Every change.
+// one change feed read; every row opens the change under Changes › Every change, and says its
+// next step below ("Accept or undo" opens it under Open changes). Flagged changes someone
+// dealt with stay listed, with how, below those that still need a look.
 
 // The list stays short enough to act on; the rest is one click away in Every change.
 const MOST_FLAGGED = 10;
@@ -34,19 +37,23 @@ function feedHref(period: FeedPeriod, extra: Record<string, string> = {}): strin
 }
 
 function StartRow({ item }: { item: StartItem }) {
+  // A flagged change someone dealt with keeps its place, marked so, below the open ones.
+  const dealt = item.reason === "flagged" && !item.needsLook;
+  const tone = dealt ? "fine" : item.tone;
   return (
-    <li>
-      <Link className="ov-row ins-row" data-tone={item.tone} href={item.href}>
-        <span aria-hidden="true" className="ov-kind" data-tone={item.tone}><Icon name={item.reason === "flagged" ? "alert" : "clock"} /></span>
+    <li className="ins-item" data-dealt={dealt || undefined}>
+      <Link className="ov-row ins-row" data-tone={tone} href={item.href}>
+        <span aria-hidden="true" className="ov-kind" data-tone={tone}><Icon name={dealt ? "check-circle" : item.reason === "flagged" ? "alert" : "clock"} /></span>
         <span className="ov-row-name">
           {item.flags.length ? (
             <span className="ins-flags">{item.flags.map((flag) => <b data-severity={flag.severity} key={flag.key}>{flag.sentence}</b>)}</span>
           ) : null}
           <span className={item.flags.length ? "ins-sentence" : "ins-sentence ins-lead"}>{item.sentence}</span>
         </span>
-        <Badge tone={item.tone}>{item.tone === "urgent" ? "Critical" : "High"}</Badge>
+        <Badge tone={tone}>{dealt ? "Dealt with" : item.tone === "urgent" ? "Critical" : "High"}</Badge>
         <Icon name="chevron" />
       </Link>
+      {item.nextStep ? <div className="ins-next"><NextStep step={item.nextStep} /></div> : null}
     </li>
   );
 }
@@ -56,6 +63,7 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
   const now = feed.generatedAt;
   const verdict = insightsVerdict(feed, period);
   const start = whereToStart(feed.rows, period, now);
+  const waiting = start.flagged.filter((item) => item.needsLook).length;
   const days = changesByDay(feed.rows, period, now);
   const services = changesByService(feed.rows, period);
   const people = topPeople(feed.rows);
@@ -95,7 +103,7 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
             <>
               {start.flagged.length ? (
                 <>
-                  <p className="ov-sub">Flagged: a rule knows what these changes do. Most severe and newest first.</p>
+                  <p className="ov-sub">Flagged: a rule knows what these changes do. {waiting ? "Those that still need a look come first, most severe and newest first, then those someone dealt with." : "Someone has dealt with each of them."}</p>
                   <ul aria-label="Flagged changes" className="ov-rows">
                     {start.flagged.slice(0, MOST_FLAGGED).map((item) => <StartRow item={item} key={item.id} />)}
                   </ul>
@@ -224,6 +232,9 @@ const CSS = `
 .ins-tools .segmented { display: inline-flex; width: auto; }
 .ins-start .ov-sub { margin-top: var(--space-2xs); }
 .ins-row .ov-row-name { gap: var(--space-2xs); }
+.ins-next { padding: 0 var(--space-md) var(--space-sm) calc(var(--space-md) + 2rem + var(--space-sm)); margin-top: calc(-1 * var(--space-xs)); }
+.ins-next .ns-step { margin-top: 0; }
+@media (max-width: 40rem) { .ins-next { padding: 0 var(--space-sm) var(--space-xs); margin-top: 0; } }
 .ins-flags { display: grid; gap: 2px; }
 .ins-flags b { color: var(--check-soon); overflow-wrap: anywhere; }
 .ins-flags b[data-severity="critical"] { color: var(--urgent); }

@@ -14494,3 +14494,64 @@ item that needs it stays untouched.
 - **Report:** as in Q275, plus for `exchange-org-config`: outcome (expected **complete**), `discovery.empty` (expected `[]`),
   `discovery.unidentified` (expected 0), `unknownFields` (expected `{}`), and the message encryption resource key. If any of
   those differ, report them verbatim (field names only, never values).
+
+### Q309: Make a KEEL-RT- site that carries a sensitivity label and restricted-access groups, then rerun the Q276 SharePoint reads (test tenant fixture + reads, after PR #948), about 25 minutes
+- Drafted by the "Show licence-gated SharePoint reads plainly" thread (2026-11-04), from the Q276 Result. Two reads were not
+  proven in Q276:
+  - `sharepoint-tenant.restricted-search-allowed-sites`: refused with "You do not have the required license to perform this
+    operation." PR #948 makes that answer a plain **not licensed** (status `not-licensed`, never a failure). The import now
+    records it, so the ledger row reads `not-licensed` and runs list "Restricted search allowed sites: not licensed in this
+    tenant (Microsoft 365 Copilot)" instead of "not switched on yet", and never send that cmdlet. It is still not proof.
+  - `sharepoint.site-settings`: "no listed site carried: sensitivityLabel, restrictedAccessControlGroups". The capture asks
+    that **each** of the 8 per-site settings is carried by at least one site (the Q276 wording "one of" was wrong; the
+    capture's rule stands). No test-tenant site has a sensitivity label or restricted-access groups, so this item makes one.
+- Needs: /opt/keel-live at the #948 merge or later
+  (`grep -q refusedForLicence /opt/keel-live/engine/collect/workloads/cmdletFamilies.mjs`). Scripts are mounted from the
+  checkout; no image rebuild is expected.
+- Status: todo
+- **Tenant (test tenant only, standing authorization 2026-10-14/16/22/27):** writes only to `KEEL-RT-` fixtures, plus at most
+  one tenant-wide setting that is put back right after the capture. Never touch break-glass, the user's account, a CA policy,
+  or any trust, federation, certificate or sign-in setting. Global admin not used unless a step names it. Log every change.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at:
+  1. **Fixture site.** Reuse an existing `KEEL-RT-*` communication site if one is free, otherwise create
+     `KEEL-RT-<date>-site-settings` (communication site, no members beyond a `keel-rt-*` test user). Record its URL.
+  2. **Sensitivity label on the site.** Check first, read-only:
+     - whether a `KEEL-RT-*` label already has the site/group scope (`Get-Label | ? Name -like 'KEEL-RT-*' | select Name, ContentType`,
+       ContentType including `Site` or `UnifiedGroup`), and is published in `KEEL-RT-20261005-policy` (or another KEEL-RT policy
+       scoped to test users only);
+     - whether labels for sites and groups are switched on (Entra group setting `EnableMIPLabels`, and SPO `EnableAIPIntegration`).
+     If no KEEL-RT label has the site scope, create one (`KEEL-RT-<date>-site-label`, ContentType `Site, UnifiedGroup`, no
+     encryption, no other settings) and add it to `KEEL-RT-20261005-policy`. If `EnableMIPLabels` is off, switch it on, and put it
+     back after step 5 (the user approved tenant-wide test-tenant changes on 2026-10-22 when put back right after).
+     Then `Set-PnPTenantSite -Identity <site> -SensitivityLabel <label guid>`. Allow up to 15 minutes for the label to appear on
+     `Get-PnPTenantSite`; check with `Get-PnPTenantSite -Identity <site> | select SensitivityLabel`.
+  3. **Restricted access groups on the site.** `Set-PnPTenantSite -Identity <site> -RestrictedAccessControl:$true
+     -AddRestrictedAccessControlGroups <id of a KEEL-RT-* security or Microsoft 365 group>` (create
+     `KEEL-RT-<date>-rac-group` with one `keel-rt-*` member if none exists); if this PnP version lacks those switches, use
+     `Set-SPOSite` with the same names. Site changes run from your own admin session, never through KEEL's run-cmdlet.ps1
+     (it allows Get cmdlets only). If SharePoint refuses it because the tenant lacks
+     SharePoint Advanced Management (or Copilot), **do not** buy or assign anything: report the error text verbatim and go on.
+  4. **Key check (read-only, names only):** run `Get-PnPTenantSite` with no parameters through the same PnP config and report,
+     for `SensitivityLabel` and `RestrictedAccessControlGroups`, on how many sites the key is present with a value, present as
+     null or empty, and absent. Field names and counts only, never values or URLs.
+  5. **Capture both workloads** exactly as Q276 step 1 (`sharepoint-tenant` and `sharepoint-site-settings`, same flags, same
+     `--out` names). Report each exit code, `outcome`, `proven`, `notProven` and every diagnostics line verbatim. Expected:
+     `sharepoint-tenant` lists `restricted-search-allowed-sites` with status **not-licensed** and the message "needs a licence
+     this tenant does not have (Microsoft 365 Copilot), so it was not read: …"; `sharepoint-site-settings` proves
+     `sharepoint.site-sharing` and, if steps 2 and 3 took, `sharepoint.site-settings`. pseudonymize check each; stop and file an
+     issue if one is not exit 0.
+  6. Put back the tenant-wide setting from step 2 if you changed it, and read it back. Keep the fixture site, label and group (so
+     the 30-day recapture finds them), and report whether the site still carries the label after the put-back.
+  7. **Evidence:** commit both records to `claude/live-evidence-sharepoint-tenant` (from `origin/master`, those files only,
+     secret scan) and push. No PR.
+  8. **Import** as Q276 step 3 and report exit code, `imported` / `refused` / `absent`.
+  9. `node cli/keel-workload-collect.mjs run` once. Report for `sharepoint-tenant`: outcome, `discovery.families` statuses, and the
+     gap lines (expected: "Restricted search allowed sites: not licensed in this tenant (Microsoft 365 Copilot)", and no "not
+     switched on yet" line). For `sharepoint-site-settings`: outcome and, per new field (lockState, conditionalAccessPolicy,
+     sensitivityLabel, denyAddAndCustomizePages, restrictedAccessControl, restrictedAccessControlGroups, storageQuota,
+     externalUserExpirationInDays), how many sites are observed vs unknown.
+  10. `node cli/keel-workload-collect.mjs proof`: confirm both workloads are current, and that
+      `sharepoint-tenant.restricted-search-allowed-sites` is **not** listed as proof.
+- **Report:** B; every tenant change with before/after (fixture site, label, group, tenant-wide setting and its put-back); the
+  step 4 counts; capture exit codes, proven/notProven and diagnostics; evidence branch and commit; import counts; the run
+  details; the proof listing; anything left in the tenant (expected: the KEEL-RT fixtures only).

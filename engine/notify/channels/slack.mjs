@@ -8,6 +8,7 @@
 // plain-text code (invalid_payload, no_text, no_service, channel_not_found,
 // channel_is_archived, action_prohibited, ...), and none of those improve on retry.
 // 429 carries Retry-After.
+import { SUMMARY_EVENT_KIND, startLine } from '../../insights/summary.mjs';
 import { capText, configProblems, eventSummary, httpOutcome, httpsUrl, snippet } from './common.mjs';
 
 export const PROVIDER = 'slack';
@@ -33,7 +34,21 @@ export function validateConfig(config) {
 // Slack treats &, < and > as control characters in message text.
 const escapeText = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
+// Issue #980: the weekly summary as text (this adapter has no blocks), with the link to
+// Insights as a Slack link when it is a full address.
+export function summaryMessage(event) {
+  const items = Array.isArray(event.whereToStart) ? event.whereToStart : [];
+  const link = typeof event.link === 'string' ? event.link : '';
+  const lines = [`*${escapeText(event.title ?? 'Keel weekly summary')}*`, escapeText(event.verdict ?? '')];
+  if (items.length) lines.push('', '*Where to start*', ...items.map((item) => `• ${escapeText(startLine(item))}`));
+  const rest = [event.byServiceLine, event.quietLine].filter(Boolean).map(escapeText);
+  if (rest.length) lines.push('', ...rest);
+  lines.push('', /^https:\/\//.test(link) ? `<${link}|Open Insights>` : `Open Insights in Keel: ${escapeText(link)}`);
+  return { text: capText(lines.join('\n'), TEXT_LIMIT), unfurl_links: false, unfurl_media: false };
+}
+
 function message(event) {
+  if (event.kind === SUMMARY_EVENT_KIND) return summaryMessage(event);
   const lines = [eventSummary(event)];
   if (event.ackDeadlineAt) lines.push(`Acknowledge by ${event.ackDeadlineAt}.`);
   if (event.alertId) lines.push(`Alert ${event.alertId}, occurrence ${event.occurrence ?? 1}.`);

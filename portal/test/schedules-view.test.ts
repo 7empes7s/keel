@@ -184,3 +184,16 @@ test("partly done keeps its own amber tile, and the Failed tile names it when no
   assert.match(html, /Failed last run[\s\S]*?>0<[\s\S]*?None failed; 2 partly done/);
   assert.match(html, /Partly done last run[\s\S]*?>2</);
 });
+
+// Issue #980: the weekly summary's schedule reads in plain words, sits with the upkeep
+// jobs, makes no Microsoft calls and has no Run now (the Notifications page sends it now).
+test("the weekly summary schedule is listed in plain words", async () => {
+  const { scheduleName, cadenceSentence } = await import("@/lib/protect-view");
+  const summary = schedule("5c4e0000-0000-4000-8000-000000000010", "insights-summary", null, { cadence: { every: "week", n: 1, atTime: "07:00" }, next_due_at: "2026-10-05T07:00:00Z" });
+  assert.equal(scheduleName(summary), "Weekly summary to notification channels");
+  assert.equal(cadenceSentence(summary), "Every week at 07:00 UTC");
+  assert.equal(scheduleGroup(summary), "upkeep");
+  assert.deepEqual(loadChip(summary, undefined), { label: "No Microsoft calls", tone: "neutral", icon: "info" });
+  assert.equal(runNowRoute(summary), null);
+  assert.equal(scheduleErrorWords(400, "schedule_minimum_interval: insights-summary requires at least 1440 minutes"), "Weekly summaries can run at most once a day.");
+});

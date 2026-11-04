@@ -11,9 +11,11 @@ const DAY = 1440 * MINUTE;
 // hours only adds throttled calls.
 // discover (Wave 1 DISC) walks every Graph path the tenant exposes, thousands of GETs per
 // run, for a picture that changes slowly; seeded weekly, at most daily.
+// insights-summary (issue #980) is the weekly summary to admins' channels; each run is
+// at most one message per channel, so more often than daily would only be noise.
 export const MINIMUM_INTERVAL_MS = Object.freeze({
   collect: 15 * MINUTE, prune: 60 * MINUTE, offsite: 60 * MINUTE, 'workload-collect': 60 * MINUTE, 'api-drift': DAY,
-  'content-collect': 4 * 60 * MINUTE, discover: DAY,
+  'content-collect': 4 * 60 * MINUTE, discover: DAY, 'insights-summary': DAY,
 });
 const cache = new Map();
 const names = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,

@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect','dispose','discover'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect','dispose','discover','insights-summary'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -363,6 +363,12 @@ CREATE INDEX IF NOT EXISTS delivery_status_next_attempt_idx
   ON delivery (status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS delivery_channel_created_idx
   ON delivery (channel_id, created_at DESC);
+-- Issue #980: a delivery that must be sent at most once per channel carries a key (the
+-- weekly summary's is its kind and ISO week), so rerunning the same week's job adds no
+-- second delivery. Additive and nullable: alerts and tests carry none.
+ALTER TABLE delivery ADD COLUMN IF NOT EXISTS dedup_key text;
+CREATE UNIQUE INDEX IF NOT EXISTS delivery_channel_dedup_idx
+  ON delivery (channel_id, dedup_key) WHERE dedup_key IS NOT NULL;
 
 -- Task 42: preserve the design SQL verbatim while allowing schema re-application.
 DO $schedule$
@@ -371,7 +377,7 @@ IF to_regclass('schedule') IS NULL THEN
 CREATE TABLE schedule (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_ref    text NOT NULL,
-  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift' | 'workload-collect' | 'content-collect' | 'discover'
+  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift' | 'workload-collect' | 'content-collect' | 'discover' | 'insights-summary'
   tier          text,                -- 'tier1' | 'tier2' | 'tier3' | null (job kinds with no tier concept)
   cadence       jsonb NOT NULL,      -- { "every": "hour"|"day"|"week", "n": 1, "atTime": "05:00" | null }
   cron_override text,                -- raw cron expression; when set, takes precedence over `cadence`

@@ -376,6 +376,16 @@ for (const path of ["/changes?view=feed", "/changes?view=feed&days=7", "/api/cha
   });
 }
 
+// Issue #980: "Send this week's summary now" and the rule routes it uses go through the
+// same sign-in check: no Access assertion, no write.
+for (const [method, path] of [["POST", "/api/channels/00000000-0000-4000-8000-000000000001/summary"], ["POST", "/api/subscriptions"], ["PATCH", "/api/subscriptions/00000000-0000-4000-8000-000000000002"]]) {
+  test(`${method} ${path} rejects an unauthenticated request with 401`, async () => {
+    const response = await middleware(request(path, undefined, method));
+
+    assert.equal(response.status, 401);
+  });
+}
+
 // The Owner review page (issue #964) goes through the same sign-in check as every page.
 test("GET /owner-review rejects an unauthenticated request with 401", async () => {
   const response = await middleware(request("/owner-review"));

@@ -257,8 +257,8 @@ assert.ok(
 );
 assertSchemaJobKindCoverage(schemaSql, JOB_HANDLERS, JOB_KIND_CAPABILITIES);
 const fixtureSchemaSql = schemaSql.replace(
-  ",'discover'));",
-  ",'discover','fixture-schema-kind'));",
+  ",'insights-summary'));",
+  ",'insights-summary','fixture-schema-kind'));",
 );
 assert.notEqual(fixtureSchemaSql, schemaSql, 'the fixture must add a schema-accepted kind');
 assert.throws(
@@ -299,6 +299,7 @@ assert.deepEqual(
     dispose: 'dispose-accept',
     restore: 'restore',
     notify: 'configuration',
+    'insights-summary': 'configuration',
   },
   'every job kind must map to exactly the capability that kind requires',
 );
@@ -700,6 +701,16 @@ assert.equal(
   JOB_TIMEOUT_MS.restore,
   'remediate must share restore\'s longer timeout, not the 30-minute default',
 );
+
+// --- issue #980: the weekly summary job takes the tenant from the scheduler and the
+// requester from the job itself; nothing else reaches its arguments ---
+assert.equal(JOB_HANDLERS['insights-summary'].script, join(cliDir, 'keel-insights-summary.mjs'));
+assert.deepEqual(
+  JOB_HANDLERS['insights-summary'].argsFor({ tenantRef: 'sha256:abc' }, { requested_by: 'scheduler-principal' }),
+  ['--tenant-ref', 'sha256:abc', '--requested-by', 'scheduler-principal'],
+);
+assert.throws(() => JOB_HANDLERS['insights-summary'].argsFor({ tenantRef: 't', channelId: 'x' }, { requested_by: 'p' }), /may contain only tenantRef/);
+assert.throws(() => JOB_HANDLERS['insights-summary'].argsFor({}, { requested_by: 'p' }), /params.tenantRef/);
 
 // --- plan task 20: delivery jobs have a narrow, durable payload and are run only
 // by a principal still allowed to manage notification configuration ---

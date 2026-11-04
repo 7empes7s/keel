@@ -89,6 +89,26 @@ test("the proxy refuses a cross-site approve before it checks sign-in, and lets 
   assert.equal(sameOrigin.status, 401);
 });
 
+test("the proxy refuses a cross-site \"Send this week's summary now\" before it checks sign-in (issue #980)", async () => {
+  let resolved = 0;
+  const middleware = createAccessMiddleware(
+    () => {
+      throw new Error("config must not be read for a refused request");
+    },
+    async () => {
+      resolved += 1;
+      return { principalId: "principal-admin", capabilities: ["configuration"] };
+    },
+  );
+  const response = await middleware(new NextRequest("http://keel.example.com/api/channels/00000000-0000-4000-8000-000000000001/summary", {
+    method: "POST",
+    headers: { host: PORTAL, origin: "https://evil.example", "sec-fetch-site": "cross-site", "content-type": "application/json", "cf-access-jwt-assertion": "anything" },
+  }));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "cross-site request refused" });
+  assert.equal(resolved, 0);
+});
+
 test("action bodies must be sent as application/json", async () => {
   const post = (body: string, contentType?: string) =>
     new Request("http://localhost/api/actions/x", { method: "POST", body, headers: contentType ? { "content-type": contentType } : {} });

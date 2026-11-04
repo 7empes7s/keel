@@ -881,6 +881,12 @@ const SUBSCRIPTIONS = [
   { id: "5b500000-0000-4000-8000-0000000000f2", channel_id: CHANNELS[1].id, event_glob: "alert.opened", min_severity: "critical", created_at: "2026-09-01T08:12:00Z" },
   { id: "5b500000-0000-4000-8000-0000000000f3", channel_id: CHANNELS[3].id, event_glob: "alert.reopened", min_severity: "warning", created_at: "2026-09-03T08:10:00Z" },
 ];
+// Issue #980: a "Weekly summary" rule to the email channel, and the summary it sent.
+const SUMMARY_RULE = { id: "5b500000-0000-4000-8000-0000000000f4", channel_id: CHANNELS[1].id, event_glob: "summary.weekly", min_severity: "notice", created_at: "2026-09-28T08:00:00Z" };
+const SUMMARY_DELIVERY = {
+  id: "d0e10000-0000-4000-8000-0000000000da", channel_id: CHANNELS[1].id, channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null, created_at: "2026-09-28T07:00:05Z", delivered_at: "2026-09-28T07:00:09Z",
+  event: { kind: "summary.weekly", severity: "notice", week: "2026-W40", title: "Keel weekly summary", verdict: "143 changes in the last 7 days; 4 need a look.", link: "https://keel.contoso.com/insights?days=7" },
+};
 const ESCALATION_RULES = [
   { id: "e5c10000-0000-4000-8000-0000000000e1", control: null, min_severity: "critical", ack_within_ms: 30 * 60_000, enabled: true, created_at: "2026-09-02T08:30:00Z", owner_principal_id: "8c1e0000-0000-4000-8000-0000000000b3", owner_name: "Sam Ortiz", owner_email: "sam.ortiz@contoso.example", owner_disabled_at: null, escalate_channel_id: CHANNELS[2].id, channel_kind: "pagerduty", channel_enabled: true },
 ];
@@ -1457,6 +1463,11 @@ const SCHEDULES: Schedule[] = [
   schedule("5c4e0000-0000-4000-8000-000000000007", "workload-collect", null, { every: "day", n: 1, atTime: "02:00" }, { next_due_at: "2026-10-03T02:00:00Z", last_job_id: "a1", last_run_at: "2026-10-02T02:00:00Z", last_status: "succeeded" }),
   schedule("5c4e0000-0000-4000-8000-000000000008", "content-collect", null, { every: "day", n: 1, atTime: "01:00" }, { next_due_at: "2026-10-03T01:00:00Z", last_job_id: "a1", last_run_at: "2026-10-02T01:00:00Z", last_status: "succeeded" }),
   schedule("5c4e0000-0000-4000-8000-000000000009", "discover", null, { every: "week", n: 1, atTime: "04:00" }, { cron_override: "0 4 * * 1", next_due_at: "2026-10-05T04:00:00Z" }),
+];
+// Issue #980: the schedules page with the weekly summary's row.
+const SCHEDULES_WITH_SUMMARY: Schedule[] = [
+  ...SCHEDULES,
+  schedule("5c4e0000-0000-4000-8000-000000000010", "insights-summary", null, { every: "week", n: 1, atTime: "07:00" }, { cron_override: "0 7 * * 1", next_due_at: "2026-10-05T07:00:00Z", last_job_id: "y2", last_run_at: "2026-09-28T07:00:00Z", last_status: "succeeded" }),
 ];
 // A change check waits for a backup in which every type succeeds.
 const SCHEDULE_DEFERRALS = [{ id: "d71f0000-0000-4000-8000-0000000000d7", error: "drift-detect deferred: collection snapshot has failed or missing per-type coverage; retry on next successful collect", finished_at: "2026-10-02T00:05:00Z" }];
@@ -3062,6 +3073,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         {ANONYMOUS_NOTE}
         <SchedulesPage canEdit canRun deferrals={SCHEDULE_DEFERRALS} forecasts={forecasts} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
     }
+    case "/schedules/weekly-summary":
+      return <>{header("Backup", "Schedules", "When Keel backs up and tidies up, and how hard each backup works Microsoft.", undefined, schedulesStatus(scheduleCounts(SCHEDULES_WITH_SUMMARY, SCHEDULE_FORECASTS)))}
+        <SchedulesPage canEdit canRun deferrals={SCHEDULE_DEFERRALS} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES_WITH_SUMMARY} timeZone="Europe/Paris" /></>;
     case "/schedules":
     case "/schedules/viewer": {
       const viewer = path === "/schedules/viewer";
@@ -3180,6 +3194,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={hiddenEscalations()} now={now} subscriptions={SUBSCRIPTIONS} /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
       <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={SUBSCRIPTIONS} /></>;
+    case "/notifications/weekly-summary": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
+      <NotificationsPage canConfiguration channels={CHANNELS} deliveries={[SUMMARY_DELIVERY, ...DELIVERIES]} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={[...SUBSCRIPTIONS, SUMMARY_RULE]} /></>;
     case "/notifications/viewer": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.")}
       <NotificationsPage canConfiguration={false} channels={[]} deliveries={DELIVERIES} now={now} subscriptions={[]} /></>;
     case "/integrations": case "/integrations/servicenow-off": {

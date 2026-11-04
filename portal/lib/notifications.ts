@@ -1,6 +1,10 @@
 import { ChannelConfigError } from "../../engine/notify/adapters.mjs";
 import { createEscalationRule, listEscalationRules, setEscalationRuleEnabled } from "../../engine/notify/escalation.mjs";
-import { CHANNEL_KIND_ERROR, CHANNEL_NOT_FOUND, CHANNEL_OFF, createChannel, createSubscription, listDeliveries, sendTestAlert } from "../../engine/notify/notifications.mjs";
+import {
+  CHANNEL_KIND_ERROR, CHANNEL_NOT_FOUND, CHANNEL_OFF, SubscriptionRefusedError, checkSubscription, createChannel, createSubscription,
+  listDeliveries, sendTestAlert,
+} from "../../engine/notify/notifications.mjs";
+import { sendSummaryNow } from "../../engine/notify/weeklySummary.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import { peopleNamer, shownPerson } from "@/lib/people-names";
 import type { DataSurface } from "@/lib/read";
@@ -61,10 +65,10 @@ export function guardedNotificationCreate(kind: "channels" | "subscriptions", su
         : await createSubscription(client, { channelId: body.channelId, eventGlob: body.eventGlob, minSeverity: body.minSeverity });
       return Response.json({ [kind === "channels" ? "channel" : "subscription"]: row }, { status: 201, headers: NO_STORE });
     } catch (error) {
-      if (error instanceof ChannelConfigError || (error instanceof Error && error.message === CHANNEL_KIND_ERROR)) {
+      if (error instanceof ChannelConfigError || error instanceof SubscriptionRefusedError || (error instanceof Error && error.message === CHANNEL_KIND_ERROR)) {
         return Response.json({ error: error.message }, { status: 400, headers: NO_STORE });
       }
-      if ((error as { code?: string }).code === "23503") return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+      if ((error as { code?: string }).code === "23503" || (error instanceof Error && error.message === CHANNEL_NOT_FOUND)) return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
       throw error;
     }
   }, deps);
@@ -112,6 +116,25 @@ export function guardedChannelTest(deps: GuardDeps = {}) {
   }, deps);
 }
 
+/** POST /api/channels/[id]/summary (issue #980): "Send this week's summary now". Reads
+ * the last 7 days of changes and queues one delivery of the weekly summary to that
+ * channel, through the same durable path; the send itself happens in the notify job. */
+export function guardedSummaryNow(deps: GuardDeps = {}) {
+  return guarded({ action: "channels:summary", capability: "configuration", recordAttempt: true }, async ({ client, request, principalId, tenantRef }) => {
+    const id = idFrom(request, -2);
+    if (!UUID.test(id)) return notFound();
+    try {
+      const queued = await sendSummaryNow(client, { tenantRef, channelId: id, requestedBy: principalId });
+      return Response.json({ delivery: queued?.delivery ?? null }, { status: 202, headers: NO_STORE });
+    } catch (error) {
+      if (error instanceof SubscriptionRefusedError) return Response.json({ error: error.message }, { status: 400, headers: NO_STORE });
+      if (error instanceof Error && error.message === CHANNEL_NOT_FOUND) return notFound();
+      if (error instanceof Error && error.message === CHANNEL_OFF) return Response.json({ error: "channel_off" }, { status: 409, headers: NO_STORE });
+      throw error;
+    }
+  }, deps);
+}
+
 /** PATCH /api/subscriptions/[id]: change where a rule sends, which alerts and from which
  * severity. The whole rule is sent, so a half-changed rule is never stored. */
 export function guardedSubscriptionPatch(deps: GuardDeps = {}) {
@@ -121,13 +144,16 @@ export function guardedSubscriptionPatch(deps: GuardDeps = {}) {
     const body = await readActionParams(request);
     if (!validSubscriptionBody(body)) throw new InvalidActionRequest();
     try {
+      // The same checks as a new rule: no weekly summary to PagerDuty or a text message.
+      const minSeverity = await checkSubscription(client, { channelId: body.channelId as string, eventGlob: body.eventGlob as string, minSeverity: body.minSeverity as string });
       const { rows } = await client.query(
         "UPDATE subscription SET channel_id = $2, event_glob = $3, min_severity = $4 WHERE id = $1 RETURNING *",
-        [id, body.channelId, body.eventGlob, body.minSeverity],
+        [id, body.channelId, body.eventGlob, minSeverity],
       );
       return rows[0] ? Response.json({ subscription: rows[0] }, { headers: NO_STORE }) : notFound();
     } catch (error) {
-      if ((error as { code?: string }).code === "23503") return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+      if (error instanceof SubscriptionRefusedError) return Response.json({ error: error.message }, { status: 400, headers: NO_STORE });
+      if ((error as { code?: string }).code === "23503" || (error instanceof Error && error.message === CHANNEL_NOT_FOUND)) return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
       throw error;
     }
   }, deps);

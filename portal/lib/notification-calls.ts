@@ -22,6 +22,7 @@ const id = (value: string) => encodeURIComponent(value);
 export const notificationCalls = {
   addChannel: (kind: string, config: Record<string, string>) => call("/api/channels", "POST", { kind, config }),
   testChannel: (channelId: string) => call(`/api/channels/${id(channelId)}/test`, "POST"),
+  sendSummary: (channelId: string) => call(`/api/channels/${id(channelId)}/summary`, "POST"),
   turnChannelOff: (channelId: string) => call(`/api/channels/${id(channelId)}/disable`, "POST"),
   turnChannelOn: (channelId: string) => call(`/api/channels/${id(channelId)}/enable`, "POST"),
   addRule: (rule: { channelId: string; eventGlob: string; minSeverity: string }) => call("/api/subscriptions", "POST", rule),

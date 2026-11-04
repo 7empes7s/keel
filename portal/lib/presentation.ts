@@ -1,3 +1,4 @@
+import { ago as engineAgo } from "../../engine/insights/words.mjs";
 import { holdsObjectId } from "@/lib/object-ids";
 import type { ProtectionState } from "@/lib/types";
 
@@ -71,17 +72,7 @@ export function adapterSurface(adapter: string | null): string {
 /** A relative age ("3 days ago") measured from when the page's data was read.
  * Show the absolute UTC time beside it only in a title and in the record layer. */
 export function ago(value: string | null, now: string | Date): string {
-  if (!value) return "at an unknown time";
-  const milliseconds = new Date(now).valueOf() - new Date(value).valueOf();
-  if (!Number.isFinite(milliseconds)) return "at an unknown time";
-  if (milliseconds < 0) return "in the future";
-  const minutes = Math.floor(milliseconds / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return engineAgo(value, now);
 }
 
 // Portal experience contract, rule 4: stored codes reach the screen only through a
@@ -239,6 +230,7 @@ export const DISPLAY_ENUMS = {
     "workload-collect": "Backup of Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings",
     discover: "Check of what the tenant holds",
     "content-collect": "Backup of mail, files and Teams content",
+    "insights-summary": "Weekly summary to notification channels",
   },
   jobStatus: {
     queued: "Waiting to start",
@@ -348,6 +340,7 @@ export const DISPLAY_ENUMS = {
     "alert.reopened": "An alert came back",
     "alert.escalated": "Nobody responded to an alert",
     test: "Test alert",
+    "summary.weekly": "Weekly summary",
     "drift.detected": "A change was detected",
     "approval.decided": "An approval was decided",
     "job.started": "A job started",

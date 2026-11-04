@@ -47,6 +47,16 @@ export interface PeopleSummary {
   uniqueLists: number;
   // When the backup stored this summary.
   readAt: string;
+  // Owners matched by name to a user in the newest backup (engine/govern/ownerReview.mjs
+  // classifyNamedOwners): which are turned off or guests. Absent when not checked.
+  ownerCheck?: OwnerCheck | null;
+}
+
+export interface OwnerCheck {
+  // "only-disabled": every owner is a user whose account is turned off.
+  problem: "only-disabled" | "guest-owner" | null;
+  disabled: string[];
+  guests: string[];
 }
 
 // What the content backup holds for the site (container `site:<id>`).
@@ -273,6 +283,13 @@ export function peopleStatus(site: SitePermissions, run: SitesContentRun | null 
   const people = site.people;
   if (people) {
     if (!people.ownerCount) return { key: "no-owner", label: "No owner", tone: "urgent", detail: "Nobody owns this site: no site admin and no member of an owners group." };
+    const check = people.ownerCheck;
+    if (check?.problem === "only-disabled") {
+      return { key: "disabled-owners", label: "Only disabled owners", tone: "urgent", detail: `Every owner's account is turned off (${check.disabled.slice(0, 3).join(", ")}), so nobody can manage this site.` };
+    }
+    if (check?.problem === "guest-owner") {
+      return { key: "guest-owner", label: count(check.guests.length, "guest owner", "guest owners"), tone: "soon", detail: `${check.guests.slice(0, 3).join(", ")} ${check.guests.length === 1 ? "is a guest" : "are guests"} from outside your organisation.` };
+    }
     return { key: "owned", label: count(people.ownerCount, "owner", "owners"), tone: "fine", detail: null };
   }
   if (run && !inBackupScope(site, run)) return { key: "not-read", label: "Not read", tone: "neutral", detail: "Owners, groups and guests are read with the backup, which skips this site." };
@@ -329,7 +346,7 @@ export const SITE_TILES = [
   { key: "apps", label: "Apps with access", icon: "link", test: (site: SitePermissions) => (site.appGrants.entries?.length ?? 0) > 0 },
   { key: "guests", label: "Guests or links", icon: "person", test: (site: SitePermissions) => Boolean(site.people && (site.people.guests || site.people.sharingLinks)) },
   { key: "wider", label: "Shared wider than default", icon: "link", test: (site: SitePermissions) => sharingStatus(site).key === "wider" },
-  { key: "no-owner", label: "No owner", icon: "x-circle", test: (site: SitePermissions) => site.people?.ownerCount === 0 },
+  { key: "no-owner", label: "No owner", icon: "x-circle", test: (site: SitePermissions) => site.people?.ownerCount === 0 || site.people?.ownerCheck?.problem === "only-disabled" },
 ] as const;
 
 const SHARING_WORDS: Record<string, string> = {
@@ -438,12 +455,14 @@ export function sitesVerdict(data: SitePermissionsData): { text: string; tone: V
   if (run?.outcome === "failed") return { text: "Last night's backup of sites failed. Sites may be missing recent changes.", tone: "critical" };
   const sites = data.sites;
   const noOwner = sites.filter((site) => site.people?.ownerCount === 0).length;
+  const disabledOwners = sites.filter((site) => site.people?.ownerCount && site.people.ownerCheck?.problem === "only-disabled").length;
   const unprotected = sites.filter((site) => ["outside", "none"].includes(backupStatus(site, run).key)).length;
   const partial = sites.filter((site) => backupStatus(site, run).key === "partial").length;
   const unreadable = sites.filter((site) => site.appGrants.status === "denied" || site.appGrants.status === "failed").length;
   const wider = sites.filter((site) => sharingStatus(site).key === "wider").length;
   const problems = [
     noOwner ? `${count(noOwner, "site has", "sites have")} no owner` : null,
+    disabledOwners ? `${count(disabledOwners, "site has", "sites have")} only disabled owners` : null,
     wider ? `${count(wider, "site is", "sites are")} shared more widely than your organisation's default` : null,
     unprotected ? `${count(unprotected, "site is", "sites are")} not backed up` : null,
     partial ? `${count(partial, "site was", "sites were")} only partly backed up` : null,
@@ -451,7 +470,7 @@ export function sitesVerdict(data: SitePermissionsData): { text: string; tone: V
   ].filter(Boolean) as string[];
   if (problems.length) {
     const text = problems.slice(0, 2).join(", and ");
-    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: noOwner || wider ? "critical" : "attention" };
+    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: noOwner || disabledOwners || wider ? "critical" : "attention" };
   }
   if (data.run.capped) return { text: `Only the first ${count(sites.length, "site was", "sites were")} read; the read stops there, so other sites are missing.`, tone: "attention" };
   if (data.latest) return { text: `The newest SharePoint read did not finish; this shows the one from ${ago(data.run.observedTo, data.generatedAt)}.`, tone: "attention" };
@@ -475,6 +494,8 @@ export function siteVerdict(site: SitePermissions, run: SitesContentRun | null |
   const sharing = sharingStatus(site);
   const problems = [
     people.key === "no-owner" ? "nobody owns this site" : null,
+    people.key === "disabled-owners" ? "every owner's account is turned off" : null,
+    people.key === "guest-owner" ? "a guest from outside your organisation owns it" : null,
     sharing.key === "wider" ? "it is shared more widely than your organisation's default" : null,
     ["outside", "none"].includes(backup.key) ? "it is not backed up" : null,
     backup.key === "partial" ? "parts of it were not backed up last night" : null,
@@ -484,7 +505,7 @@ export function siteVerdict(site: SitePermissions, run: SitesContentRun | null |
   ].filter(Boolean) as string[];
   if (problems.length) {
     const text = problems.slice(0, 2).join(", and ");
-    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: people.key === "no-owner" || sharing.key === "wider" ? "critical" : "attention" };
+    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: people.key === "no-owner" || people.key === "disabled-owners" || sharing.key === "wider" ? "critical" : "attention" };
   }
   if (people.key !== "owned") return { text: "Backed up. Owners, groups and guests are not known yet.", tone: "attention" };
   if (exposure.key === "unchecked") return { text: "Everyone grants and link scope were not checked in this backup.", tone: "attention" };

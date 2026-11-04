@@ -49,6 +49,9 @@ const PAGES = [
   { name: "benchmarks", hash: "/compliance" },
   { name: "intune-baselines", hash: "/intune-baselines" },
   { name: "intune-baselines-never", hash: "/intune-baselines/never" },
+  { name: "owner-review", hash: "/owner-review" },
+  { name: "owner-review-none", hash: "/owner-review/none" },
+  { name: "owner-review-read-failed", hash: "/owner-review/read-failed" },
   { name: "benchmarks-scuba-lists", hash: "/compliance/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/compliance/scuba?lists=edit" },
   { name: "principals", hash: "/people" },
@@ -6199,3 +6202,65 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+// Owner review (issue #964): problems found, nothing to do, and app owner reads refused.
+// At each width and theme the verdict fits, nothing scrolls sideways or is clipped, and
+// no id shows outside Technical details.
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [375, 390, 1278]) {
+    for (const hash of ["/owner-review", "/owner-review/none", "/owner-review/read-failed"]) {
+      test(`Owner review · ${width} · ${theme} · ${hash}: verdict first, no sideways scroll or clipped text`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width < 600 ? 812 : 900 });
+        await open(page, hash, theme);
+        const verdict = page.locator('[data-layer="verdict"]');
+        await expect(verdict).toBeVisible();
+        expect((await verdict.boundingBox())!.y).toBeLessThan(width < 600 ? 812 : 900);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".or-page *, .page-header *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const visibleIds = await page.locator("main#main-content").evaluate((main) => {
+          const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+          const found: string[] = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (node.parentElement?.closest('[data-layer="record"], details, .technical-details')) continue;
+            if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(node.textContent ?? "")) found.push(node.textContent!.trim());
+          }
+          return found;
+        });
+        expect(visibleIds).toEqual([]);
+      });
+    }
+  }
+}
+
+test("Owner review: the verdict counts what has no working owner, and the tiles filter by problem", async ({ page }) => {
+  await open(page, "/owner-review");
+  await expect(page.locator(".verdict-sentence")).toHaveText("3 groups, 1 app and 1 site have no working owner.");
+  await expect(page.locator(".or-row")).toHaveCount(9);
+  await page.locator(".cp-tile", { hasText: "Guest owners" }).click();
+  await expect(page).toHaveURL(/owners=guest-owner/);
+  await expect(page.locator(".or-row")).toHaveCount(3);
+  await page.locator(".cp-tile", { hasText: "Only disabled owners" }).click();
+  await expect(page.locator(".or-row")).toHaveCount(5);
+  await page.getByRole("button", { name: "Remove filter: Guest owners" }).click();
+  await expect(page.locator(".or-row")).toHaveCount(2);
+  await expect(page.locator(".or-row").first()).toContainText("Every owner's account is turned off: Dan Okafor.");
+});
+
+test("Owner review: refused app owner reads say so with the Setup fix, never no owner", async ({ page }) => {
+  await open(page, "/owner-review/read-failed");
+  await expect(page.locator(".verdict-sentence")).toHaveText("No ownerless group, app or site found, but owners could not be read for app registrations.");
+  await expect(page.getByText("Owners could not be read for app registrations.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Check Application.Read.All in Setup" }).first()).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Application.Read.All#setup-permissions$/);
+  await expect(page.locator(".or-row", { hasText: /\bNo owner\b/ })).toHaveCount(0);
+});
+
+test("Owner review: nothing to review", async ({ page }) => {
+  await open(page, "/owner-review/none");
+  await expect(page.locator(".verdict-sentence")).toHaveText("Every group, app and site Keel checked has a working owner.");
+  await expect(page.locator(".or-row")).toHaveCount(0);
+  await expect(page.locator(".empty-state")).toContainText("Nothing to review");
+});

@@ -60,6 +60,8 @@ import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, 
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { IntuneBaselinesPage } from "@/components/compliance/intune-baselines-page";
+import { OwnerReviewPage } from "@/components/owner-review-page";
+import { itemsInOrder, ownerReviewStatus, shapeOwnerReview, type EngineOwnerReview, type OwnerRead, type OwnerReviewData, type OwnerReviewItem } from "@/lib/owner-review-view";
 import { baselinesStatus, shapeBaselines, type EngineBaselineResults } from "@/lib/intune-baselines-view";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
@@ -1273,6 +1275,63 @@ const INTUNE_BASELINES = shapeBaselines({
   ],
 }, now);
 const INTUNE_BASELINES_NEVER = shapeBaselines({ templates: null, lastFailure: null, policies: null, baselines: [] }, now);
+
+// Owner review (issue #964): problems in every kind, a healthy tenant, and a tenant whose
+// app owner reads were refused (Application.Read.All missing): "could not be read", never
+// "no owner".
+const orId = (n: number) => `0e000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const orCounts = (over: Partial<OwnerReviewItem["counts"]> = {}) => ({ total: 0, working: 0, disabled: 0, guests: 0, gone: 0, unknown: 0, ...over });
+const orRead = (family: string, permission: string, over: Partial<OwnerRead> = {}): OwnerRead => ({ family, permission, snapshotId: "5a000000-0000-4000-8000-0000000000a1", readAt: "2026-10-02T01:10:00.000Z", failed: 0, refused: 0, notRead: 0, ...over });
+type EngineItem = EngineOwnerReview["items"][number];
+const orItem = (n: number, kind: EngineItem["kind"], name: string, problem: OwnerReviewItem["problem"], over: Partial<EngineItem> = {}): EngineItem => ({
+  kind, id: orId(n), appId: kind === "application" || kind === "servicePrincipal" ? orId(n + 500) : null, naturalKey: `${kind}:${name}`, name, problem,
+  owners: [], counts: orCounts(), readFailure: null, readAt: "2026-10-02T01:10:00.000Z", ...over,
+});
+const OR_DAN = { id: orId(901), name: "Dan Okafor", state: "disabled" as const };
+const OR_GAIL = { id: orId(902), name: "Gail Martins (Fabrikam)", state: "guest" as const };
+const OR_ANA = { id: orId(903), name: "Ana Silva", state: "working" as const };
+const orEngine = (items: EngineItem[], reads: Partial<EngineOwnerReview["reads"]> = {}): EngineOwnerReview => ({
+  generatedAt: now,
+  directory: { snapshotId: "5a000000-0000-4000-8000-0000000000b2", readAt: "2026-10-02T01:00:00.000Z", complete: true, users: 412 },
+  reads: { group: orRead("owner", "Group.Read.All"), application: orRead("appOwner", "Application.Read.All"), servicePrincipal: orRead("servicePrincipalOwner", "Application.Read.All"), ...reads },
+  skipped: { microsoft: 214, unknownPublisher: 6, otherType: 3 },
+  completeness: "partial",
+  items,
+});
+const OR_HEALTHY = Array.from({ length: 6 }, (_, index) => orItem(100 + index, index % 2 ? "team" : "group", `Department ${index + 1}`, "fine", { owners: [OR_ANA], counts: orCounts({ total: 1, working: 1 }) }));
+const orSite = (n: number, name: string, problem: OwnerReviewItem["problem"], owners: OwnerReviewItem["owners"]): OwnerReviewItem => ({
+  kind: "site", id: `contoso.sharepoint.com,5e170000-0000-4000-8000-0000000000${n},5e170000-0000-4000-8000-0000000000${n + 1}`, appId: null,
+  naturalKey: `https://contoso.sharepoint.com/sites/${name.toLowerCase().replace(/\s+/g, "-")}`, name, problem, owners,
+  counts: orCounts({ total: owners.length, disabled: owners.filter((owner) => owner.state === "disabled").length, guests: owners.filter((owner) => owner.state === "guest").length, working: owners.filter((owner) => owner.state === "working").length }),
+  readFailure: null, readAt: "2026-10-02T01:06:00.000Z",
+});
+const withSites = (data: OwnerReviewData, sites: OwnerReviewItem[], unread = 0): OwnerReviewData => ({
+  ...data, items: itemsInOrder([...data.items, ...sites]), sites: { readAt: "2026-10-02T01:06:00.000Z", checked: sites.length, unread },
+});
+const OWNER_REVIEW = withSites(shapeOwnerReview(orEngine([
+  orItem(1, "group", "Finance leadership", "no-owner"),
+  orItem(2, "team", "Project Atlas launch team with a long name that wraps on a phone", "only-disabled", { owners: [OR_DAN], counts: orCounts({ total: 1, disabled: 1 }) }),
+  orItem(3, "group", "Former contractors", "no-owner", { owners: [{ id: orId(904), name: null, state: "gone" }], counts: orCounts({ total: 1, gone: 1 }) }),
+  orItem(4, "application", "Payroll connector", "guest-owner", { owners: [OR_GAIL], counts: orCounts({ total: 1, guests: 1 }) }),
+  orItem(5, "servicePrincipal", "Expense reports", "no-owner"),
+  orItem(6, "application", "HR sync", "guest-owner", { owners: [OR_ANA, OR_GAIL], counts: orCounts({ total: 2, working: 1, guests: 1 }) }),
+  orItem(7, "group", "Board papers", "read-failed", { readFailure: { outcome: "failed", httpStatus: 504, graphCode: null, error: "Gateway Timeout" } }),
+  ...OR_HEALTHY,
+], { group: orRead("owner", "Group.Read.All", { failed: 1 }) }), null), [
+  orSite(10, "Records archive", "only-disabled", [OR_DAN]),
+  orSite(20, "Partner portal", "guest-owner", [OR_GAIL, OR_ANA]),
+  orSite(30, "Intranet", "fine", [OR_ANA]),
+], 2);
+const OWNER_REVIEW_NONE = withSites(shapeOwnerReview(orEngine(OR_HEALTHY), null), [orSite(30, "Intranet", "fine", [OR_ANA])]);
+const OWNER_REVIEW_READ_FAILED = withSites(shapeOwnerReview(orEngine([
+  ...OR_HEALTHY,
+  orItem(40, "application", "Payroll connector", "read-failed", { readFailure: { outcome: "failed", httpStatus: 403, graphCode: "Authorization_RequestDenied", error: "Insufficient privileges to complete the operation." } }),
+  orItem(41, "application", "HR sync", "read-failed", { readFailure: { outcome: "failed", httpStatus: 403, graphCode: "Authorization_RequestDenied", error: "Insufficient privileges to complete the operation." } }),
+  orItem(42, "servicePrincipal", "Expense reports", "read-failed", { readFailure: { outcome: "failed", httpStatus: 403, graphCode: "Authorization_RequestDenied", error: "Insufficient privileges to complete the operation." } }),
+], {
+  application: orRead("appOwner", "Application.Read.All", { refused: 2 }),
+  servicePrincipal: orRead("servicePrincipalOwner", "Application.Read.All", { refused: 1 }),
+}), null), []);
 
 const LIVE_COMPLIANCE = liveCompliance(legacyLines("Block legacy sign-in (report-only pilot)", "KEEL-RT-20260908 Block Legacy Authentication"));
 // Two sign-in rules with the same name (#588): each keeps its own lines, numbered.
@@ -3095,6 +3154,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
       {ANONYMOUS_NOTE}
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
+    case "/owner-review": case "/owner-review/none": case "/owner-review/read-failed": {
+      const data = path.endsWith("/none") ? OWNER_REVIEW_NONE : path.endsWith("/read-failed") ? OWNER_REVIEW_READ_FAILED : OWNER_REVIEW;
+      return <>{header("Baselines", "Owner review", "Microsoft 365 groups, teams, apps and sites with no working owner: nobody, only disabled accounts, or guests.", undefined, ownerReviewStatus(data))}
+      <OwnerReviewPage data={data} /></>;
     }
     case "/intune-baselines": case "/intune-baselines/never": {
       const data = path.endsWith("/never") ? INTUNE_BASELINES_NEVER : INTUNE_BASELINES;

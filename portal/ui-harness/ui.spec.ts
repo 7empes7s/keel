@@ -541,8 +541,8 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await expect(form).toBeVisible();
   await form.getByRole("button", { name: /Which alerts/ }).click();
   const choices = page.locator(".option-panel [role='option']");
-  await expect(choices).toHaveCount(3);
-  for (const [index, label] of ["All alerts", "An alert opened", "An alert came back"].entries()) await expect(choices.nth(index)).toContainText(label);
+  await expect(choices).toHaveCount(4);
+  for (const [index, label] of ["All alerts", "An alert opened", "An alert came back", "Weekly summary"].entries()) await expect(choices.nth(index)).toContainText(label);
   await choices.filter({ hasText: "An alert opened" }).click();
   await form.getByRole("button", { name: "Add rule" }).click();
   await expect(page.locator(".toast", { hasText: "Rule added" })).toHaveCount(1);

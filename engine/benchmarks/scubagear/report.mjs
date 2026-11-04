@@ -28,6 +28,10 @@ export function outcomeWords(reason) {
     const [key, fields] = [rest.slice(0, rest.lastIndexOf('.')), rest.slice(rest.lastIndexOf('.') + 1)];
     return `Keel's read of \`${key}\` does not keep ${fields.split(',').map((field) => `\`${field}\``).join(', ')}.`;
   }
+  if (kind === 'preview-only') {
+    const [key, fields] = [rest.slice(0, rest.lastIndexOf('.')), rest.slice(rest.lastIndexOf('.') + 1)];
+    return `Microsoft offers ${fields.split(',').map((field) => `\`${field}\``).join(', ')} of \`${key}\` only in a preview, which Keel does not back up.`;
+  }
   if (kind === 'needs-setting') return 'It needs a list from ScubaGear\'s config that Keel has no place for yet.';
   return code;
 }

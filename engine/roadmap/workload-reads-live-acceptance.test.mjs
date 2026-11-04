@@ -261,6 +261,7 @@ test('nothing is sent when the collector config names another tenant or --out is
 // ------------------------------------------------------------ admin REST workloads
 
 const PP = 'power-platform-settings';
+const PP_TENANT_ID = TENANT;
 const BAP_ENVIRONMENTS = '/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments';
 /** A fake set of Power Platform and Fabric admin APIs behind the real read-only transport. */
 function fakeAdminApi(fail = {}) {
@@ -270,6 +271,8 @@ function fakeAdminApi(fail = {}) {
     '/providers/PowerPlatform.Governance/v2/policies': { value: [] },
     '/providers/Microsoft.PowerApps/scopes/admin/environments/KEEL-RT-env-a/apis': { value: [{ name: 'shared_office365', type: 'Microsoft.PowerApps/apis', properties: {} }] },
     '/v1/admin/tenantsettings': { tenantSettings: [{ settingName: 'KEEL-RT-setting', enabled: true }] },
+    '/providers/Microsoft.BusinessAppPlatform/listTenantSettings': { disableTrialEnvironmentCreationByNonAdminUsers: true, powerPlatform: { governance: { disableAdminDigest: false } } },
+    [`/providers/PowerPlatform.Governance/v1/tenants/${PP_TENANT_ID}/tenantIsolationPolicy`]: { properties: { isDisabled: false, allowedTenants: [] } },
   };
   const fetchImpl = async (url, init) => {
     sent.push({ url, method: init.method, body: init.body });
@@ -280,13 +283,16 @@ function fakeAdminApi(fail = {}) {
   const audiences = [];
   return { sent, audiences, transport: readOnlyPowerPlatformTransport(async (audience) => { audiences.push(audience); return 'token'; }, fetchImpl) };
 }
-const restCapture = (api, extra = {}) => captureWorkloadReads({ workload: PP, collector: api.transport, tenantRef, build, credential: 'app:collector', now, ...extra });
+const restCapture = (api, extra = {}) => captureWorkloadReads({ workload: PP, collector: api.transport, tenantRef, build, credential: 'app:collector', now, readOptions: { tenantId: PP_TENANT_ID }, ...extra });
 
 test(`${PP}: a read-only REST capture imports as live read proof bound to each API version and turns the workload on`, async () => {
   const api = fakeAdminApi();
   const { record, diagnostics } = await restCapture(api);
-  assert.ok(api.sent.length >= 4 && api.sent.every((call) => call.method === 'GET' && call.body === undefined), 'only GETs are sent');
-  assert.ok(api.sent.every((call) => assertPowerPlatformRequest(call.url)), 'every request is a declared shape');
+  // Only GETs, plus the one read Microsoft offers only as a POST, and never a body.
+  assert.ok(api.sent.length >= 6 && api.sent.every((call) => call.body === undefined), 'no body is sent');
+  assert.deepEqual(api.sent.filter((call) => call.method !== 'GET').map((call) => [call.method, new URL(call.url).pathname]),
+    [['POST', '/providers/Microsoft.BusinessAppPlatform/listTenantSettings']]);
+  assert.ok(api.sent.every((call) => assertPowerPlatformRequest(call.url, { method: call.method })), 'every request is a declared shape');
   assert.deepEqual(diagnostics, []);
   assert.deepEqual(record.subject.execution, { transport: 'rest-read-only' });
   for (const item of record.subject.reads) {

@@ -131,7 +131,9 @@ export const REST_READ_TRANSPORTS = Object.freeze({
 export function readOptionsFor(workload, { sites = [], collectorConfig = {} } = {}) {
   if (workload !== SHAREPOINT_STRUCTURE_WORKLOAD) {
     if (sites.length) throw new Error(`--site is only for --workload ${SHAREPOINT_STRUCTURE_WORKLOAD}`);
-    return {};
+    // Power Platform's tenant isolation read is addressed by the tenant id, as the
+    // backup run reads it (engine/collect/workloads/registry.mjs).
+    return workload === 'power-platform-settings' && typeof collectorConfig.tenantId === 'string' ? { tenantId: collectorConfig.tenantId } : {};
   }
   let adminHost = '';
   try { adminHost = new URL(String(collectorConfig.sharePointAdminUrl ?? '')).hostname.toLowerCase(); } catch { adminHost = ''; }
@@ -181,7 +183,7 @@ export async function captureWorkloadReads({
   let result = null;
   let error = null;
   try {
-    result = await read(rest ? { transport, families } : { ...readOptions, powershell: collector, families });
+    result = await read(rest ? { ...readOptions, transport, families } : { ...readOptions, powershell: collector, families });
   } catch (failure) {
     error = failure;
   }

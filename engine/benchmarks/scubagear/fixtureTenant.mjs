@@ -216,15 +216,21 @@ export const FIXTURE_BACKUPS = Object.freeze({
       AllowTeamsConsumer: true, AllowTeamsConsumerInbound: false,
     }),
     teams('clientConfiguration', 'Global', { AllowGuestUser: true, AllowEmailIntoChannel: true }),
-    teams('appPermissionPolicy', 'Global', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'BlockedAppList', PrivateCatalogAppsType: 'BlockedAppList' }),
+    teams('appPermissionPolicy', 'Global', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'AllowedAppList', PrivateCatalogAppsType: 'AllowedAppList' }),
+    teams('appPermissionPolicy', 'Tag:KEEL-RT-Makers', { DefaultCatalogAppsType: 'BlockedAppList', GlobalCatalogAppsType: 'AllowedAppList', PrivateCatalogAppsType: 'BlockedAppList' }),
   ],
   'teams-voice-policies': [
     teams('liveEventsPolicy', 'Global', { AllowBroadcastScheduling: true, BroadcastRecordingMode: 'AlwaysEnabled' }),
   ],
-  'sharepoint-site-settings': [
+  // Get-PnPTenant as Keel stores it: enum values by name.
+  'sharepoint-tenant': [
     {
-      id: 'tenant', sharingCapability: 'existingExternalUserSharingOnly', sharingDomainRestrictionMode: 'none',
-      sharingAllowedDomainList: [], sharingBlockedDomainList: [], isResharingByExternalUsersEnabled: false,
+      kind: 'tenantSettings', identity: 'tenant', id: 'tenant-settings:tenant',
+      SharingCapability: 'ExternalUserAndGuestSharing', OneDriveSharingCapability: 'ExistingExternalUserSharingOnly',
+      SharingDomainRestrictionMode: 'AllowList', SharingAllowedDomainList: 'keel-rt-partner.example', SharingBlockedDomainList: '',
+      DefaultSharingLinkType: 'Direct', DefaultLinkPermission: 'Edit',
+      FileAnonymousLinkType: 'View', FolderAnonymousLinkType: 'Edit', RequireAnonymousLinksExpireInDays: 14,
+      EmailAttestationRequired: true, EmailAttestationReAuthDays: 30,
     },
   ],
   'power-platform-settings': [
@@ -234,6 +240,11 @@ export const FIXTURE_BACKUPS = Object.freeze({
       displayName: 'KEEL-RT-Default only', environmentType: 'OnlyEnvironments',
       environments: [{ id: `/providers/admin/environment/Default-${TENANT_ID}`, name: `Default-${TENANT_ID}`, type: 'Microsoft.BusinessAppPlatform/scopes/environments' }],
     }),
+    platform('tenantSettings', 'tenant', {
+      disableEnvironmentCreationByNonAdminUsers: true, disableTrialEnvironmentCreationByNonAdminUsers: false,
+      disablePortalsCreationByNonAdminUsers: true, powerPlatform: { powerApps: { disableShareWithEveryone: true } },
+    }),
+    platform('tenantIsolation', 'tenant', { isDisabled: false, allowedTenants: [] }),
     ...[['PublishToWeb', false], ['AllowGuestUserToAccessSharedContent', true], ['ExternalSharingV2', false], ['ServicePrincipalAccessPermissionAPIs', true],
       ['AllowServicePrincipalsCreateAndUseProfiles', false], ['BlockResourceKeyAuthentication', true], ['RScriptVisual', true], ['EimInformationProtectionEdit', true]]
       .map(([settingName, enabled]) => platform('powerBiSetting', settingName, { title: `KEEL-RT-${settingName}`, enabled, enabledSecurityGroups: [] })),
@@ -289,8 +300,14 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.SECURITYSUITE.7.3v1': 'fail', // it does not track clicks
   'MS.SECURITYSUITE.8.1v1': 'fail', // the connection filter has an IP allow list
   'MS.SECURITYSUITE.8.2v1': 'pass', // the safe list is off
-  'MS.SHAREPOINT.1.1v1': 'pass', // SharePoint sharing is limited to existing guests
-  'MS.SHAREPOINT.1.3v1': 'fail', // external sharing is on, with no domain list
+  'MS.SHAREPOINT.1.1v1': 'fail', // SharePoint sharing allows Anyone links
+  'MS.SHAREPOINT.1.2v1': 'pass', // OneDrive sharing is limited to existing guests
+  'MS.SHAREPOINT.1.3v1': 'pass', // sharing is limited to an allowed domain list
+  'MS.SHAREPOINT.2.1v1': 'pass', // new links go to specific people
+  'MS.SHAREPOINT.2.2v1': 'fail', // new links let people edit
+  'MS.SHAREPOINT.3.1v1': 'pass', // Anyone links expire after 14 days
+  'MS.SHAREPOINT.3.2v1': 'fail', // Anyone links to folders let people edit
+  'MS.SHAREPOINT.3.3v2': 'pass', // guests with a code sign in again every 30 days
   'MS.TEAMS.1.1v1': 'fail', // a named meeting policy lets outside people request control
   'MS.TEAMS.1.2v2': 'pass',
   'MS.TEAMS.1.3v1': 'pass', // the Global policy admits only people in the company, and dial-in users wait
@@ -302,8 +319,17 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.TEAMS.2.2v2': 'pass', // personal Teams accounts cannot start a chat
   'MS.TEAMS.2.3v2': 'fail', // users can still chat with personal Teams accounts
   'MS.TEAMS.4.1v1': 'fail', // email into channels is on
+  // The org-wide app settings cannot be read with a certificate, so the app permission policies are judged.
+  'MS.TEAMS.5.1v2': 'fail', // every Microsoft app is allowed unless blocked
+  'MS.TEAMS.5.2v2': 'pass', // third-party apps are allowed only from a list, in both policies
+  'MS.TEAMS.5.3v2': 'fail', // the Makers policy allows every custom app
+  'MS.POWERPLATFORM.1.1v1': 'pass', // only admins create production and sandbox environments
+  'MS.POWERPLATFORM.1.2v1': 'fail', // anyone can create a trial environment
   'MS.POWERPLATFORM.2.1v1': 'pass', // a DLP policy covers the default environment
   'MS.POWERPLATFORM.2.2v1': 'fail', // the Sales environment has no DLP policy
+  'MS.POWERPLATFORM.3.1v1': 'pass', // tenant isolation is on
+  'MS.POWERPLATFORM.5.1v1': 'pass', // only admins create Power Pages sites
+  'MS.POWERPLATFORM.6.1v1': 'pass', // apps cannot be shared with everyone
   'MS.POWERBI.1.1v1': 'pass', // publish to web is off
   'MS.POWERBI.2.1v1': 'fail', // every guest can open shared content
   'MS.POWERBI.3.1v1': 'pass',

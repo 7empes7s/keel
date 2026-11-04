@@ -43,6 +43,7 @@ const SAMPLE = Object.freeze({
 });
 const SUBSTITUTE = Object.freeze({
   'site-id': 'fixture-site', 'team-id': 'fixture-team', 'group-id': 'fixture-team', 'user-id': 'fixture-user', 'environment-name': 'fixture-environment',
+  'tenant-id': '00000000-0000-4000-8000-00000000f1f1',
 });
 
 /**
@@ -87,6 +88,8 @@ export function fixtureRest(descriptor) {
         return { status: 429, headers: { 'retry-after': '2' }, body: null };
       }
       const key = descriptor.operation.items;
+      // A read that answers one object (a tenant's settings) has no pages.
+      if (key === null) return { status: 200, headers: {}, body: { name: 'KEEL-RT-fixture-1' } };
       return new URL(url).searchParams.get('$skiptoken')
         ? { status: 200, headers: {}, body: { [key]: [{ name: 'KEEL-RT-fixture-2' }] } }
         : { status: 200, headers: {}, body: { [key]: [{ name: 'KEEL-RT-fixture-1' }], nextLink: `${url}${url.includes('?') ? '&' : '?'}$skiptoken=fixture` } };

@@ -14714,8 +14714,15 @@ item that needs it stays untouched.
   directoryScopeIds, appScopeIds). The dry run still names only the changed field.
 - Needs: PR #954 merged and deployed (build B). Check: `grep -q updateSendsWhole /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
   Run the restore and the capture from the same build B, and pass that build to `--build`.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-11-04 07:58 UTC, keel-operator). **B = 77fb3247** (#959 deployed, `updateSendsWhole` present); restore and capture both from B. **S = `c21ab372`**. Restorer for writes, Collector for reads; global admin not used; nothing granted. No CA, no break-glass.
+  - **Fixtures made:** empty groups `KEEL-RT-311-group` and `KEEL-RT-311-group2`, custom role `KEEL-RT-311-defender-role` (one read permission), `KEEL-RT-311-defender-assignment` (role to group 1, `appScopeIds` `["/"]`).
+  - **Step 2:** group2 added (PATCH 204, 2 principals). Dry run `4144adc4`: one `update`, fields `principalIds` only, one `access-changing` effect. Effects approval `ad89a867`, request `4b66ab77` (approved). Enforce exit 0, journal **`update | succeeded`**. Read-back: group 1 only, same name, role and scopes (`/`, `/`).
+  - **Step 3:** capture `defenderRoleAssignment.update` exit 0, readBackVerified true. `operations.mjs --live-evidence` (with the qualification key): `defenderRoleAssignment.update.json: fixture-tested -> live-qualified`; coverage shows `update=supported`, no "live failed" note.
+  - **Step 4:** dry run again from S (`a5ad5778`): no changes planned.
+  - **Evidence:** branch `claude/live-evidence-q311`, commit **eb97e0d9**, **PR #973** (no automerge label added). Pseudonymize check exit 0; secret scan clean.
+  - **Not done here:** `defenderRoleAssignment.update.demotion.json` (Q271) is still committed. Earlier demotions were removed only with Marouane's approval (c42bbced), so a code thread should remove it.
+  - **Cleanup:** assignment, role and both groups deleted (204 each; groups read back 404). The Restorer has no Defender role assignments, and its directory roles are unchanged. **Nothing left in the tenant.**
 - **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
   account. The fixture gives a **read-only** custom Defender role to **empty** `KEEL-RT-` groups, so nobody gains access. Effects
   approvals under the standing test-tenant self-approval; log each approval id.

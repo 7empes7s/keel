@@ -38,7 +38,7 @@ import {
   applyRecordWrite, defineRecord, graphFailure, holdsNestedTrust, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
-import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects } from '../safety/contentEffects.mjs';
+import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects, withoutMicrosoftSet } from '../safety/contentEffects.mjs';
 import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
@@ -976,9 +976,13 @@ export const IDENTITY_RECORDS = Object.freeze({
     writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceRegistrationPolicy], refusal: withApprovalGate(deviceRegistrationReplaceRefusal),
     permission: 'Policy.ReadWrite.DeviceConfiguration', docs: v1('deviceregistrationpolicy-update'),
   }),
+  // Graph sets an identifier URI restriction's isStateSetByMicrosoft itself: it
+  // is never sent, and it is left out of the plan and the read-back check.
   tenantAppManagementPolicy: defineRecord({
     resourceType: 'tenantAppManagementPolicy', tenantWide: true, version: 'v1.0', collection: '/policies/defaultAppManagementPolicy',
     singleton: true, operations: ['update'], writable: APPROVAL_HELD_FIELDS.tenantAppManagementPolicy,
+    transform: (body) => withoutMicrosoftSet('tenantAppManagementPolicy', body),
+    sameField: (_field, desired, live) => sameValue(withoutMicrosoftSet('tenantAppManagementPolicy', desired), withoutMicrosoftSet('tenantAppManagementPolicy', live)),
     refusal: withApprovalGate(appCredentialTrustRefusal),
     permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('tenantappmanagementpolicy-update'),
   }),

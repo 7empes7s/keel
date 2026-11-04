@@ -42,6 +42,7 @@ import {
   EXCHANGE_ORG_ACCESS_WORKLOAD, EXCHANGE_ORG_DEFAULTS_WORKLOAD, readExchangeOrgAccess, readExchangeOrgDefaults,
 } from '../../engine/collect/workloads/exchangeOrgPolicies.mjs';
 import { EXCHANGE_ORG_CONFIG_WORKLOAD, readExchangeOrgConfig } from '../../engine/collect/workloads/exchangeOrgConfig.mjs';
+import { DEFENDER_EMAIL_WORKLOAD, readDefenderEmail } from '../../engine/collect/workloads/defenderEmail.mjs';
 import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import {
   EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_WORKLOAD, readExchangeDistributionGroups, readExchangeRecipients,
@@ -110,6 +111,7 @@ export const WORKLOAD_READERS = Object.freeze({
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: readExchangeOrgAccess, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: readExchangeOrgDefaults,
   [TEAMS_COLLABORATION_WORKLOAD]: readTeamsCollaboration, [TEAMS_MEETING_SETTINGS_WORKLOAD]: readTeamsMeetingSettings,
   [POWER_PLATFORM_WORKLOAD]: readPowerPlatform, [DEFENDER_INDICATORS_WORKLOAD]: readDefenderIndicators,
+  [DEFENDER_EMAIL_WORKLOAD]: readDefenderEmail,
 });
 
 /**

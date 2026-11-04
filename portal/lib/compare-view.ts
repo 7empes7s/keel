@@ -277,6 +277,7 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   "exchange-org-access": "Exchange sharing and client access",
   "exchange-org-defaults": "Exchange transport and new mailbox defaults",
   "exchange-org-config": "Audit, encryption and organization settings",
+  "defender-email-protection": "Defender email protection",
   "exchange-mail": "Mail, calendars and contacts",
   "group-conversations": "Group conversations",
   "teams-settings": "Teams settings",

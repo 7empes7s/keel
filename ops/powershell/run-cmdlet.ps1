@@ -24,6 +24,7 @@
   engine/roadmap/teams-voice-network.test.mjs,
   engine/roadmap/exchange-org-policies.test.mjs, engine/roadmap/purview-dlp-support.test.mjs,
   engine/roadmap/exchange-org-config.test.mjs, engine/roadmap/sharepoint-tenant.test.mjs,
+  engine/roadmap/defender-email-protection.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -122,6 +123,24 @@ $AllowedExchangeExtended = @{
     'Get-SafeAttachmentRule'             = @()
     'Get-ATPProtectionPolicyRule'        = @()
     'Get-AtpPolicyForO365'               = @()
+}
+
+# Defender email protection (engine/collect/workloads/defenderEmail.mjs), in the
+# Exchange Online session. Reads only. The Node side fixes each value: ListType is one of
+# Sender, Url, FileHash, IP, and ListSubType only AdvancedDelivery.
+$AllowedDefenderEmail = @{
+    'Get-TenantAllowBlockListItems'      = @('ListType', 'ListSubType')
+    'Get-TenantAllowBlockListSpoofItems' = @()
+    'Get-PhishSimOverridePolicy'         = @()
+    'Get-ExoPhishSimOverrideRule'        = @()
+    'Get-SecOpsOverridePolicy'           = @()
+    'Get-ExoSecOpsOverrideRule'          = @()
+    'Get-ATPBuiltInProtectionRule'       = @()
+    'Get-TeamsProtectionPolicy'          = @()
+    'Get-TeamsProtectionPolicyRule'      = @()
+    'Get-ReportSubmissionPolicy'         = @()
+    'Get-ReportSubmissionRule'           = @()
+    'Get-ArcConfig'                      = @()
 }
 
 # Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs), in the
@@ -494,6 +513,7 @@ elseif ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement')
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
 elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
+elseif ($AllowedDefenderEmail.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedDefenderEmail[$name] }
 elseif ($AllowedExchangeRecipients.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRecipients[$name] }
 elseif ($AllowedExchangeOrgPolicies.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgPolicies[$name] }
 elseif ($AllowedExchangeOrgConfig.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgConfig[$name] }

@@ -71,6 +71,7 @@ export const WORKLOAD_ORDER: readonly string[] = [
   "power-platform-settings",
   "defender-endpoint-indicators",
   "purview-labels", "purview-governance", "purview-retention-dlp",
+  "defender-email-protection",
 ];
 
 /** Sort key for a kind inside its service; kinds not in the list go last. */

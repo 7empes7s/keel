@@ -4,6 +4,7 @@
  * apart from workloadReadsLive.mjs so tools/release/qualification.mjs can register the gate
  * without an import cycle.
  */
+import { DEFENDER_EMAIL_MODULE, DEFENDER_EMAIL_WORKLOAD, FAMILIES as DEFENDER_EMAIL } from '../../engine/collect/workloads/defenderEmail.mjs';
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
 import {
   EXCHANGE_ORG_CONFIG_MODULE, EXCHANGE_ORG_CONFIG_WORKLOAD, FAMILIES as EXCHANGE_ORG_CONFIG,
@@ -80,6 +81,8 @@ export const READ_FAMILIES = Object.freeze({
   [DEFENDER_INDICATORS_WORKLOAD]: DEFENDER_INDICATORS,
   // Read only, tenant-wide on the admin site.
   [SHAREPOINT_TENANT_WORKLOAD]: SHAREPOINT_TENANT,
+  // Read only: the Defender email protection settings.
+  [DEFENDER_EMAIL_WORKLOAD]: DEFENDER_EMAIL,
 });
 
 // Workloads read from an admin REST API rather than a PowerShell module. Their proof is bound
@@ -100,6 +103,7 @@ const READ_ONLY_MODULES = Object.freeze({
   [TEAMS_VOICE_NETWORK_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE, [TEAMS_DEVICE_POLICIES_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE,
   [PURVIEW_CLASSIFIERS_WORKLOAD]: DLP_SUPPORT_MODULE, [PURVIEW_AUDIT_RETENTION_WORKLOAD]: DLP_SUPPORT_MODULE,
+  [DEFENDER_EMAIL_WORKLOAD]: DEFENDER_EMAIL_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

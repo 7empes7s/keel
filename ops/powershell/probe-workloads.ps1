@@ -305,6 +305,23 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeAttachmentRule' -Block { Get-SafeAttachmentRule }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ATPProtectionPolicyRule' -Block { Get-ATPProtectionPolicyRule }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AtpPolicyForO365' -Block { Get-AtpPolicyForO365 }
+        # Defender email protection (engine/collect/workloads/defenderEmail.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType Sender' -Block { Get-TenantAllowBlockListItems -ListType Sender }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType Url' -Block { Get-TenantAllowBlockListItems -ListType Url }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType FileHash' -Block { Get-TenantAllowBlockListItems -ListType FileHash }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType IP' -Block { Get-TenantAllowBlockListItems -ListType IP }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListSpoofItems' -Block { Get-TenantAllowBlockListSpoofItems }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PhishSimOverridePolicy' -Block { Get-PhishSimOverridePolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ExoPhishSimOverrideRule' -Block { Get-ExoPhishSimOverrideRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType Url -ListSubType AdvancedDelivery' -Block { Get-TenantAllowBlockListItems -ListType Url -ListSubType AdvancedDelivery }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SecOpsOverridePolicy' -Block { Get-SecOpsOverridePolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ExoSecOpsOverrideRule' -Block { Get-ExoSecOpsOverrideRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ATPBuiltInProtectionRule' -Block { Get-ATPBuiltInProtectionRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TeamsProtectionPolicy' -Block { Get-TeamsProtectionPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TeamsProtectionPolicyRule' -Block { Get-TeamsProtectionPolicyRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ReportSubmissionPolicy' -Block { Get-ReportSubmissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ReportSubmissionRule' -Block { Get-ReportSubmissionRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ArcConfig' -Block { Get-ArcConfig }
         # Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs): reads only.
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RoleGroup' -Block { Get-RoleGroup }
         # Exchange recipients and mailbox permissions (engine/collect/workloads/exchangeRecipients.mjs): reads only.

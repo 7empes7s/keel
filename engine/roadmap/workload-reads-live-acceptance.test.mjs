@@ -31,6 +31,7 @@ import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymiz
 import { isRestWorkload, readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import { assertPowerPlatformRequest, powerPlatformActivation, readOnlyPowerPlatformTransport } from '../collect/workloads/powerPlatform.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
+import { defenderEmailActivation } from '../collect/workloads/defenderEmail.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
 import { exchangeOrgConfigActivation } from '../collect/workloads/exchangeOrgConfig.mjs';
 import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
@@ -80,10 +81,11 @@ const ACTIVATION = {
   'sharepoint-site-settings': pnpSiteReadsActivation,
   'sharepoint-structure': sharePointStructureActivation,
   'sharepoint-tenant': sharePointTenantActivation,
+  'defender-email-protection': defenderEmailActivation,
 };
 const TABLES = {
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork', 'AllowedTeamsCollaboration'],
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedExchangeOrgConfig', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditRetention'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedExchangeOrgConfig', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditRetention', 'AllowedDefenderEmail'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure', 'AllowedPnPTenant'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).

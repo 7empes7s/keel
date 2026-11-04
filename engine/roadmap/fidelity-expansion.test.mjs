@@ -129,20 +129,20 @@ test('scopes are derived from registered operations only; no new family is fully
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
   // Roadmap task-109 registered administrativeUnit and groupSetting, and
   // task-151 roleEligibilitySchedule; the research-needed examples are now
-  // roleAssignmentSchedule and accessPackage (Wave 2 ENTRA registered
-  // oauth2PermissionGrant; issue #994 made certificateBasedAuthConfiguration
-  // manual by design).
+  // roleAssignmentSchedule and connectedOrganization (Wave 2 ENTRA registered
+  // oauth2PermissionGrant, issue #992 accessPackage; issue #994 made
+  // certificateBasedAuthConfiguration manual by design).
   const asQualified = { ...EXPANSION_INVENTORY, roleAssignmentSchedule: { ...EXPANSION_INVENTORY.roleAssignmentSchedule, status: 'qualified-subset' } };
   assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /roleAssignmentSchedule is marked qualified-subset but has no registered write capability/);
   const certificatesQualified = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, status: 'qualified-subset' } };
   assert.throws(() => buildExpansionInventory({ inventory: certificatesQualified }), /certificateBasedAuthConfiguration is marked qualified-subset but has no registered write capability/);
-  const flagged = { ...EXPANSION_INVENTORY, accessPackage: { ...EXPANSION_INVENTORY.accessPackage, fullyRestorable: true } };
+  const flagged = { ...EXPANSION_INVENTORY, connectedOrganization: { ...EXPANSION_INVENTORY.connectedOrganization, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
   const { accessPackage: _omitted, ...missing } = EXPANSION_INVENTORY;
   assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: accessPackage/);
   const demoted = { ...EXPANSION_INVENTORY, application: { ...EXPANSION_INVENTORY.application, status: 'research-needed' } };
   assert.throws(() => buildExpansionInventory({ inventory: demoted }), /application has a registered write capability but is marked research-needed/);
-  const noRoute = { ...EXPANSION_INVENTORY, accessPackage: { ...EXPANSION_INVENTORY.accessPackage, api: null } };
+  const noRoute = { ...EXPANSION_INVENTORY, connectedOrganization: { ...EXPANSION_INVENTORY.connectedOrganization, api: null } };
   assert.throws(() => buildExpansionInventory({ inventory: noRoute }), /must name the API route/);
   assert.throws(() => buildExpansionInventory({ decisions: { ...TYPE_DECISIONS, certificateBasedAuthConfiguration: { decision: 'automated', reason: 'x' } } }),
     /certificateBasedAuthConfiguration is manual in its batch but automated/);

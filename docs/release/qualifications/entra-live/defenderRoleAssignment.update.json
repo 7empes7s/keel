@@ -7,23 +7,23 @@
   "resourceType": "defenderRoleAssignment",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "224e353feca37407ac24b179776e0783d6e8ca61",
+  "build": "77fb3247ad32673a6a6799e6778e44be59139587",
   "synthetic": false,
-  "evidenceLevel": "failed",
-  "ok": false,
-  "outcome": "failed",
-  "outcomeDetail": "status 400",
-  "readBackVerified": false,
-  "observedAt": "2026-11-04T04:42:04.639Z",
-  "restoreRef": "e45f577a-16b3-8622-9c5f-fc9aa3bd9b9e",
-  "naturalKey": "defenderRoleAssignment:3b21454e-4af8-8e26-be08-7af0f065cc7d",
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-04T07:46:52.214Z",
+  "restoreRef": "ff6a8b40-cdc0-8686-9c5a-1a4c67da84bb",
+  "naturalKey": "defenderRoleAssignment:1516d61e-12db-8e33-8bb3-79a7ccf00f61",
   "fixtureKind": "named-object",
-  "captureSha256": "764da27a4bae7b2a5c06076ff70135c80378f824d55d1bf3013bad48e084b515",
+  "captureSha256": "7d0f40840efaa80168f0e0d2e0ba7f99d9d53b4ce2800daa17ed796d3bd55e96",
   "proofRef": "docs/release/qualifications/entra-live/defenderRoleAssignment.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "69fb206bc22c4c7813359d55b8c6e9279e0b6796471833d4247144ffa09d0459"
+      "signature": "59e0ba0561d125fda0f222f32d090fc006353106737ca81f096f49747788ef9a"
     }
   }
 }

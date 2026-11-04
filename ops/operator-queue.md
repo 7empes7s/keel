@@ -14697,3 +14697,29 @@ item that needs it stays untouched.
 - **Report:** B; every tenant change with before/after (fixture site, label, group, tenant-wide setting and its put-back); the
   step 4 counts; capture exit codes, proven/notProven and diagnostics; evidence branch and commit; import counts; the run
   details; the proof listing; anything left in the tenant (expected: the KEEL-RT fixtures only).
+
+### Q311: Rerun the Q271 Defender role assignment update (part D update) after PR #954 deploys (test tenant, KEEL-RT- fixtures made and removed), about 20 minutes
+- Drafted by the "Fix Defender role assignment updates" thread (2026-11-04). In Q271 the update of `defenderRoleAssignment` failed
+  with 400 "AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided", because the writer sent
+  only `principalIds`. PR #954 makes the update send the whole assignment (displayName, description, principalIds, roleDefinitionId,
+  directoryScopeIds, appScopeIds). The dry run still names only the changed field.
+- Needs: PR #954 merged and deployed (build B). Check: `grep -q updateSendsWhole /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
+  Run the restore and the capture from the same build B, and pass that build to `--build`.
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
+  account. The fixture gives a **read-only** custom Defender role to **empty** `KEEL-RT-` groups, so nobody gains access. Effects
+  approvals under the standing test-tenant self-approval; log each approval id.
+- **Steps (as Q271 D):**
+  1. Make the custom role `KEEL-RT-311-defender-role` (one read permission), empty groups `KEEL-RT-311-group` and `KEEL-RT-311-group2`,
+     and `KEEL-RT-311-defender-assignment` of the role to `KEEL-RT-311-group` (`appScopeIds` `["/"]`). Take snapshot S.
+  2. Add `KEEL-RT-311-group2` to the assignment. Restore from S selecting the assignment; dry run (expect one `update` naming
+     `principalIds` only); approve; promote. Expect `update | succeeded`, and the assignment back to `KEEL-RT-311-group` only, with
+     the same name, role and scopes.
+  3. Capture `defenderRoleAssignment.update` (`--fixture <key> --allow-by-reference`); this replaces the Q271 demotion record.
+  4. Re-run the dry run from S: expect 0 planned writes.
+- Cleanup: delete the assignment, the role and both groups; check the Restorer has no new roles.
+- Evidence: commit the records on `claude/live-evidence-q311`, branched from `origin/master` (secret scan and `pseudonymize.mjs check`
+  first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
+- **Report:** B and S; the dry run, approval and request ids; the enforce result (exact error if it fails, with the PATCH body's
+  field names); capture exit code; evidence branch, commit and PR; anything left in the tenant.

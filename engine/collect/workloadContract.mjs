@@ -876,7 +876,8 @@ export function workloadRow(descriptor, { evidence = [], grants = null, runtime 
   const fixture = current.find((item) => item.kind === 'fixture' && item.ok === true) ?? null;
   const reasons = [];
   let live = null;
-  for (const item of current.filter((candidate) => candidate.kind !== 'fixture')) {
+  // A licence finding is never proof, so it adds no "the read failed" reason either.
+  for (const item of current.filter((candidate) => candidate.kind !== 'fixture' && candidate.error !== NOT_LICENSED_ERROR)) {
     const failures = evidenceProblems(descriptor, item, { tenantRef, version, now });
     if (failures.length === 0) { live = item; break; }
     reasons.push(`${item.proofRef ?? 'capture'}: ${failures.join('; ')}`);

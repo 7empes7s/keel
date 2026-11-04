@@ -224,6 +224,8 @@ test('a read the tenant has no licence for is not proof; the import records it s
   const row = rows.find((entry) => entry.id === 'sharepoint-tenant.restricted-search-allowed-sites');
   assert.equal(row.state, 'not-licensed');
   assert.equal(row.enabled, false, 'never proof, so never switched on');
+  assert.ok(!row.reasons.some((reason) => /the read failed/.test(reason)), row.reasons.join('; '));
+  assert.match(row.reasons.join('; '), /no licence for this read/);
   const activation = sharePointTenantActivation(ledger(seam.reads));
   assert.equal(activation.enabled, true);
   assert.deepEqual(activation.unlicensed, ['restrictedSearchAllowedSites']);
@@ -248,6 +250,14 @@ test('a read the tenant has no licence for is not proof; the import records it s
   const licensed = signed((await capture('sharepoint-tenant', fakeTenant('sharepoint-tenant'))).record);
   const proof = ledgerEvidenceFromWorkloadReadsAcceptance(licensed, { tenantRef, build, hmacKey: KEY, now: NOW }).reads;
   assert.equal(ledger([...seam.reads, ...proof]).rows.find((entry) => entry.id === 'sharepoint-tenant.restricted-search-allowed-sites').state, 'live-qualified');
+});
+
+test('a not-licensed read elsewhere (it may be a missing role) is not recorded as a licence finding', async () => {
+  const live = fakeTenant('exchange-mail-flow', { 'Get-SafeLinksPolicy': { error: { message: "The term 'Get-SafeLinksPolicy' is not recognized as a name of a cmdlet", category: 'ObjectNotFound', errorId: 'CommandNotFoundException' } } });
+  const { record } = await capture('exchange-mail-flow', live);
+  assert.equal(record.subject.reads.find((item) => item.operationId === 'mailflow.safe-links-policies').status, 'not-licensed');
+  const seam = ledgerEvidenceFromWorkloadReadsAcceptance(signed(record), { tenantRef, build, hmacKey: KEY, now: NOW });
+  assert.ok(seam.reads.every((item) => item.ok === true));
 });
 
 test('a read only counts as not licensed when a live capture found it so', async () => {

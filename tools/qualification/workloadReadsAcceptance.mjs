@@ -194,8 +194,14 @@ export function provenReads(subject) {
   return (subject?.reads ?? []).filter((item) => item.ok === true && item.status === 'read');
 }
 
+// Workloads whose `not-licensed` means only that: the licence refused the read. Elsewhere
+// (Exchange mail flow and the like) the same status can also mean a missing role, so those
+// stay unrecorded rather than misdiagnosed.
+export const LICENCE_ONLY_WORKLOADS = Object.freeze(new Set(['sharepoint-tenant']));
+
 /** The reads a verified record found the tenant has no licence for (never proof). */
 export function unlicensedReads(subject) {
+  if (!LICENCE_ONLY_WORKLOADS.has(subject?.workload)) return [];
   return (subject?.reads ?? []).filter((item) => item.ok === false && item.status === 'not-licensed' && item.synthetic === false);
 }
 

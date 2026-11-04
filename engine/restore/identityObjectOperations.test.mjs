@@ -1470,6 +1470,70 @@ test('approval-held kinds: the default app credential rules send only what chang
     [['PATCH', 'v1.0', '/policies/defaultAppManagementPolicy', { isEnabled: true }]]);
 });
 
+// Live Q268: Graph sets an identifier URI restriction's isStateSetByMicrosoft
+// itself, so a backup that holds true read back false and the write was uncertain.
+const uriRestriction = (isStateSetByMicrosoft, state = 'enabled') => ({
+  identifierUris: {
+    nonDefaultUriAddition: null,
+    uriAdditionWithoutUniqueTenantIdentifier: {
+      state, excludeSaml: true, excludeActors: null, isStateSetByMicrosoft, excludeAppsReceivingV2Tokens: true, restrictForAppsCreatedAfterDateTime: '0001-01-01T00:00:00Z',
+    },
+  },
+  keyCredentials: [], passwordCredentials: [],
+});
+// A fake Graph that, like Graph, sets isStateSetByMicrosoft to false on every write.
+function microsoftSetsState(graph, path) {
+  const write = graph.write.bind(graph);
+  graph.write = async (...args) => {
+    const result = await write(...args);
+    const held = graph.objects.get(path);
+    const restriction = held?.applicationRestrictions?.identifierUris?.uriAdditionWithoutUniqueTenantIdentifier;
+    if (restriction) restriction.isStateSetByMicrosoft = false;
+    return result;
+  };
+  return graph;
+}
+
+test('approval-held kinds: the default app credential rules never send or check the restriction state Microsoft sets (live Q268)', async () => {
+  const path = '/policies/defaultAppManagementPolicy';
+  const backup = { ...APP_RULES, isEnabled: true, applicationRestrictions: uriRestriction(true) };
+  const live = { ...APP_RULES, isEnabled: false, applicationRestrictions: uriRestriction(false) };
+  const resource = singleton('tenantAppManagementPolicy', backup, live);
+  // Only isEnabled differs: the flag Microsoft sets is no change and no access effect.
+  assert.deepEqual(approvedEffects(resource).map((effect) => effect.field), ['isEnabled']);
+  let graph = microsoftSetsState(idoFakeGraph({ seed: { [path]: live } }), path);
+  const planned = await singletonWrite(graph, 'tenantAppManagementPolicy', backup, live, { ...CUSTOMER, mode: 'dry-run' });
+  assert.deepEqual(planned.applied?.changes.fields, ['isEnabled'], JSON.stringify(planned));
+  graph = microsoftSetsState(idoFakeGraph({ seed: { [path]: live } }), path);
+  let result = await singletonWrite(graph, 'tenantAppManagementPolicy', backup, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph).map((write) => write.body), [{ isEnabled: true }]);
+
+  // A restriction that does change is sent without the flag, and reads back as written.
+  const changed = { ...backup, isEnabled: false, applicationRestrictions: uriRestriction(true, 'disabled') };
+  const changedResource = singleton('tenantAppManagementPolicy', changed, live);
+  assert.deepEqual(approvedEffects(changedResource).map((effect) => effect.field), ['applicationRestrictions']);
+  graph = microsoftSetsState(idoFakeGraph({ seed: { [path]: live } }), path);
+  result = await singletonWrite(graph, 'tenantAppManagementPolicy', changed, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(changedResource) });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(Object.keys(writes[0].body), ['applicationRestrictions']);
+  assert.equal(JSON.stringify(writes[0].body).includes('isStateSetByMicrosoft'), false, 'the flag Microsoft sets is never sent');
+  assert.equal(writes[0].body.applicationRestrictions.identifierUris.uriAdditionWithoutUniqueTenantIdentifier.state, 'disabled');
+  assert.equal(graph.objects.get(path).applicationRestrictions.identifierUris.uriAdditionWithoutUniqueTenantIdentifier.isStateSetByMicrosoft, false);
+
+  // With a trusted certificate authority restriction on both sides, a difference only
+  // in the flag is no trust step: the isEnabled change is still written.
+  const trusted = { restrictionType: 'trustedCertificateAuthority', certificateBasedApplicationConfigurationIds: ['cbac-1'], restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' };
+  const withTrust = (rules) => ({ ...rules, applicationRestrictions: { ...rules.applicationRestrictions, keyCredentials: [trusted] } });
+  const trustedResource = singleton('tenantAppManagementPolicy', withTrust(backup), withTrust(live));
+  graph = microsoftSetsState(idoFakeGraph({ seed: { [path]: withTrust(live) } }), path);
+  result = await singletonWrite(graph, 'tenantAppManagementPolicy', withTrust(backup), withTrust(live), { ...CUSTOMER, approvedContentEffects: approvedEffects(trustedResource) });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph).map((write) => write.body), [{ isEnabled: true }]);
+});
+
 test('approval-held kinds: a restriction that carries trusted certificate authorities is never written, even approved', async () => {
   const trusted = { restrictionType: 'trustedCertificateAuthority', certificateBasedApplicationConfigurationIds: ['cbac-1'], restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' };
   const cases = [

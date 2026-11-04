@@ -303,3 +303,76 @@ test('an object kept in many backups is named from its newest backup, not by rea
   assert.equal(gone.name, 'Gone team');
   assert.equal(gone.deletedSince, goneSince.toISOString());
 });
+
+test('a nameless object, a weekly kind and a long-gone object are looked up without walking every backup', async () => {
+  const tenant = 'tiered-backups';
+  const grantKey = 'oauth2PermissionGrant:client-a|resource-b';
+  const weeklyKey = 'exchangeTransportRule:Weekly rule';
+  const goneKey = 'group:Gone long ago';
+  const BACKUPS = 70;
+  let weeklySeen;
+  for (let i = BACKUPS; i >= 1; i -= 1) {
+    // Hourly backups hold the grant (never named); one old backup holds the weekly kind.
+    const rows = [[grantKey, 'oauth2PermissionGrant', { id: `grant-${i % 3}`, clientId: 'client-a', displayName: null }]];
+    if (i > 65) rows.push([goneKey, 'group', { id: '0f1a0000-0000-4000-8000-0000000000ef', displayName: 'Gone long ago' }]);
+    const coverage = {
+      oauth2PermissionGrant: { outcome: 'complete' }, group: { outcome: 'complete' },
+      exchangeTransportRule: { outcome: i === 60 ? 'complete' : 'not-requested' },
+    };
+    if (i === 60) rows.push([weeklyKey, 'exchangeTransportRule', { id: 'rule-1', name: 'Weekly rule' }]);
+    const started = await backup(tenant, new Date(Date.now() - i * 3_600_000), 'complete', rows, coverage);
+    if (i === 60) weeklySeen = started;
+  }
+  const ids = [grantKey, weeklyKey, goneKey];
+  const versionsRead = async () => {
+    await client.query('SELECT pg_stat_force_next_flush()');
+    await client.query('SELECT pg_stat_clear_snapshot()');
+    const { rows: [counts] } = await client.query(
+      `SELECT pg_stat_get_tuples_fetched('resource_version'::regclass) + pg_stat_get_tuples_returned('resource_version'::regclass)
+              + (SELECT coalesce(sum(pg_stat_get_tuples_fetched(indexrelid)), 0) FROM pg_index WHERE indrelid = 'resource_version'::regclass) AS n`);
+    return Number(counts.n);
+  };
+  await client.query('ANALYZE resource_version, snapshot');
+  await client.query('SET enable_seqscan = off');
+  await client.query('SET stats_fetch_consistency = none');
+  let names;
+  let read;
+  try {
+    const before = await versionsRead();
+    names = await lookupNames(client, { tenantRef: tenant, ids });
+    read = await versionsRead() - before;
+  } finally {
+    await client.query('RESET enable_seqscan');
+    await client.query('RESET stats_fetch_consistency');
+  }
+  // Before (Q313): the grant's name was looked for in all 70 backups, and the weekly key
+  // probed every backup back to its last one: 95 versions read here.
+  assert.ok(read <= 30, `read ${read} saved versions for ${ids.length} keys over ${BACKUPS} backups`);
+
+  const grant = names.get(grantKey);
+  assert.equal(grant.status, 'found');
+  assert.equal(grant.name, 'client-a|resource-b', 'no version carries a name, so the readable part of the key');
+  const weekly = names.get(weeklyKey);
+  assert.equal(weekly.status, 'found', 'no later backup read its kind');
+  assert.equal(weekly.name, 'Weekly rule');
+  assert.equal(weekly.lastSeenAt, weeklySeen.toISOString());
+  const gone = names.get(goneKey);
+  assert.equal(gone.status, 'deleted');
+  assert.equal(gone.name, 'Gone long ago');
+});
+
+test('the named-keys index holds the same condition the name reads ask for', async () => {
+  const { mayHaveNameSql } = await import('../cir/objectName.mjs');
+  const { rows: [index] } = await client.query(
+    "SELECT pg_get_expr(indpred, indrelid) AS predicate FROM pg_index WHERE indexrelid = 'resource_version_named_key_idx'::regclass");
+  // Postgres prints the stored condition its own way; the plan check below is what matters.
+  assert.ok(index?.predicate, 'resource_version_named_key_idx is a partial index');
+  await client.query('SET enable_seqscan = off');
+  try {
+    const { rows } = await client.query(
+      `EXPLAIN SELECT 1 FROM resource_version rv WHERE rv.natural_key = 'group:Finance' AND ${mayHaveNameSql('rv.payload', 'rv.resource_type')} LIMIT 1`);
+    assert.match(rows.map((row) => row['QUERY PLAN']).join('\n'), /Index Only Scan using resource_version_named_key_idx/);
+  } finally {
+    await client.query('RESET enable_seqscan');
+  }
+});

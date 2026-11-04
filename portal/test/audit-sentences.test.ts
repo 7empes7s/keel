@@ -142,12 +142,12 @@ test("the entries the audit found read as sentences", () => {
     sentence("disposition", { action: "accept", serviceChangeId: "1", workload: "teams-settings", resourceKey: "TeamsMeetingPolicy:Global", changeType: "modified", reason: "Planned" }),
     /^Marouane Defili accepted the changed setting .*Global.* in Teams settings into the approved setup: “Planned”$/,
   );
-  assert.equal(sentence("disposition", { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", resourceType: "group" }), "Marouane Defili accepted a change to Unnamed group into the approved setup");
+  assert.equal(sentence("disposition", { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", resourceType: "group" }), "Marouane Defili accepted a change to an unnamed group into the approved setup");
   // Approvals name the action, not a job-kind label: never "a roll back changes".
   assert.equal(sentence("approval-decision", { decision: "rejected", action: "remediate", reason: "Not now" }), "Marouane Defili rejected a request to roll back changes: “Not now”");
   assert.equal(sentence("approval-decision", { decision: "superseded", action: "restore" }), "A newer request replaced a request to restore from a backup, so it was closed");
   assert.equal(sentence("approval-request", { action: "baseline-activate" }), "Marouane Defili asked for approval to switch to another approved setup");
-  assert.equal(sentence("change-intent", { outcome: "settled", naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", resourceType: "group", currentState: "matches-baseline" }, "Keel"), "An emergency change to Unnamed group ended; it matches the approved setup again");
+  assert.equal(sentence("change-intent", { outcome: "settled", naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", resourceType: "group", currentState: "matches-baseline" }, "Keel"), "An emergency change to an unnamed group ended; it matches the approved setup again");
   assert.equal(sentence("workload-restore", { operationId: "exchange-mail-flow.restore", outcome: "verified" }), "Marouane Defili ran a restore of Exchange mail flow, which finished and was checked afterwards");
   assert.equal(sentence("itsm-callback", { adapter: "servicenow", outcome: "unmapped-identity" }, "Keel"), "ServiceNow sent an approval update, and Keel refused it because the ServiceNow user is not linked to a Keel account");
   assert.equal(sentence("itsm-callback", { adapter: "servicenow", outcome: "refused-bad-signature" }, "Keel"), "ServiceNow sent an approval update, and Keel refused it because its signature did not match");

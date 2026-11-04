@@ -14771,7 +14771,35 @@ item that needs it stays untouched.
   database URL, password, token, tenant id or address.
 - Needs: the deployed build at or after PR #957's merge
   (`grep -q SAVED_NAMES_SQL /opt/keel-live/portal/lib/saved-names.ts`; if not, report `blocked`).
-- Status: todo
+- Status: done
+- Result: done, target missed (2026-11-04 06:45 UTC, keel-operator). Commit **5b6bfecf** (#957 deployed; `SAVED_NAMES_SQL` present). Ran from a fresh worktree at that commit (`portal/node_modules` and `engine/node_modules` symlinked to /opt/keel-live's; tsx present; nothing installed), `ONLY='alerts|changes'`, `timeout 300`, exit 0. Every connection `default_transaction_read_only=on`; no tenant calls, restarts or config changes. Script, output, symlinks and worktree removed afterwards. **No `read-only transaction` line.**
+  - **`/api/alerts`: 4580 / 3831 / 3838 ms** (Q307: 12.8–13.4 s). **Not under 3 s.** No `SELECT DISTINCT ON (rv.natural_key)` line (gone). **`WITH wanted AS (SELECT unnest…) latest AS` is still over 1 s: 1756–1845 ms** (was 2.8–3.2 s). The new `savedNames` query (`WITH wanted AS (SELECT DISTINCT unnest…) newest AS`) takes **1229–1955 ms**. Both run over 1190 names. Next after them: `WITH latest AS (… unnest($2::text …` at 557 ms.
+  - **Changes feed: 500 / 377 / 370 ms**, faster than Q307 (658 / 565 / 541).
+  - Output verbatim:
+    ```
+    ## changes getChangeFeed30: 500 / 377 / 370 ms (last run: 9 queries, 366 ms in SQL)
+      302 ms  x1  501 rows  SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at, coalesce((CASE r.re
+      44 ms  x1  79 rows  WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.st
+      7 ms  x1  0 rows  WITH latest AS ( SELECT w.object_id, w.resource_type, v.natural_key, v.name, v.started_at FROM unnest($2::text
+      7 ms  x1  143 rows  SELECT d.id, d.workload, d.resource_key, d.change_type, d.blast_radius, c.observed_to, CASE WHEN cur.collectio
+      3 ms  x1  501 rows  SELECT source_event_id, occurred_at, target_type, target_id, operation, activity, actor_kind, actor_id FROM au
+      1 ms  x3  3 rows  SELECT to_regclass($1) AS name
+    [keel-portal] slow query 1955 ms: WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key), newest AS ( SELECT w.key, b.id AS snapshot_id, b.started_at 
+    [keel-portal] slow query 1756 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    [keel-portal] slow query 1234 ms: WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key), newest AS ( SELECT w.key, b.id AS snapshot_id, b.started_at 
+    [keel-portal] slow query 1836 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    [keel-portal] slow query 1229 ms: WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key), newest AS ( SELECT w.key, b.id AS snapshot_id, b.started_at 
+    [keel-portal] slow query 1845 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+
+    ## alerts /api/alerts: 4580 / 3831 / 3838 ms (last run: 18 queries, 3760 ms in SQL)
+      1845 ms  x1  1190 rows  WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.st
+      1228 ms  x1  1190 rows  WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key), newest AS ( SELECT w.key, b.id AS snapshot_id, b.s
+      557 ms  x1  0 rows  WITH latest AS ( SELECT w.object_id, w.resource_type, v.natural_key, v.name, v.started_at FROM unnest($2::text
+      49 ms  x1  391 rows  WITH covered AS ( SELECT tcl.resource_type AS type, tcl.snapshot_id AS id FROM type_coverage_latest tcl JOIN s
+      49 ms  x1  10037 rows  SELECT t.* FROM alert_transition t JOIN alert a ON a.id = t.alert_id WHERE a.id::text = ANY($1::text[]) AND a.
+      14 ms  x2  1200 rows  SELECT * FROM alert WHERE tenant_ref = $1 AND ($2::text[] IS NULL OR state = ANY($2)) AND ($4::text[] IS NULL 
+    ```
+  - One setup note: the first attempt failed at import (`Cannot find module 'pg'` from engine/store/db.mjs), because a fresh worktree has no `engine/node_modules`. Symlinking it fixed that. Nothing ran against the database in that attempt beyond the principal pick.
 - Do, on Mulinux: exactly Q303 steps 1–4 (same `profile-reads.mts` script from Q303, same principal pick), at the deployed
   commit, with `ONLY='alerts|changes'` and `timeout 300`. Delete the script and the output file afterwards.
 - **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, and every

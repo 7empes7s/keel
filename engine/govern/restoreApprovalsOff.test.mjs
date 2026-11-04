@@ -274,6 +274,15 @@ test('a tenant-wide workload write, a compliance fix, or a restore into another 
   assert.equal(await restoreArtifactServices(client, tenantWide), null);
   assert.equal((await ask(client, { tenantRef, artifact: tenantWide, requestedBy: requester })).status, 'pending');
 
+  // A snapshot dry run made with the tenant-wide option (Entra or Intune settings).
+  const tenantWideSnapshot = await snapshotRestore(client, {
+    tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-wide', 'group']], extra: { allowTenantWide: true },
+  });
+  assert.equal(tenantWideSnapshot.allowTenantWide, true);
+  assert.equal(await restoreArtifactServices(client, tenantWideSnapshot), null);
+  assert.deepEqual(await restoreApprovalScope(client, tenantWideSnapshot), { services: ['Entra'], rules: ['tenant-wide'] });
+  assert.equal((await ask(client, { tenantRef, artifact: tenantWideSnapshot, requestedBy: requester })).status, 'pending');
+
   const fix = await snapshotRestore(client, {
     tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-fix', 'group']],
     extra: { complianceFix: { naturalKey: 'group:KEEL-RT-fix', field: 'visibility' } },
@@ -314,6 +323,9 @@ test('each kind of restore that waited for a person is the customer choice: off 
     extra: { complianceFix: { naturalKey: 'group:KEEL-RT-fix', field: 'visibility' } },
   });
   const tenantWide = await workloadRestore(client, { tenantRef, requestedBy: requester, workload: 'sharepoint-site-settings', allowTenantWide: true });
+  const tenantWideSnapshot = await snapshotRestore(client, {
+    tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-wide', 'group']], extra: { allowTenantWide: true },
+  });
   const elsewhere = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['group:KEEL-RT-x', 'group']] });
   await client.query('UPDATE restore_dry_run SET target_tenant_id = $2 WHERE id = $1', [elsewhere.id, randomUUID()]);
   const unplaced = await snapshotRestore(client, { tenantRef, requestedBy: requester, objects: [['exchangeNotAKindYet:KEEL-RT-a', 'exchangeNotAKindYet']] });
@@ -338,6 +350,12 @@ test('each kind of restore that waited for a person is the customer choice: off 
     const [decision] = await decisions(client, tenantRef, approved.id);
     assert.deepEqual(decision.subject.rules, [rule]);
   }
+  // A snapshot dry run made with the tenant-wide option is the same kind: with
+  // "tenant-wide" now off it is approved by the setting too.
+  assert.deepEqual(await restoreApprovalScope(client, tenantWideSnapshot), { services: ['Entra'], rules: ['tenant-wide'] });
+  const wide = await ask(client, { tenantRef, artifact: tenantWideSnapshot, requestedBy: requester, executor: 'cli' });
+  assert.equal(wide.status, 'approved');
+  assert.deepEqual(wide.approvalSkippedRules, ['tenant-wide']);
 });
 
 test('a kind of restore turned off still waits while one of its services has approvals on', async (t) => {

@@ -1,3 +1,4 @@
+import { resolveChangeFlags } from '../notify/changeFlags.mjs';
 // engine/govern/workloadApproved.mjs
 //
 // The approved setup for service settings: for each workload (Exchange, SharePoint and
@@ -247,6 +248,7 @@ export async function acceptServiceChange(client, { tenantRef, changeId, actor, 
     },
     actor,
   });
+  await resolveChangeFlags(client, { tenantRef, sourceId: `service:${change.id}` });
   const { rows: [alert] } = await client.query(
     `SELECT id FROM alert WHERE tenant_ref = $1 AND resource_key = $2 AND control = 'baseline' AND condition = 'drift'
         AND state = ANY($3::text[])`,

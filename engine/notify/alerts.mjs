@@ -1,3 +1,4 @@
+import { foldResourceFlags } from './changeFlags.mjs';
 // engine/notify/alerts.mjs
 //
 // Roadmap task-82: the durable alert lifecycle over the task-20 delivery primitives.
@@ -31,7 +32,7 @@
 //    in now.
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
-import { appendEvidence } from '../govern/evidence.mjs';
+import { appendEvidence, appendEvidenceInTransaction } from '../govern/evidence.mjs';
 import { planDeadline } from './escalation.mjs';
 import { dispatchAlert } from './notifications.mjs';
 
@@ -158,7 +159,7 @@ export function decideTransition(alert, { status, occurredAt, hysteresis = DEFAU
   return { action: 'resolve' };
 }
 
-async function notifyOccurrence(client, alert, { requestedBy }) {
+export async function notifyOccurrence(client, alert, { requestedBy }) {
   if (!requestedBy || alert.state === 'suppressed' || alert.notified_occurrence >= alert.occurrence) return null;
   const deliveries = await dispatchAlert(client, {
     requestedBy,
@@ -260,7 +261,7 @@ export async function applyConditionEvent(client, {
     if (decision.action === 'refire') {
       const { rows: [updated] } = await client.query(
         `UPDATE alert SET firing_count = firing_count + 1, last_firing_at = $2, last_observed_at = $2,
-                last_event_id = $3, severity = $4, detail = $5, updated_at = now()
+                last_event_id = $3, severity = $4, detail = CASE WHEN control='baseline' THEN detail || $5::jsonb ELSE $5::jsonb END, updated_at = now()
           WHERE id = $1 RETURNING *`,
         [alert.id, at, eventId, severity, detail],
       );
@@ -380,6 +381,7 @@ export async function resolveAlert(client, { tenantRef, alertId, actor, reason, 
   const when = requireInstant(at, 'at');
   requireString(reason, 'reason');
   await authorize(client, { tenantRef, actor, capability: ALERT_ACKNOWLEDGE_CAPABILITY, at: new Date() });
+  let audit;
   const changed = await transaction(client, async () => {
     const alert = await loadForUpdate(client, { tenantRef, alertId });
     if (!ACTIVE_STATES.includes(alert.state)) throw new AlertStateError(`an ${alert.state} alert cannot be resolved`);
@@ -389,13 +391,25 @@ export async function resolveAlert(client, { tenantRef, alertId, actor, reason, 
         WHERE id = $1 RETURNING *`,
       [alert.id, when],
     );
+    const resolutionEventId = alert.control === 'change-flag' ? `flag-reviewed:${alert.id}:${alert.occurrence}` : null;
+    if (resolutionEventId) {
+      const eventId = resolutionEventId;
+      const { rows: [observed] } = await client.query(`UPDATE alert SET last_observed_at=GREATEST(last_observed_at,$2), last_event_id=$3, resolved_event_id=$3 WHERE id=$1 RETURNING *`, [alert.id, when, eventId]);
+      Object.assign(updated, observed);
+      await client.query(`INSERT INTO alert_event_receipt (tenant_ref,event_id,alert_id,outcome) VALUES ($1,$2,$3,'resolved') ON CONFLICT DO NOTHING`, [tenantRef, eventId, alert.id]);
+    }
+    await client.query(`UPDATE change_flag_event SET resolved_at=$2 WHERE alert_id=$1 AND resolved_at IS NULL`, [alert.id, when]);
     await recordTransition(client, updated, {
-      fromState: alert.state, toState: 'resolved', reason: 'resolved-by-operator', actor, occurredAt: when,
+      fromState: alert.state, toState: 'resolved', reason: 'resolved-by-operator', eventId: resolutionEventId, actor, occurredAt: when,
       evidence: { reason },
     });
+    audit = await appendEvidenceInTransaction(client, { tenantRef, kind: ALERT_ACTION_EVIDENCE_KIND, actor,
+      subject: { action: alert.control === 'change-flag' ? 'reviewed' : 'resolved', alertId: String(alert.id),
+        naturalKey: alert.resource_key, control: alert.control, condition: alert.condition, severity: alert.severity,
+        occurrence: alert.occurrence, state: 'resolved', note: reason } });
     return updated;
   });
-  await recordAlertAction(client, changed, { action: 'resolved', actor, note: reason });
+  audit.emit();
   return changed;
 }
 
@@ -541,20 +555,25 @@ export async function syncDriftAlerts(client, {
   const results = [];
   for (const item of drift) {
     drifting.add(item.naturalKey);
-    results.push(await applyConditionEvent(client, {
-      tenantRef,
-      resourceKey: item.naturalKey,
-      control: 'baseline',
-      condition: 'drift',
-      status: 'firing',
-      eventId: `drift:${snapshotId}:${item.naturalKey}`,
-      occurredAt: at,
-      severity: BLAST_SEVERITY[item.blastRadius] ?? 'warning',
-      detail: { resourceType: item.resourceType, changeType: item.changeType, snapshotId },
-      source: 'drift-detect',
-      hysteresis,
-      notify,
-    }));
+    const lockKey = `change-flag:${tenantRef}:${item.naturalKey}`;
+    await client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [lockKey]);
+    try {
+      results.push(await applyConditionEvent(client, {
+        tenantRef,
+        resourceKey: item.naturalKey,
+        control: 'baseline',
+        condition: 'drift',
+        status: 'firing',
+        eventId: `drift:${snapshotId}:${item.naturalKey}`,
+        occurredAt: at,
+        severity: BLAST_SEVERITY[item.blastRadius] ?? 'warning',
+        detail: { resourceType: item.resourceType, changeType: item.changeType, snapshotId },
+        source: 'drift-detect',
+        hysteresis,
+        notify,
+      }));
+      await foldResourceFlags(client, { tenantRef, resourceKey: item.naturalKey });
+    } finally { await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [lockKey]); }
   }
   const { rows: active } = await client.query(
     `SELECT resource_key, detail FROM alert

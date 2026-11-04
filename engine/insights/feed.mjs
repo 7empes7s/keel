@@ -107,7 +107,7 @@ function priorityOf(info, blastRadius) {
 // (an Intune antivirus policy is a Defender endpoint security policy, taxonomy settingKind).
 // `builtIn` is the object's isBuiltIn flag when its kind holds both built-in and custom
 // objects (an Entra admin role), so the row says which one it is.
-function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null, flags = [] }) {
+function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null, flags = [], evaluation = null }) {
   const info = typeInfo(kind, service);
   const at = iso(occurredAt);
   return {
@@ -128,6 +128,7 @@ function row({ id, source, occurredAt, type, kind = type, service = null, blastR
     activity,
     person,
     flags,
+    ...(evaluation ? { evaluation } : {}),
   };
 }
 
@@ -298,21 +299,32 @@ function actorFrom(key) {
 /**
  * The newest changes in one tenant, newest first.
  * @param {{ query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }} client
- * @param {{ tenantRef: string, now?: Date, days?: number, limit?: number,
+ * @param {{ tenantRef: string, now?: Date, days?: number, limit?: number, selection?: { source: string, ids: string[] },
  *   namer?: ((key: string) => string) | null, scope?: { central: boolean, entities?: string[] } }} input
  *   `namer` comes from anonymity.mjs#readNamer: null shows names, else people are code-named.
  *   `scope` is the reader's entity scope; central (every row) when left out.
  * @returns {Promise<{ since: string, until: string, rows: object[], truncated: boolean }>}
  */
-export async function loadChangeFeed(client, { tenantRef, now = new Date(), days = DEFAULT_FEED_DAYS, limit = DEFAULT_FEED_LIMIT, namer = null, scope = null }) {
+export async function loadChangeFeed(client, { tenantRef, now = new Date(), days = DEFAULT_FEED_DAYS, limit = DEFAULT_FEED_LIMIT, namer = null, selection = null, scope = null }) {
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
   const central = !scope || scope.central === true;
   const span = bounded(days, DEFAULT_FEED_DAYS, MAX_FEED_DAYS);
   const cap = bounded(limit, DEFAULT_FEED_LIMIT, MAX_FEED_LIMIT);
   const until = new Date(now);
   const since = new Date(until.getTime() - span * DAY_MS);
-  const window = [tenantRef, since, until, cap + 1];
-  const read = async (table, sql, extra = []) => ((await tableExists(client, table)) ? (await client.query(sql, [...window, ...extra])).rows : []);
+  const window = [tenantRef, selection ? new Date(0) : since, selection ? new Date('9999-01-01') : until, cap + 1];
+  // `extra` holds the entity filter's values, numbered from $5 on in both paths.
+  const read = async (table, sql, extra = []) => {
+    const source = { drift: 'drift', workload_drift: 'service', audit_change_fact: 'audit' }[table];
+    if (selection && selection.source !== source) return [];
+    if (!(await tableExists(client, table))) return [];
+    if (!selection) return (await client.query(sql, [...window, ...extra])).rows;
+    // Collection consumers select exact rows, without the inbox's age or size limits.
+    const column = { drift: 'r.id::text', workload_drift: 'd.id::text', audit_change_fact: 'source_event_id' }[table];
+    const order = sql.lastIndexOf('   ORDER BY');
+    const scoped = sql.slice(0, order) + ` AND ${column} = ANY($4::text[]) ` + sql.slice(order).replace('   LIMIT $4', '');
+    return (await client.query(scoped, [...window.slice(0, 3), selection.ids, ...extra])).rows;
+  };
   // The same entity filter as Open changes: the setting's lineage at the time it was found,
   // and that lineage's current ownership.
   const visible = central ? { sql: 'TRUE', values: [] } : scopePredicate(scope, {
@@ -357,6 +369,8 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
   };
   // Only one account can be named; several, or none, leave it unknown.
   const onlyActor = (keys) => (Array.isArray(keys) && keys.length === 1 ? person(actorFrom(keys[0])) : null);
+
+  const flagged = (input) => ({ flags: evaluateFlags(input), ...(selection ? { evaluation: input } : {}) });
 
   // One row per change a backup found in who can reach a site or OneDrive.
   const backupRows = ({ id, at, type, service: serviceName, key, name, changes }) => changes.map((exposure) => {
@@ -427,7 +441,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         object,
         change: String(entry.change_type),
         person: onlyActor(entry.actors),
-        flags: evaluateFlags({ source: 'drift', type, change: String(entry.change_type), name: object.name, key: object.key, before: entry.flag_before, after: entry.flag_after, context }),
+        ...flagged({ source: 'drift', type, change: String(entry.change_type), name: object.name, key: object.key, before: entry.flag_before, after: entry.flag_after, context }),
       });
     }),
     ...service.map((entry) => {
@@ -444,7 +458,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         blastRadius: entry.blast_radius,
         object,
         change: String(entry.change_type),
-        flags: evaluateFlags({ source: 'service', type: String(entry.workload), change: String(entry.change_type), name: object.name, key: object.key, ...serviceFlagValues(entry.flag_fields) }),
+        ...flagged({ source: 'service', type: String(entry.workload), change: String(entry.change_type), name: object.name, key: object.key, ...serviceFlagValues(entry.flag_fields) }),
       });
     }),
     ...audit.map((entry) => {
@@ -464,12 +478,12 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         change,
         activity: text(entry.activity),
         person: person({ kind: String(entry.actor_kind), id: String(entry.actor_id).toLowerCase() }),
-        flags: evaluateFlags({
+        ...flagged({
           source: 'audit', type, change, name: object.name, key: object.key, activity: text(entry.activity),
           operation: String(entry.operation), targetType: String(entry.target_type), fields: Array.isArray(entry.fields) ? entry.fields : [],
         }),
       });
     }),
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
-  return { since: since.toISOString(), until: until.toISOString(), rows: rows.slice(0, cap), truncated: rows.length > cap };
+  return { since: since.toISOString(), until: until.toISOString(), rows: selection ? rows : rows.slice(0, cap), truncated: selection ? false : rows.length > cap };
 }

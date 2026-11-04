@@ -18,12 +18,23 @@ interface KeelClient {
 
 const CENTRAL: EntityScope = { central: true, entities: [] };
 
-export async function getChangeFeed({ days, limit, now = new Date(), scope = CENTRAL }: { days?: number; limit?: number; now?: Date; scope?: EntityScope } = {}): Promise<ChangeFeedData> {
+export async function getChangeFeed({ days, limit, changeId, now = new Date(), scope = CENTRAL }: { days?: number; limit?: number; changeId?: string; now?: Date; scope?: EntityScope } = {}): Promise<ChangeFeedData> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
     const namer = await readNamer(client);
-    const feed = (await loadChangeFeed(client, { tenantRef: tenantRef(), now, days, limit, namer, scope })) as Omit<ChangeFeedData, "generatedAt"> & { rows: FeedRow[] };
-    return { generatedAt: now.toISOString(), ...feed, ...(scope.central ? {} : { scope: { central: false as const, entities: [...scope.entities] } }) };
+    const selected = changeId && changeId.length <= 500 ? /^(drift|service|audit):(.+)$/.exec(changeId) : null;
+    const selection = selected ? { source: selected[1], ids: [selected[2]] } : undefined;
+    const feed = (await loadChangeFeed(client, { tenantRef: tenantRef(), now, days, limit, namer, selection, scope })) as Omit<ChangeFeedData, "generatedAt"> & { rows: FeedRow[] };
+    return {
+      generatedAt: now.toISOString(),
+      ...feed,
+      rows: feed.rows.map((row) => {
+        const { evaluation, ...publicRow } = row as FeedRow & { evaluation?: unknown };
+        void evaluation;
+        return publicRow;
+      }),
+      ...(scope.central ? {} : { scope: { central: false as const, entities: [...scope.entities] } }),
+    };
   } finally {
     await client.end();
   }

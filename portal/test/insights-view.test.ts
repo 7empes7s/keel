@@ -186,4 +186,18 @@ test("the Overview loader counts flagged changes of the last week and those an o
   await alert(APPS[1], "resolved");
   assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, alerted: 1 });
   assert.equal(flaggedChangesRow(await getFlaggedThisWeek())?.title, "2 flagged changes this week");
+  // A10 normalizes an audited object's id to its natural key. A source link must
+  // still prevent a second Needs attention row for that same flagged change.
+  const { rows: [linked] } = await client.query(`UPDATE alert SET resource_key='servicePrincipal:Payroll'
+    WHERE tenant_ref=$1 AND resource_key=$2 RETURNING id`, [ref, APPS[0]]);
+  await client.query(`INSERT INTO change_flag_event
+    (tenant_ref,source_id,flag_key,resource_key,observed_at,evaluation,alert_id,alert_occurrence)
+    VALUES ($1,'audit:entra:cred0:0','app-credential-added-audit','servicePrincipal:Payroll',$2,'{}',$3,1)`,
+  [ref, hoursAgo(10), linked.id]);
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, alerted: 1 });
+  await client.query("UPDATE alert SET state='suppressed' WHERE id=$1", [linked.id]);
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, alerted: 0 });
+  await client.query("UPDATE alert SET state='open' WHERE id=$1", [linked.id]);
+  await client.query("UPDATE change_flag_event SET resolved_at=now() WHERE alert_id=$1", [linked.id]);
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, alerted: 0 });
 });

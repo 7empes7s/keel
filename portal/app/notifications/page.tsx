@@ -1,3 +1,5 @@
+import { ChangeFlagSettings, type FlagSetting } from "@/components/notifications/change-flag-settings";
+import { GET as loadFlagSettings } from "@/app/api/change-flag-settings/route";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 
@@ -65,6 +67,11 @@ export default async function NotificationsPage() {
     }
   }
 
+  let flagSettings: FlagSetting[] | null = null;
+  if (access.capabilities.includes("policies")) {
+    try { flagSettings = (await read(loadFlagSettings, "/api/change-flag-settings")).settings; }
+    catch { flagSettings = null; }
+  }
   const configured = canConfiguration && !configurationUnavailable;
   const status = configured ? notificationsStatus(notificationCounts({ channels, subscriptions, escalationRules, deliveries: history.deliveries }, history.generatedAt), { channels, subscriptions }) : undefined;
   return (
@@ -72,6 +79,7 @@ export default async function NotificationsPage() {
       <PageHeader description={DESCRIPTION} generatedAt={history.generatedAt} section="Settings" status={status} title={TITLE} />
       {configurationUnavailable ? <DataUnavailable surface="Notification settings" /> : null}
       <AnonymityNote setting={await getAnonymitySetting()} />
+      {flagSettings ? <ChangeFlagSettings initial={flagSettings} /> : null}
       <NotificationsBody
         canConfiguration={configured}
         channels={channels}

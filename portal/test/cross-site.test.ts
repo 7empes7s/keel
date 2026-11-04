@@ -109,3 +109,12 @@ test("no other site may frame the portal", async () => {
   assert.equal(byKey.get("content-security-policy"), "frame-ancestors 'none'");
   assert.equal(byKey.get("x-frame-options"), "DENY");
 });
+
+for (const route of ["/api/change-flag-settings", "/api/actions/alerts"]) {
+  test(`${route} refuses a cross-site state change before authentication`, async () => {
+    const middleware = createAccessMiddleware(() => { throw new Error("must refuse before checking credentials"); }, async () => { throw new Error("must not resolve identity"); });
+    const response = await middleware(new NextRequest(`https://${PORTAL}${route}`, { method: "POST", headers: { host: PORTAL, origin: "https://evil.example", "sec-fetch-site": "cross-site", "content-type": "application/json" }, body: "{}" }));
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { error: "cross-site request refused" });
+  });
+}

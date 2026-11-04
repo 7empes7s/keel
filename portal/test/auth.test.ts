@@ -28,6 +28,7 @@ const audience = "keel-test-audience";
 const trustedKeyId = "trusted-key";
 const authenticatedEmail = "operator@example.com";
 const readOnlyApiRoutes = [
+  "/api/change-flag-settings",
   "/api/dashboard",
   "/api/menu-status",
   "/api/coverage",

@@ -154,7 +154,11 @@ export const TYPE_DECISIONS = Object.freeze({
   entitlementManagementSettings: automated('entitlementmanagementsettings', 'Wave 2: update in place'),
   agreement: incomplete('the agreement documents are files on a separate route, and acceptances cannot be recreated'),
   appManagementPolicy: automated('appmanagementpolicy', 'Wave 2: create and update; the apps a policy applies to are a separate edge not yet collected'),
-  tenantAppManagementPolicy: automated('tenantappmanagementpolicy', 'approval-held kinds: update in place of the default rules for app secrets and certificates; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; a restriction that names trusted certificate authorities is a manual step (trust-field rule); tenant-wide, so the test tenant needs the tenant-wide option'),
+  tenantAppManagementPolicy: automated('tenantappmanagementpolicy', 'approval-held kinds: update in place of the default rules for app secrets and certificates; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; a restriction that names trusted certificate authorities is a manual step (trust-field rule); tenant-wide, so the test tenant needs the tenant-wide option', {
+    liveFailures: {
+      update: failedLive('2026-11-04', 'post-state: applicationRestrictions did not read back as written (Graph sets identifierUris.uriAdditionWithoutUniqueTenantIdentifier.isStateSetByMicrosoft itself; the write sent false, read back differs)', 'leave out of the write and the read-back check the values Graph sets itself (isStateSetByMicrosoft), then rerun the Q268 update step'),
+    },
+  }),
   multiTenantOrganization: automated('multitenantorganization', 'Wave 2: update of name and description; member tenants and their acceptance are never written'),
   b2xIdentityUserFlow: incomplete('the languages, attributes and API connector bindings of a flow are separate collections not yet collected'),
   identityApiConnector: incomplete('the connector password or certificate is never returned'),
@@ -238,11 +242,7 @@ export const TYPE_DECISIONS = Object.freeze({
   defenderRoleAssignment: automated('unifiedroleassignmentmultiple', 'approval-held kinds batch 2: create and update through Graph beta of who holds a Defender role (people and groups, matched in the target) and the data sources it covers; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service', {
     view: 'graph-rest-beta',
     liveFailures: {
-      update: Object.freeze({
-        failedAt: '2026-11-04',
-        reason: 'Graph 400 on PATCH with only principalIds: "AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided". The Defender assignment PATCH needs the full body (displayName, roleDefinitionId, principalIds, directoryScopeIds, appScopeIds).',
-        fix: 'PR #954: an update sends the whole assignment (updateSendsWhole); live rerun queued as Q311',
-      }),
+      update: failedLive('2026-11-04', 'Graph 400 on PATCH with only principalIds: "AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided". The Defender assignment PATCH needs the full body (displayName, roleDefinitionId, principalIds, directoryScopeIds, appScopeIds).', 'send the whole assignment on update (PR #954), then rerun the Q271 update step'),
     },
   }),
   defenderCustomAppScope: manual('Graph has no write for Defender app access scopes (list only; create, update and delete are Exchange only)'),

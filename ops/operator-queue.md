@@ -14524,7 +14524,35 @@ item that needs it stays untouched.
   database URL, password, token, tenant id or address.
 - Needs: the deployed build at or after PR #949's merge, and its schema applied
   (`SELECT indexname FROM pg_indexes WHERE indexname = 'resource_version_object_id_snapshot_idx'` returns a row; if not, report `blocked`).
-- Status: todo
+- Status: done
+- Result: done (2026-11-04 05:00 UTC, keel-operator). Commit **224e353f** (#949 deployed; `resource_version_object_id_snapshot_idx` present). Read-only: every connection `default_transaction_read_only=on`; no tenant calls, restarts or config changes; nothing installed (portal/node_modules symlinked to /opt/keel-live's, then removed). Script and output deleted afterwards. No `read-only transaction` line.
+  - **Changes feed: 658 / 565 / 541 ms, 9 queries** (Q305: the `wanted/hits` lookup alone took 11.5 s). That lookup now takes **207 ms** in the feed. **It is still 2.8–3.2 s inside `/api/alerts`** (1193 names; slow-query lines below). The alerts page is now led by a `SELECT DISTINCT ON (rv.natural_key) …` at **~9.2 s**.
+  - Index sizes: `resource_version_object_id_snapshot_idx` **79 MB**, `resource_version_app_id_snapshot_idx` **30 MB**.
+  - Output verbatim:
+    ```
+    
+    ## changes getChangeFeed30: 658 / 565 / 541 ms (last run: 9 queries, 536 ms in SQL)
+      310 ms  x1  501 rows  SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at, coalesce((CASE r.re
+      207 ms  x1  73 rows  WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.st
+      8 ms  x1  0 rows  WITH latest AS ( SELECT w.object_id, w.resource_type, v.natural_key, v.name, v.started_at FROM unnest($2::text
+      6 ms  x1  139 rows  SELECT d.id, d.workload, d.resource_key, d.change_type, d.blast_radius, c.observed_to, CASE WHEN cur.collectio
+      3 ms  x1  501 rows  SELECT source_event_id, occurred_at, target_type, target_id, operation, activity, actor_kind, actor_id FROM au
+      2 ms  x3  3 rows  SELECT to_regclass($1) AS name
+    [keel-portal] slow query 9227 ms: SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrandingProfile
+    [keel-portal] slow query 3246 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    [keel-portal] slow query 9145 ms: SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrandingProfile
+    [keel-portal] slow query 2824 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    [keel-portal] slow query 9254 ms: SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrandingProfile
+    [keel-portal] slow query 3172 ms: WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at F
+    
+    ## alerts /api/alerts: 13383 / 12780 / 13281 ms (last run: 18 queries, 13191 ms in SQL)
+      9254 ms  x1  1193 rows  SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, (CASE rv.resource_type WHEN 'intuneBrand
+      3171 ms  x1  1193 rows  WITH wanted AS (SELECT unnest($2::text[]) AS id), latest AS ( SELECT w.id AS wanted, b.id AS snapshot_id, b.st
+      578 ms  x1  0 rows  WITH latest AS ( SELECT w.object_id, w.resource_type, v.natural_key, v.name, v.started_at FROM unnest($2::text
+      61 ms  x1  10047 rows  SELECT t.* FROM alert_transition t JOIN alert a ON a.id = t.alert_id WHERE a.id::text = ANY($1::text[]) AND a.
+      51 ms  x1  391 rows  WITH covered AS ( SELECT tcl.resource_type AS type, tcl.snapshot_id AS id FROM type_coverage_latest tcl JOIN s
+      35 ms  x1  7 rows  SELECT DISTINCT ON (c.workload, o.resource_key) c.workload, o.resource_key, COALESCE(NULLIF(o.fields->>'displa
+    ```
 - Do, on Mulinux: exactly Q303 steps 1–4 (same `profile-reads.mts` script from Q303, same principal pick), at the deployed
   commit, with `ONLY='changes|alerts'` and `timeout 300`. Delete the script and the output file afterwards.
   Also run, read-only: `SELECT pg_size_pretty(pg_relation_size('resource_version_object_id_snapshot_idx')), pg_size_pretty(pg_relation_size('resource_version_app_id_snapshot_idx'))`.
@@ -14539,7 +14567,25 @@ item that needs it stays untouched.
   no tenant calls, no restarts, no config changes, nothing installed; never print a database URL, password, token, tenant id or address.
 - Needs: the deployed build at or after PR #949's merge, and its schema applied
   (`SELECT indexname FROM pg_indexes WHERE indexname = 'resource_version_role_template_id_snapshot_idx'` returns a row; if not, report `blocked`).
-- Status: todo
+- Status: done (49 queries; one cold WITH seen AS at 1.08 s)
+- Result: done, mostly as expected (2026-11-04 05:00 UTC, keel-operator). Commit **224e353f** (#949 deployed; `resource_version_role_template_id_snapshot_idx` present). Read-only, same rules as Q307; script and output deleted. No `read-only transaction` line.
+  - **getDriftData: 3634 / 2435 / 2380 ms, 49 queries** (Q305: 6–8 s, 1,850 queries). Under 100 queries ✓.
+  - **One `WITH seen AS` slow-query line over 1 s: 1083 ms** (the cold first run); the last run's `WITH seen AS` took 414 ms. So it is just over the 1 s target once, cold.
+  - Also printed: a pg DeprecationWarning, 'Calling client.query() when the client is already executing a query' (two queries on one client at once in this loader).
+  - Output verbatim:
+    ```
+    [keel-portal] slow query 1083 ms: WITH seen AS MATERIALIZED ( SELECT coalesce(array_agg(DISTINCT d.observed_snapshot), '{}') AS ids FROM drift d WHERE d.t
+    (node:965775) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+    (Use `node --trace-deprecation ...` to show where the warning was created)
+    
+    ## baselines getDriftData: 3634 / 2435 / 2380 ms (last run: 49 queries, 2910 ms in SQL)
+      456 ms  x1  411 rows  SELECT id, workload, observed_from, observed_to FROM workload_collection WHERE tenant_ref = $1 AND workload = 
+      455 ms  x1  0 rows  SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at FROM 
+      454 ms  x1  6123 rows  WITH latest AS ( SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift WHERE tenant_ref = $1 ORDER BY ba
+      414 ms  x1  7182 rows  WITH seen AS MATERIALIZED ( SELECT coalesce(array_agg(DISTINCT d.observed_snapshot), '{}') AS ids FROM drift d
+      308 ms  x1  8048 rows  SELECT k.id, c.completed_at, c.payload_hash, c.payload FROM unnest($2::uuid[], $3::text[], $4::text[], $5::tim
+      286 ms  x1  200 rows  SELECT d.id, COALESCE(prev.completed_at, bs.completed_at, bs.started_at, b.set_at) AS window_from, COALESCE(fs
+    ```
 - Do, on Mulinux: exactly Q303 steps 1–4 (same `profile-reads.mts` script from Q303, same principal pick), at the deployed
   commit, with `ONLY='baselines getDriftData'` and `timeout 300`. Delete the script and the output file afterwards.
 - **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, and any

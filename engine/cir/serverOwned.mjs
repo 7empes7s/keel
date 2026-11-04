@@ -130,6 +130,10 @@ SERVER_OWNED.set('secureScoreControlProfile', new Set([
   'userImpact', 'vendorInformation',
 ]));
 
+// Issue #746: Graph stamps each localized message of a compliance notification
+// template with the time of the read, so the value moves on every collection.
+SERVER_OWNED.set('notificationMessageTemplate', new Set(['localizedNotificationMessages.lastModifiedDateTime']));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

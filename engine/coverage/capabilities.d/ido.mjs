@@ -22,7 +22,6 @@ export default [
   { resourceType: 'servicePrincipal', operation: 'delete', path: '/servicePrincipals', handler: IDENTITY, idOutcome: 'terminal', proofRef: IDENTITY_PROOF },
   { resourceType: 'lifecycleWorkflow', operation: 'create', path: '/identityGovernance/lifecycleWorkflows/workflows', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'lifecycleWorkflow', operation: 'update', path: '/identityGovernance/lifecycleWorkflows/workflows', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
-  { resourceType: 'lifecycleWorkflowCustomTaskExtension', operation: 'create', path: '/identityGovernance/lifecycleWorkflows/customTaskExtensions', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'lifecycleWorkflowCustomTaskExtension', operation: 'update', path: '/identityGovernance/lifecycleWorkflows/customTaskExtensions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'lifecycleManagementSettings', operation: 'update', path: '/identityGovernance/lifecycleWorkflows/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'attributeSet', operation: 'update', path: '/directory/attributeSets', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

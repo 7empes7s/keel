@@ -27,7 +27,7 @@
 // assessment, approval, fingerprint check and applyWave verification path as a
 // forward restore. This module only plans; it never writes.
 import { canonicalize } from '../cir/canonicalHash.mjs';
-import { writableProjection } from '../reconcile/writableProjection.mjs';
+import { trustFieldsOf, writableProjection } from '../reconcile/writableProjection.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
 export const COMPENSATION_STATEMENT = 'Compensation is not atomic: each inverse write is a separate, verified Graph call, and only writes this restore actually made are undone. It never restores erased or disclosed content.';
@@ -205,7 +205,16 @@ export function planCompensation({ restoreRef, entries, current }) {
 
     const liveState = { state: 'present', targetId: live.targetId, payload: live.payload };
     if (entry.operation === 'create' || entry.operation === 'restore-soft-deleted') {
-      const changedSince = differingFields(live.payload, post, writableKeys(post, resourceType), resourceType);
+      // Deleting removes the whole object, including trust fields we never
+      // write. Compare those observed values too; a write-body projection alone
+      // would hide a later administrator change. Prefer the recorded read even
+      // when an uncertain write was reconciled from today's live state.
+      const observed = entry.postState ?? post;
+      const fields = [...new Set([
+        ...writableKeys(observed, resourceType),
+        ...trustFieldsOf(observed, resourceType),
+      ])];
+      const changedSince = differingFields(live.payload, observed, fields, resourceType);
       if (changedSince.length > 0) {
         conflicts.push({ naturalKey, entryIds, fields: changedSince, reason: `concurrent-change: ${changedSince.join(', ')} changed after this restore wrote the object — compensation will not overwrite a later change` });
         continue;

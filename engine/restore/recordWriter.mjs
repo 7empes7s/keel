@@ -252,6 +252,39 @@ export function withoutTrustFields(resourceType, body, verb = 'create') {
 
 const isTrustKey = (resourceType, key) => key !== '@odata.type' && !isAnnotation(key) && isTrustField(resourceType, key);
 
+/**
+ * The state a write intends, for the rollback journal: the backup payload with
+ * every trust, certificate or sign-in field as the write leaves it, so the
+ * journal never claims a value the restore did not send, and an undo or a
+ * check of an uncertain write never counts one as changed by the restore.
+ *
+ * A create sends none: each is absent (a nested one is dropped, as in the
+ * body). An update sends none either, nor (with `nested`) a top-level field
+ * holding one in the backup or live (withoutTrustFields, changedRecordFields):
+ * each such field keeps live's value. `nested: false` is for a writer that
+ * strips top-level fields only (the generic Entra writer); `keep` names a field
+ * the write does send (an approved compliance fix). A payload with nothing to
+ * leave out is returned as it is.
+ */
+export function journalIntendedState(resourceType, desired, live, { verb = 'update', nested = true, keep = [] } = {}) {
+  if (!desired || typeof desired !== 'object' || Array.isArray(desired)) return desired;
+  const update = verb !== 'create';
+  const holdsTrust = (value) => nested && holdsNestedTrust(resourceType, value);
+  const unsent = (key) => !keep.includes(key) && (isTrustKey(resourceType, key)
+    || (update && (holdsTrust(desired[key]) || holdsTrust(live?.[key]))));
+  const current = live && typeof live === 'object' && !Array.isArray(live) ? live : null;
+  const fromLive = update && current ? Object.keys(current).filter((key) => !Object.hasOwn(desired, key) && unsent(key)) : [];
+  const nestedOnCreate = !update && nested && Object.keys(desired).some((key) => holdsTrust(desired[key]));
+  if (!Object.keys(desired).some(unsent) && fromLive.length === 0 && !nestedOnCreate) return desired;
+  const state = {};
+  for (const [key, value] of Object.entries(desired)) {
+    if (!unsent(key)) state[key] = !update && nested ? stripTrust(resourceType, value) : value;
+    else if (update && current && Object.hasOwn(current, key)) state[key] = current[key];
+  }
+  for (const key of fromLive) state[key] = current[key];
+  return state;
+}
+
 // The value without its trust fields; the same value when it holds none.
 function stripTrust(resourceType, value) {
   if (Array.isArray(value)) {
@@ -293,13 +326,14 @@ const pathText = (segments) => segments.reduce((text, segment) => (typeof segmen
  * (or with no live object) each one the backup holds a value for, on an update
  * each one whose backup value live does not hold. `same(field, desired, live)`
  * is the writer's own field equality. Nothing is written for them; a person
- * checks them and applies them by hand.
+ * checks them and applies them by hand. `nested: false` is for a writer that
+ * leaves out top-level trust fields only (the generic Entra writer).
  */
 // A value a create would not set: nothing, off, zero, empty.
 const isUnset = (value) => value === false || value === 0 || value === '' || sameValue(value, null)
   || (Array.isArray(value) && value.length === 0) || (value && typeof value === 'object' && Object.keys(normalised(value)).length === 0);
 
-export function trustFieldStep(resourceType, payload, live, verb, { excluded = [], same = (_field, left, right) => sameValue(left, right) } = {}) {
+export function trustFieldStep(resourceType, payload, live, verb, { excluded = [], same = (_field, left, right) => sameValue(left, right), nested: walkNested = true } = {}) {
   const update = verb !== 'create';
   const differs = (segments, desired) => (verb === 'create' || !live ? !isUnset(desired)
     // Top-level fields compare with the writer's own equality; a nested one by value at the same path.
@@ -312,6 +346,8 @@ export function trustFieldStep(resourceType, payload, live, verb, { excluded = [
       if (differs([key], payload[key])) fields.push(key);
       continue;
     }
+    // A writer that strips top-level fields only (nested: false) sends nested ones as they are.
+    if (!walkNested) continue;
     // A nested trust field in the backup or in live (a backup without it would clear it).
     const nested = [...nestedTrustPaths(resourceType, payload[key], [key]), ...(update && live ? nestedTrustPaths(resourceType, live[key], [key]) : [])]
       .filter((segments, index, all) => all.findIndex((other) => pathText(other) === pathText(segments)) === index);
@@ -686,6 +722,15 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const replace = wholeReplaceTrustRefusal(record.resourceType, { payload, live: before, body: recordWriteBody(record, payload, 'create'), excluded: record.excluded });
     if (replace) return refusalEntry(naturalKey, replace);
   }
+  // A skipped write sends nothing either, so it lists the same trust step after its own.
+  // A skip that already lists the same trust fields (a preflight's own step) gets no second copy.
+  const skip = (refusal) => {
+    const own = refusal.completion ?? [];
+    const listed = trustStep && own.some((step) => step?.requirement === 'trustFields' && sameValue(step.fields, trustStep.fields));
+    return refusalEntry(naturalKey, {
+      outcome: 'skipped', ...refusal, ...(trustStep && !listed ? { completion: [...own, trustStep] } : {}),
+    });
+  };
 
   // A recreate lists the parts the backup cannot give back (ENTRA's
   // best-effort rule), worked out before anything is written.
@@ -710,7 +755,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // fixture guard first, in the dry run and again before the write.
   if (fields.length > 0 || record.afterWrite) {
     const tenantWide = tenantWideRecordProblem(record, ctx);
-    if (tenantWide) return refusalEntry(naturalKey, { outcome: 'skipped', reason: tenantWide });
+    if (tenantWide) return skip({ reason: tenantWide });
   }
   // A dry run never reads the tenant for an object this run only plans to
   // create: its placeholder id (plannedIds.mjs) is not a Graph id. The enforce
@@ -718,12 +763,12 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   if (record.preflight && writer && !(ctx.mode === 'dry-run' && holdsPlannedId(payload))) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
     // A preflight may also find the write already done another way: { skipped }.
-    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped, ...(reason.completion ? { completion: reason.completion } : {}) });
+    if (reason?.skipped) return skip({ reason: reason.skipped, ...(reason.completion ? { completion: reason.completion } : {}) });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
   }
   if (verb === 'update' && record.updateGuard && writer && fields.length > 0) {
     const held = await record.updateGuard(io, { resource, payload, targetId, before, fields, ctx });
-    if (held) return refusalEntry(naturalKey, { outcome: 'skipped', ...held });
+    if (held) return skip(held);
   }
   if (ctx.mode === 'dry-run') {
     const planned = record.planChanges && writer ? await record.planChanges(io, { resource, payload, verb, targetId, before, ctx }) : null;
@@ -738,7 +783,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // A failed write: Graph's answer, or the record's plain reason nothing could be written.
   const writeFailed = async (result) => {
     await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: result.skipped });
+    if (typeof result?.skipped === 'string') return skip({ reason: result.skipped });
     return { failed: writeFailure(record, naturalKey, result) };
   };
 

@@ -696,7 +696,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   }),
   lifecycleWorkflowCustomTaskExtension: defineRecord({
     resourceType: 'lifecycleWorkflowCustomTaskExtension', version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/customTaskExtensions',
-    operations: ['create', 'update'], excluded: ['createdBy', 'lastModifiedBy'], odataType: 'keep',
+    // Update only: Graph needs the Logic App and its sign-in (trust fields, never written) to create one.
+    operations: ['update'], excluded: ['createdBy', 'lastModifiedBy'], odataType: 'keep',
     permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecycleworkflowscontainer-post-customtaskextensions'),
   }),
   lifecycleManagementSettings: defineRecord({

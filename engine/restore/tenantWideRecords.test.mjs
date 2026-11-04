@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { IDENTITY_RECORDS, applyIdentityObjectWrite } from './identityObjectOperations.mjs';
 import { INTUNE_EXTENDED_RECORDS, applyIntuneExtendedWrite } from './intuneOperations.mjs';
 import { fakeGraph, fixtureFor } from '../../tools/qualification/operations.mjs';
+import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
 const TEST_TENANT = Object.freeze({
   tenantRef: 'sha256:keeltesttenant0', testTenantRefs: ['sha256:keeltesttenant0'], readAfterWriteOptions: { attempts: 1, delayMs: 0 },
@@ -16,12 +17,16 @@ const TEST_TENANT = Object.freeze({
 const ENTRA = Object.freeze([
   'lifecycleManagementSettings', 'entitlementManagementSettings', 'multiTenantOrganization', 'externalIdentitiesPolicy',
   'accessReviewPolicy', 'directoryRoleAccessReviewPolicy', 'multiTenantOrganizationIdentitySyncPolicyTemplate',
-  'multiTenantOrganizationPartnerConfigurationTemplate', 'sharepointSettings',
+  'multiTenantOrganizationPartnerConfigurationTemplate', 'sharepointSettings', 'deviceRegistrationPolicy', 'tenantAppManagementPolicy',
   'formsSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings', 'adminReportSettings', 'pronounsSettings',
 ]);
 const INTUNE = Object.freeze(['deviceManagementSettings', 'microsoftTunnelHealthThreshold', 'onPremisesConditionalAccessSettings']);
 
 const writes = (graph) => graph.writes.filter((write) => write.method !== 'GET');
+// The approval-held settings (deviceRegistrationPolicy, tenantAppManagementPolicy)
+// also need their access effects approved; these tests approve them, so only the
+// tenant-wide guard decides (restore/approvalHeld.test.mjs covers that gate).
+const approved = (resource) => classifyContentEffects([{ ...resource, verb: 'update' }]).effects;
 const writerFor = (type) => (IDENTITY_RECORDS[type] ? applyIdentityObjectWrite : applyIntuneExtendedWrite);
 
 test('every tenant-wide Entra and Intune setting is marked tenant-wide', () => {
@@ -44,7 +49,7 @@ test('on the test tenant a tenant-wide setting is refused without the tenant-wid
     for (const mode of ['dry-run', 'enforce']) {
       const graph = fakeGraph();
       const resource = fixtureFor(type, 'update', graph);
-      const result = await writerFor(type)(graph, resource, 'update', { ...TEST_TENANT, mode });
+      const result = await writerFor(type)(graph, resource, 'update', { ...TEST_TENANT, mode, approvedContentEffects: approved(resource) });
       assert.equal(result.applied, undefined, `${type} ${mode}: ${JSON.stringify(result)}`);
       assert.match(result.skipped?.reason ?? '', /is tenant-wide and needs a dry run made with --allow-tenant-wide-test-writes/, `${type} ${mode}`);
       assert.equal(writes(graph).length, 0, `${type} ${mode}`);
@@ -59,7 +64,8 @@ test('on the test tenant the tenant-wide option lets each setting be planned and
     assert.ok(planned.applied?.changes?.fields?.length > 0, `${type} dry run: ${JSON.stringify(planned)}`);
     assert.equal(writes(dry).length, 0, `${type} dry run`);
     const graph = fakeGraph();
-    const result = await writerFor(type)(graph, fixtureFor(type, 'update', graph), 'update', { ...TEST_TENANT, mode: 'enforce', allowTenantWide: true });
+    const resource = fixtureFor(type, 'update', graph);
+    const result = await writerFor(type)(graph, resource, 'update', { ...TEST_TENANT, mode: 'enforce', allowTenantWide: true, approvedContentEffects: approved(resource) });
     assert.ok(result.applied, `${type}: ${JSON.stringify(result)}`);
     assert.ok(writes(graph).length >= 1, type);
   }
@@ -68,13 +74,15 @@ test('on the test tenant the tenant-wide option lets each setting be planned and
 test('a tenant-wide setting is written on a customer tenant without the option, and never when the tenant is not known', async () => {
   for (const type of [...ENTRA, ...INTUNE]) {
     const graph = fakeGraph();
-    const result = await writerFor(type)(graph, fixtureFor(type, 'update', graph), 'update', {
-      ...TEST_TENANT, tenantRef: 'sha256:customer0000000', mode: 'enforce',
+    const resource = fixtureFor(type, 'update', graph);
+    const result = await writerFor(type)(graph, resource, 'update', {
+      ...TEST_TENANT, tenantRef: 'sha256:customer0000000', mode: 'enforce', approvedContentEffects: approved(resource),
     });
     assert.ok(result.applied, `${type}: ${JSON.stringify(result)}`);
     const unknown = fakeGraph();
-    const refused = await writerFor(type)(unknown, fixtureFor(type, 'update', unknown), 'update', {
-      ...TEST_TENANT, tenantRef: undefined, mode: 'enforce', allowTenantWide: true,
+    const unknownResource = fixtureFor(type, 'update', unknown);
+    const refused = await writerFor(type)(unknown, unknownResource, 'update', {
+      ...TEST_TENANT, tenantRef: undefined, mode: 'enforce', allowTenantWide: true, approvedContentEffects: approved(unknownResource),
     });
     assert.match(refused.skipped?.reason ?? '', /target tenant is not known/, type);
     assert.equal(writes(unknown).length, 0, type);

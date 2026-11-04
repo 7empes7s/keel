@@ -128,6 +128,10 @@ const REGISTERED = Object.freeze({
   exchangeCustomAppScope: ['create', 'update'],
   // Restore gaps, batch 21.
   defenderRoleDefinition: ['create', 'update'],
+  // Approval-held kinds (restore/approvalHeld.mjs).
+  deviceRegistrationPolicy: ['update'],
+  tenantAppManagementPolicy: ['update'],
+  deviceManagementRoleDefinition: ['create', 'update', 'delete'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],

@@ -235,9 +235,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates partner organization entries and puts their tenant restrictions back.',
     todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust, automatic consent and the guest collaboration and direct connect lists are never changed by a restore; change them by hand if they differ.',
   }),
-  deviceRegistrationPolicy: manual('Device join and registration settings', KEEL,
-    'These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.',
-    'Compare the backup with the current settings in the Entra admin center under Devices, and change them there.'),
+  deviceRegistrationPolicy: auto('Device join and registration settings', {
+    keeps: 'Puts back who may join and register devices, how many devices each user may have, whether joining needs MFA, and local admin passwords.',
+    todo: 'These settings decide who may join devices, so a restore that changes them waits for a second approver while restore approvals are on for Entra ID.',
+  }),
   authenticationFlowsPolicy: auto('External user self sign-up', {
     keeps: 'Puts back whether external users may sign themselves up.',
     todo: 'The sign-up user flows themselves are restored by hand (see guest sign-up user flows).',
@@ -275,9 +276,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates the policies and puts their rules back.',
     todo: 'Which apps each policy applies to is not backed up yet, so assign the policies again by hand.',
   }),
-  tenantAppManagementPolicy: manual('Default app credential rules', NOT_BUILT,
-    'A stricter default can stop every app from adding a secret or certificate, so KEEL will not write it without a review step, which is not built yet.',
-    'Set the default rules again in the Entra admin center using the backup.'),
+  tenantAppManagementPolicy: auto('Default app credential rules', {
+    keeps: 'Puts back the default rules for the secrets and certificates apps may add, and whether they are on.',
+    todo: 'A stricter rule can stop apps from adding secrets, so a restore that changes them waits for a second approver while restore approvals are on for Entra ID. Which certificate authorities a rule trusts is never put back: set that by hand. There is no admin center page for these rules.',
+  }),
   multiTenantOrganization: auto('Multitenant organization', {
     keeps: 'Puts the name and description back.',
     todo: 'Member tenants and their acceptance are set by each tenant, so add or re-invite them by hand.',
@@ -302,9 +304,10 @@ export const TYPE_GUIDE = Object.freeze({
   deviceEnrollmentConfiguration: manual('Enrollment restrictions', MS,
     'The default restrictions exist in every tenant and cannot be created by anyone, and the order of custom ones is set by a separate action KEEL does not write.',
     'Restore by hand in the Intune admin center from the backup, which includes each restriction\'s assignments and order.'),
-  deviceManagementRoleDefinition: manual('Intune admin roles', KEEL,
-    'These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is backed up as Intune admin role assignments.',
-    'Review the roles in the backup and recreate them in the Intune admin center, then assign them again.'),
+  deviceManagementRoleDefinition: auto('Intune admin roles', {
+    keeps: 'Recreates custom Intune roles and puts back their name, description and permissions.',
+    todo: 'A change to a role\'s permissions waits for a second approver while restore approvals are on for Intune. Who holds each role is not restored: assign it again in the Intune admin center, under Tenant administration, Roles, after a privilege review.',
+  }),
   deviceCategory: auto('Device categories', {
     keeps: 'Recreates categories and puts their names and descriptions back.',
     todo: 'Devices are put in a category when they enroll, which no restore can redo. Devices pick it up at their next enrollment, or an admin sets it on each device.',

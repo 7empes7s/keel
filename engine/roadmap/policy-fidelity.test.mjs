@@ -129,6 +129,8 @@ test('the policy family ledger lists every policy type; the remainder stays rese
       'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate',
       // Restore gaps batch 3.
       'permissionGrantPreApprovalPolicy', 'externalDomainFederation',
+      // Approval-held kinds (restore/approvalHeld.mjs).
+      'deviceRegistrationPolicy', 'tenantAppManagementPolicy',
     ].includes(family.resourceType)) {
       assert.equal(family.status, 'qualified-subset', family.resourceType);
       assert.ok(family.supportedOperations.length > 0, family.resourceType);

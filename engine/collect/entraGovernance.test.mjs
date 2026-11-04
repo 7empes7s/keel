@@ -40,8 +40,13 @@ async function withFetch(fetch, fn) {
   try { return await fn(); } finally { globalThis.fetch = original; }
 }
 
+// Issue #992: read once per catalog, so it has its own tests below.
+const PER_CATALOG = 'accessPackageCatalogResource';
+
 test('the family lists exactly these types', () => {
-  assert.deepEqual(entraGovernance.map((entry) => entry.type), CASES.map(([type]) => type));
+  assert.deepEqual(entraGovernance.map((entry) => entry.type).filter((type) => type !== PER_CATALOG), CASES.map(([type]) => type));
+  assert.equal(entraGovernance.findIndex((entry) => entry.type === PER_CATALOG), entraGovernance.findIndex((entry) => entry.type === 'accessPackageCatalog') + 1,
+    'the catalog resources sit next to the catalogs');
   for (const [type, , singleton] of CASES) {
     assert.equal(entraGovernance.find((entry) => entry.type === type).singleton === true, singleton, `${type} singleton`);
   }
@@ -126,4 +131,39 @@ test('a plain-word id is never read as a reference from another payload', () => 
   ]);
   const user = resources.find((resource) => resource.resourceType === 'user');
   assert.deepEqual(user.references.map((ref) => ref.symbol).filter((symbol) => /attributeSet|b2xIdentityUserFlow/.test(symbol)), []);
+});
+
+// Issue #992: a catalog's groups, apps and sites, read under each catalog with
+// their roles and scopes and tagged with the catalog.
+const CATALOG_ID = '88888888-8888-4888-8888-888888888888';
+const GROUP_ID = '99999999-9999-4999-8999-999999999999';
+const CATALOG_RESOURCE = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', displayName: 'KEEL-RT-group', originId: GROUP_ID, originSystem: 'AadGroup',
+  roles: [{ id: 'r1', displayName: 'Member', originId: `Member_${GROUP_ID}`, originSystem: 'AadGroup' }],
+  scopes: [{ id: 's1', displayName: 'Root', originId: GROUP_ID, originSystem: 'AadGroup', isRootScope: true }],
+};
+
+test('catalog resources are read under each catalog with their roles and scopes, tagged with the catalog', async () => {
+  const { descriptor, adapter } = get(PER_CATALOG);
+  assert.equal(descriptor.fidelity, 'read-only');
+  assert.equal(descriptor.naturalKeyStrategy, 'id');
+  const urls = [];
+  const objects = await withFetch(async (url, opts) => {
+    assert.equal(opts.method, 'GET', 'reads only');
+    urls.push(url);
+    if (url === `${G}/identityGovernance/entitlementManagement/catalogs?$select=id`) return respond({ value: [{ id: CATALOG_ID }] });
+    if (url === `${G}/identityGovernance/entitlementManagement/catalogs/${CATALOG_ID}/resources?$expand=roles,scopes`) return respond({ value: [CATALOG_RESOURCE] });
+    throw new Error(`unexpected request ${url}`);
+  }, () => adapter.collect(new GraphReader(async () => 'fixture-token')));
+  assert.equal(urls.length, 2);
+  assert.deepEqual(objects, [{ ...CATALOG_RESOURCE, catalogId: CATALOG_ID }]);
+  const [resource] = canonicalizeAll([[PER_CATALOG, objects]]);
+  assert.equal(resource.naturalKey, `${PER_CATALOG}:${CATALOG_RESOURCE.id}`);
+});
+
+test('a denied read of a catalog\'s resources fails the type, never an empty success', async () => {
+  const { adapter } = get(PER_CATALOG);
+  await assert.rejects(withFetch(async (url) => (url.endsWith('catalogs?$select=id')
+    ? respond({ value: [{ id: CATALOG_ID }] })
+    : respond({ error: { code: 'Authorization_RequestDenied', message: 'fixture denied' } }, 403)), () => adapter.collect(new GraphReader(async () => 'fixture-token'))), /fixture denied/);
 });

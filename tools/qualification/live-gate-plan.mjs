@@ -549,6 +549,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the catalog id KEEL shows for the fixture', drift: 'change its description',
     note: 'No access package, resource or user goes into the catalog. Delete it at the end.',
   },
+  // Issue #992: an access package in its catalog, and the group role it grants.
+  accessPackage: {
+    kind: 'named-object', fixture: 'an access package KEEL-RT-992-package in a catalog KEEL-RT-992-catalog (userManaged, published, not externally visible), hidden, with no policy and no assignment',
+    select: 'the access package id KEEL shows for the fixture', drift: 'change its description; for create, delete the package (keep the catalog)',
+    note: 'Never add a policy or an assignment, so nobody can request it. Delete the package, then the catalog, at the end.',
+  },
+  accessPackageResourceRoleScope: {
+    kind: 'by-reference', fixture: `the Member role of the security group ${FIXTURE_PREFIX}-group (no members) on KEEL-RT-992-package, with the group in KEEL-RT-992-catalog`,
+    select: 'the resource role id KEEL shows for the fixture', drift: 'remove the role from the package; for the catalog request step also remove the group from the catalog',
+    note: 'The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. Only the fixture group, never a real group, app or site. The package has no policy, so nobody gains access.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

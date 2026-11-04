@@ -25,8 +25,9 @@
  *
  * Types the backup cannot drive in full (a terms of use file, an API
  * connector's password, access package policies and
- * assignments, provisioning jobs, access package resource scopes) have no
- * record here; IDENTITY_BEST_EFFORT names them and why.
+ * assignments, provisioning jobs, catalog resources on their own) have no
+ * record here; IDENTITY_BEST_EFFORT names them and why. Access packages and
+ * their resource roles are in accessPackageOperations.mjs.
  *
  * Routes follow the Graph v1.0 references and are fixture-tested, not
  * live-qualified.
@@ -41,6 +42,7 @@ import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects, withoutMicrosoftSet } from '../safety/contentEffects.mjs';
 import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import { USER_FLOW_RECORDS } from './userFlowOperations.mjs';
+import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from './accessPackageOperations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -792,6 +794,10 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], excluded: ['accessPackages', 'resources', 'resourceRoles', 'resourceScopes', 'customWorkflowExtensions'],
     permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagement-post-catalogs'),
   }),
+  // Issue #992 (accessPackageOperations.mjs): an access package in its catalog,
+  // and the resource roles it grants, behind the restore approval.
+  accessPackage: ACCESS_PACKAGE_RECORD,
+  accessPackageResourceRoleScope: ROLE_SCOPE_RECORD,
   entitlementManagementSettings: defineRecord({
     resourceType: 'entitlementManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
     singleton: true, operations: ['update'], permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagementsettings-update'),
@@ -1011,7 +1017,7 @@ export const IDENTITY_BEST_EFFORT = Object.freeze({
   accessPackageAssignmentPolicy: 'it references its access package, requestors and approvers by id; remapping them is not qualified',
   accessPackageAssignment: 'an assignment is granted by a request through its policy, never copied',
   synchronizationJob: 'a provisioning job needs its template, schema and the target system\'s credentials',
-  accessPackageResourceRoleScope: 'a resource role scope is added by a resource request on its catalog, never copied',
+  accessPackageCatalogResource: 'a group or app is added to a catalog only by the resource role writer, when a package grants it and it exists in the target; a site is added by hand',
 });
 
 // ------------------------------------------------------------------- users
@@ -1314,6 +1320,9 @@ export async function applyIdentityEdges(writer, operations, ctx = {}) {
 /** One write of a type this module owns. */
 export async function applyIdentityObjectWrite(writer, resource, verb, ctx = {}) {
   if (resource.resourceType === 'user') return applyUserRecreate(writer, resource, verb, ctx);
+  const routed = accessPackageDispatch(resource, verb, ctx);
+  if (routed?.done) return routed.done;
+  if (routed) return applyRecordWrite(writer, routed.record, routed.resource, verb, ctx);
   const record = IDENTITY_RECORDS[resource.resourceType];
   if (!record) return { failed: { naturalKey: resource.naturalKey, error: `${resource.resourceType} has no identity object record` } };
   return applyRecordWrite(writer, record, resource, verb, ctx);

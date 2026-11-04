@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 106 at least in part and 9 hold nothing to restore; the other 69 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 108 at least in part and 9 hold nothing to restore; the other 68 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -40,7 +40,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Admin role activation settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access packages | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Connected organizations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -48,6 +48,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Custom security attribute sets | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Custom security attributes | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Access package catalogs | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Groups, apps and sites in access package catalogs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Entitlement management settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -55,7 +56,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access review settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -117,8 +118,9 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 - **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
   - *Not brought back:* past reviews and their decisions (no tool can write it).
   - *You do:* Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.
-- **Access packages** (not built yet). An access package depends on its catalog, policies and resource roles, which are backed up but not restored yet.
-  - *You do:* Recreate the package in Entra ID Governance using the backup as a guide, starting with its catalog.
+- **Access packages.** Recreates access packages in their catalog and puts their name, description and visibility back. A package is created only once its catalog is there.
+  - *Not brought back:* its assignment policies and who holds it, which are restored separately (in the backup, but KEEL does not write it yet).
+  - *You do:* Its request policies and who holds it are not restored yet, so set them up again in Entra ID Governance using the backup.
 - **Connected organizations** (not built yet). These point to other organizations' tenants, which KEEL cannot check from yours.
   - *Not brought back:* internal and external sponsors (stored separately and not in the backup yet).
   - *You do:* Recreate them by hand in Entra ID Governance using the backup.
@@ -136,8 +138,11 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the values assigned to users and apps (stored separately and not in the backup yet); an attribute that no longer exists, which needs a review before it is created (in the backup, but KEEL does not write it yet).
   - *You do:* An attribute can never be deleted once it exists, so a missing one is recreated by hand after a review, inside its attribute set. Values assigned to users and apps are not backed up.
 - **Access package catalogs.** Recreates catalogs and puts their settings back.
-  - *Not brought back:* the groups, apps and sites in the catalog (stored separately and not in the backup yet).
-  - *You do:* The groups, apps and sites a catalog holds are not backed up yet, so add them again by hand.
+  - *Not brought back:* the groups, apps and sites in the catalog, which are backed up separately (in the backup, but KEEL does not write it yet).
+  - *You do:* The groups, apps and sites a catalog holds are backed up separately. A restore adds back the groups and apps an access package grants.
+- **Groups, apps and sites in access package catalogs** (not built yet). A restore adds a group or app back to its catalog only when an access package grants one of its roles. A site, or anything no package uses, is not added back yet.
+  - *Not brought back:* a SharePoint site, or a group or app no access package grants, which is added to the catalog by hand (in the backup, but KEEL does not write it yet).
+  - *You do:* Add the missing groups, apps and sites to the catalog in Entra ID Governance using the backup.
 - **Access package policies** (not built yet). A policy belongs to an access package, and access packages are not restored yet.
   - *Not brought back:* approval and request history (no tool can write it).
   - *You do:* Recreate the access package first, then its policies, using the backup.
@@ -157,8 +162,9 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 - **Provisioning and cross-tenant sync jobs** (not built yet). A job's attribute mappings are stored separately, its sign-in details can never be read back, and a running job changes accounts in another directory.
   - *Not brought back:* its attribute mappings (the sync schema) (stored separately and not in the backup yet); the sign-in details for the target app, if it uses any (Microsoft never returns it); run history and current status (no tool can write it).
   - *You do:* Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.
-- **Access package resource roles** (not built yet). A role can only be added once its group, app or site is in the package's catalog, and access packages are not restored yet.
-  - *You do:* Recreate the access package first, then add the same groups, apps and sites with the roles in the backup.
+- **Access package resource roles.** Adds back the group and app roles an access package grants, for groups and apps that exist in your tenant, and adds them to the catalog first if they are missing there.
+  - *Not brought back:* a role on a SharePoint site that is not in the catalog, or on a group or app that does not exist in the target (in the backup, but KEEL does not write it yet).
+  - *You do:* Adding a role changes who can get access, so a restore adds it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A role on a SharePoint site that is not in the catalog, or on a group or app that no longer exists, is added by hand.
 - **Custom authentication extensions** (not built yet). KEEL backs these up but does not restore them yet.
   - *You do:* Recreate the extension in the Entra admin center from the backup, then check that its endpoint still answers. Sign-ins and workflows that call it need it back first.
 - **Access review settings.** Puts back whether group owners can manage access reviews of their groups.

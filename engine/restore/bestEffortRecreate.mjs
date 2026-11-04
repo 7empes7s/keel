@@ -71,6 +71,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   attributeSet: at(ENTRA, 'Protection', 'Custom security attributes'),
   customSecurityAttributeDefinition: at(ENTRA, 'Protection', 'Custom security attributes', '<attribute set>'),
   accessPackageCatalog: at(ENTRA, 'Identity Governance', 'Entitlement management', 'Catalogs'),
+  accessPackageCatalogResource: at(ENTRA, 'Identity Governance', 'Entitlement management', 'Catalogs', '<catalog>', 'Resources'),
   accessPackageAssignmentPolicy: at(ENTRA, 'Identity Governance', 'Entitlement management', 'Access packages', '<package>', 'Policies'),
   accessPackageAssignment: at(ENTRA, 'Identity Governance', 'Entitlement management', 'Access packages', '<package>', 'Assignments'),
   accessPackageResourceRoleScope: at(ENTRA, 'Identity Governance', 'Entitlement management', 'Access packages', '<package>', 'Resource roles'),

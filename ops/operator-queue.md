@@ -14495,7 +14495,7 @@ item that needs it stays untouched.
   `discovery.unidentified` (expected 0), `unknownFields` (expected `{}`), and the message encryption resource key. If any of
   those differ, report them verbatim (field names only, never values).
 
-### Q309: Make a KEEL-RT- site that carries a sensitivity label and restricted-access groups, then rerun the Q276 SharePoint reads (test tenant fixture + reads, after PR #948), about 25 minutes
+### Q310: Make a KEEL-RT- site that carries a sensitivity label and restricted-access groups, then rerun the Q276 SharePoint reads (test tenant fixture + reads, after PR #948), about 25 minutes
 - Drafted by the "Show licence-gated SharePoint reads plainly" thread (2026-11-04), from the Q276 Result. Two reads were not
   proven in Q276:
   - `sharepoint-tenant.restricted-search-allowed-sites`: refused with "You do not have the required license to perform this

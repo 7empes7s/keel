@@ -28,20 +28,54 @@ export function keysToName(keys: (string | null | undefined)[]): string[] {
   return [...out];
 }
 
+// Each wanted key's newest saved version that has a name, or its newest version when none
+// has one, from the tenant's backups.
+//
+// This used to read every saved version of each key and sort them: an object kept in
+// every hourly backup has hundreds, so the Alerts page's ~1,200 keys took 9.2 s on live
+// (operator queue Q307). Now each key is first checked to be saved at all (one index
+// probe), then the tenant's backups are walked newest first (snapshot_tenant_started_idx)
+// until one holds it. Its name is read from that backup's version; only when that has no
+// name are older backups walked, stopping at the first that has one. Each walk is a
+// LATERAL ... LIMIT 1 per key, so the planner cannot turn it into a read of every
+// version. Probes are scalar (SELECT 1 ... LIMIT 1), never EXISTS (see
+// engine/insights/names.mjs). Only the chosen version's payload is read in full.
+const SAVED_NAMES_SQL = `
+  WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key),
+  newest AS (
+    SELECT w.key, b.id AS snapshot_id, b.started_at
+      FROM wanted w
+      CROSS JOIN LATERAL (
+        SELECT s.id, s.started_at FROM snapshot s
+         WHERE s.tenant_ref = $1
+           AND (SELECT 1 FROM resource_version rv WHERE rv.natural_key = w.key AND rv.snapshot_id = s.id LIMIT 1) IS NOT NULL
+         ORDER BY s.started_at DESC LIMIT 1) b
+     WHERE (SELECT 1 FROM resource_version rv WHERE rv.natural_key = w.key LIMIT 1) IS NOT NULL
+  ),
+  -- The newest version with a name, else the newest version: UNION ALL ... LIMIT 1
+  -- stops at the first branch that returns a row.
+  picked AS (
+    SELECT v.* FROM newest n
+     CROSS JOIN LATERAL (
+       (SELECT rv.natural_key, rv.resource_type, rv.payload FROM snapshot s
+          JOIN resource_version rv ON rv.natural_key = n.key AND rv.snapshot_id = s.id
+         WHERE s.tenant_ref = $1 AND s.started_at <= n.started_at AND ${NAME_SQL} IS NOT NULL
+         ORDER BY s.started_at DESC LIMIT 1)
+       UNION ALL
+       (SELECT rv.natural_key, rv.resource_type, rv.payload FROM resource_version rv
+         WHERE rv.natural_key = n.key AND rv.snapshot_id = n.snapshot_id)
+       LIMIT 1) v
+  )
+  SELECT rv.natural_key, rv.resource_type, ${NAME_SQL} AS name,
+         CASE WHEN rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
+         ${templateFamilySql({ typeExpr: "rv.resource_type", payloads: ["rv.payload"], tenantExpr: "$1" })} AS template_family,
+         rv.payload->'isBuiltIn' AS is_built_in
+    FROM picked rv`;
+
 export async function savedNames(client: QueryClient, tenantRef: string, keys: (string | null | undefined)[]): Promise<NamedKeys> {
   const wanted = keysToName(keys);
   if (wanted.length === 0) return {};
-  const { rows } = await client.query(
-    `SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, ${NAME_SQL} AS name,
-            CASE WHEN rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
-            ${templateFamilySql({ typeExpr: "rv.resource_type", payloads: ["rv.payload"], tenantExpr: "s.tenant_ref" })} AS template_family,
-            rv.payload->'isBuiltIn' AS is_built_in
-       FROM resource_version rv
-       JOIN snapshot s ON s.id = rv.snapshot_id
-      WHERE s.tenant_ref = $1 AND rv.natural_key = ANY($2::text[])
-      ORDER BY rv.natural_key, (${NAME_SQL} IS NULL), s.started_at DESC`,
-    [tenantRef, wanted, DERIVED_NAME_TYPES],
-  );
+  const { rows } = await client.query(SAVED_NAMES_SQL, [tenantRef, wanted, DERIVED_NAME_TYPES]);
   const names: NamedKeys = {};
   // App settings that carry no name (app consent, app permissions, owners, provisioning
   // jobs) are named from the apps and people they point to.

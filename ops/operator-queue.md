@@ -13025,13 +13025,14 @@ item that needs it stays untouched.
 - **Report:** B; capture exit codes and proven/notProven; evidence branch and commit; import counts; the run table; unknown
   fields per family; anything left in the tenant (expected: nothing, reads only).
 
-### Q275: Live read check of the Exchange audit, encryption and organization setting reads, then turn them on (read-only toward the tenant, after PR #796), about 15 minutes
+### Q275: Live read check of the Exchange audit, encryption and organization setting reads, then turn them on (read-only toward the tenant, after PR #938), about 15 minutes
 - Drafted by the "Back up Exchange encryption and audit settings" thread (2026-10-30). Code: PR #796. One new read-only
   workload, shipped `disabled` until a live read record is imported: `exchange-org-config` (Get-AdminAuditLogConfig,
   Get-IRMConfiguration, Get-OMEConfiguration, Get-PerimeterConfig, Get-AvailabilityConfig, Get-AvailabilityAddressSpace,
   Get-MessageClassification, Get-PolicyTipConfig, Get-ResourceConfig, Get-PartnerApplication, Get-OnPremisesOrganization).
   No parameters. Declared fields come from Microsoft's documentation, not a live answer; this item tells us which to drop.
-- Needs: /opt/keel-live at the #796 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
+- Needs: PR #796 was closed unmerged (2026-11-04), superseded by #938, which carries the same workload unchanged. Wait for #938
+  to merge and deploy (`test -f /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedExchangeOrgConfig`); scripts are mounted from the checkout, so no image rebuild
   is expected. Independent of Q280 (either can run first).
 - Status: todo

@@ -1,7 +1,7 @@
 // tools/merge-gate.sh must tie the merge to the head commit it checked: the label must still be
 // there, a required review must be on that commit, a later comment must not clear a change request,
 // every page of check runs counts, and the merge call is pinned to the checked SHA. The label must
-// be newer than the head commit's arrival (its first pull_request run of merge-gate.yml).
+// be newer than the head commit's arrival (its first check suite, created by GitHub on push).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -33,7 +33,7 @@ function run({
       ...labelledAt.map((created_at) => ({ event: 'labeled', label: { name: 'automerge' }, created_at })),
       { event: 'unlabeled', label: { name: 'automerge' }, created_at: '2026-01-01T13:00:00Z' },
     ]],
-    'actions/workflows/merge-gate.yml/runs': [{ workflow_runs: arrivedAt.map((created_at) => ({ created_at })) }],
+    [`commits/${HEAD}/check-suites`]: [{ check_suites: arrivedAt.map((created_at) => ({ created_at })) }],
     [`commits/${HEAD}/check-runs`]: checkPages ?? [{ check_runs: [{ name: 'Portal tests', status: 'completed', conclusion: 'success' }] }],
     'actions/workflows/portal.yml/runs': [{ workflow_runs: [{ status: 'completed', conclusion: 'success' }] }],
     'pulls/7': [{ state: 'open', draft: false, mergeable: true, mergeable_state: 'clean', head: { sha: HEAD }, base: { ref: base }, user: { login: 'builder' }, labels: labels.map((name) => ({ name })) }],
@@ -167,9 +167,22 @@ test('a head with no recorded arrival is treated as newer than the label', () =>
   assert.equal(r.merge, undefined);
 });
 
-test('the arrival query is pinned to pull_request runs of this head', () => {
+test('the arrival query reads the check suites of this head', () => {
   const r = run({ requireReview: false });
-  assert.ok(r.calls.some((c) => c.includes('repos/o/r/actions/workflows/merge-gate.yml/runs?event=pull_request&head_sha=cccc&')));
+  assert.ok(r.calls.some((c) => c.includes('repos/o/r/commits/cccc/check-suites?')));
+});
+
+// #941: pushed and opened at 02:00:42, labelled at 02:00:43. Its first workflow run came at
+// 02:00:46, so dating the head by workflow runs would have refused it for good.
+test('a label added a second after the push counts', () => {
+  const r = run({ requireReview: false, labelledAt: ['2026-11-04T02:00:43Z'], arrivedAt: ['2026-11-04T02:00:46Z', '2026-11-04T02:00:42Z'] });
+  assert.match(r.out, /#7: merging/);
+});
+
+test('a label in the same second as the push is refused', () => {
+  const r = run({ requireReview: false, labelledAt: ['2026-11-04T02:00:42Z'], arrivedAt: ['2026-11-04T02:00:42Z'] });
+  assert.match(r.out, /#7: automerge label predates head/);
+  assert.equal(r.merge, undefined);
 });
 
 test('a PR into a branch other than master is not merged', () => {

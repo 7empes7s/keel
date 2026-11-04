@@ -34,16 +34,18 @@ check_pr() {
   jq -e 'any(.labels[]?; .name == "automerge")' <<<"$pr" >/dev/null || { echo "#$n: no automerge label"; return 1; }
   [ "$(jq -r .base.ref <<<"$pr")" = "master" ] || { echo "#$n: not based on master"; return 1; }
   sha=$(jq -r .head.sha <<<"$pr")
-  # The label must have been added after this head arrived. Every open or push starts a
-  # merge-gate run on the new head (its job is skipped), so the first such run dates the head;
-  # the server sets that time, unlike commit dates. No run yet means the head is newer than
-  # any label. This holds even if automerge-label.yml has not dropped the label yet.
+  # The label must have been added after this head arrived. GitHub creates the head's check
+  # suites the moment the commit is pushed, so the first one dates the head; the server sets
+  # that time, unlike commit dates. Workflow runs are no use here: they are created seconds
+  # after the event, later than a label added right after opening the PR. No suite yet means
+  # the head is newer than any label. This holds even if automerge-label.yml has not dropped
+  # the label yet. Times are whole seconds, so a label in the same second as the push is refused.
   local labelled arrived
   labelled=$(gh api --paginate "repos/$repo/issues/$n/events?per_page=100" \
       -q '.[] | select(.event == "labeled" and .label.name == "automerge") | .created_at' | sort | tail -n 1) \
     || { echo "#$n: could not read label events"; return 1; }
-  arrived=$(gh api --paginate "repos/$repo/actions/workflows/merge-gate.yml/runs?event=pull_request&head_sha=$sha&per_page=100" \
-      -q '.workflow_runs[].created_at' | sort | head -n 1) \
+  arrived=$(gh api --paginate "repos/$repo/commits/$sha/check-suites?per_page=100" \
+      -q '.check_suites[].created_at' | sort | head -n 1) \
     || { echo "#$n: could not read when $sha arrived"; return 1; }
   if [ -z "$labelled" ] || [ -z "$arrived" ] || [[ ! "$labelled" > "$arrived" ]]; then
     echo "#$n: automerge label predates head $sha; add it again after review"; return 1

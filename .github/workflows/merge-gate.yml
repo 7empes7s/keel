@@ -22,9 +22,9 @@ on:
   pull_request_review:
     types: [submitted]
   pull_request:
-    # opened, reopened and synchronize start a run whose job is skipped: that run records when
-    # each head commit arrived, which the gate compares with the label's time.
-    types: [labeled, ready_for_review, opened, reopened, synchronize]
+    # No synchronize: every push removes the label (automerge-label.yml), so it can't make a
+    # PR mergeable. The label's time is compared with the head's first check suite instead.
+    types: [labeled, ready_for_review]
   workflow_dispatch:
 
 concurrency:

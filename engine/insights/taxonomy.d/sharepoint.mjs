@@ -9,7 +9,7 @@ export default Object.freeze({
   // the service has is listed, even with no type yet: `match` places a kind Keel has
   // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
   categories: Object.freeze([
-    { key: 'sites', name: 'Sites and OneDrive', types: ['sharepoint-site-settings', 'sharepoint-structure', 'onedrive-site-settings'], match: /site|structure|onedrive|hub|library/ },
+    { key: 'sites', name: 'Sites and OneDrive', types: ['sharepoint-site-settings', 'sharepoint-structure', 'onedrive-site-settings', 'sharepoint-site-access', 'onedrive-access'], match: /site|structure|onedrive|hub|library/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role|admin/ },
     { key: 'access', name: 'Sharing and access control', types: [], match: /sharing|access|guest|unmanaged|ipaddress|location/ },
     { key: 'tenant', name: 'Tenant settings', types: ['sharepoint-tenant', 'sharepointSettings', 'itemInsightsSettings'], match: /setting|tenant|insight|config/ },
@@ -36,6 +36,18 @@ export default Object.freeze({
       name: 'SharePoint admin center setting',
       priority: 'high',
       reason: 'Sets how everything in SharePoint and OneDrive can be shared, synced and reached from unmanaged devices.',
+    },
+    // Who can reach a site or OneDrive, compared between two content backups
+    // (engine/insights/sharingExposure.mjs). Risk flags raise an opened-up one.
+    'sharepoint-site-access': {
+      name: 'Site access',
+      priority: 'normal',
+      reason: 'Who can reach a site: its groups, guests, owners and sharing links.',
+    },
+    'onedrive-access': {
+      name: 'OneDrive access',
+      priority: 'normal',
+      reason: 'Who can reach the files in a OneDrive: Everyone grants and sharing links.',
     },
     'onedrive-site-settings': {
       name: 'OneDrive setting',

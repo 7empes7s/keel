@@ -4,7 +4,7 @@
 import { FEED_GROUPINGS, groupChangeFeed } from "../../engine/insights/feedGroups.mjs";
 import { csvLine } from "@/lib/csv";
 
-export type FeedSource = "drift" | "service" | "audit";
+export type FeedSource = "drift" | "service" | "backup" | "audit";
 export type FeedGrouping = "day" | "type" | "service" | "priority" | "person";
 export type FeedPriority = "critical" | "high" | "normal" | "low";
 
@@ -85,6 +85,7 @@ export const PRIORITY_WORDS: Record<FeedPriority, string> = { critical: "Critica
 export const SOURCE_WORDS: Record<FeedSource, { label: string; about: string }> = {
   drift: { label: "Approved setup", about: "Found by a backup: differs from the approved setup" },
   service: { label: "Service read", about: "Found by a service settings read: differs from the read before" },
+  backup: { label: "Content backup", about: "Found by a content backup: who can reach a site or OneDrive differs from the backup before" },
   audit: { label: "Audit log", about: "Recorded by the Microsoft audit log" },
 };
 

@@ -549,7 +549,8 @@ export async function backupSharePointSites({
         // (the restore picks a backup by time). Unchanged permissions are still not stored.
         const hash = createHash('sha256').update(canonicalJson(value)).digest('hex');
         entry.refs.permissions = await putSetting('site/permissions', value, `sha256:${hash}@${startedAt}`, {
-          metadata: { summary: permissionsSummary(value) }, summary: PERMISSIONS_SUMMARY_VERSION,
+          // The site's name too, so the change feed can name a site whose access changed.
+          metadata: { summary: permissionsSummary(value), siteName: discovered.displayName ?? null }, summary: PERMISSIONS_SUMMARY_VERSION,
         });
         if (failed.length) throw Object.assign(new Error(`${failed.length} permission read(s) failed, first ${failed[0].what}: ${failed[0].error}`), { status: failed[0].httpStatus });
       });

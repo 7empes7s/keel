@@ -449,6 +449,10 @@ for (const operation of ['create', 'update']) {
 }
 registerAll('roleEligibilitySchedule', '/roleManagement/directory/roleEligibilityScheduleRequests', ['create']);
 recordFixtureProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
+// Issue #991: an active time-bound assignment an admin made, through its own
+// schedule request; never an activation, never updated or removed.
+registerAll('roleAssignmentSchedule', '/roleManagement/directory/roleAssignmentScheduleRequests', ['create']);
+recordFixtureProof('roleAssignmentSchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
 registerAll('unifiedRoleManagementPolicy', '/policies/roleManagementPolicies', ['update']);
 recordFixtureProof('unifiedRoleManagementPolicy', 'update', 'engine/roadmap/admin-role-fidelity.test.mjs');
 

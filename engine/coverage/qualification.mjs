@@ -109,7 +109,7 @@ export const TYPE_DECISIONS = Object.freeze({
   // Roadmap task-151: PIM role settings, their role bindings and active schedules.
   unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is written only once approved (restore approvals)'),
   unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
-  roleAssignmentSchedule: incomplete('a time-bound active assignment needs the eligibility expiry contract plus a check that an activation is not replayed'),
+  roleAssignmentSchedule: automated('unifiedroleassignmentschedule', 'issue #991 subset: create of an active time-bound assignment an admin made, through an adminAssign schedule request that keeps the snapshot end date; an activation is never replayed; it is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for Entra ID; update and removal are not registered'),
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate'),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
   namedLocation: automated('namedlocation', 'create/update/delete are registered'),
@@ -362,6 +362,8 @@ recordRemappingProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expa
 // Roadmap task-151: an eligibility whose group or custom role was recreated in
 // the same run is requested for the NEW principal and role ids.
 recordRemappingProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
+// Issue #991: the same for an active time-bound assignment.
+recordRemappingProof('roleAssignmentSchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
 // Restore gaps batch 19: a dependency or supersedence between apps recreated
 // in the same run is created between the NEW app ids.
 recordRemappingProof('mobileAppRelationship', 'create', 'engine/restore/intuneAppLinks.test.mjs');
@@ -929,8 +931,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   unifiedRoleManagementPolicy: subset('identity-application', 'PATCH /policies/roleManagementPolicies/{id}/rules/{ruleId}', 'RoleManagementPolicy.ReadWrite.Directory',
     'update of the expiration, enablement and approval rules is fixture-tested; a change that weakens protection is withheld until its high-impact approval is checked; approvers must exist; policies are never created or deleted'),
   unifiedRoleManagementPolicyAssignment: byHand('identity-application', null, 'none', 'Entra binds one settings policy to each role; the binding is read to name the role, never written'),
-  roleAssignmentSchedule: research('identity-application', 'POST /roleManagement/directory/roleAssignmentScheduleRequests', 'RoleAssignmentSchedule.ReadWrite.Directory',
-    'active time-bound assignments; permanent ones are restored as roleAssignment, and a time-bound restore needs the same request and expiry contract as eligibility plus a check that an activation is not replayed'),
+  roleAssignmentSchedule: subset('identity-application', 'POST /roleManagement/directory/roleAssignmentScheduleRequests', 'RoleAssignmentSchedule.ReadWrite.Directory',
+    'create (adminAssign with a justification) of an active time-bound assignment an admin made is fixture-tested and keeps the snapshot end date; an activation is never replayed; an expired or group-inherited one is not restored, and a permanent one is restored as roleAssignment; an existing one is matched by principal, role and scope and never requested twice; it is held until a "changes admin access" approval; update and removal are refused'),
   accessReviewScheduleDefinition: research('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
     'review history and decisions cannot be recreated; only the definition could be'),
   accessPackage: subset('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',

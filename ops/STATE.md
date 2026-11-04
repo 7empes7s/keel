@@ -104,6 +104,8 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   `identityUserFlowAttribute` create/update on a `B2X_1_KEEL-RT-148-flow` flow that asks for one custom
   attribute `KEEL-RT-148Attr` (`FIXTURE_GUIDANCE` in `tools/qualification/live-gate-plan.mjs`). Check the
   `$expand=apiConnectorConfiguration/...` read and `setOrder` against the live tenant.
+- `roleAssignmentSchedule.create` (#991, time-limited active admin roles) has no live record yet: capture it with
+  a KEEL-RT- fixture (carla, the fixture role, the fixture unit, ending in 2 days), approved as "Changes admin access".
 - Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in
   `docs/roadmap/release-signoff.md`.
 - Entitlement management part 1 (#992): `accessPackage` create and update and

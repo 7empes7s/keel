@@ -46,7 +46,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
-import { CROSS_TENANT_TRUST_FIELDS, TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
+import { CROSS_TENANT_TRUST_FIELDS, TRUST_FIELDS, isTrustField } from './workloads/writeDeclarations.mjs';
 
 export const TENANT_POLICY_OPERATIONS_CONTRACT_VERSION = 1;
 
@@ -509,11 +509,26 @@ const METHOD_CONFIGURATIONS = '/policies/authenticationMethodsPolicy/authenticat
 const METHOD_COMMON_FIELDS = Object.freeze(['state', 'includeTargets', 'excludeTargets']);
 
 /**
+ * Issue #994: the method fields go through the same trust check as a record's
+ * fields. A method field that is a certificate or sign-in field (TRUST_FIELDS
+ * for authenticationMethodsPolicy, or a name that says so) is never writable:
+ * declaring one throws, so the list cannot carry one into a PATCH body again.
+ */
+export function checkedMethodFields(declared) {
+  return Object.freeze(Object.fromEntries(Object.entries(declared).map(([id, fields]) => {
+    const trust = fields.filter((field) => isTrustField('authenticationMethodsPolicy', field));
+    if (trust.length) throw new Error(`authentication method ${id} declares trust, certificate or sign-in fields a restore never writes: ${trust.join(', ')}`);
+    return [id, Object.freeze([...METHOD_COMMON_FIELDS, ...fields])];
+  })));
+}
+
+/**
  * The fields a method configuration PATCH may carry, per method id. Anything
  * else in the snapshot (a server-owned or newer property) is never sent and
- * never compared.
+ * never compared. The certificate-based authentication method writes only its
+ * state and who it targets; its certificate settings are METHOD_TRUST_FIELDS.
  */
-export const METHOD_CONFIGURATION_FIELDS = Object.freeze(Object.fromEntries(Object.entries({
+export const METHOD_CONFIGURATION_FIELDS = checkedMethodFields({
   email: ['allowExternalIdToUseEmailOtp'],
   fido2: ['isAttestationEnforced', 'isSelfServiceRegistrationAllowed', 'keyRestrictions'],
   hardwareoath: [],
@@ -524,8 +539,59 @@ export const METHOD_CONFIGURATION_FIELDS = Object.freeze(Object.fromEntries(Obje
   temporaryaccesspass: ['defaultLength', 'defaultLifetimeInMinutes', 'isUsableOnce', 'maximumLifetimeInMinutes', 'minimumLifetimeInMinutes'],
   verifiablecredentials: [],
   voice: ['isOfficePhoneAllowed'],
-  x509certificate: ['authenticationModeConfiguration', 'certificateUserBindings'],
-}).map(([id, fields]) => [id, Object.freeze([...METHOD_COMMON_FIELDS, ...fields])])));
+  x509certificate: [],
+});
+
+/**
+ * Issue #994: method settings that are certificate or sign-in fields. A
+ * difference is shown as a step for a person and never written: which
+ * certificate fields make a sign-in single- or multi-factor, and which
+ * certificate field names the user.
+ */
+export const METHOD_TRUST_FIELDS = Object.freeze({
+  x509certificate: TRUST_FIELDS.authenticationMethodsPolicy,
+});
+
+const CERTIFICATE_METHOD_PORTAL_PATH = 'Entra admin center > Protection > Authentication methods > Policies > Certificate-based authentication > Configure';
+
+const shortValue = (value) => {
+  const text = JSON.stringify(comparable(value ?? null) ?? null);
+  return text.length > 300 ? `${text.slice(0, 297)}...` : text;
+};
+
+/**
+ * The step for a person when a method's certificate settings in the backup
+ * differ from the live ones (backup and live values shown), otherwise null.
+ */
+export function methodTrustCompletion(resource) {
+  if (resource?.resourceType !== 'authenticationMethodsPolicy') return null;
+  const liveConfigs = resource.live?.payload?.authenticationMethodConfigurations ?? [];
+  const differences = [];
+  for (const config of resource.payload?.authenticationMethodConfigurations ?? []) {
+    const id = String(config?.id ?? '').toLowerCase();
+    const current = liveConfigs.find((entry) => String(entry?.id ?? '').toLowerCase() === id) ?? null;
+    for (const field of METHOD_TRUST_FIELDS[id] ?? []) {
+      if (config[field] === undefined || sameValue(config[field], current?.[field])) continue;
+      differences.push({ method: config.id, field, backup: config[field], live: current?.[field] ?? null });
+    }
+  }
+  if (differences.length === 0) return null;
+  const fields = [...new Set(differences.map((entry) => entry.field))];
+  return Object.freeze({
+    kind: 'manual-setting', requirement: 'certificateSignInSettings', fields: Object.freeze(fields),
+    portalPath: CERTIFICATE_METHOD_PORTAL_PATH,
+    differences: Object.freeze(differences.map((entry) => Object.freeze(entry))),
+    description: `The certificate-based authentication settings (${fields.join(', ')}) differ from the backup. `
+      + 'They decide which certificate fields name the user and whether a certificate sign-in counts as single- or multi-factor, so a wrong value can let a certificate sign in as someone else or lock people out. '
+      + `A restore never changes them. ${differences.map((entry) => `${entry.field}: backup ${shortValue(entry.backup)}, live ${shortValue(entry.live)}`).join('; ')}. `
+      + `Review them in ${CERTIFICATE_METHOD_PORTAL_PATH}, and change them by hand if needed.`,
+  });
+}
+
+/** The step for trust settings a restore never writes (cross-tenant trust, certificate sign-in), or null. */
+export function tenantPolicyTrustCompletion(resource, verb) {
+  return crossTenantTrustCompletion(resource, verb) ?? (verb === 'update' ? methodTrustCompletion(resource) : null);
+}
 
 /**
  * The allowlisted part of one method configuration, without annotations. A
@@ -685,11 +751,13 @@ export function tenantPolicyWriteRefusal(resource, verb, { lockoutGate = null, m
       return Object.freeze({ ...refusal('skipped', `manual: ${reason}`), completion });
     }
   }
-  // Cross-tenant trust is never written: when it is the only difference, the
-  // update is skipped with the step to change it by hand.
-  const crossTenantTrust = verb === 'update' ? crossTenantTrustCompletion(resource, verb) : null;
-  if (crossTenantTrust && changedFields(entry, resource.payload, resource.live.payload).length === 0) {
-    return Object.freeze({ ...refusal('skipped', `manual: ${crossTenantTrust.description}`), completion: crossTenantTrust });
+  // Trust settings (cross-tenant trust, certificate sign-in settings) are never
+  // written: when they are the only difference, the update is skipped with the
+  // step to change them by hand.
+  const trust = verb === 'update' ? tenantPolicyTrustCompletion(resource, verb) : null;
+  if (trust && changedFields(entry, resource.payload, resource.live.payload).length === 0
+    && (!entry.methodConfigurations || methodConfigurationWrites(resource, resource.payload).length === 0)) {
+    return Object.freeze({ ...refusal('skipped', `manual: ${trust.description}`), completion: trust });
   }
   if (entry.lockout) {
     if (!lockoutGate || typeof lockoutGate.evaluate !== 'function') {

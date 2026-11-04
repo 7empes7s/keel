@@ -104,6 +104,11 @@ export const TRUST_FIELDS = Object.freeze({
   // A lifecycle workflow custom extension: which Logic App it calls (endpointConfiguration)
   // and how Entra signs in to it (authenticationConfiguration, the app and token it trusts).
   lifecycleWorkflowCustomTaskExtension: Object.freeze(['authenticationConfiguration', 'endpointConfiguration']),
+  // The certificate-based authentication method of the authentication methods policy
+  // (tenantPolicyOperations.mjs METHOD_CONFIGURATION_FIELDS): which certificate fields
+  // decide single- or multi-factor sign-in, and which certificate field names the user.
+  // A wrong value lets a certificate sign in as someone else, or locks users out.
+  authenticationMethodsPolicy: Object.freeze(['authenticationModeConfiguration', 'certificateUserBindings']),
 });
 // `signin` names a sign-in endpoint or setting, not a device's failed sign-in count or its
 // sign-in options page (Intune passcodeSignInFailureCountBeforeWipe, settingsBlockSignInOptionsPage).

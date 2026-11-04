@@ -37,9 +37,10 @@ import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } fr
 import { exchangeOrgAccessActivation, exchangeOrgDefaultsActivation } from '../collect/workloads/exchangeOrgPolicies.mjs';
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
-import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
+import { pnpSiteReadsActivation } from '../collect/workloads/sharepoint.mjs';
 import { purviewAuditRetentionActivation, purviewClassifiersActivation } from '../collect/workloads/purviewDlpSupport.mjs';
 import { sharePointStructureActivation } from '../collect/workloads/sharepointStructure.mjs';
+import { sharePointTenantActivation } from '../collect/workloads/sharepointTenant.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsCollaborationActivation, teamsMeetingSettingsActivation } from '../collect/workloads/teamsCollaboration.mjs';
@@ -76,13 +77,14 @@ const ACTIVATION = {
   'purview-classifiers': purviewClassifiersActivation,
   'purview-audit-retention': purviewAuditRetentionActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
-  'sharepoint-site-settings': siteSharingActivation,
+  'sharepoint-site-settings': pnpSiteReadsActivation,
   'sharepoint-structure': sharePointStructureActivation,
+  'sharepoint-tenant': sharePointTenantActivation,
 };
 const TABLES = {
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork', 'AllowedTeamsCollaboration'],
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedExchangeOrgConfig', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditRetention'],
-  'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
+  'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure', 'AllowedPnPTenant'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).
 const SCRIPT = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');

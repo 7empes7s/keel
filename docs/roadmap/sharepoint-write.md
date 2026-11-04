@@ -23,7 +23,7 @@ observes:
 | Site `displayName`, `name` | Manual: KEEL does not write site properties |
 | Site `appPermissionGrants` | Manual: a grant gives an application access to site content, so a person re-grants it |
 | Site `webUrl`, `hostname`, `createdDateTime`, `lastModifiedDateTime` | Excluded: server-owned, never written |
-| Per-site sharing, lock state, label, access policy, guest expiry | Manual: not read by KEEL (needs the SharePoint admin interface) |
+| Per-site sharing, lock state, label, access policy, guest expiry | Manual: read from `Get-PnPTenantSite` once its read is live-qualified (`sharepoint.site-sharing`, `sharepoint.site-settings`), never written by KEEL |
 
 **Flow:**
 1. `loadSharePointSource` reads a recorded task-102 collection.

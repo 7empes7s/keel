@@ -49,6 +49,9 @@ interface SectionRoute {
   // A route that belongs to the section but is not a sub-item of its own (a redirect
   // or a detail page reached from the section's main page).
   hidden?: boolean;
+  // Current only on this exact path, for a page whose sub-pages sit beside it in the
+  // menu (/restore and /restore/follow-up-steps).
+  exact?: boolean;
 }
 
 export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
@@ -61,7 +64,11 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/coverage", label: "Setting types", gate: null, hidden: true },
   ],
   Restore: [
-    { href: "/restore", label: "Restore settings", gate: null, aliases: "restore put back undo" },
+    // The restore areas in the order people use them: start a restore, finish its
+    // follow-up steps, look back at past ones.
+    { href: "/restore", label: "Restore settings", gate: null, exact: true, aliases: "restore put back undo" },
+    { href: "/restore/follow-up-steps", label: "Follow-up steps", gate: null, aliases: "follow-ups manual steps by hand new secrets finish restore" },
+    { href: "/restore/past-restores", label: "Past restores", gate: null, aliases: "restore jobs history checks dry runs failed restores" },
     { href: "/incidents", label: "Incidents", gate: null },
     { href: "/resilience", label: "Resilience", gate: "canRead", aliases: "recovery point recovery time drills off-site copy" },
     { href: "/emergency-access", label: "Emergency access", gate: "canRead", aliases: "readiness break glass emergency accounts sign-in test" },
@@ -71,6 +78,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/approved-setups", label: "Approved setups", gate: null, aliases: "baselines approved setup" },
     { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare backups tenants differences side by side" },
     { href: "/compliance", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
+    { href: "/intune-baselines", label: "Intune baselines", gate: null, aliases: "intune security baselines microsoft recommended settings catalog windows defender edge" },
   ],
   Reports: [
     { href: "/reports", label: "Value report", gate: "canRead", aliases: "reports outcomes verified value hours saved export" },

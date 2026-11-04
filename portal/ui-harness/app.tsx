@@ -47,16 +47,19 @@ import { PolicyPage } from "@/components/policies/policy-page";
 import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
-import { lastRestoreTile } from "@/lib/restore-view";
+import { lastRestoreTile, pastRestoresVerdict } from "@/lib/restore-view";
+import { RestoreFollowUps, RestoreFollowUpsAlert } from "@/components/restore-follow-ups";
 import { JobPageBody } from "@/components/job-page-body";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices, ScubaListsView } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OpenFollowUpWork, OwnCheckChoices, ScubaListsView } from "@/lib/types";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
+import { IntuneBaselinesPage } from "@/components/compliance/intune-baselines-page";
+import { baselinesStatus, shapeBaselines, type EngineBaselineResults } from "@/lib/intune-baselines-view";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type EngineRef, type RowReferences } from "@/lib/sentences";
@@ -1174,6 +1177,45 @@ const liveCompliance = (legacy: ComplianceFinding["details"]): ComplianceData =>
       mailLines(MAIL_POLICIES.slice(0, 5), [["EnableFileFilter", true, false], ["ZapEnabled", true, false]], () => false), { detailCounts: { checked: 10, failing: 0 } }),
   ],
 });
+// Intune security baselines: two current baselines, an older Windows version, and every
+// result: matches, a different value, a conflict between two policies, not configured.
+const ibCounts = (settings: EngineBaselineResults["baselines"][number]["settings"]) => {
+  const totals = { conflict: 0, different: 0, "not-configured": 0, unknown: 0, match: 0 };
+  for (const setting of settings) totals[setting.result] += 1;
+  return totals;
+};
+const IB_WIN = "device_vendor_msft_policy_config";
+const ibSetting = (id: string, name: string, category: string | null, expected: string | null, result: EngineBaselineResults["baselines"][number]["settings"][number]["result"], setBy: [string, string][] = []) => ({
+  id: `${IB_WIN}_${id}`, name, category, expected: expected === null ? null : [expected], labels: { "1": "Enabled", "0": "Disabled", block: "Block", audit: "Audit mode" },
+  result, setBy: setBy.map(([policyName, value]) => ({ policyName, values: [value] })),
+});
+const IB_WINDOWS_SETTINGS = [
+  ibSetting("defender_allowrealtimemonitoring", "Allow realtime monitoring", "Defender", "1", "match", [["KEEL-RT-Antivirus", "1"]]),
+  ibSetting("defender_allowcloudprotection", "Allow cloud protection", "Defender", "1", "conflict", [["KEEL-RT-Antivirus", "1"], ["KEEL-RT-Pilot devices", "0"]]),
+  ibSetting("defender_puaprotection", "PUA protection", "Defender", "1", "different", [["KEEL-RT-Antivirus", "0"]]),
+  ibSetting("asr_blockofficechildprocess", "Block all Office applications from creating child processes", "Attack Surface Reduction", "block", "different", [["KEEL-RT-ASR rules", "audit"]]),
+  ibSetting("asr_blockcredentialstealing", "Block credential stealing from the Windows local security authority", "Attack Surface Reduction", "block", "match", [["KEEL-RT-ASR rules", "block"]]),
+  ibSetting("lanman_insecureguest", "Enable insecure guest logons", "Lanman Workstation", "0", "not-configured"),
+  ibSetting("smartscreen_enable", "Configure Windows Defender SmartScreen", "SmartScreen", "1", "match", [["KEEL-RT-Browser", "1"]]),
+  ibSetting("bitlocker_encryptionmethod", "Choose drive encryption method and cipher strength", "BitLocker", null, "match", [["KEEL-RT-BitLocker", "XTS-AES 256"]]),
+  ...Array.from({ length: 30 }, (_, index) => ibSetting(`admx_setting_${index}`, `Administrative template setting ${String(index + 1).padStart(2, "0")}`, index % 2 ? "Administrative Templates" : "Local Policies Security Options", "1", index % 5 === 0 ? "not-configured" : "match", index % 5 === 0 ? [] : [["KEEL-RT-Security options", "1"]])),
+];
+const IB_EDGE_SETTINGS = [
+  ibSetting("edge_sslerroroverride", "Allow users to proceed from the HTTPS warning page", "Microsoft Edge", "0", "different", [["KEEL-RT-Browser", "1"]]),
+  ibSetting("edge_smartscreen", "Configure Microsoft Defender SmartScreen", "Microsoft Edge", "1", "match", [["KEEL-RT-Browser", "1"]]),
+];
+const INTUNE_BASELINES = shapeBaselines({
+  templates: { readAt: "2026-10-02T06:00:00.000Z", outcome: "partial", error: null, failures: [{ templateId: "tmpl-m365", name: "Microsoft 365 Apps for Enterprise baseline", error: "Graph 500" }] },
+  lastFailure: null,
+  policies: { snapshotId: "412", readAt: "2026-10-02T08:10:00.000Z", count: 14 },
+  baselines: [
+    { templateId: "tmpl-win-24h2", name: "Security Baseline for Windows 10 and later", version: "Version 24H2", state: "active", platforms: "windows10", counts: ibCounts(IB_WINDOWS_SETTINGS), settings: IB_WINDOWS_SETTINGS },
+    { templateId: "tmpl-win-23h2", name: "Security Baseline for Windows 10 and later", version: "Version 23H2", state: "superseded", platforms: "windows10", counts: ibCounts(IB_WINDOWS_SETTINGS.slice(0, 4)), settings: IB_WINDOWS_SETTINGS.slice(0, 4) },
+    { templateId: "tmpl-edge-128", name: "Security Baseline for Microsoft Edge", version: "Version 128", state: "active", platforms: "windows10", counts: ibCounts(IB_EDGE_SETTINGS), settings: IB_EDGE_SETTINGS },
+  ],
+}, now);
+const INTUNE_BASELINES_NEVER = shapeBaselines({ templates: null, lastFailure: null, policies: null, baselines: [] }, now);
+
 const LIVE_COMPLIANCE = liveCompliance(legacyLines("Block legacy sign-in (report-only pilot)", "KEEL-RT-20260908 Block Legacy Authentication"));
 // Two sign-in rules with the same name (#588): each keeps its own lines, numbered.
 const SAME_NAME_COMPLIANCE = liveCompliance(legacyLines("KEEL-RT-Block legacy sign-in (1 of 2)", "KEEL-RT-Block legacy sign-in (2 of 2)"));
@@ -1479,7 +1521,9 @@ function dashboard(posture: number): DashboardData {
     // The same open changes as the Changes page fixture (DRIFT), so tile links land on matching counts.
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 3 }, { blastRadius: "cosmetic", count: 2 }],
     openDriftTotal: posture === 0 ? 7 : 5,
-    driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
+    // 29 Sept is the day the approved setup was approved: its first check found 981
+    // settings that already differed, kept apart from the day's new changes (UI audit E2).
+    driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count, ...(index === 26 ? { firstCheck: 981 } : {}) })),
     // The buckets add up to the total, as coverageSummary makes them.
     coverage: { covered: 142, failed: posture === 0 ? 4 : 0, partial: 0, stale: 3, neverCollected: 4, notCovered: posture === 0 ? 13 : 17, unavailable: 1, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
@@ -1898,10 +1942,10 @@ const RESILIENCE: ResilienceData = {
     },
   },
   // More failed restores than the recovery attempts list: the alert takes the engine's count.
-  failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
+  failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore/past-restores?jobs=failed#restore-jobs-heading" },
   incidents: [{ incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", status: "open", openedAt: "2026-10-01T08:10:00Z" }, recommended: { snapshotId: "5a2be911-0000-4000-8000-000000000002", collectedAt: "2026-09-30T05:55:00Z" }, pins: 1 }],
   storage: { configured: true, provider: "local-disk", region: "on-prem datacenter A", boundary: null, immutability: "unsupported", generatedAt: "2026-10-01T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
-  followUps: { steps: 0, restores: 0, href: "/restore#follow-up" },
+  followUps: { steps: 0, restores: 0, href: "/restore/follow-up-steps" },
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,
@@ -1921,7 +1965,7 @@ const RESILIENCE_EMPTY: ResilienceData = {
     recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
     readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
   },
-  failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: "/restore?jobs=failed#restore-jobs-heading" },
+  failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: "/restore/past-restores?jobs=failed#restore-jobs-heading" },
   incidents: [],
   storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null },
 };
@@ -2064,7 +2108,7 @@ const VALUE_REPORT: ValueReport = {
     recoveryTime: { state: "measured", samples: 2, medianMs: 14 * 60_000, worstMs: 20 * 60_000, notCounted: 1, drills: 1, restores: 1 },
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
-    failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: { from: "2026-09-01T00:00:00.000Z", to: now, count: 2 }, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
+    failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: { from: "2026-09-01T00:00:00.000Z", to: now, count: 2 }, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore/past-restores?jobs=failed#restore-jobs-heading" },
   },
   // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
   backups: {
@@ -2705,7 +2749,20 @@ const RESTORE_CHANGES: RestoreChange[] = [
     [{ path: "state", before: "enabled", after: "disabled" }], { names: ["Sam Ortiz"], certain: true }),
 ];
 
-function HarnessRestore({ jobs }: { jobs: Job[] }) {
+// Restore follow-up steps: restore r9 left two, an older restore r10 one.
+// /restore/follow-up-steps/none and /restore/calm have none.
+const RESTORE_FOLLOW_UPS: OpenFollowUpWork = {
+  steps: 3,
+  restores: 2,
+  href: "/restore/follow-up-steps",
+  cards: [
+    { restoreRef: "7f3c0000-0000-4000-8000-000000000011", pending: 2, since: "2026-10-02T09:40:00Z", jobId: "r9", jobStatus: "succeeded", enforced: true, restoredAt: "2026-10-02T09:30:00Z", plan: PLAN_REF },
+    { restoreRef: "7f3c0000-0000-4000-8000-000000000010", pending: 1, since: "2026-09-28T15:00:00Z", jobId: "r10", jobStatus: "failed", enforced: true, restoredAt: "2026-09-28T14:55:00Z", plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010", resources: 3, snapshotAt: "2026-09-28T06:00:00Z" } },
+  ],
+};
+const NO_FOLLOW_UPS: OpenFollowUpWork = { steps: 0, restores: 0, href: "/restore/follow-up-steps", cards: [] };
+
+function HarnessRestore({ jobs, followUps = RESTORE_FOLLOW_UPS }: { jobs: Job[]; followUps?: OpenFollowUpWork }) {
   const params = useSearchParams();
   const chosen = RESTORE_SNAPSHOTS.find((snapshot) => snapshot.id === params.get("snapshot")) ?? RESTORE_SNAPSHOTS[3];
   const isNewest = chosen.id === RESTORE_SNAPSHOTS[0].id;
@@ -2716,10 +2773,30 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   return <>
     <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and nothing changes until it is approved." generatedAt={now} section="Restore"
       status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore settings" />
+    <RestoreFollowUpsAlert work={followUps} />
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} workloads={RESTORE_WORKLOADS} />
-    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} now={now} title="Restores and checks" /></div>
+  </>;
+}
+
+function HarnessRestoreFollowUps({ work }: { work: OpenFollowUpWork }) {
+  const { steps, restores } = work;
+  return <>
+    <PageHeader description="Work a restore leaves for a person, such as a new secret, a consent or a service check. Open a restore to finish its steps." generatedAt={now} section="Restore"
+      status={steps ? { tone: "soon", label: `${steps} open` } : { tone: "fine", label: "All done" }} title="Follow-up steps" />
+    <Verdict text={steps ? `${steps} ${steps === 1 ? "step is" : "steps are"} still open from ${restores === 1 ? "1 restore" : `${restores} restores`}. Open each restore to finish them.` : "Nothing to finish: no restore is waiting on a step by hand."} tone={steps ? "soon" : "fine"} />
+    <div data-layer="explanation"><RestoreFollowUps canRestore now={now} work={work} /></div>
+  </>;
+}
+
+function HarnessPastRestores({ jobs }: { jobs: Job[] }) {
+  const restores = jobs.filter((item) => item.kind.startsWith("restore"));
+  const verdict = pastRestoresVerdict(restores, now);
+  return <>
+    <PageHeader description="Every restore and every check before one, newest first, with who asked and how it ended." generatedAt={now} section="Restore" title="Past restores" />
+    <Verdict action={verdict.href ? { label: "Open it", href: verdict.href } : null} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={restores} now={now} title="Restores and checks" /></div>
   </>;
 }
 
@@ -2782,6 +2859,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <SchedulesPage canEdit={!viewer} canRun={!viewer} deferrals={SCHEDULE_DEFERRALS} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
     }
     case "/restore": return <HarnessRestore jobs={jobs} />;
+    case "/restore/calm": return <HarnessRestore followUps={NO_FOLLOW_UPS} jobs={jobs} />;
+    case "/restore/follow-up-steps": return <HarnessRestoreFollowUps work={RESTORE_FOLLOW_UPS} />;
+    case "/restore/follow-up-steps/none": return <HarnessRestoreFollowUps work={NO_FOLLOW_UPS} />;
+    case "/restore/past-restores": return <HarnessPastRestores jobs={jobs} />;
     case "/incidents": case "/incidents/viewer": return <IncidentsRoute viewer={path === "/incidents/viewer"} />;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
@@ -2841,7 +2922,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     // Item 5 (#548 review): a workload restore dry run that stopped on a settings file the server lacks.
     case "/jobs/r13": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r13", kind: "restore", params: { workloadRestore: { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-000000000013", targets: ["organization"] }, artifactId: "7f3c0000-0000-4000-8000-000000000013" }, error: SETTINGS_FILE_ERROR }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
-    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
+    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/settings": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" />
@@ -2851,7 +2932,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/approvals/solo": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for approval. Approval mode is Solo, so you can approve your own.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox approvalMode="solo" history={[{ ...APPROVAL_HISTORY[0], id: "a9e10000-0000-4000-8000-000000000160", requestedBy: MAROUANE.id, selfApproved: true, references: { ...APPROVAL_HISTORY[0].references!, people: { requested_by: MAROUANE, decided_by: MAROUANE } } }]} now={now} pending={[{ ...APPROVALS_PENDING[1], id: "a9e10000-0000-4000-8000-000000000161", requestedBy: MAROUANE.id, references: { ...APPROVALS_PENDING[1].references!, people: { requested_by: MAROUANE } } }]} viewerId={MAROUANE.id} />
       <ApprovalModeCard canChange now={now} setting={{ mode: "solo", changedAt: "2026-10-01T09:00:00Z", changedBy: MAROUANE }} /></>;
-    case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
+    case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "4 waiting" })}
       <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[
@@ -2918,6 +2999,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
       {ANONYMOUS_NOTE}
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
+    case "/intune-baselines": case "/intune-baselines/never": {
+      const data = path.endsWith("/never") ? INTUNE_BASELINES_NEVER : INTUNE_BASELINES;
+      return <>{header("Baselines", "Intune baselines", "Every setting of Microsoft's Intune security baselines, checked against all your settings catalog policies.", undefined, baselinesStatus(data))}
+      <IntuneBaselinesPage data={data} /></>;
     }
     case "/compliance": case "/compliance/viewer": {
       // The viewer variant holds read only: no exception controls and no Check now.

@@ -713,6 +713,7 @@ function scubaReasonWords(code: string): string {
   if (code === "check-by-hand") return "CISA lists this as a check to do by hand.";
   if (code.startsWith("not-read:")) return "Keel does not back up the settings this rule reads yet.";
   if (code.startsWith("field-not-read:")) return "A setting this rule reads is not in Keel's backup yet.";
+  if (code.startsWith("preview-only:")) return "This rule reads settings Microsoft offers only in a preview, which Keel does not back up.";
   if (code.startsWith("incomplete:")) return "The backup cannot answer what this rule asks.";
   if (code === "needs-setting:sensitive-users") return "This rule needs your list of sensitive users. Add it under ScubaGear lists.";
   if (code === "needs-setting:partner-domains") return "This rule needs your list of partner domains. Add it under ScubaGear lists.";

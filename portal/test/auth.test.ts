@@ -355,6 +355,15 @@ test("non-GET requests to /api/health do not bypass authentication", async () =>
   assert.equal(response.status, 401);
 });
 
+// The Restore section's sub-pages sit behind the same sign-in check as every page.
+for (const path of ["/restore/follow-up-steps", "/restore/past-restores", "/restore/past-restores?jobs=failed"]) {
+  test(`GET ${path} rejects an unauthenticated request with 401`, async () => {
+    const response = await middleware(request(path));
+
+    assert.equal(response.status, 401);
+  });
+}
+
 test("an old page URL is sent to the page's new name, with the rest of the path and the query", async () => {
   const token = await accessToken();
   for (const [from, to] of [

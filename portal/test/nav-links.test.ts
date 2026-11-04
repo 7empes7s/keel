@@ -20,3 +20,27 @@ test("the approvals nav link is gated on canApprove", () => {
   assert.ok(approvalsLink, "an approver must see the approvals link");
   assert.equal(approvalsLink?.label, "Approvals");
 });
+
+// The Restore section lists its areas as sub-pages, in the order people use them, and
+// /restore is current only on itself (its sub-pages sit under the same path).
+test("restore areas are sub-pages, in order, and each is current only on its own page", async () => {
+  const { NAV_MAP, isCurrentPath, sectionForPath, sectionLinks } = await import("@/components/nav-links");
+  assert.deepEqual(
+    sectionLinks("Restore", { canRead: true }).map((link) => [link.href, link.label]),
+    [
+      ["/restore", "Restore settings"],
+      ["/restore/follow-up-steps", "Follow-up steps"],
+      ["/restore/past-restores", "Past restores"],
+      ["/incidents", "Incidents"],
+      ["/resilience", "Resilience"],
+      ["/emergency-access", "Emergency access"],
+    ],
+  );
+  const restore = NAV_MAP.Restore.find((route) => route.href === "/restore")!;
+  assert.equal(isCurrentPath("/restore", restore.href, restore.exact), true);
+  assert.equal(isCurrentPath("/restore/past-restores", restore.href, restore.exact), false);
+  assert.equal(isCurrentPath("/restore/past-restores", "/restore/past-restores"), true);
+  for (const path of ["/restore", "/restore/follow-up-steps", "/restore/past-restores"]) {
+    assert.equal(sectionForPath(path), "Restore", path);
+  }
+});

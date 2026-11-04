@@ -110,7 +110,7 @@ export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  conditionalAccessEnforcement = null, brandingUploads = null, complianceFix = null,
+  conditionalAccessEnforcement = null, brandingUploads = null, complianceFix = null, allowTenantWide = false,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -151,6 +151,10 @@ export function computePlanDigest({
     // Gap 6: a compliance fix binds the control, the object, its target id, the
     // setting and its value now and after. Null for every other restore.
     ...(complianceFix ? { complianceFix } : {}),
+    // A dry run made with the tenant-wide option (keel-restore
+    // --allow-tenant-wide-test-writes) binds it, so a promotion never writes a
+    // tenant-wide setting the reviewed plan refused. Folded only when set.
+    ...(allowTenantWide === true ? { allowTenantWide: true } : {}),
   }));
 }
 
@@ -234,7 +238,7 @@ export async function createDryRunArtifact(client, {
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  workloadRestore = null, conditionalAccessEnforcement = null, complianceFix = null, plannedVerbs = null,
+  workloadRestore = null, conditionalAccessEnforcement = null, complianceFix = null, plannedVerbs = null, allowTenantWide = false,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -245,8 +249,8 @@ export async function createDryRunArtifact(client, {
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
         relationship_operations, recovery_mechanisms, content_effects, compensation, incident_recovery,
-        workload_restore, conditional_access_enforcement, compliance_fix, planned_verbs)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+        workload_restore, conditional_access_enforcement, compliance_fix, planned_verbs, allow_tenant_wide)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -267,6 +271,7 @@ export async function createDryRunArtifact(client, {
       conditionalAccessEnforcement ? JSON.stringify(conditionalAccessEnforcement) : null,
       complianceFix ? JSON.stringify(complianceFix) : null,
       plannedVerbs ? JSON.stringify(plannedVerbs) : null,
+      allowTenantWide === true,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -328,6 +333,8 @@ function normalizeArtifact(row) {
     complianceFix: row.compliance_fix ?? null,
     // Issue #683: null for an artifact persisted before planned verbs were kept.
     plannedVerbs: row.planned_verbs ?? null,
+    // Set only on a dry run made with the tenant-wide option (test tenant only).
+    allowTenantWide: row.allow_tenant_wide === true,
     createdAt: row.created_at,
   };
 }

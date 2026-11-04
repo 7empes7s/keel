@@ -4,9 +4,13 @@
       "mcp__claude-code-remote__update_trigger",
       "mcp__claude-code-remote__send_message",
       "Bash(gh api repos/7empes7s/keel/issues/*/labels*)",
+      "mcp__github__issue_write"
+    ],
+    "deny": [
       "Bash(gh api -X PUT repos/7empes7s/keel/pulls/*/merge*)",
-      "mcp__github__issue_write",
-      "mcp__github__merge_pull_request"
+      "Bash(gh pr merge*)",
+      "mcp__github__merge_pull_request",
+      "mcp__github__enable_pr_auto_merge"
     ]
   },
   "hooks": {

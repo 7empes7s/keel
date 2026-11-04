@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PagedRows } from "@/components/list/paged-rows";
 import { FollowUpSteps } from "@/components/restore/follow-up-steps";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { AlertRow } from "@/components/ui/alert-list";
 import { Badge } from "@/components/ui/badge";
 import { formatTimestamp } from "@/lib/presentation";
 import { followUpHref, followUpName, followUpWhen } from "@/lib/restore-follow-ups-view";
@@ -87,5 +88,27 @@ function FollowUpCard({ card, name, now, canRestore }: { card: RestoreFollowUp; 
         <FollowUpSteps canComplete={canRestore} restoreRef={card.restoreRef} />
       )}
     </li>
+  );
+}
+
+/** One alert at the top of Restore settings while steps are open; nothing otherwise.
+ * The steps themselves are on Restore › Follow-up steps (`work.href`). */
+export function RestoreFollowUpsAlert({ work }: { work: OpenFollowUpWork }) {
+  const { steps, restores } = work;
+  if (steps === 0) return null;
+  return (
+    <div className="ui-alerts restore-follow-ups-alert">
+      <AlertRow
+        as="div"
+        item={{
+          key: "restore-follow-ups",
+          tone: "soon",
+          icon: "clock",
+          title: `${steps} follow-up ${steps === 1 ? "step is" : "steps are"} still open from ${restores === 1 ? "a past restore" : `${restores} past restores`}`,
+          todo: "Finish them by hand, such as a new secret or a service check, so each restore counts as done.",
+          action: { label: "See follow-up steps", href: work.href },
+        }}
+      />
+    </div>
   );
 }

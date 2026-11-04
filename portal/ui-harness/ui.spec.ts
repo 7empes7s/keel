@@ -17,6 +17,8 @@ const PAGES = [
   { name: "drift-feed", hash: "/changes/feed" },
   { name: "drift-feed-empty", hash: "/changes/feed-empty" },
   { name: "restore", hash: "/restore" },
+  { name: "restore-follow-ups", hash: "/restore/follow-up-steps" },
+  { name: "past-restores", hash: "/restore/past-restores" },
   { name: "incidents", hash: "/incidents" },
   { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
   { name: "incidents-viewer", hash: "/incidents/viewer" },
@@ -45,6 +47,8 @@ const PAGES = [
   { name: "baselines-new", hash: "/approved-setups/new" },
   { name: "baselines-put-back", hash: "/approved-setups/put-back" },
   { name: "benchmarks", hash: "/compliance" },
+  { name: "intune-baselines", hash: "/intune-baselines" },
+  { name: "intune-baselines-never", hash: "/intune-baselines/never" },
   { name: "benchmarks-scuba-lists", hash: "/compliance/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/compliance/scuba?lists=edit" },
   { name: "principals", hash: "/people" },
@@ -1093,7 +1097,8 @@ test("the undo preview speaks in words and states a refusal as a sentence", asyn
   await page.locator(".sel-bar").getByRole("button", { name: "More actions" }).click();
   await page.getByRole("button", { name: "Undo these changes…" }).click();
   const sheet = page.getByRole("dialog", { name: "Undo 2 changes" });
-  await expect(sheet).toContainText("Applies only to: Block legacy auth (sign-in rule), Finance (group).");
+  await expect(sheet.locator(".pick-title")).toHaveText("Applies only to these 2 changes");
+  await expect(sheet.locator(".pick-table .pick-name")).toHaveText(["Block legacy auth", "Finance"]);
   await sheet.getByRole("button", { name: "Check what undoing would do" }).click();
   const preview = sheet.locator(".remediation-preview");
   await expect(preview).toContainText("Put the approved settings back");
@@ -1313,6 +1318,55 @@ test("changes · Shift+click range, select a service, select all, filter by risk
   await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
   await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(7);
+});
+
+// A confirm panel summarises what it applies to (counts by risk, service and kind) and
+// keeps every pick in a folded table, never one long paragraph of names.
+test("changes · the accept panel counts the picks and folds them into a table", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/changes");
+  await page.getByRole("button", { name: "Select all 7 changes" }).click();
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 7 changes" }).click();
+  const sheet = page.getByRole("dialog", { name: "Accept 7 changes into the approved setup" });
+  const summary = sheet.getByRole("region", { name: "What this applies to: 7 changes" });
+  await expect(summary.locator(".pick-title")).toHaveText("Applies only to these 7 changes");
+  const risk = summary.locator(".pick-counts > div", { hasText: "Risk" }).locator(".bl-chip");
+  await expect(risk.first()).toHaveText(/^Could lock out admins · 2$/);
+  await expect(risk.first()).toHaveAttribute("data-tone", "urgent");
+  await expect(summary.locator(".pick-counts > div", { hasText: "Service" }).locator(".pick-chip", { hasText: "Intune" }).locator("b")).toHaveText("1");
+  // Seven is too many to read at a glance, so the table starts folded.
+  const details = summary.locator(".pick-details");
+  await expect(details).not.toHaveAttribute("open", "");
+  await expect(summary.locator(".pick-row").first()).toBeHidden();
+  await details.locator("summary").click();
+  await expect(summary.locator(".pick-row")).toHaveCount(7);
+  await summary.getByPlaceholder("Find changes").fill("finance");
+  await expect(summary.locator(".pick-row")).toHaveCount(1);
+  await expect(summary.locator(".pick-row .pick-name")).toHaveText("Finance");
+  // No paragraph of names is left behind.
+  await expect(sheet.locator(".bl-decision-scope")).toHaveCount(0);
+  // Find belongs to this panel: closing it clears it, so the next panel starts clean.
+  await expect(page).toHaveURL(/pick-q=finance/);
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(page).not.toHaveURL(/pick-q=/);
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 7 changes" }).click();
+  await sheet.locator(".pick-details summary").click();
+  await expect(sheet.getByPlaceholder("Find changes")).toHaveValue("");
+  await expect(sheet.locator(".pick-row")).toHaveCount(7);
+});
+
+test("compliance · an exception on several controls counts them and lists them in a table", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/compliance?grant=e7a10000-0000-4000-8000-0000000000e1,e7a10000-0000-4000-8000-0000000000e2,e7a10000-0000-4000-8000-0000000000e4");
+  const sheet = page.getByRole("dialog", { name: "Grant an exception to 3 controls" });
+  const summary = sheet.getByRole("region", { name: "What this applies to: 3 controls" });
+  await expect(summary.locator(".pick-counts > div", { hasText: "Risk" }).locator(".bl-chip")).toHaveText(["High · 2", "Medium · 1"]);
+  await expect(summary.locator(".pick-counts dt")).toHaveText(["Risk", "Service", "Standard"]);
+  // Three fit at a glance, so the table is open.
+  await expect(summary.locator(".pick-details")).toHaveAttribute("open", "");
+  await expect(summary.locator(".pick-row")).toHaveCount(3);
+  // The names are in the table, not in a paragraph above it.
+  await expect(sheet.locator(".cp-form > p.cp-muted")).toHaveCount(0);
 });
 
 test("changes · phone: hold a change, then drag over others to select them", async ({ browser }) => {
@@ -1669,7 +1723,7 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   // Failed restores: the engine's one count with its window, linking to the Restore list.
   const failedRestores = page.locator('.ui-alert[data-alert="restore-failed"]');
   await expect(failedRestores).toContainText("47 restores failed · 3 in the last 30 days");
-  await expect(failedRestores.getByRole("link", { name: "See failed restores" })).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
+  await expect(failedRestores.getByRole("link", { name: "See failed restores" })).toHaveAttribute("href", /\/restore\/past-restores\?jobs=failed#restore-jobs-heading$/);
   await expect(page.locator('.ui-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
   // Tiles and the service table.
   await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
@@ -1729,7 +1783,7 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   const failedLine = page.locator('[data-line="failed-restores"]');
   await expect(failedLine).toContainText("2 failed in this period");
   await expect(failedLine).toContainText("47 restores failed · 3 in the last 30 days");
-  await expect(failedLine.getByRole("link")).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
+  await expect(failedLine.getByRole("link")).toHaveAttribute("href", /\/restore\/past-restores\?jobs=failed#restore-jobs-heading$/);
 
   // Every request opens its job; every check shows a title, never a code.
   const links = page.locator(".vr-row-link");
@@ -2354,7 +2408,8 @@ test("Changes · picks stay picked across filters and services, in a tray", asyn
   await expect(bar).not.toContainText("left out");
   await bar.getByRole("button", { name: "Accept 2 changes" }).click();
   const sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
-  await expect(sheet).toContainText("Finance (group)");
+  await expect(sheet.locator(".pick-row .pick-name")).toHaveText(["Finance", "Forward finance mail"]);
+  await expect(sheet.locator(".pick-counts")).toContainText("Exchange Online");
   await sheet.getByRole("button", { name: "Cancel" }).click();
 
   // Clearing the filters shows the pick again, still picked; remove and Clear work.
@@ -2427,7 +2482,8 @@ const RECORD_IDS: Record<string, string[]> = {
   policy: ["7a1d0f3e-0000-4000-8000-000000000001", "3f9c2b1e-0000-4000-8000-000000000002"],
   policies: ["7a1d0f3e-0000-4000-8000-000000000001", "7a1d0f3e-0000-4000-8000-000000000003"],
   "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
-  restore: ["a3"],
+  "restore-follow-ups": ["7f3c0000-0000-4000-8000-000000000011", "r9", "7f3c0000-0000-4000-8000-000000000010", "r10"],
+  "past-restores": ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
@@ -3200,7 +3256,7 @@ test("Setup · one status tile per service, worst first, and a warning before a 
   // One tile per Microsoft 365 service; Entra ID has a failed kind, Purview a partly done one.
   await expect(tiles).toHaveCount(9);
   // Purview's only problem is a partly done kind: amber "Partly done", not failing.
-  await expect(page.locator(".su-svc-head p")).toHaveText("1 of 9 services is failing to back up.");
+  await expect(page.locator(".su-svc-head p")).toHaveText(/^1 of 9 services needs a fix to back up; \d+ more needs? a look\.$/);
   await expect(tiles.filter({ hasText: "Purview" }).locator(".badge")).toHaveText("Partly done");
   await expect(tiles.first().locator(".su-svc-name b")).toHaveText("Entra ID");
   const entra = tiles.filter({ hasText: "Entra ID" });
@@ -3838,6 +3894,57 @@ for (const width of [390, 1440]) {
     });
   }
 }
+
+test("Intune security baselines · every setting matched, tiles add up, baseline filter, values highlighted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/intune-baselines");
+  await expect(page.locator("main#main-content h1")).toHaveText("Intune baselines");
+  await expect(page.locator(".status-pill")).toHaveText("4 differ");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 settings differ from Microsoft's security baselines.");
+  // A baseline that could not be read is said first, in amber.
+  await expect(page.locator('.ib-alert[data-tone="soon"]')).toContainText("Microsoft 365 Apps for Enterprise baseline");
+  await expect(page.locator(".cp-context")).toContainText("Checked against 14 settings catalog policies");
+  // Current versions only, by default: two cards.
+  await expect(page.locator(".ib-card b")).toHaveText(["Security Baseline for Microsoft Edge", "Security Baseline for Windows 10 and later"]);
+  const tiles = page.locator(".cp-tile");
+  await expect(tiles.locator(".cp-tile-label")).toHaveText(["Conflict", "Different", "Not configured", "Matches"]);
+  await expect(tiles.locator(".cp-tile-count")).toHaveText(["1", "3", "7", "29"]);
+  // Grouped by baseline, then by Intune's category.
+  await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Security Baseline for Microsoft Edge (Version 128)");
+
+  // Tiles add up: Conflict plus Different.
+  await tiles.filter({ hasText: "Conflict" }).click();
+  await expect(page).toHaveURL(/result=conflict/);
+  await tiles.filter({ has: page.locator(".cp-tile-label", { hasText: /^Different/ }) }).click();
+  await expect(page).toHaveURL(/result=conflict%2Cdifferent|result=conflict,different/);
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.locator(".filter-count")).toHaveText("Showing 4 of 40 settings");
+  const conflict = page.locator(".sel-row", { hasText: "Allow cloud protection" });
+  await expect(conflict).toContainText("2 policies disagree");
+  await expect(conflict.locator(".ib-setby li")).toHaveText(["KEEL-RT-AntivirusEnabled", "KEEL-RT-Pilot devicesDisabled"]);
+  await expect(conflict.locator(".ib-setby .cp-miss-now")).toHaveText("Disabled");
+  const different = page.locator(".sel-row", { hasText: "Block all Office applications" });
+  await expect(different).toContainText("Yours: Audit mode (KEEL-RT-ASR rules)");
+  await expect(different.locator(".cp-miss-want")).toHaveText("Block");
+  // The setting's id is only in the technical details.
+  await expect(different.locator(".ib-values")).not.toContainText("device_vendor_msft");
+
+  // A baseline card narrows to that baseline (AND with the tiles).
+  await page.locator(".ib-card", { hasText: "Microsoft Edge" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".active-filter, .filter-chip").first()).toBeVisible();
+  // All versions brings the older Windows version back.
+  await page.getByRole("radio", { name: "All versions" }).click();
+  await expect(page.locator(".ib-card")).toHaveCount(3);
+  await expect(page.locator(".ib-card", { hasText: "Version 23H2" })).toContainText("older version");
+});
+
+test("Intune security baselines · nothing read yet says what happens next", async ({ page }) => {
+  await open(page, "/intune-baselines/never");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Microsoft's security baselines have not been read yet.");
+  await expect(page.locator(".cp-empty")).toContainText("No baseline has been read from the tenant yet.");
+  await expect(page.locator(".cp-tile")).toHaveCount(0);
+});
 
 test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -5201,9 +5308,22 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await page.locator(".ov-tile").first().focus();
   expect(await page.locator(".ov-tile").first().evaluate((item) => getComputedStyle(item).boxShadow)).not.toBe("none");
 
+  // UI audit E3: the last backup finished, but kinds failed: the card is never green
+  // beside the red failed count; it takes the Backups tile's colour.
+  const lastBackup = page.locator(".ov-side-card", { hasText: "Last backup" });
+  await expect(lastBackup.locator(".badge")).toHaveText("Finished · 4 setting types failed");
+  await expect(lastBackup.locator(".badge")).toHaveAttribute("data-tone", await page.locator('.ov-tile[data-tile="backups"]').getAttribute("data-tone") ?? "missing");
+  // UI audit E2: the new approved setup's first check is a flagged note, not a spike.
+  const note = page.locator(".ov-card-wide .ov-trend-note");
+  await expect(note).toHaveText("New approved setup on 29 Sept: its first check found 981 settings that already differed. They are not counted as new changes.");
+  await expect(page.locator(".ov-card-wide .sparkline-flag")).toContainText("New approved setup");
+  await expect(page.locator(".ov-card-wide .sparkline figcaption")).toContainText("Peak 12");
+
   await page.getByRole("button", { name: "Changes since your approved setup: open full screen" }).click();
   const sheet = page.getByRole("dialog", { name: "Changes since your approved setup" });
   await expect(sheet.locator(".ov-bar")).toHaveCount(30);
+  await expect(sheet.locator(".ov-bar[data-first-check]")).toHaveCount(1);
+  await expect(sheet.locator(".ov-trend-note")).toContainText("981 settings that already differed");
   await expect(sheet.locator(".ov-table tbody tr")).toHaveCount(30);
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);

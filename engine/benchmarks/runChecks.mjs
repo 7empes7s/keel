@@ -31,7 +31,7 @@ import { BY_HAND_REASON } from './standards.mjs';
 // read only further back would be stale for every shipped control anyway.
 const SNAPSHOT_LOOKBACK = 50;
 
-async function newestCompleteRead(client, { tenantRef, resourceType, snapshots }) {
+export async function newestCompleteRead(client, { tenantRef, resourceType, snapshots }) {
   for (const snapshot of snapshots) {
     const entry = snapshot.coverage_digest?.[resourceType];
     if (entry === undefined) continue;

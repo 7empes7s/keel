@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { MENU_SECTIONS, NAV_MAP, NAV_SECTIONS, SECTION_ICONS, type Gate, type MenuSection, type NavCapabilities, type NavSection } from "@/lib/nav-sections";
 
@@ -25,6 +26,7 @@ export interface NavLink {
   label: string;
   group: NavSection;
   aliases?: string;
+  exact?: boolean;
 }
 
 function allowed(gate: Gate, capabilities: NavCapabilities): boolean {
@@ -35,7 +37,7 @@ function allowed(gate: Gate, capabilities: NavCapabilities): boolean {
 export function sectionLinks(section: NavSection, capabilities: NavCapabilities): NavLink[] {
   return NAV_MAP[section]
     .filter((route) => !route.hidden && allowed(route.gate, capabilities))
-    .map((route) => ({ href: route.href, label: route.label, group: section, aliases: route.aliases }));
+    .map((route) => ({ href: route.href, label: route.label, group: section, aliases: route.aliases, exact: route.exact }));
 }
 
 /** Every page the viewer may open, each tagged with its section (palette, tests). */
@@ -66,9 +68,11 @@ export function sectionForPath(pathname: string | null): NavSection | null {
   return NAV_SECTIONS.find((section) => NAV_MAP[section].some((route) => routeMatches(pathname, route.href))) ?? null;
 }
 
-export function isCurrentPath(pathname: string | null, href: string): boolean {
+/** Whether a menu entry is the page you are on. An `exact` entry matches its own path
+ * only, so /restore is not also current on /restore/follow-up-steps. */
+export function isCurrentPath(pathname: string | null, href: string, exact = false): boolean {
   if (!pathname) return false;
-  return routeMatches(pathname, href);
+  return exact ? pathname === href : routeMatches(pathname, href);
 }
 
 /** The pages a section absorbs, as one scrolling row of tabs. On a desktop the menu
@@ -76,15 +80,25 @@ export function isCurrentPath(pathname: string | null, href: string): boolean {
  * bell's inbox only. */
 export function SectionTabs(capabilities: NavCapabilities) {
   const pathname = usePathname();
+  const rowRef = useRef<HTMLElement>(null);
+  // A long row (Restore has six pages) keeps the open page's tab in sight on a phone.
+  useEffect(() => {
+    const row = rowRef.current;
+    const current = row?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row || !current) return;
+    const box = row.getBoundingClientRect();
+    const tab = current.getBoundingClientRect();
+    if (tab.left < box.left || tab.right > box.right) row.scrollLeft += tab.left - box.left - 16;
+  }, [pathname]);
   const section = sectionForPath(pathname);
   if (!section) return null;
   const routes = sectionLinks(section, capabilities);
   if (routes.length < 2) return null;
   return (
-    <nav aria-label={`${section} pages`} className="section-tabs" data-section={section === "Inbox" ? "inbox" : undefined}>
+    <nav aria-label={`${section} pages`} className="section-tabs" ref={rowRef} data-section={section === "Inbox" ? "inbox" : undefined}>
       {routes.map((route) => (
         <Link
-          aria-current={isCurrentPath(pathname, route.href) ? "page" : undefined}
+          aria-current={isCurrentPath(pathname, route.href, route.exact) ? "page" : undefined}
           className="section-tab"
           href={route.href}
           key={route.href}

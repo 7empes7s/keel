@@ -11,11 +11,11 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 | Entra ID | 34 | 29 | 5 |
 | Exchange Online | 12 | 6 | 6 |
 | Security Suite (Defender and Purview) | 24 | 13 | 11 |
-| SharePoint and OneDrive | 8 | 2 | 6 |
-| Teams | 14 | 11 | 3 |
-| Power Platform | 9 | 2 | 7 |
+| SharePoint and OneDrive | 8 | 8 | 0 |
+| Teams | 14 | 14 | 0 |
+| Power Platform | 9 | 7 | 2 |
 | Power BI | 8 | 8 | 0 |
-| **All** | **109** | **71** | **38** |
+| **All** | **109** | **85** | **24** |
 
 ## Summary
 
@@ -24,11 +24,11 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 | Entra ID | 34 | 23 | 11 | 30 | 0 | 1 | 3 |
 | Exchange Online | 12 | 10 | 2 | 6 | 0 | 6 | 0 |
 | Security Suite (Defender and Purview) | 24 | 9 | 15 | 19 | 0 | 2 | 3 |
-| SharePoint and OneDrive | 8 | 8 | 0 | 0 | 8 | 0 | 0 |
-| Teams | 14 | 4 | 10 | 11 | 0 | 3 | 0 |
-| Power Platform | 9 | 5 | 4 | 2 | 0 | 5 | 2 |
+| SharePoint and OneDrive | 8 | 8 | 0 | 8 | 0 | 0 | 0 |
+| Teams | 14 | 4 | 10 | 14 | 0 | 0 | 0 |
+| Power Platform | 9 | 5 | 4 | 7 | 0 | 0 | 2 |
 | Power BI | 8 | 0 | 8 | 8 | 0 | 0 | 0 |
-| **All** | **109** | **59** | **50** | **76** | **8** | **17** | **8** |
+| **All** | **109** | **59** | **50** | **92** | **0** | **9** | **8** |
 
 - 🟢 Ready: Keel reads everything it needs.
 - 🟡 Partly read: Keel reads it through another API, some fields may be missing.
@@ -42,14 +42,11 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | Input | ScubaGear reads it with | Rules | Why Keel does not have it |
 |---|---|---|---|
 | `dmarc_records` | DNS TXT lookup (DMARC) | 4: MS.EXO.4.1v1, MS.EXO.4.2v1, MS.EXO.4.3v1, MS.EXO.4.4v1 | Public DNS. Keel does not do DNS lookups. |
-| `environment_creation` | Get-PowerPlatformTenantSettingsRest | 4: MS.POWERPLATFORM.1.1v1, MS.POWERPLATFORM.1.2v1, MS.POWERPLATFORM.5.1v1, MS.POWERPLATFORM.6.1v1 | Keel does not read the Power Platform tenant settings. |
-| `tenant_app_settings` | Teams org-wide app settings (unified app management API) | 3: MS.TEAMS.5.1v2, MS.TEAMS.5.2v2, MS.TEAMS.5.3v2 | Keel does not read the org-wide Teams app settings. ScubaGear itself can only read them with an interactive sign-in. |
 | `spf_records` | DNS TXT lookup (SPF) | 2: MS.EXO.2.2v3, MS.EXO.3.1v1 | Public DNS. Keel does not do DNS lookups. |
 | `admin_audit_log_config` | Get-AdminAuditLogConfig | 1: MS.SECURITYSUITE.5.1v1 | Keel does not run Get-AdminAuditLogConfig. |
 | `built_in_protection_rules` | Get-ATPBuiltInProtectionRule | 1: MS.SECURITYSUITE.1.3v1 | Keel does not run Get-ATPBuiltInProtectionRule. |
 | `dkim_records` | DNS TXT lookup (DKIM selectors) | 1: MS.EXO.3.1v1 | Public DNS. Keel does not do DNS lookups. |
 | `risky_delegated_permission_classifications` | Get-ServicePrincipalsWithRiskyDelegatedPermissionClassifications | 1: MS.AAD.5.2v1 | Needs each service principal's delegated permission classifications, which Keel does not read. |
-| `tenant_isolation` | Get-PowerPlatformTenantIsolationRest | 1: MS.POWERPLATFORM.3.1v1 | Keel does not read Power Platform tenant isolation. |
 
 ## Entra ID
 
@@ -140,14 +137,14 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 
 | Rule | Level | Keel | Statement | Inputs |
 |---|---|---|---|---|
-| MS.SHAREPOINT.1.1v1 | SHALL | 🟡 Partly read | External sharing for SharePoint SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.1.2v1 | SHALL | 🟡 Partly read | External sharing for OneDrive SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.1.3v1 | SHALL | 🟡 Partly read | External sharing SHALL be restricted to approved external domains and/or users in approved security groups per interagency collaboration needs. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.2.1v1 | SHALL | 🟡 Partly read | File and folder default sharing scope SHALL be set to "Specific people (only the people the user specifies)." | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.2.2v1 | SHALL | 🟡 Partly read | File and folder default sharing permissions SHALL be set to view only. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.3.1v1 | SHALL | 🟡 Partly read | Expiration days for "Anyone" links SHALL be set to 30 days or less. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.3.2v1 | SHALL | 🟡 Partly read | The allowable file and folder permissions for links SHALL be set to view only. | `SPO_tenant` (partly read) |
-| MS.SHAREPOINT.3.3v2 | SHALL | 🟡 Partly read | Reauthentication days for people who use a verification code SHALL be set to 30 days or less. | `SPO_tenant` (partly read) |
+| MS.SHAREPOINT.1.1v1 | SHALL | 🟢 Ready | External sharing for SharePoint SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` |
+| MS.SHAREPOINT.1.2v1 | SHALL | 🟢 Ready | External sharing for OneDrive SHALL be limited to "Existing guests" or "Only people in your organization." | `SPO_tenant` |
+| MS.SHAREPOINT.1.3v1 | SHALL | 🟢 Ready | External sharing SHALL be restricted to approved external domains and/or users in approved security groups per interagency collaboration needs. | `SPO_tenant` |
+| MS.SHAREPOINT.2.1v1 | SHALL | 🟢 Ready | File and folder default sharing scope SHALL be set to "Specific people (only the people the user specifies)." | `SPO_tenant` |
+| MS.SHAREPOINT.2.2v1 | SHALL | 🟢 Ready | File and folder default sharing permissions SHALL be set to view only. | `SPO_tenant` |
+| MS.SHAREPOINT.3.1v1 | SHALL | 🟢 Ready | Expiration days for "Anyone" links SHALL be set to 30 days or less. | `SPO_tenant` |
+| MS.SHAREPOINT.3.2v1 | SHALL | 🟢 Ready | The allowable file and folder permissions for links SHALL be set to view only. | `SPO_tenant` |
+| MS.SHAREPOINT.3.3v2 | SHALL | 🟢 Ready | Reauthentication days for people who use a verification code SHALL be set to 30 days or less. | `SPO_tenant` |
 
 ## Teams
 
@@ -164,23 +161,23 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | MS.TEAMS.2.2v2 | SHALL | 🟢 Ready | Unmanaged users SHALL NOT be enabled to initiate contact with internal users. | `federation_configuration` |
 | MS.TEAMS.2.3v2 | SHOULD | 🟢 Ready | Internal users SHOULD NOT be enabled to initiate contact with unmanaged users. | `federation_configuration` |
 | MS.TEAMS.4.1v1 | SHALL | 🟢 Ready | Microsoft Teams email integration SHALL be disabled. | `client_configuration` |
-| MS.TEAMS.5.1v2 | SHOULD | 🔴 Could not check | Agencies SHOULD only allow installation of Microsoft applications approved by the agency. | `app_policies`, `tenant_app_settings` (not read) |
-| MS.TEAMS.5.2v2 | SHOULD | 🔴 Could not check | Agencies SHOULD only allow installation of third-party applications approved by the agency. | `app_policies`, `tenant_app_settings` (not read) |
-| MS.TEAMS.5.3v2 | SHOULD | 🔴 Could not check | Agencies SHOULD only allow installation of custom applications approved by the agency. | `app_policies`, `tenant_app_settings` (not read) |
+| MS.TEAMS.5.1v2 | SHOULD | 🟢 Ready | Agencies SHOULD only allow installation of Microsoft applications approved by the agency. | `app_policies` |
+| MS.TEAMS.5.2v2 | SHOULD | 🟢 Ready | Agencies SHOULD only allow installation of third-party applications approved by the agency. | `app_policies` |
+| MS.TEAMS.5.3v2 | SHOULD | 🟢 Ready | Agencies SHOULD only allow installation of custom applications approved by the agency. | `app_policies` |
 
 ## Power Platform
 
 | Rule | Level | Keel | Statement | Inputs |
 |---|---|---|---|---|
-| MS.POWERPLATFORM.1.1v1 | SHALL | 🔴 Could not check | The ability to create production and sandbox environments SHALL be restricted to administrators. | `environment_creation` (not read) |
-| MS.POWERPLATFORM.1.2v1 | SHALL | 🔴 Could not check | The ability to create trial environments SHALL be restricted to administrators. | `environment_creation` (not read) |
+| MS.POWERPLATFORM.1.1v1 | SHALL | 🟢 Ready | The ability to create production and sandbox environments SHALL be restricted to administrators. | `environment_creation` |
+| MS.POWERPLATFORM.1.2v1 | SHALL | 🟢 Ready | The ability to create trial environments SHALL be restricted to administrators. | `environment_creation` |
 | MS.POWERPLATFORM.2.1v1 | SHALL | 🟢 Ready | A DLP policy SHALL be created to restrict connector access in the default Power Platform environment. | `dlp_policies` |
 | MS.POWERPLATFORM.2.2v1 | SHOULD | 🟢 Ready | Non-default environments SHOULD have at least one DLP policy. | `dlp_policies`, `environment_list` |
-| MS.POWERPLATFORM.3.1v1 | SHALL | 🔴 Could not check | Power Platform tenant isolation SHALL be enabled. | `tenant_isolation` (not read) |
+| MS.POWERPLATFORM.3.1v1 | SHALL | 🟢 Ready | Power Platform tenant isolation SHALL be enabled. | `tenant_isolation` |
 | MS.POWERPLATFORM.3.2v1 | SHOULD | ⚪ Check by hand | An inbound/outbound connection allowlist SHOULD be configured. | none |
 | MS.POWERPLATFORM.4.1v1 | SHALL | ⚪ Check by hand | Content Security Policy (CSP) SHALL be enforced for model-driven and canvas Power Apps. | none |
-| MS.POWERPLATFORM.5.1v1 | SHOULD | 🔴 Could not check | The ability to create Power Pages sites SHOULD be restricted to administrators. | `environment_creation` (not read) |
-| MS.POWERPLATFORM.6.1v1 | SHOULD | 🔴 Could not check | The "Share with everyone" feature SHOULD be disabled. | `environment_creation` (not read) |
+| MS.POWERPLATFORM.5.1v1 | SHOULD | 🟢 Ready | The ability to create Power Pages sites SHOULD be restricted to administrators. | `environment_creation` |
+| MS.POWERPLATFORM.6.1v1 | SHOULD | 🟢 Ready | The "Share with everyone" feature SHOULD be disabled. | `environment_creation` |
 
 ## Power BI
 
@@ -205,20 +202,15 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.AAD.4.1v1 | CISA marks it as a check to do by hand. |
 | MS.AAD.5.2v1 | Keel does not read `risky_delegated_permission_classifications`. |
 | MS.AAD.8.3v1 | CISA marks it as a check to do by hand. |
-| MS.AAD.9.1v1 | Keel's read of `conditional_access_policies` does not keep `AgentIdRiskLevels`, `ExcludeAgentIdServicePrincipals`, `IncludeAgentIdServicePrincipals`. |
+| MS.AAD.9.1v1 | Microsoft offers `AgentIdRiskLevels`, `ExcludeAgentIdServicePrincipals`, `IncludeAgentIdServicePrincipals` of `conditional_access_policies` only in a preview, which Keel does not back up. |
 | MS.EXO.2.2v3 | Keel does not read `spf_records`. |
 | MS.EXO.3.1v1 | Keel does not read `dkim_records`. |
 | MS.EXO.4.1v1 | Keel does not read `dmarc_records`. |
 | MS.EXO.4.2v1 | Keel does not read `dmarc_records`. |
 | MS.EXO.4.3v1 | Keel does not read `dmarc_records`. |
 | MS.EXO.4.4v1 | Keel does not read `dmarc_records`. |
-| MS.POWERPLATFORM.1.1v1 | Keel does not read `environment_creation`. |
-| MS.POWERPLATFORM.1.2v1 | Keel does not read `environment_creation`. |
-| MS.POWERPLATFORM.3.1v1 | Keel does not read `tenant_isolation`. |
 | MS.POWERPLATFORM.3.2v1 | CISA marks it as a check to do by hand. |
 | MS.POWERPLATFORM.4.1v1 | CISA marks it as a check to do by hand. |
-| MS.POWERPLATFORM.5.1v1 | Keel does not read `environment_creation`. |
-| MS.POWERPLATFORM.6.1v1 | Keel does not read `environment_creation`. |
 | MS.SECURITYSUITE.1.3v1 | Keel does not read `built_in_protection_rules`. |
 | MS.SECURITYSUITE.3.1v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
 | MS.SECURITYSUITE.3.2v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
@@ -230,15 +222,6 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.SECURITYSUITE.5.2v1 | CISA marks it as a check to do by hand. |
 | MS.SECURITYSUITE.6.1v1 | Keel's read of `hosted_content_filter_policies` does not keep `RecommendedPolicyType`. |
 | MS.SECURITYSUITE.6.2v1 | Keel's read of `hosted_content_filter_policies` does not keep `RecommendedPolicyType`. |
-| MS.SHAREPOINT.1.2v1 | Keel's read of `SPO_tenant` does not keep `ODBSharingCapability`. |
-| MS.SHAREPOINT.2.1v1 | Keel's read of `SPO_tenant` does not keep `DefaultSharingLinkType`. |
-| MS.SHAREPOINT.2.2v1 | Keel's read of `SPO_tenant` does not keep `DefaultLinkPermission`. |
-| MS.SHAREPOINT.3.1v1 | Keel's read of `SPO_tenant` does not keep `RequireAnonymousLinksExpireInDays`. |
-| MS.SHAREPOINT.3.2v1 | Keel's read of `SPO_tenant` does not keep `FileAnonymousLinkType`, `FolderAnonymousLinkType`. |
-| MS.SHAREPOINT.3.3v2 | Keel's read of `SPO_tenant` does not keep `EmailAttestationReAuthDays`, `EmailAttestationRequired`. |
-| MS.TEAMS.5.1v2 | Keel does not read `tenant_app_settings`. |
-| MS.TEAMS.5.2v2 | Keel does not read `tenant_app_settings`. |
-| MS.TEAMS.5.3v2 | Keel does not read `tenant_app_settings`. |
 
 ## Runs once the tenant sets its list
 

@@ -33,6 +33,8 @@ import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../../engine/cir/naturalKey.mj
 import { buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
+import { IDENTITY_RECORDS } from '../../engine/restore/identityObjectOperations.mjs';
+import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.mjs';
 import { TENANT_POLICY_RECORDS } from '../../engine/restore/tenantPolicyOperations.mjs';
 
 export const LIVE_GATE_PLAN_VERSION = 1;
@@ -404,6 +406,48 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-filter`, drift: 'delete it: the restore recreates it with the same platform and rule; then change its rule: the restore puts it back',
     note: 'The platform is never changed on update. No assignment uses the filter, so no policy targets change.',
   },
+  // Approval-held kinds: written only with an approved "Changes admin access" effect
+  // (or with restore approvals off for the service), so each proof runs the dry run,
+  // approves its effects as a second person (operator self-approval on the test
+  // tenant), then promotes. The two tenant-wide settings need the tenant-wide option.
+  deviceManagementRoleDefinition: {
+    kind: 'named-object', fixture: `custom Intune role ${FIXTURE_PREFIX}-intune-role with one read permission (Microsoft.Intune_Organization_Read), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-intune-role`, drift: 'delete it: the restore recreates it with the same permission; then add a second read permission (Microsoft.Intune_Audit_Read): the restore takes it away again',
+    note: 'No assignment, so nobody gains access. Also check that a promotion without the approval skips it with "Changes admin access".',
+  },
+  // Approval-held kinds, batch 2: who holds admin roles. Each fixture gives a read-only
+  // role to an empty KEEL-RT- group (or the fixture app), so nobody gains access.
+  deviceManagementRoleAssignment: {
+    kind: 'named-object', fixture: `assignment ${FIXTURE_PREFIX}-intune-assignment of the built-in Read Only Operator role to the empty group ${FIXTURE_PREFIX}-group, scoped to that group`,
+    select: `${FIXTURE_PREFIX}-intune-assignment`, drift: 'take a new backup first (it now keeps the role), then delete the assignment: the restore recreates it with the same role, members and scope',
+    note: 'Check the dry run names the group and role (not ids) under "Changes admin access", and that a promotion without the approval skips it.',
+  },
+  operationApprovalPolicy: {
+    kind: 'named-object', fixture: `multi admin approval policy ${FIXTURE_PREFIX}-approval for device wipe, approvers the empty group ${FIXTURE_PREFIX}-group`,
+    select: `${FIXTURE_PREFIX}-approval`, drift: 'delete it: the restore recreates it with the same approver group; record Graph\'s answer if Intune asks for a second admin to approve the write itself',
+    note: 'Only a device action nobody uses on the test tenant; never cover role or policy changes, so the test tenant is never locked behind an approval.',
+  },
+  exchangeRoleAssignment: {
+    kind: 'by-reference', fixture: `Exchange role View-Only Configuration given to the ${FIXTURE_PREFIX} fixture app's service principal (Graph /roleManagement/exchange/roleAssignments)`,
+    select: 'the assignment\'s id', drift: 'remove the assignment: the restore gives the role to the same app again',
+    breakGlass: 'Never a role group, a person or a privileged role: only a view-only role and the fixture app. An assignment has no name, so check the app is the KEEL-RT- fixture app before the run.',
+    note: 'A role held by a role group is a manual step: check one is reported as such.',
+  },
+  defenderRoleAssignment: {
+    kind: 'named-object', fixture: `assignment ${FIXTURE_PREFIX}-defender-assignment of the custom role ${FIXTURE_PREFIX}-defender-role to the empty group ${FIXTURE_PREFIX}-group`,
+    select: `${FIXTURE_PREFIX}-defender-assignment`, drift: 'delete it: the restore recreates it; then add a second group: the restore takes it away again',
+    note: 'Check the dry run names the group and role under "Changes admin access".',
+  },
+  deviceRegistrationPolicy: {
+    kind: 'tenant-setting', fixture: 'the device registration policy (Devices, Device settings)',
+    select: 'deviceRegistrationPolicy', drift: 'change userDeviceQuota (Maximum number of devices per user) to another allowed value; write the original down first. Never change who may join or MFA to join.',
+    note: 'Set the original value back right after the run. Graph routes PUT only: record its answer if the replace is refused.',
+  },
+  tenantAppManagementPolicy: {
+    kind: 'tenant-setting', fixture: 'the default app management policy (no admin center page; Graph /policies/defaultAppManagementPolicy)',
+    select: 'tenantAppManagementPolicy', drift: 'if isEnabled is false, set it to true with no restrictions (nothing is enforced); write the original down first',
+    note: 'Set the original value back right after the run. Never add a trusted certificate authority restriction. If the restore reports a trust-field step for an empty certificate authority list, record it.',
+  },
   roleScopeTag: {
     kind: 'named-object', fixture: `scope tag ${FIXTURE_PREFIX}-scope-tag, on no object and in no role assignment`,
     select: `${FIXTURE_PREFIX}-scope-tag`, drift: 'delete it: the restore recreates it with the same description; then change its description: the restore puts it back',
@@ -630,11 +674,21 @@ const capture = (resourceType, operation, guidance, key) => {
 /** The file name stem of one operation's evidence (an edge key's # becomes a dot). */
 export const evidenceStem = (resourceType, operation) => `${resourceType.replace('#', '.')}.${operation}`;
 
+/**
+ * Records the test tenant writes only with the tenant-wide option
+ * (recordWriter.mjs#tenantWideRecordProblem). A record tenant-wide for some
+ * objects only (the branding profile) is left out: its live proof is a KEEL-RT-
+ * fixture, so the option is not needed.
+ */
+export const TENANT_WIDE_RECORD_TYPES = Object.freeze(new Set([...Object.values(IDENTITY_RECORDS), ...Object.values(INTUNE_EXTENDED_RECORDS)]
+  .filter((record) => record.tenantWide === true).map((record) => record.resourceType)));
+
 function setupFor(resourceType, operation, guidance, key) {
+  const tenantWide = TENANT_WIDE_RECORD_TYPES.has(resourceType) ? ' --allow-tenant-wide-test-writes' : '';
   const restoreRun = [
     'node cli/keel-collect.mjs --config "$COLLECTOR"   # note the snapshot id as S',
     '# now change the tenant as in "Before the restore"',
-    `node cli/keel-restore.mjs --snapshot-id "$S" --select '${key}' --collector-config "$COLLECTOR" --target-config "$RESTORER" --persist-artifact "$A" --requested-by keel-operator`,
+    `node cli/keel-restore.mjs --snapshot-id "$S" --select '${key}' --collector-config "$COLLECTOR" --target-config "$RESTORER" --persist-artifact "$A" --requested-by keel-operator${tenantWide}`,
     '# Marouane approves artifact A in the portal (Restore, review). The requester can never approve it.',
     'node cli/keel-restore.mjs --artifact "$A" --enforce',
   ];

@@ -15,6 +15,8 @@ import {
 } from "../../engine/govern/baselineCompliance.mjs";
 import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
+import { intuneBaselineResults } from "../../engine/benchmarks/intuneBaselines.mjs";
+import { shapeBaselines, type EngineBaselineResults, type IntuneBaselineData } from "@/lib/intune-baselines-view";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { countOpenCompletionWork, countOpenCompletionSteps, readOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import { countFailedRestores } from "../../engine/restore/failedRestores.mjs";
@@ -46,6 +48,7 @@ import {
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 import { builtInOf, templateFamilyOf, typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { DRIFT_TEMPLATE_FAMILY_SQL, INTENT_TYPE, templateFamilySql } from "../../engine/insights/templateAreas.mjs";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AnswerRecord, AskData, AskInput, ChangeRecord, GroundedAnswer } from "@/lib/ask-view";
@@ -59,6 +62,7 @@ import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, refere
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { headlineEntries, workloadKinds } from "@/lib/workload-kinds";
+import { failedNeedingFix } from "@/lib/backup-failure";
 import { coverageSummary, withWorkloadKinds } from "@/lib/protect-view";
 import { withSharedCoverage } from "@/lib/ask-coverage";
 import { countOpenServiceChanges } from "@/lib/service-changes";
@@ -69,6 +73,7 @@ import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@
 import { supportIds } from "@/lib/support-ids";
 import type {
   BaselineCapture,
+  DriftTrendPoint,
   BaselineChanges,
   BaselineRecord,
   BaselinesData,
@@ -426,7 +431,9 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
-    templateFamily: templateFamilyOf(raw.after_payload) ?? templateFamilyOf(raw.before_payload),
+    // Read with the row (template_family) where the query looked it up, which also covers
+    // older endpoint security policies (engine/insights/templateAreas.mjs).
+    templateFamily: (typeof raw.template_family === "string" && raw.template_family) || templateFamilyOf(raw.after_payload) || templateFamilyOf(raw.before_payload),
     builtIn: builtInOf(raw.after_payload) ?? builtInOf(raw.before_payload),
   };
 }
@@ -472,7 +479,8 @@ async function coverageFor(client: KeelClient, ref: string, report?: UnknownReco
         }
       : null,
     // One count for every page: the types and workloads by backupHealth, adding up to total.
-    summary: coverageSummary([...types, ...workloads]),
+    // failedNeedsFix: the failed kinds a person must fix, the red part (lib/severity.ts).
+    summary: { ...coverageSummary([...types, ...workloads]), failedNeedsFix: failedNeedingFix([...types, ...workloads]) },
     types,
     workloads,
     liveEvidence: normalizeLiveEvidence(raw.liveEvidence),
@@ -568,6 +576,17 @@ export async function getComplianceData(): Promise<ComplianceData> {
   });
 }
 
+/** Intune security baselines: every setting of every version, matched against every
+ * settings catalog policy in the newest complete backup. Read-only. */
+export async function getIntuneBaselineData(): Promise<IntuneBaselineData> {
+  const ref = tenantRef();
+  const now = new Date();
+  return withClient(async (client) => shapeBaselines(
+    (await intuneBaselineResults(client, { tenantRef: ref, now })) as EngineBaselineResults,
+    now.toISOString(),
+  ));
+}
+
 /** What an own compliance check can be written on: the types and settings in the newest backup. */
 export async function getOwnCheckChoices(): Promise<OwnCheckChoices> {
   const ref = tenantRef();
@@ -626,38 +645,67 @@ export const DRIFT_TREND_DAYS = 30;
 // Zero-fills the window so every day is one point: a gap in detection is a real zero,
 // not a missing sample, and the x-axis stays linear in time.
 export function fillDriftTrend(
-  rows: Array<{ day: string; count: number }>,
+  rows: Array<{ day: string; count: number; firstCheck?: number }>,
   end: Date,
   days = DRIFT_TREND_DAYS,
-): Array<{ day: string; count: number }> {
-  const counts = new Map(rows.map((row) => [row.day, row.count]));
+): DriftTrendPoint[] {
+  const byDay = new Map(rows.map((row) => [row.day, row]));
   const last = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
   return Array.from({ length: days }, (_, index) => {
     const day = new Date(last - (days - 1 - index) * 86_400_000).toISOString().slice(0, 10);
-    return { day, count: counts.get(day) ?? 0 };
+    const row = byDay.get(day);
+    return row?.firstCheck ? { day, count: row.count, firstCheck: row.firstCheck } : { day, count: row?.count ?? 0 };
   });
 }
 
-async function driftTrendFor(
+/**
+ * Changes found per day against the active approved setup. Each difference (a setting
+ * and the value it changed to) counts once, on the day it was first found, so a run that
+ * re-records a difference still there does not count it again, while a new change to the
+ * same setting does. The first comparison after the setup was approved lists everything
+ * that already differed at once (981 on one day in the 31 Oct audit), which read like an
+ * attack: the differences first found in that comparison's backup are returned apart as
+ * firstCheck, so the chart can mark them instead of drawing a spike (UI audit E2). That
+ * backup is the tenant's first complete one after the approval (a failed run compares
+ * nothing); if it found nothing,
+ * there is no firstCheck and every later change counts as new.
+ */
+export async function driftTrendFor(
   client: KeelClient,
   ref: string,
   activeBaselineId: string | null,
   end: Date,
-): Promise<Array<{ day: string; count: number }>> {
+): Promise<DriftTrendPoint[]> {
   if (!activeBaselineId) return fillDriftTrend([], end);
   const { rows } = await client.query(
-    `SELECT to_char(date_trunc('day', detected_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-            count(DISTINCT natural_key)::int AS count
-       FROM drift d
-      WHERE tenant_ref = $1
-        AND baseline_id = $2
-        AND detected_at >= $3
-        AND ${RECORDED_CHANGE_PREDICATE}
+    `WITH found AS (
+       SELECT DISTINCT ON (d.natural_key, d.change_type, d.after_hash) d.detected_at AS at, d.observed_snapshot
+         FROM drift d
+        WHERE d.tenant_ref = $1
+          AND d.baseline_id = $2
+          AND ${RECORDED_CHANGE_PREDICATE}
+        ORDER BY d.natural_key, d.change_type, d.after_hash, d.detected_at, d.id
+     ), first_check AS (
+       SELECT s.id
+         FROM snapshot s
+         JOIN baseline b ON b.id = $2
+        WHERE s.tenant_ref = $1
+          AND s.status = 'complete'
+          AND s.completed_at >= b.set_at
+        ORDER BY s.completed_at, s.id
+        LIMIT 1
+     )
+     SELECT to_char(date_trunc('day', f.at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+            count(*) FILTER (WHERE fc.id IS NULL OR f.observed_snapshot <> fc.id)::int AS count,
+            count(*) FILTER (WHERE f.observed_snapshot = fc.id)::int AS first_check
+       FROM found f
+       LEFT JOIN first_check fc ON true
+      WHERE f.at >= $3
       GROUP BY 1`,
     [ref, activeBaselineId, new Date(end.getTime() - DRIFT_TREND_DAYS * 86_400_000)],
   );
   return fillDriftTrend(
-    rows.map((row) => ({ day: String(row.day), count: Number(row.count) })),
+    rows.map((row) => ({ day: String(row.day), count: Number(row.count), firstCheck: Number(row.first_check) })),
     end,
   );
 }
@@ -720,7 +768,7 @@ async function scopedOpenDrift(client: KeelClient, ref: string, baselineId: stri
         WHERE tenant_ref = $1 AND baseline_id = $2
         ORDER BY natural_key, detected_at DESC, id DESC
      )
-     SELECT d.* FROM drift d JOIN latest ON latest.id = d.id
+     SELECT d.*, ${DRIFT_TEMPLATE_FAMILY_SQL} AS template_family FROM drift d JOIN latest ON latest.id = d.id
       WHERE ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
       ORDER BY d.detected_at, d.id`,
     [ref, baselineId, ...visible.values],
@@ -1115,8 +1163,8 @@ export interface RestoreResource {
   // The name the backup holds for it (displayName and the like), or null when the
   // object has none; the page never falls back to a bare object id.
   name?: string | null;
-  // The settings catalog template family, when the object has one: endpoint security
-  // policies (antivirus, firewall…) are filed under Defender (taxonomy settingKind).
+  // The template family, when the object has one: endpoint security policies (antivirus,
+  // firewall…), in either format, are filed under Defender (taxonomy settingKind).
   templateFamily?: string | null;
 }
 
@@ -1128,6 +1176,9 @@ export interface RestoreResourcesData {
 
 // The readable name a saved object carries, by the field Microsoft uses for it.
 export const PAYLOAD_NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
+// The template family a saved copy files by: an endpoint security policy, in either
+// format, is listed under Defender (engine/insights/templateAreas.mjs).
+const RESOURCE_FAMILY_SQL = templateFamilySql({ typeExpr: "rv.resource_type", payloads: ["rv.payload"], tenantExpr: "s.tenant_ref" });
 
 export async function getRestoreResources(
   snapshotId: string,
@@ -1144,7 +1195,7 @@ export async function getRestoreResources(
       `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
               CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
               CASE WHEN rv.resource_type = 'conditionalAccessPolicy' THEN rv.payload END AS rated_payload,
-              CASE WHEN rv.resource_type = 'configurationPolicy' THEN rv.payload->'templateReference'->>'templateFamily' END AS template_family
+              CASE WHEN rv.resource_type IN ('configurationPolicy', '${INTENT_TYPE}') THEN ${RESOURCE_FAMILY_SQL} END AS template_family
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2

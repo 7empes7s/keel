@@ -21,6 +21,7 @@
  *    for a full Graph object, 'all';
  *  - `lacks`: fields the rules may read that Keel's read does not return (Graph v1.0
  *    leaves out beta-only fields). A rule whose code names one is "could not check".
+ *    `lacksReason` names why, when it is not just a field Keel has not added yet.
  *  - `build(facts)`: the value, or a thrown CouldNotBuild when the backup cannot answer
  *    what the rule asks (for example a role held through a group whose members Keel
  *    does not read). Then the rule reads "could not check", never a guess.
@@ -36,6 +37,7 @@ import { FAMILIES as PURVIEW } from '../../collect/workloads/purviewRetentionDlp
 import { FAMILIES as POWER_PLATFORM } from '../../collect/workloads/powerPlatform.mjs';
 import { FAMILIES as TEAMS } from '../../collect/workloads/teamsPolicies.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../collect/workloads/teamsExtended.mjs';
+import { ENUMS as SHAREPOINT_ENUMS, SHAREPOINT_TENANT_WORKLOAD } from '../../collect/workloads/sharepointTenant.mjs';
 import { SENSITIVE_MASK } from '../registry.mjs';
 import { DEFAULT_SCUBA_CONFIG } from './config.mjs';
 
@@ -57,7 +59,7 @@ export const PURVIEW_DLP = 'purview-retention-dlp';
 export const TEAMS_POLICIES = 'teams-org-policies';
 export const TEAMS_VOICE = 'teams-voice-policies';
 export const POWER_PLATFORM_SETTINGS = 'power-platform-settings';
-export const SHAREPOINT_SETTINGS = 'sharepoint-site-settings';
+export const SHAREPOINT_TENANT = SHAREPOINT_TENANT_WORKLOAD;
 
 // ScubaGear's ScubaConfigDefaults.json `privilegedRoles` at the pinned tag.
 export const PRIVILEGED_ROLES = Object.freeze([
@@ -404,27 +406,48 @@ export function allowedDomains(value) {
   return listed.map(domainOf);
 }
 
-// SharePoint's numbers for Graph's named choices (SharingCapabilities and
-// SharingDomainRestrictionModes in the SharePoint admin API).
-export const SHARING_CAPABILITY = Object.freeze({
-  disabled: 0, externalUserSharingOnly: 1, externalUserAndGuestSharing: 2, existingExternalUserSharingOnly: 3,
+// The Get-SPOTenantRest fields the SharePoint rules read, and where Keel's
+// Get-PnPTenant read keeps each one. Both read the same tenant object; only OneDrive's
+// sharing level has another name in PnP. `enum` names the table the reader stores the
+// value's name by (sharepointTenant.mjs ENUMS); the rules compare the number.
+export const SPO_TENANT_FIELDS = Object.freeze({
+  SharingCapability: { from: 'SharingCapability', enum: 'sharing' },
+  ODBSharingCapability: { from: 'OneDriveSharingCapability', enum: 'sharing' },
+  SharingDomainRestrictionMode: { from: 'SharingDomainRestrictionMode', enum: 'domainMode' },
+  DefaultSharingLinkType: { from: 'DefaultSharingLinkType', enum: 'linkType' },
+  DefaultLinkPermission: { from: 'DefaultLinkPermission', enum: 'linkPermission' },
+  FileAnonymousLinkType: { from: 'FileAnonymousLinkType', enum: 'anonymousLink' },
+  FolderAnonymousLinkType: { from: 'FolderAnonymousLinkType', enum: 'anonymousLink' },
+  RequireAnonymousLinksExpireInDays: { from: 'RequireAnonymousLinksExpireInDays', days: true },
+  EmailAttestationRequired: { from: 'EmailAttestationRequired', boolean: true },
+  EmailAttestationReAuthDays: { from: 'EmailAttestationReAuthDays', days: true },
 });
-export const SHARING_DOMAIN_RESTRICTION = Object.freeze({ none: 0, allowList: 1, blockList: 2 });
 
+/**
+ * The tenant object as Get-SPOTenantRest answers it, from the newest Get-PnPTenant read.
+ * A field the read did not carry, or carried in a shape the rules cannot compare, makes
+ * the whole object "could not check": the rules would read a missing field as a fail.
+ */
 function spoTenant(facts) {
-  const tenant = list(facts, SHAREPOINT_SETTINGS).find((fact) => fact.id === 'tenant');
-  if (!tenant) throw new CouldNotBuild('SPO_tenant', 'the SharePoint backup holds no tenant sharing settings');
-  const number = (table, value, name) => {
-    if (typeof value === 'string' && Object.hasOwn(table, value)) return table[value];
-    throw new CouldNotBuild('SPO_tenant', `the backup does not say how ${name} is set`);
-  };
-  const domains = (value) => (Array.isArray(value) ? value.join(' ') : '');
-  return [{
-    SharingCapability: number(SHARING_CAPABILITY, tenant.sharingCapability, 'external sharing'),
-    SharingDomainRestrictionMode: number(SHARING_DOMAIN_RESTRICTION, tenant.sharingDomainRestrictionMode, 'the sharing domain list'),
-    SharingAllowedDomainList: domains(tenant.sharingAllowedDomainList),
-    SharingBlockedDomainList: domains(tenant.sharingBlockedDomainList),
-  }];
+  const tenants = list(facts, SHAREPOINT_TENANT).filter((fact) => fact.kind === 'tenantSettings');
+  if (tenants.length !== 1) throw new CouldNotBuild('SPO_tenant', 'the SharePoint backup holds no tenant settings read through the admin site');
+  const [tenant] = tenants;
+  const out = {};
+  for (const [name, spec] of Object.entries(SPO_TENANT_FIELDS)) {
+    const value = tenant[spec.from];
+    let built;
+    if (spec.enum) {
+      const index = typeof value === 'string' ? SHAREPOINT_ENUMS[spec.enum].indexOf(value) : -1;
+      built = index >= 0 ? index : undefined;
+    } else if (spec.days) {
+      built = Number.isInteger(value) ? value : undefined;
+    } else if (spec.boolean) {
+      built = typeof value === 'boolean' ? value : undefined;
+    }
+    if (built === undefined) throw new CouldNotBuild('SPO_tenant', `the backup does not say how ${spec.from} is set`);
+    out[name] = built;
+  }
+  return [out];
 }
 
 /**
@@ -441,6 +464,43 @@ function dlpPolicies(facts) {
     environments: Array.isArray(policy.environments) ? policy.environments : [],
   }));
   return [{ value }];
+}
+
+const platformOfKind = (facts, kind) => list(facts, POWER_PLATFORM_SETTINGS).filter((fact) => fact.kind === kind);
+function onePlatformObject(facts, kind, key, what) {
+  const found = platformOfKind(facts, kind);
+  if (found.length !== 1) throw new CouldNotBuild(key, `the Power Platform backup holds no ${what}`);
+  return found[0];
+}
+
+// The tenant settings ScubaGear's rules judge, each on or off.
+export const ENVIRONMENT_CREATION_SETTINGS = Object.freeze([
+  'disableEnvironmentCreationByNonAdminUsers', 'disableTrialEnvironmentCreationByNonAdminUsers', 'disablePortalsCreationByNonAdminUsers',
+]);
+
+/**
+ * Get-PowerPlatformTenantSettingsRest answers the tenant settings object. Each setting is
+ * passed on only when it is on or off: a rule whose setting is missing or of another
+ * type then gives no result, which reads "could not check", never a guess.
+ */
+function environmentCreation(facts) {
+  const settings = onePlatformObject(facts, 'tenantSettings', 'environment_creation', 'tenant settings');
+  const value = Object.fromEntries(ENVIRONMENT_CREATION_SETTINGS.filter((name) => typeof settings[name] === 'boolean').map((name) => [name, settings[name]]));
+  const share = settings.powerPlatform?.powerApps?.disableShareWithEveryone;
+  if (typeof share === 'boolean') value.powerPlatform = { powerApps: { disableShareWithEveryone: share } };
+  return [value];
+}
+
+/**
+ * Get-PowerPlatformTenantIsolationRest answers the policy, whose properties say whether
+ * isolation is off, or null when it was never set up (the rules read that as the
+ * string "null"). Anything else is not guessed at.
+ */
+function tenantIsolation(facts) {
+  const policy = onePlatformObject(facts, 'tenantIsolation', 'tenant_isolation', 'tenant isolation setting');
+  if (policy.neverConfigured === true) return ['null'];
+  if (typeof policy.isDisabled !== 'boolean') throw new CouldNotBuild('tenant_isolation', 'the backup does not say whether tenant isolation is on');
+  return [{ properties: { isDisabled: policy.isDisabled } }];
 }
 
 const SCUBA_CONFIG_FIELDS = Object.freeze([
@@ -469,8 +529,14 @@ export const ADAPTERS = Object.freeze({
   // Entra ID
   conditional_access_policies: Object.freeze({
     reads: [graph('conditionalAccessPolicy')], fields: 'all',
-    // Agent conditions exist only in Graph beta; Keel reads sign-in rules through v1.0.
+    // The AI agent conditions (MS.AAD.9.1) exist only in Graph beta, and only as a preview.
+    // A live beta read of the test tenant (operator queue Q289, 2026-10-30) returned none of
+    // these fields: Microsoft leaves them out unless a policy targets agents, and the test
+    // tenant cannot get one (no Conditional Access changes). ScubaGear reads the same beta
+    // endpoint, so there is no other source. Keel does not back the preview fields up, and the
+    // rule stays "could not check" with that reason.
     lacks: ['AgentIdRiskLevels', 'IncludeAgentIdServicePrincipals', 'ExcludeAgentIdServicePrincipals'],
+    lacksReason: 'preview-only',
     build: (facts) => list(facts, 'conditionalAccessPolicy').map(pascal),
   }),
   authorization_policies: Object.freeze({ reads: [graph('authorizationPolicy')], fields: 'all', build: (facts) => single(facts, 'authorizationPolicy', 'authorization_policies').map(pascal) }),
@@ -563,14 +629,18 @@ export const ADAPTERS = Object.freeze({
       .map((configuration) => ({ ...configuration, AllowedDomains: allowedDomains(configuration.AllowedDomains) }))),
   }),
   ...cmdletKeys(TEAMS_VOICE, TEAMS_EXTENDED, { broadcast_policies: 'liveEventsPolicy' }, { identity: false, check: teamsChecked }),
+  // The org-wide app settings have no app-only read. ScubaGear run with a certificate
+  // records exactly this, and its rules then judge the app permission policies.
+  tenant_app_settings: Object.freeze({
+    setting: true, fields: Object.freeze(['SettingName', 'SettingValue', 'CertificateBasedAuth']),
+    build: () => [{ CertificateBasedAuth: true }],
+  }),
 
-  // SharePoint and OneDrive. Keel reads the tenant's sharing settings through Graph
-  // (sharepointSettings), which names its choices; the SharePoint admin API ScubaGear
-  // reads gives the same choices as numbers. Only these settings are in Graph: a rule
-  // that names any other SharePoint admin setting reads "could not check".
+  // SharePoint and OneDrive: the tenant's admin settings from Keel's Get-PnPTenant read
+  // (the sharepoint-tenant workload), as ScubaGear reads them with Get-SPOTenantRest.
   SPO_tenant: Object.freeze({
-    reads: [service(SHAREPOINT_SETTINGS)],
-    fields: Object.freeze(['SharingCapability', 'SharingDomainRestrictionMode', 'SharingAllowedDomainList', 'SharingBlockedDomainList']),
+    reads: [service(SHAREPOINT_TENANT, 'tenantSettings')],
+    fields: Object.freeze(Object.keys(SPO_TENANT_FIELDS)),
     build: spoTenant,
   }),
 
@@ -590,6 +660,15 @@ export const ADAPTERS = Object.freeze({
       }
       return environments;
     },
+  }),
+  environment_creation: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'tenantSettings')],
+    fields: Object.freeze([...ENVIRONMENT_CREATION_SETTINGS, 'powerPlatform', 'powerApps', 'disableShareWithEveryone']),
+    build: environmentCreation,
+  }),
+  tenant_isolation: Object.freeze({
+    reads: [service(POWER_PLATFORM_SETTINGS, 'tenantIsolation')], fields: Object.freeze(['properties', 'isDisabled']),
+    build: tenantIsolation,
   }),
   // The default environment is named Default-<tenant id>; the rules look for it by name.
   tenant_id: Object.freeze({

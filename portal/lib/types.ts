@@ -187,11 +187,19 @@ export interface CoverageType {
 
 // Every kind in exactly one bucket, so the buckets add up to total
 // (lib/protect-view.ts coverageSummary). covered is backed up and current.
+// One day of the Overview trend: changes first found that day, and (only on the day of
+// the first check after the active approved setup) what that check found already
+// different, which is not a burst of new changes.
+export interface DriftTrendPoint { day: string; count: number; firstCheck?: number }
+
 export interface CoverageSummary {
   covered: number;
   failed: number;
   // Only part of the kind was read: its own amber count, never inside failed.
   partial: number;
+  // Of the failed kinds, those a person must fix (a missing permission or role): the
+  // red part of "failed" (lib/severity.ts). Absent means unknown: all count as red.
+  failedNeedsFix?: number;
   stale: number;
   neverCollected: number;
   notCovered: number;
@@ -503,7 +511,8 @@ export interface DriftRecord {
   name?: string | null;
   // The settings catalog template family (templateReference.templateFamily) of the
   // observed or approved copy, when it has one: an antivirus or firewall policy made in
-  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind).
+  // Intune's Endpoint security pages is filed under Defender (taxonomy settingKind). For
+  // an older-format policy, its template's subtype (engine/insights/templateAreas.mjs).
   templateFamily?: string | null;
   // The object's isBuiltIn flag (an admin role Microsoft provides, or the tenant's own),
   // so the change names it "Built-in admin role" or "Custom admin role"; null when unknown.
@@ -700,7 +709,9 @@ export interface DashboardData {
   openDriftTotal: number;
   // Drift rows detected per UTC day against the active baseline, oldest first, one
   // entry per day for the trend window (zero-filled), so the sparkline is to scale.
-  driftTrend: Array<{ day: string; count: number }>;
+  // Changes first found per day; the first check after the active setup was approved
+  // is kept apart in firstCheck (lib/portal-data.ts driftTrendFor).
+  driftTrend: DriftTrendPoint[];
   coverage: CoverageSummary;
   // ok is the record's own chain. check adds the off-site checkpoint (lib/audit-check.ts):
   // "unchecked" when there is none to compare with; undefined when it could not be read.

@@ -109,7 +109,7 @@ test('open follow-up totals count every restore, not only the cards a page shows
   await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
   await client.query(schemaSql());
   const tenantRef = 'sha256:totals-past-the-limit';
-  assert.deepEqual(await readOpenCompletionWork(client, { tenantRef, limit: 3 }), { steps: 0, restores: 0, href: '/restore#follow-up', cards: [] });
+  assert.deepEqual(await readOpenCompletionWork(client, { tenantRef, limit: 3 }), { steps: 0, restores: 0, href: '/restore/follow-up-steps', cards: [] });
 
   let steps = 0;
   for (let n = 1; n <= 5; n++) {
@@ -125,10 +125,10 @@ test('open follow-up totals count every restore, not only the cards a page shows
   const work = await readOpenCompletionWork(client, { tenantRef, limit: 3 });
   assert.equal(work.steps, steps);
   assert.equal(work.restores, 5);
-  assert.equal(work.href, '/restore#follow-up');
+  assert.equal(work.href, '/restore/follow-up-steps');
   assert.equal(work.cards.length, 3, 'the page shows the newest three');
   assert.equal(work.cards[0].restoreRef, '74000000-0000-4000-8000-000000000005');
   assert.ok(work.cards.reduce((sum, card) => sum + card.pending, 0) < work.steps, 'the cards alone would under-count');
-  assert.deepEqual(await countOpenCompletionWork(client, { tenantRef }), { steps, restores: 5, href: '/restore#follow-up' });
+  assert.deepEqual(await countOpenCompletionWork(client, { tenantRef }), { steps, restores: 5, href: '/restore/follow-up-steps' });
   assert.equal(await countOpenCompletionSteps(client, { tenantRef }), steps, 'Overview and the menu read the same total');
 });

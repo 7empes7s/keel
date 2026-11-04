@@ -852,10 +852,10 @@ export function RestoreSelection({
                 <li className="track-current">{approvalWords.reviewStep}</li>
               </>
             )}
-            <li className={sentStarted ? "track-current" : undefined}>KEEL checks the tenant again, then restores; the job appears below</li>
+            <li className={sentStarted ? "track-current" : undefined}>KEEL checks the tenant again, then restores; the job appears in Past restores</li>
           </ol>
           <div className="form-actions">
-            <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>
+            <Link className="btn btn-secondary" href="/restore/past-restores">See past restores</Link>
             <button
               className="btn btn-ghost"
               disabled={submitting || planning}

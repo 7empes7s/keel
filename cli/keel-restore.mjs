@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { resolveRolledBackFlags } from '../engine/notify/changeFlags.mjs';
 // /opt/keel/cli/keel-restore.mjs
 //
 // node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
@@ -1551,6 +1552,11 @@ export async function runRestore({
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
+    }
+
+    if (mode === 'enforce' && artifactScopeReconciliationResources?.length) {
+      await resolveRolledBackFlags(client, { tenantRef: sourceTenantRef, resources: artifactScopeReconciliationResources,
+        appliedKeys: results.applied.map((entry) => entry.naturalKey) });
     }
 
     return {

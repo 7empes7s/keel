@@ -2,24 +2,11 @@
 import { fileURLToPath } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { enqueue } from '../engine/jobs/queue.mjs';
-import { capabilitiesForPrincipal } from '../engine/authz/principals.mjs';
+import { schedulerPrincipal } from '../engine/authz/systemPrincipal.mjs';
+export { schedulerPrincipal } from '../engine/authz/systemPrincipal.mjs';
 import { nextDueAt, validateSchedule } from '../engine/schedules/cadence.mjs';
 import { processCollectionCompletions } from '../engine/schedules/completions.mjs';
 import { parseCliArgs } from './args.mjs';
-
-export async function schedulerPrincipal(client) {
-  const { rows: [principal] } = await client.query(
-    `INSERT INTO principal (email, display_name, system_kind)
-     VALUES ('scheduler@keel.internal', 'KEEL scheduler', 'scheduler')
-     ON CONFLICT (lower(email)) DO UPDATE SET email = principal.email RETURNING *`,
-  );
-  const capabilities = await capabilitiesForPrincipal(client, principal);
-  if (principal.system_kind !== 'scheduler' || capabilities.length !== 2
-      || !capabilities.includes('collect') || !capabilities.includes('configuration')) {
-    throw new Error('scheduler principal must hold exactly collect + configuration');
-  }
-  return principal;
-}
 
 // Due instant is persisted, so an interrupted retry always addresses the same job.
 export async function enqueueSchedule(client, row, requestedBy) {

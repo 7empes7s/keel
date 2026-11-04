@@ -94,7 +94,7 @@ function priorityOf(info, blastRadius) {
 // (an Intune antivirus policy is a Defender endpoint security policy, taxonomy settingKind).
 // `builtIn` is the object's isBuiltIn flag when its kind holds both built-in and custom
 // objects (an Entra admin role), so the row says which one it is.
-function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null, flags = [] }) {
+function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null, flags = [], evaluation = null }) {
   const info = typeInfo(kind, service);
   const at = iso(occurredAt);
   return {
@@ -115,6 +115,7 @@ function row({ id, source, occurredAt, type, kind = type, service = null, blastR
     activity,
     person,
     flags,
+    ...(evaluation ? { evaluation } : {}),
   };
 }
 
@@ -239,19 +240,29 @@ function actorFrom(key) {
 /**
  * The newest changes in one tenant, newest first.
  * @param {{ query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }} client
- * @param {{ tenantRef: string, now?: Date, days?: number, limit?: number,
+ * @param {{ tenantRef: string, now?: Date, days?: number, limit?: number, selection?: { source: string, ids: string[] },
  *   namer?: ((key: string) => string) | null }} input
  *   `namer` comes from anonymity.mjs#readNamer: null shows names, else people are code-named.
  * @returns {Promise<{ since: string, until: string, rows: object[], truncated: boolean }>}
  */
-export async function loadChangeFeed(client, { tenantRef, now = new Date(), days = DEFAULT_FEED_DAYS, limit = DEFAULT_FEED_LIMIT, namer = null }) {
+export async function loadChangeFeed(client, { tenantRef, now = new Date(), days = DEFAULT_FEED_DAYS, limit = DEFAULT_FEED_LIMIT, namer = null, selection = null }) {
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
   const span = bounded(days, DEFAULT_FEED_DAYS, MAX_FEED_DAYS);
   const cap = bounded(limit, DEFAULT_FEED_LIMIT, MAX_FEED_LIMIT);
   const until = new Date(now);
   const since = new Date(until.getTime() - span * DAY_MS);
-  const window = [tenantRef, since, until, cap + 1];
-  const read = async (table, sql) => ((await tableExists(client, table)) ? (await client.query(sql, window)).rows : []);
+  const window = [tenantRef, selection ? new Date(0) : since, selection ? new Date('9999-01-01') : until, cap + 1];
+  const read = async (table, sql) => {
+    const source = { drift: 'drift', workload_drift: 'service', audit_change_fact: 'audit' }[table];
+    if (selection && selection.source !== source) return [];
+    if (!(await tableExists(client, table))) return [];
+    if (!selection) return (await client.query(sql, window)).rows;
+    // Collection consumers select exact rows, without the inbox's age or size limits.
+    const column = { drift: 'r.id::text', workload_drift: 'd.id::text', audit_change_fact: 'source_event_id' }[table];
+    const order = sql.lastIndexOf('   ORDER BY');
+    const scoped = sql.slice(0, order) + ` AND ${column} = ANY($4::text[]) ` + sql.slice(order).replace('   LIMIT $4', '');
+    return (await client.query(scoped, [...window.slice(0, 3), selection.ids])).rows;
+  };
   const [drift, service, audit] = [await read('drift', DRIFT_SQL), await read('workload_drift', SERVICE_SQL), await read('audit_change_fact', AUDIT_SQL)];
 
   // One names read for every audited object and every account a row points to.
@@ -285,6 +296,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
   // Only one account can be named; several, or none, leave it unknown.
   const onlyActor = (keys) => (Array.isArray(keys) && keys.length === 1 ? person(actorFrom(keys[0])) : null);
 
+  const flagged = (input) => ({ flags: evaluateFlags(input), ...(selection ? { evaluation: input } : {}) });
   const rows = [
     ...drift.map((entry) => {
       const type = String(entry.resource_type);
@@ -301,7 +313,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         object,
         change: String(entry.change_type),
         person: onlyActor(entry.actors),
-        flags: evaluateFlags({ source: 'drift', type, change: String(entry.change_type), name: object.name, key: object.key, before: entry.flag_before, after: entry.flag_after, context }),
+        ...flagged({ source: 'drift', type, change: String(entry.change_type), name: object.name, key: object.key, before: entry.flag_before, after: entry.flag_after, context }),
       });
     }),
     ...service.map((entry) => {
@@ -318,7 +330,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         blastRadius: entry.blast_radius,
         object,
         change: String(entry.change_type),
-        flags: evaluateFlags({ source: 'service', type: String(entry.workload), change: String(entry.change_type), name: object.name, key: object.key, ...serviceFlagValues(entry.flag_fields) }),
+        ...flagged({ source: 'service', type: String(entry.workload), change: String(entry.change_type), name: object.name, key: object.key, ...serviceFlagValues(entry.flag_fields) }),
       });
     }),
     ...audit.map((entry) => {
@@ -338,12 +350,12 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         change,
         activity: text(entry.activity),
         person: person({ kind: String(entry.actor_kind), id: String(entry.actor_id).toLowerCase() }),
-        flags: evaluateFlags({
+        ...flagged({
           source: 'audit', type, change, name: object.name, key: object.key, activity: text(entry.activity),
           operation: String(entry.operation), targetType: String(entry.target_type), fields: Array.isArray(entry.fields) ? entry.fields : [],
         }),
       });
     }),
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
-  return { since: since.toISOString(), until: until.toISOString(), rows: rows.slice(0, cap), truncated: rows.length > cap };
+  return { since: since.toISOString(), until: until.toISOString(), rows: selection ? rows : rows.slice(0, cap), truncated: selection ? false : rows.length > cap };
 }

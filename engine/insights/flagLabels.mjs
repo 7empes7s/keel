@@ -1,0 +1,28 @@
+/** Labels shared by the notification settings and the audit record. */
+const LABELS = Object.freeze({
+  'ca-turned-off': 'Sign-in rule turned off',
+  'ca-report-only': 'Sign-in rule switched to report-only',
+  'ca-deleted': 'Sign-in rule deleted',
+  'ca-deleted-audit': 'Sign-in rule deletion in the audit log',
+  'ca-exclusions-added': 'More people or places excluded from a sign-in rule',
+  'ca-mfa-removed': 'MFA removed from a sign-in rule',
+  'admin-role-added': 'Someone given an admin role',
+  'admin-role-added-audit': 'Admin role addition in the audit log',
+  'role-group-member-added': 'Someone added to a group that holds admin roles',
+  'role-group-member-added-service': 'Someone added to an Exchange admin role group',
+  'app-credential-added': 'New app secret or certificate',
+  'app-credential-added-audit': 'New enterprise app credential in the audit log',
+  'app-permission-tenant-write': 'New tenant-wide app permission',
+  'app-permission-granted': 'New app permission',
+  'app-permission-granted-audit': 'New app permission in the audit log',
+  'location-trusted': 'Location trusted for sign-in',
+  'trusted-ranges-added': 'More trusted network addresses',
+  'security-defaults-off': 'Security defaults turned off',
+  'weak-method-on': 'Weaker sign-in method turned on',
+  'auth-strength-loosened': 'More sign-in methods accepted',
+  'cross-tenant-opened': 'Access with other organizations opened up',
+  'guest-invites-opened': 'More people allowed to invite guests',
+  'sharing-widened': 'Sharing opened to more people',
+  'anyone-link-expiry-longer': 'Anyone links allowed to last longer',
+});
+export const flagLabel = (key) => LABELS[key] ?? 'Flagged change';

@@ -1,3 +1,4 @@
+import { drainAuditFlags } from '../notify/changeFlags.mjs';
 import { randomUUID } from 'node:crypto';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
@@ -130,6 +131,7 @@ export async function ingestAudit(client, options) {
   try {
     await client.query('INSERT INTO audit_ingest_run(id, tenant_ref, source, evidence) VALUES ($1,$2,$3,$4)', [runId, tenantRef, source, evidence]);
     runCreated = true;
+    await drainAuditFlags(client, { tenantRef });
     if (archiveRef !== undefined) {
       evidence.archiveRef = archiveRef;
       return await save('archive-reference');
@@ -196,6 +198,7 @@ export async function ingestAudit(client, options) {
         for (const event of events) {
           const result = await client.query(`INSERT INTO audit_ingest_event(tenant_ref,source,source_event_id,occurred_at)
             VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantRef, source, event.id, event.occurredAt]);
+          if (event.fact?.kind === 'change') await client.query(`INSERT INTO change_flag_pending (tenant_ref,source_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [tenantRef, event.id]);
           insertedEvents += result.rowCount;
           storedBytes += result.rowCount * Buffer.byteLength(JSON.stringify({ id: event.id, occurredAt: event.occurredAt }));
           // Task 91: the minimized attribution fact is stored with its event, in this
@@ -225,6 +228,7 @@ export async function ingestAudit(client, options) {
         Object.assign(evidence, previous);
         throw new Error('audit page persistence failed');
       }
+      await drainAuditFlags(client, { tenantRef });
       cursor = nextCursor;
       if (nextCursor === null) { status = evidence.observedEvents ? 'complete' : 'complete-empty'; break; }
     }

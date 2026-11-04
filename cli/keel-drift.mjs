@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { syncChangeFlags, resolveBackupFlags } from '../engine/notify/changeFlags.mjs';
 // /opt/keel/cli/keel-drift.mjs
 //
 // node keel-drift.mjs detect --config /etc/keel/tenant.json [--db-url $KEEL_DB_URL]
@@ -214,10 +215,11 @@ async function detect() {
     const beforeByNaturalKey = new Map(before.map((row) => [row.natural_key, row]));
     const afterByNaturalKey = new Map(after.map((row) => [row.natural_key, row]));
 
+    const flagRowIds = [];
     for (const item of drift) {
       const beforeRow = beforeByNaturalKey.get(item.naturalKey);
       const afterRow = afterByNaturalKey.get(item.naturalKey);
-      await recordDrift(client, {
+      flagRowIds.push(await recordDrift(client, {
         tenantRef,
         baselineId: baseline.id,
         observedSnapshot: snapshotId,
@@ -229,7 +231,7 @@ async function detect() {
         beforePayload: beforeRow?.payload,
         afterPayload: afterRow?.payload,
         blastRadius: item.blastRadius,
-      });
+      }));
     }
 
     // Rows recorded before detection compared content (a hash stored under older
@@ -246,6 +248,10 @@ async function detect() {
       drift,
       coveredTypes: coveredTypes ?? [...new Set([...before, ...after].map((row) => row.resource_type))],
     });
+
+    await syncChangeFlags(client, { tenantRef, source: 'drift', ids: flagRowIds.map(String) });
+    await resolveBackupFlags(client, { tenantRef, snapshotId, observedAt: observed.completed_at ?? observed.started_at,
+      coveredTypes: coveredTypes ?? [...new Set([...before, ...after].map((row) => row.resource_type))] });
 
     // One point of the approved setup's match percentage for this backup (Baselines
     // page history). A failure is logged and never fails detection.

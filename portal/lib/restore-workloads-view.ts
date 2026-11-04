@@ -69,9 +69,8 @@ export const WORKLOAD_ORDER: readonly string[] = [
   "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings", "sharepoint-tenant",
   "teams-settings", "teams-org-policies", "teams-collaboration-policies", "teams-meeting-settings", "teams-voice-policies", "teams-voice-network", "teams-device-policies",
   "power-platform-settings",
-  "defender-endpoint-indicators",
-  "purview-labels", "purview-governance", "purview-retention-dlp",
-  "defender-email-protection",
+  "defender-email-protection", "defender-endpoint-indicators",
+  "purview-labels", "purview-governance", "purview-retention-dlp", "purview-classifiers", "purview-audit-retention",
 ];
 
 /** Sort key for a kind inside its service; kinds not in the list go last. */

@@ -18,7 +18,7 @@ import { OPERATIONS, capabilityFor, isSupportedClaim } from '../coverage/capabil
 import { EXPANSION_INVENTORY, TYPE_DECISIONS, buildExpansionInventory, qualificationFor } from '../coverage/qualification.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
 import {
-  attachAuthenticationContextConsumers, attachRolloutAppliesTo, certificateAuthorityReview, contextConsumers,
+  applySignInSettingWrite, attachAuthenticationContextConsumers, attachRolloutAppliesTo, certificateAuthorityReview, contextConsumers,
 } from '../restore/signInSettingsOperations.mjs';
 import {
   METHOD_CONFIGURATION_FIELDS, METHOD_TRUST_FIELDS, checkedMethodFields, methodConfigurationWrites, tenantPolicyWriteRefusal,
@@ -64,6 +64,11 @@ function signInGraph({ contexts = [], policies = [], rollouts = [], groups = [] 
         if (!found) return missing;
         const { appliesTo, ...rest } = found;
         return ok(params.get('$expand') === 'appliesTo' ? { ...rest, appliesTo: appliesTo.map((id) => ({ id })) } : rest);
+      }
+      const group = /^\/groups\/([^/]+)$/.exec(path);
+      if (group) {
+        const found = groups.find((entry) => entry.id === decodeURIComponent(group[1]));
+        return found ? ok(found) : missing;
       }
       if (path === '/groups') {
         const filter = /^(mailNickname|displayName) eq '(.*)'$/.exec(params.get('$filter') ?? '');
@@ -242,6 +247,17 @@ test('making a used context available is held behind the restore approval; its n
   assert.match(skipped.skipped[0].reason, /^manual: .*Changes sign-in/);
 });
 
+test('a create of a used context is held whole until its availability is approved, and an upper-case id is refused', async () => {
+  const consumers = contextConsumers('c3', { snapshotPolicies: [caPolicy('Finance step-up', ['c3'])], livePolicies: [] });
+  const graph = signInGraph();
+  const result = await run(graph, [contextResource('create', { consumers })]);
+  assert.deepEqual(graph.bodies, [], 'the context is not made without its availability');
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0].reason, /Set authentication context c3 to available \(it is absent now\)/);
+  const upper = await run(signInGraph(), [contextResource('create', { payload: { id: 'C3' }, consumers: UNUSED })]);
+  assert.match(upper.failed[0].error, /not one of c1\.\.c99/);
+});
+
 test('an availability change on a context nothing uses needs no approval and is no effect', async () => {
   const live = { id: 'c3', displayName: 'KEEL-RT-994-context', description: 'step-up for finance', isAvailable: false };
   const resource = contextResource('update', { live, consumers: UNUSED });
@@ -357,6 +373,44 @@ test('rollout groups are add-only: a missing one is added, an extra live one is 
   assert.deepEqual(graph.store.rollouts.get('live-rollout').appliesTo, [EXTRA_GROUP.id, LIVE_GROUP.id]);
   const step = result.applied[0].completion.find((entry) => entry.requirement === 'rolloutGroups');
   assert.match(step.description, /Add "KEEL-RT-994-gone" \(no group with that name exists in this tenant\)/);
+});
+
+test('when the live groups of a rollout cannot be read, none is added and a step says so', async () => {
+  const live = { id: 'live-rollout', displayName: 'KEEL-RT-994-rollout', description: 'cloud sign-in pilot', feature: 'passwordHashSync', isAppliedToOrganization: false, isEnabled: false };
+  const resource = rolloutResource('update', { payload: { isEnabled: false }, live, liveGroups: null });
+  resource.rolloutAppliesTo = { ...resource.rolloutAppliesTo, live: { outcome: 'failed', groups: [] } };
+  assert.deepEqual(approvalsFor([resource]), []);
+  const graph = signInGraph({ rollouts: [live], groups: [LIVE_GROUP] });
+  const result = await run(graph, [resource], { lockoutGate: OPEN_GATE });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies, []);
+  assert.match(result.applied[0].completion.find((entry) => entry.requirement === 'rolloutGroups').description, /could not read which groups .* applies to now/);
+});
+
+test('a rollout write that fails after an earlier write landed is journaled uncertain, never failed', async () => {
+  const resource = rolloutResource('create');
+  const graph = signInGraph({ groups: [LIVE_GROUP] });
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, request) => (path.endsWith('/$ref') ? { ok: false, status: 400, body: { error: { message: 'not a valid target' } } } : write(version, path, request));
+  const notes = [];
+  const outcome = await applySignInSettingWrite(graph, resource, 'create', {
+    mode: 'enforce', lockoutGate: OPEN_GATE, approvedContentEffects: approvalsFor([resource]),
+    journalBeforeMutation: async () => ({ ok: true, entryId: 'entry-1' }),
+    noteOutcome: async (journal, result, extras) => { notes.push({ result, extras }); },
+  });
+  assert.match(outcome.failed.error, /adding group "KEEL-RT-994-rollout-group" failed/);
+  assert.deepEqual(notes.map((note) => [note.result, note.extras.targetId]), [['uncertain', 'rollout-1']]);
+});
+
+test('a rollout group is the backed-up group itself when it still exists, never a newer one with the same name', async () => {
+  const original = { id: ROLLOUT_GROUP.id, displayName: ROLLOUT_GROUP.name, mailNickname: ROLLOUT_GROUP.mailNickname };
+  const lookalike = { id: 'live-lookalike', displayName: ROLLOUT_GROUP.name, mailNickname: ROLLOUT_GROUP.mailNickname };
+  const resource = rolloutResource('create');
+  const graph = signInGraph({ groups: [original, lookalike] });
+  const result = await run(graph, [resource], { lockoutGate: OPEN_GATE, approvedContentEffects: approvalsFor([resource]) });
+  assert.deepEqual(result.failed, []);
+  const ref = graph.bodies.find((write) => write.path.endsWith('/$ref'));
+  assert.equal(ref.body['@odata.id'], `https://graph.microsoft.com/v1.0/directoryObjects/${ROLLOUT_GROUP.id}`);
 });
 
 test('a rollout name or description change needs no approval but still the lockout gate', async () => {

@@ -585,14 +585,8 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     drift: 'only possible when the tenant has no Conditional Access policy turned on; otherwise Entra refuses the change. If so, report this step as blocked (not failed) and do not demote it',
     breakGlass: 'Security defaults force MFA registration for every account: confirm both break-glass accounts have a registered method before the write.',
   },
-  conditionalAccessPolicy: {
-    kind: 'named-object', lockout: true,
-    fixture: `Conditional Access policy ${FIXTURE_PREFIX}-ca: report-only, block access, users = group ${FIXTURE_PREFIX}-ca-users (holding only keel-rt-20260908-carla), excluding every break-glass account, all cloud apps`,
-    select: `${FIXTURE_PREFIX}-ca`, drift: 'change its display name to end in -drifted',
-    breakGlass: 'The fixture policy targets only the fixture group and excludes every break-glass account. KEEL writes it report-only; the lockout gate must allow it.',
-    restoreBefore: 'Turn the fixture policy on (it blocks only carla) BEFORE the snapshot, so the backup has it enabled; after the snapshot delete it (soft delete only). The restore brings it back report-only and leaves the "turn on" item the next step uses.',
-  },
-  // Issue #994: sign-in settings (engine/restore/signInSettingsOperations.mjs).
+  // Issue #994: sign-in settings (engine/restore/signInSettingsOperations.mjs),
+  // before Conditional Access, which runs last.
   authenticationContextClassReference: {
     kind: 'named-object',
     fixture: `an authentication context in a slot nothing uses (no Conditional Access policy, SharePoint site or sensitivity label names it), named ${FIXTURE_PREFIX}-context, not available`,
@@ -605,6 +599,13 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-rollout`, drift: 'change its description and remove the group; for the create round delete the rollout: the restore recreates it switched off and adds the group back',
     breakGlass: 'The fixture rollout stays switched off and applies only to the empty fixture group; no break-glass account is in it. The lockout gate must allow the write and the dry run\'s "Changes sign-in" effects must be approved.',
     note: 'Never switch the fixture rollout on, never make it organization-wide, and delete it at the end.',
+  },
+  conditionalAccessPolicy: {
+    kind: 'named-object', lockout: true,
+    fixture: `Conditional Access policy ${FIXTURE_PREFIX}-ca: report-only, block access, users = group ${FIXTURE_PREFIX}-ca-users (holding only keel-rt-20260908-carla), excluding every break-glass account, all cloud apps`,
+    select: `${FIXTURE_PREFIX}-ca`, drift: 'change its display name to end in -drifted',
+    breakGlass: 'The fixture policy targets only the fixture group and excludes every break-glass account. KEEL writes it report-only; the lockout gate must allow it.',
+    restoreBefore: 'Turn the fixture policy on (it blocks only carla) BEFORE the snapshot, so the backup has it enabled; after the snapshot delete it (soft delete only). The restore brings it back report-only and leaves the "turn on" item the next step uses.',
   },
 });
 

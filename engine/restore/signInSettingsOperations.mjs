@@ -98,7 +98,8 @@ export function isSignInSettingGoverned(resourceType) {
   return Object.hasOwn(SIGN_IN_SETTING_RECORDS, resourceType);
 }
 
-const CONTEXT_ID = /^c([1-9]|[1-9][0-9])$/i;
+// Graph names contexts in lower case; another spelling is refused, never rewritten.
+const CONTEXT_ID = /^c([1-9]|[1-9][0-9])$/;
 const present = (resource) => resource?.live?.state === 'present' || resource?.live?.state === 'soft-deleted';
 const sameText = (left, right) => (left ?? '') === (right ?? '');
 const sameField = (field, desired, live) => (field === 'description' || field === 'displayName'
@@ -395,7 +396,8 @@ async function applyContextWrite(writer, entry, resource, verb, ctx) {
     const effects = authenticationContextEffects({ ...resource, verb, authenticationContextConsumers: consumers });
     const open = unapproved(effects, resource, run.approved);
     if (open.length > 0) {
-      fields = changed.filter((field) => field !== 'isAvailable');
+      // A create is held whole: the context is not made without its availability.
+      fields = verb === 'create' && !live ? [] : changed.filter((field) => field !== 'isAvailable');
       completion.push(approvalStep(entry, ['isAvailable'],
         `Set authentication context ${id} to ${desired.isAvailable ? 'available' : 'not available'} (it is ${live?.isAvailable === true ? 'available' : live ? 'not available' : 'absent'} now) in the ${entry.portalPath}. ${usedBy}`));
     }
@@ -432,8 +434,20 @@ async function applyContextWrite(writer, entry, resource, verb, ctx) {
   return done();
 }
 
-/** The one live group with the backup group's natural key (mail nickname, else name), or why not. */
+/**
+ * The live group for one backed-up group, or why not. The backed-up id comes
+ * first: in the same tenant it is the same group, so a newer group that only
+ * shares the name is never picked over it. Otherwise (another tenant, a group
+ * recreated since) the one group with the same natural key (mail nickname,
+ * else name) is used.
+ */
 async function findGroup(writer, group, run) {
+  const sameKey = (object) => (group.mailNickname ? lower(object?.mailNickname) === lower(group.mailNickname) : sameText(object?.displayName, group.name));
+  if (typeof group.id === 'string' && group.id.length > 0) {
+    const own = await run.retryOperation(() => writer.read('v1.0', `/groups/${encodeURIComponent(group.id)}?$select=id,displayName,mailNickname`));
+    if (own?.ok === true && typeof own.body?.id === 'string' && sameKey(own.body)) return { id: own.body.id };
+    if (own?.ok !== true && !isNotFound(own)) return { problem: `it could not be looked up (${detailOf(own)})` };
+  }
   const filter = group.mailNickname
     ? `mailNickname eq '${odataText(group.mailNickname)}'`
     : `displayName eq '${odataText(group.name)}'`;
@@ -510,6 +524,11 @@ async function applyRolloutWrite(writer, entry, resource, verb, ctx) {
         kind: 'manual-setting', requirement: 'rolloutGroups', portalPath: entry.portalPath,
         description: `The backup did not read which groups the staged rollout "${desired.displayName}" applies to, so KEEL adds none. Check its groups by hand in the ${entry.portalPath}.`,
       }));
+    } else if (operation === 'update' && verb === 'update' && rolloutGroupsToAdd(resource) === null) {
+      completion.push(Object.freeze({
+        kind: 'manual-setting', requirement: 'rolloutGroups', portalPath: entry.portalPath,
+        description: `KEEL could not read which groups the staged rollout "${desired.displayName}" applies to now, so it adds none. Compare them with the backup by hand in the ${entry.portalPath}.`,
+      }));
     }
   }
 
@@ -533,14 +552,17 @@ async function applyRolloutWrite(writer, entry, resource, verb, ctx) {
   if (operation === 'create') body.isEnabled = false;
   const journal = await run.journal({ operation, targetId, priorState: live, intendedState: { ...(live ?? {}), ...body } });
   if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${operation}: rollback journal write failed` } };
+  // Once one write landed, a later refusal leaves the tenant changed: 'uncertain', never 'failed'.
+  let changedTenant = false;
   const fail = async (result, what) => {
-    await run.note(journal, classifyWriteOutcome(result), { ...(targetId ? { targetId } : {}), detail: `${what}: ${detailOf(result)}` });
+    await run.note(journal, changedTenant ? 'uncertain' : classifyWriteOutcome(result), { ...(targetId ? { targetId } : {}), detail: `${what}: ${detailOf(result)}` });
     return { failed: { naturalKey, error: `${what} failed: ${JSON.stringify(result?.body ?? result?.error ?? null)}`, ...(result?.status !== undefined ? { status: result.status } : {}) } };
   };
 
   if (operation === 'create') {
     const created = await run.retryOperation(() => writer.write(entry.version, entry.collection, { method: 'POST', body }));
     if (!created?.ok) return fail(created, 'creating the staged rollout');
+    changedTenant = true;
     targetId = created.body?.id ?? null;
     if (!targetId) {
       await run.note(journal, 'uncertain', { detail: 'create returned no id' });
@@ -549,6 +571,7 @@ async function applyRolloutWrite(writer, entry, resource, verb, ctx) {
   } else if (Object.keys(body).length > 0) {
     const updated = await run.retryOperation(() => writer.write(entry.version, `${entry.collection}/${encodeURIComponent(targetId)}`, { method: 'PATCH', body }));
     if (!updated?.ok) return fail(updated, 'updating the staged rollout');
+    changedTenant = true;
   }
   // A rollout found live (or adopted) may already hold a group: only the others are added.
   let adding = toAdd;
@@ -563,6 +586,7 @@ async function applyRolloutWrite(writer, entry, resource, verb, ctx) {
       method: 'POST', body: { '@odata.id': `https://graph.microsoft.com/v1.0/directoryObjects/${group.targetId}` },
     }));
     if (!added?.ok) return fail(added, `adding group "${group.name}"`);
+    changedTenant = true;
   }
   if (switchApproved) {
     const switched = await run.retryOperation(() => writer.write(entry.version, `${entry.collection}/${encodeURIComponent(targetId)}`, { method: 'PATCH', body: { isEnabled: switching.after } }));

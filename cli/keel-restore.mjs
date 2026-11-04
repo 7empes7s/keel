@@ -317,6 +317,17 @@ function logFailures(logger, failed) {
   for (const entry of failed) logger.log(`  failed ${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`);
 }
 
+/** Issue #994: how the snapshot's read of one type ended ('complete', ...), or null when not known. */
+export async function snapshotTypeOutcome(client, { snapshotId, resourceType }) {
+  try {
+    const { rows } = await client.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [snapshotId]);
+    const outcome = rows?.[0]?.coverage_digest?.[resourceType]?.outcome;
+    return typeof outcome === 'string' ? outcome : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
   if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
   const { rows } = await client.query(
@@ -919,10 +930,17 @@ export async function runRestore({
     }
     // Issue #994: each authentication context carries what uses it (the backup's and
     // the live Conditional Access policies), for the dry run and its approval effects.
-    resources = await attachAuthenticationContextConsumers(resources, {
-      snapshotPolicies: (versions ?? []).filter((version) => version.resource_type === 'conditionalAccessPolicy').map((version) => version.payload),
-      reader: targetReader,
-    });
+    // The backup's policies count only when its Conditional Access read was complete;
+    // otherwise they are unknown, and the context is treated as used.
+    if (resources.some((resource) => resource.resourceType === 'authenticationContextClassReference')) {
+      const caRead = await snapshotTypeOutcome(client, { snapshotId: sourceSnapshot, resourceType: 'conditionalAccessPolicy' });
+      resources = await attachAuthenticationContextConsumers(resources, {
+        snapshotPolicies: ['complete', 'complete-empty'].includes(caRead)
+          ? (versions ?? []).filter((version) => version.resource_type === 'conditionalAccessPolicy').map((version) => version.payload)
+          : null,
+        reader: targetReader,
+      });
+    }
     // Roadmap task-149: a lockout-sensitive tenant policy (authentication methods,
     // security defaults, authorization policy) is written only when the target's
     // break-glass accounts stay ready under the proposed policy. Loaded only when

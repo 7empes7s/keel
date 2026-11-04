@@ -203,25 +203,45 @@ function federationSignInDiffers(resource) {
 const federationSignInStep = (fields) => `Where this guest federation's guests sign in (${fields.join(', ')}) differs from the backup. `
   + `A restore never changes it, so a changed backup cannot send guests to another sign-in page: confirm the values with the partner, then set them in ${FEDERATION_PORTAL_PATH}.`;
 
-function federationRefusal(resource, verb) {
-  if (verb !== 'update') return null;
+/**
+ * True when the backup holds none of the sign-in fields. Backups taken before
+ * issue #640 read the base federation collection, which answers only id and
+ * displayName, so they cannot show whether the sign-in page has drifted.
+ */
+const federationBackupLacksSignIn = (resource) => FEDERATION_SIGN_IN_FIELDS.every((field) => resource.payload?.[field] === undefined);
+
+const federationUncheckedStep = () => 'This backup does not hold where this guest federation\'s guests sign in (it was taken before KEEL backed that up), '
+  + `so a restore cannot tell whether it changed: check the issuer, sign-in page and signing certificate with the partner in ${FEDERATION_PORTAL_PATH}.`;
+
+/** The manual sign-in step for this federation, or null when the backup matches the live sign-in fields. */
+function federationSignInCompletion(resource) {
+  if (federationBackupLacksSignIn(resource)) {
+    return { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: [...FEDERATION_SIGN_IN_FIELDS], description: federationUncheckedStep() };
+  }
   const differs = federationSignInDiffers(resource);
   if (differs.length === 0) return null;
+  return { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) };
+}
+
+function federationRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const step = federationSignInCompletion(resource);
+  if (!step) return null;
   const live = resource.live?.payload ?? null;
-  if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], live[field]))) return null;
-  return {
-    outcome: 'skipped', reason: `manual: ${federationSignInStep(differs)}`,
-    completion: [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }],
-  };
+  // A field the backup does not hold is not written, so it is no change.
+  if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => resource.payload?.[field] === undefined || sameValue(resource.payload[field], live[field]))) return null;
+  return { outcome: 'skipped', reason: `manual: ${step.description}`, completion: [step] };
 }
 
 function federationAfterWrite(_io, { resource }) {
-  const differs = federationSignInDiffers(resource);
-  return {
-    completion: differs.length > 0
-      ? [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }]
-      : [],
-  };
+  const step = federationSignInCompletion(resource);
+  return { completion: step ? [step] : [] };
+}
+
+/** The dry run's view of federationAfterWrite: the same sign-in step, nothing written. */
+function federationPlanCompletion({ resource }) {
+  const step = federationSignInCompletion(resource);
+  return step ? [step] : [];
 }
 
 // ------------------------------------------------ Exchange app access scope
@@ -759,7 +779,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     collectionFor: (payload) => (payload?.['@odata.type'] === undefined || stripGraph(payload['@odata.type']) === 'samlOrWsFedExternalDomainFederation'
       ? FEDERATIONS : null),
     operations: ['update'],
-    writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite,
+    writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite, planCompletion: federationPlanCompletion,
     permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
   // Restore gaps, batch 9. An Exchange app access scope: a recipient filter

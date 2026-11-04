@@ -816,6 +816,11 @@ test('a guest federation restore never writes its sign-in endpoints or signing c
     assert.equal(writes.length, 1);
     assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' }, `${field} is never sent`);
     assert.deepEqual(result.applied.completion.map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]]);
+    // The dry run plans the name and lists the same step.
+    const planned = await run({ ...live, displayName: 'KEEL-RT-148-fed-renamed', [field]: value }, 'dry-run');
+    assert.equal(planned.writes.length, 0, `${field} (dry-run): nothing is written`);
+    assert.deepEqual(planned.result.applied.changes.fields, ['displayName']);
+    assert.deepEqual((planned.result.applied.completion ?? []).map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]], `${field} (dry-run)`);
   }
 
   // Nothing differs in the sign-in fields: no step.
@@ -831,6 +836,49 @@ test('a guest federation update with no live copy to compare is withheld when it
   }, 'update', FAST);
   assert.match(result.skipped?.reason ?? '', /passiveSignInUri/);
   assert.equal(graph.calls.length, 0);
+});
+
+test('a guest federation backup without sign-in fields opens the manual sign-in step, never reports the drift as restored (issue #640)', async () => {
+  // Q111: the live sign-in page drifted; the backup was taken from the base
+  // collection, which held only id and displayName.
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',
+    issuerUri: 'https://keel-rt-fed.example/issuer', metadataExchangeUri: null,
+    passiveSignInUri: 'https://keel-rt-other.example/sso', preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture',
+  };
+  const run = async (desired, mode = 'enforce') => {
+    const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
+    const result = await applyIdentityObjectWrite(graph, {
+      naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [],
+      live: { state: 'present', targetId: 'fed-1', payload: live },
+    }, 'update', { ...FAST, mode });
+    return { result, writes: graph.calls.filter((call) => call.method !== 'GET') };
+  };
+  const stepOf = (completion) => completion.map((step) => [step.requirement, step.fields]);
+  const allFields = [['externalDomainFederationSignIn', [...FEDERATION_SIGN_IN_FIELDS]]];
+
+  // Same name: nothing to write, so nothing is applied; the step says the backup cannot tell.
+  for (const mode of ['enforce', 'dry-run']) {
+    const { result, writes } = await run({ id: 'fed-1', displayName: 'KEEL-RT-148-fed' }, mode);
+    assert.equal(result.applied, undefined, `${mode}: not reported as restored`);
+    assert.match(result.skipped?.reason ?? '', /^manual: This backup does not hold where this guest federation's guests sign in/, mode);
+    assert.deepEqual(stepOf(result.skipped.completion), allFields, mode);
+    assert.equal(writes.length, 0, `${mode}: nothing is written`);
+  }
+
+  // The name drifted too: only the name is written, and the step still opens.
+  const { result, writes } = await run({ id: 'fed-1', displayName: 'KEEL-RT-148-fed-renamed' });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' });
+  assert.deepEqual(stepOf(result.applied.completion), allFields);
+
+  // The dry run plans the same: the name change and the step, with nothing written.
+  const planned = await run({ id: 'fed-1', displayName: 'KEEL-RT-148-fed-renamed' }, 'dry-run');
+  assert.equal(planned.result.failed, undefined, planned.result.failed?.error);
+  assert.deepEqual(planned.result.applied.changes.fields, ['displayName']);
+  assert.deepEqual(stepOf(planned.result.applied.completion ?? []), allFields, 'dry-run lists the step enforce opens');
+  assert.equal(planned.writes.length, 0, 'dry-run: nothing is written');
 });
 
 test('restore gaps batch 3: a federation of another kind has no write route', async () => {

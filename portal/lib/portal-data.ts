@@ -88,6 +88,7 @@ import type {
   CoverageType,
   DashboardAlert,
   DashboardData,
+  MenuStatusData,
   DashboardWaiting,
   NotifyRoutes,
   DeclaredEndpoint,
@@ -460,7 +461,10 @@ const RESTORABLE_WORKLOADS: ReadonlySet<string> = new Set(
 );
 
 async function coverageFor(client: KeelClient, ref: string, report?: UnknownRecord): Promise<CoverageData> {
-  const raw = report ?? await rawCoverageReport(client, ref);
+  return coverageFromReport(report ?? await rawCoverageReport(client, ref));
+}
+
+function coverageFromReport(raw: UnknownRecord): CoverageData {
   const types = (raw.types as UnknownRecord[]).map(normalizeCoverageType);
   const workloads = workloadKinds(raw.workloads, RESTORABLE_WORKLOADS);
 
@@ -1662,108 +1666,173 @@ export async function getRestoreFollowUps(): Promise<OpenFollowUpWork> {
   });
 }
 
+// The Overview's reads, in four groups that need nothing from each other: the active
+// setup with the changes and counts measured against it, What's protected (the coverage
+// report, the slowest read), the audit record check, and the service setting changes
+// with the other small reads. The Overview runs the groups at the same time, each on its
+// own pooled connection, so a load takes as long as its slowest group instead of the sum
+// of all of them. Four groups leave room in the pool (lib/db.ts, POOL_MAX 8) for the
+// layout's own reads and other pages, and no group waits for a second connection while
+// it holds one. The menu's badges (getMenuStatusData) read the same groups, without the
+// parts no badge reads, one after another on a single connection: a background poll in
+// every open tab must not take four.
+//
+// `full` reads what only the Overview shows: the approvers' names, the 30-day trend, the
+// notification channels and the compliance score.
+
+async function overviewSetup(client: KeelClient, ref: string, generatedAt: Date, full: boolean) {
+  const active = (await getActiveBaseline(client, { tenantRef: ref })) as
+    | UnknownRecord
+    | null;
+  const baselines = await baselinesFor(client, ref);
+  const found = active
+    ? baselines.find((candidate) => candidate.id === String(active.id)) ??
+      normalizeBaseline({ ...active, resource_count: 0 })
+    : null;
+  const activeBaseline = found && full ? (await withApproverNames(client, [found]))[0] : found;
+  const lastCollectionRaw = (await getLastCollection(client, {
+    tenantRef: ref,
+  })) as UnknownRecord | null;
+  const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
+  const driftTrend = full ? await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt) : [];
+  const waiting = await waitingFor(client, ref);
+  return { activeBaseline, lastCollectionRaw, drift, driftTrend, waiting };
+}
+
+async function overviewEvidence(client: KeelClient, ref: string): Promise<DashboardData["evidence"]> {
+  const evidenceRaw = (await getEvidenceIntegrity(client, {
+    tenantRef: ref,
+    chainCache: evidenceChainCache,
+  })) as { ok: boolean; chainLength: number };
+  return {
+    ok: Boolean(evidenceRaw.ok),
+    chainLength: Number(evidenceRaw.chainLength),
+    // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
+    // A broken own chain is already a failed check: no second walk.
+    ...(evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
+      .then((integrity) => {
+        const check = auditCheckOf(integrity);
+        // Only a known break hides "no off-site copy"; say it separately then.
+        return { check, ...(check === "known" && integrity.status === "unanchored" ? { unanchored: true } : {}) };
+      })
+      .catch((error) => {
+        console.error("[keel-portal] overview audit record check unavailable", error);
+        return {};
+      }) : { check: "failed" as const }),
+  };
+}
+
+// Each read here fails on its own: the rest of the Overview still shows.
+async function overviewServices(client: KeelClient, ref: string, generatedAt: Date, full: boolean) {
+  // Open changes in every service: the approved-setup changes (Entra ID and Intune)
+  // and the service setting changes the Changes page lists beside them, counted
+  // without the list's row limit (openChangeCount, the same as the Changes page).
+  const serviceChanges = await countOpenServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
+    console.error("[keel-portal] overview service changes unavailable", error);
+    return { total: 0, byBlastRadius: {} as Record<string, number> };
+  });
+  // The same recoverable point the Resilience page shows; a failed read shows no item.
+  const offsite: DashboardData["offsite"] = await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
+    .then((point) => ({ measured: (point as RecoveryMetrics["recoverablePoint"]).state === "measured" && Boolean((point as RecoveryMetrics["recoverablePoint"]).point) }))
+    .catch((error: unknown) => {
+      console.error("[keel-portal] overview off-site copy state unavailable", error);
+      return undefined;
+    });
+  if (!full) return { serviceChanges, offsite };
+  const notify = await notifyRoutesFor(client).catch((error: unknown) => {
+    console.error("[keel-portal] overview notification channels unavailable", error);
+    return undefined;
+  });
+  const compliance = await complianceFindings(client, { tenantRef: ref, now: generatedAt })
+    .then(({ summary }: { summary: ComplianceSummary }) => summary)
+    .catch((error: unknown) => {
+      console.error("[keel-portal] overview compliance score unavailable", error);
+      return null;
+    });
+  return { serviceChanges, offsite, notify, compliance };
+}
+
+type OverviewParts = [
+  Awaited<ReturnType<typeof overviewSetup>>,
+  UnknownRecord,
+  DashboardData["evidence"],
+  Awaited<ReturnType<typeof overviewServices>>,
+];
+
+// The Overview's figures from its four groups' answers.
+function overviewFrom([setup, rawCoverage, evidence, services]: OverviewParts, generatedAt: Date): DashboardData {
+  const { activeBaseline, lastCollectionRaw, drift } = setup;
+  const { serviceChanges } = services;
+  const coverageData = coverageFromReport(rawCoverage);
+  // Task-129: the Overview sentence comes from this same report, never a constant.
+  // The workloads join the Entra ID and Intune types, as on What's protected.
+  const headline = protectionHeadline(headlineEntries(rawCoverage.types as unknown[], withWorkloadKinds(coverageData).types) as never) as ProtectionHeadline;
+
+  const openDriftByBlastRadius = [...new Set([
+    ...BLAST_RADIUS_ORDER,
+    ...drift.map((item) => item.blastRadius),
+    ...Object.keys(serviceChanges.byBlastRadius),
+  ])]
+    .map((blastRadius) => ({
+      blastRadius,
+      count: drift.filter((item) => item.blastRadius === blastRadius).length + (serviceChanges.byBlastRadius[blastRadius] ?? 0),
+    }))
+    .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
+  const lastCollection = lastCollectionRaw
+    ? {
+        completedAt: iso(lastCollectionRaw.completedAt),
+        status: String(lastCollectionRaw.status),
+      }
+    : null;
+  const data: DashboardData = {
+    generatedAt: generatedAt.toISOString(),
+    activeBaseline,
+    lastCollection,
+    lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
+    openDriftByBlastRadius,
+    openDriftTotal: openChangeCount(drift.length, serviceChanges.total),
+    driftTrend: setup.driftTrend,
+    coverage: coverageData.summary,
+    evidence,
+    offsite: services.offsite,
+    backupStorage: backupStorageRisk(),
+    alerts: [],
+    headline,
+    waiting: setup.waiting,
+    notify: "notify" in services ? services.notify : undefined,
+    compliance: "compliance" in services ? services.compliance : undefined,
+  };
+
+  data.alerts = buildAlerts(data);
+  return data;
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   const ref = tenantRef();
-  return withClient(async (client) => {
-    const active = (await getActiveBaseline(client, { tenantRef: ref })) as
-      | UnknownRecord
-      | null;
-    const baselines = await baselinesFor(client, ref);
-    const found = active
-      ? baselines.find((candidate) => candidate.id === String(active.id)) ??
-        normalizeBaseline({ ...active, resource_count: 0 })
-      : null;
-    const activeBaseline = found ? (await withApproverNames(client, [found]))[0] : null;
-    const lastCollectionRaw = (await getLastCollection(client, {
-      tenantRef: ref,
-    })) as UnknownRecord | null;
-    const evidenceRaw = (await getEvidenceIntegrity(client, {
-      tenantRef: ref,
-      chainCache: evidenceChainCache,
-    })) as { ok: boolean; chainLength: number };
-    const generatedAt = new Date();
-    // Open changes in every service: the approved-setup changes (Entra ID and Intune)
-    // and the service setting changes the Changes page lists beside them, counted
-    // without the list's row limit (openChangeCount, the same as the Changes page).
-    const serviceChanges = await countOpenServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
-      console.error("[keel-portal] overview service changes unavailable", error);
-      return { total: 0, byBlastRadius: {} as Record<string, number> };
-    });
-    const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
-    const rawCoverage = await rawCoverageReport(client, ref);
-    const coverageData = await coverageFor(client, ref, rawCoverage);
-    // Task-129: the Overview sentence comes from this same report, never a constant.
-    // The workloads join the Entra ID and Intune types, as on What's protected.
-    const headline = protectionHeadline(headlineEntries(rawCoverage.types as unknown[], withWorkloadKinds(coverageData).types) as never) as ProtectionHeadline;
-    const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
+  const generatedAt = new Date();
+  // If any group fails, the Overview fails as before; every connection goes back to the pool.
+  const parts = await Promise.all([
+    withClient((client) => overviewSetup(client, ref, generatedAt, true)),
+    withClient((client) => rawCoverageReport(client, ref)),
+    withClient((client) => overviewEvidence(client, ref)),
+    withClient((client) => overviewServices(client, ref, generatedAt, true)),
+  ]);
+  return overviewFrom(parts, generatedAt);
+}
 
-    const openDriftByBlastRadius = [...new Set([
-      ...BLAST_RADIUS_ORDER,
-      ...drift.map((item) => item.blastRadius),
-      ...Object.keys(serviceChanges.byBlastRadius),
-    ])]
-      .map((blastRadius) => ({
-        blastRadius,
-        count: drift.filter((item) => item.blastRadius === blastRadius).length + (serviceChanges.byBlastRadius[blastRadius] ?? 0),
-      }))
-      .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
-    const lastCollection = lastCollectionRaw
-      ? {
-          completedAt: iso(lastCollectionRaw.completedAt),
-          status: String(lastCollectionRaw.status),
-        }
-      : null;
-    const data: DashboardData = {
-      generatedAt: generatedAt.toISOString(),
-      activeBaseline,
-      lastCollection,
-      lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
-      openDriftByBlastRadius,
-      openDriftTotal: openChangeCount(drift.length, serviceChanges.total),
-      driftTrend,
-      coverage: coverageData.summary,
-      evidence: {
-        ok: Boolean(evidenceRaw.ok),
-        chainLength: Number(evidenceRaw.chainLength),
-        // The off-site checkpoint, as Activity checks it; a failed read leaves it unknown.
-        // A broken own chain is already a failed check: no second walk.
-        ...(evidenceRaw.ok ? await checkAuditRecord(client, { tenantRef: ref, cache: evidenceChainCache })
-          .then((integrity) => {
-            const check = auditCheckOf(integrity);
-            // Only a known break hides "no off-site copy"; say it separately then.
-            return { check, ...(check === "known" && integrity.status === "unanchored" ? { unanchored: true } : {}) };
-          })
-          .catch((error) => {
-            console.error("[keel-portal] overview audit record check unavailable", error);
-            return {};
-          }) : { check: "failed" as const }),
-      },
-      // The same recoverable point the Resilience page shows; a failed read shows no item.
-      offsite: await loadRecoverablePoint(client, { tenantRef: ref, requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type), now: generatedAt })
-        .then((point) => ({ measured: (point as RecoveryMetrics["recoverablePoint"]).state === "measured" && Boolean((point as RecoveryMetrics["recoverablePoint"]).point) }))
-        .catch((error: unknown) => {
-          console.error("[keel-portal] overview off-site copy state unavailable", error);
-          return undefined;
-        }),
-      backupStorage: backupStorageRisk(),
-      alerts: [],
-      headline,
-      waiting: await waitingFor(client, ref),
-      notify: await notifyRoutesFor(client).catch((error: unknown) => {
-        console.error("[keel-portal] overview notification channels unavailable", error);
-        return undefined;
-      }),
-      compliance: await complianceFindings(client, { tenantRef: ref, now: generatedAt })
-        .then(({ summary }: { summary: ComplianceSummary }) => summary)
-        .catch((error: unknown) => {
-          console.error("[keel-portal] overview compliance score unavailable", error);
-          return null;
-        }),
-    };
-
-    data.alerts = buildAlerts(data);
-    return data;
-  });
+// The menu's badges (GET /api/menu-status): the Overview's own figures, so a badge never
+// disagrees with the Overview, with only the fields the badges and the bell read.
+export async function getMenuStatusData(): Promise<MenuStatusData> {
+  const ref = tenantRef();
+  const generatedAt = new Date();
+  const parts = await withClient(async (client): Promise<OverviewParts> => [
+    await overviewSetup(client, ref, generatedAt, false),
+    await rawCoverageReport(client, ref),
+    await overviewEvidence(client, ref),
+    await overviewServices(client, ref, generatedAt, false),
+  ]);
+  const { headline, coverage, openDriftByBlastRadius, openDriftTotal, evidence, waiting, alerts } = overviewFrom(parts, generatedAt);
+  return { generatedAt: generatedAt.toISOString(), headline, coverage, openDriftByBlastRadius, openDriftTotal, evidence, waiting, alerts };
 }
 
 // Roadmap task-73: measured freshness, recoverable point, recovery time and the

@@ -729,6 +729,11 @@ export interface DashboardData {
   notify?: NotifyRoutes;
 }
 
+// What the menu's badges and bell read (GET /api/menu-status): the Overview's own
+// figures, so a badge and the Overview never disagree, without the parts no badge needs.
+export type MenuStatusData = Pick<DashboardData,
+  "generatedAt" | "headline" | "coverage" | "openDriftByBlastRadius" | "openDriftTotal" | "evidence" | "waiting" | "alerts">;
+
 export interface NotifyRoutes {
   channels: number;
   routed: number;

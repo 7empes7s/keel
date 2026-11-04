@@ -1,0 +1,86 @@
+{
+  "restoreRef": "ab1ac713-ddcc-851f-a99f-260fd039b330",
+  "entry": {
+    "naturalKey": "tenantAppManagementPolicy:tenantAppManagementPolicy",
+    "resourceType": "tenantAppManagementPolicy",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "uncertain",
+    "outcomeDetail": "post-state did not verify",
+    "recordedAt": "2026-11-04T04:16:54.595Z",
+    "priorState": {
+      "id": "a9898e7c-cb8e-8c97-8d6e-3a6540d66839",
+      "isEnabled": false,
+      "description": "Default tenant policy that enforces app management restrictions on applications and service principals. To apply policy to targeted resources, create a new policy under appManagementPolicies collection.",
+      "displayName": "Default app management tenant policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/defaultAppManagementPolicy/$entity",
+      "applicationRestrictions": {
+        "identifierUris": {
+          "nonDefaultUriAddition": null,
+          "uriAdditionWithoutUniqueTenantIdentifier": {
+            "state": "enabled",
+            "excludeSaml": true,
+            "excludeActors": null,
+            "isStateSetByMicrosoft": false,
+            "excludeAppsReceivingV2Tokens": true,
+            "restrictForAppsCreatedAfterDateTime": "0001-01-01T00:00:00Z"
+          }
+        },
+        "keyCredentials": [],
+        "passwordCredentials": []
+      },
+      "servicePrincipalRestrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": []
+      }
+    },
+    "intendedState": {
+      "isEnabled": true,
+      "applicationRestrictions": {
+        "identifierUris": {
+          "nonDefaultUriAddition": null,
+          "uriAdditionWithoutUniqueTenantIdentifier": {
+            "state": "enabled",
+            "excludeSaml": true,
+            "excludeActors": null,
+            "isStateSetByMicrosoft": true,
+            "excludeAppsReceivingV2Tokens": true,
+            "restrictForAppsCreatedAfterDateTime": "0001-01-01T00:00:00Z"
+          }
+        },
+        "keyCredentials": [],
+        "passwordCredentials": []
+      },
+      "servicePrincipalRestrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": []
+      }
+    },
+    "postState": {
+      "id": "a9898e7c-cb8e-8c97-8d6e-3a6540d66839",
+      "isEnabled": true,
+      "description": "Default tenant policy that enforces app management restrictions on applications and service principals. To apply policy to targeted resources, create a new policy under appManagementPolicies collection.",
+      "displayName": "Default app management tenant policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/defaultAppManagementPolicy/$entity",
+      "applicationRestrictions": {
+        "identifierUris": {
+          "nonDefaultUriAddition": null,
+          "uriAdditionWithoutUniqueTenantIdentifier": {
+            "state": "enabled",
+            "excludeSaml": true,
+            "excludeActors": null,
+            "isStateSetByMicrosoft": false,
+            "excludeAppsReceivingV2Tokens": true,
+            "restrictForAppsCreatedAfterDateTime": "0001-01-01T00:00:00Z"
+          }
+        },
+        "keyCredentials": [],
+        "passwordCredentials": []
+      },
+      "servicePrincipalRestrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": []
+      }
+    }
+  }
+}

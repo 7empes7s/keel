@@ -1,0 +1,69 @@
+{
+  "restoreRef": "7445524e-ea82-8829-ac9b-1cf6d095a26d",
+  "entry": {
+    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-268-intune-role",
+    "resourceType": "deviceManagementRoleDefinition",
+    "operation": "update",
+    "targetId": "9b135be6-6564-80dc-af25-7a4ff9ae256b",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-04T04:08:38.414Z",
+    "priorState": {
+      "id": "9b135be6-6564-80dc-af25-7a4ff9ae256b",
+      "isBuiltIn": false,
+      "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
+      "description": "Keel test fixture (Q268), assigned to nobody",
+      "displayName": "KEEL-RT-268-intune-role",
+      "rolePermissions": [
+        {
+          "resourceActions": [
+            {
+              "allowedResourceActions": [
+                "Microsoft.Intune_Organization_Read",
+                "Microsoft.Intune_Audit_Read"
+              ],
+              "notAllowedResourceActions": []
+            }
+          ]
+        }
+      ]
+    },
+    "intendedState": {
+      "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
+      "description": "Keel test fixture (Q268), assigned to nobody",
+      "displayName": "KEEL-RT-268-intune-role",
+      "rolePermissions": [
+        {
+          "resourceActions": [
+            {
+              "allowedResourceActions": [
+                "Microsoft.Intune_Organization_Read"
+              ],
+              "notAllowedResourceActions": []
+            }
+          ]
+        }
+      ]
+    },
+    "postState": {
+      "id": "9b135be6-6564-80dc-af25-7a4ff9ae256b",
+      "isBuiltIn": false,
+      "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
+      "description": "Keel test fixture (Q268), assigned to nobody",
+      "displayName": "KEEL-RT-268-intune-role",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/roleDefinitions/$entity",
+      "rolePermissions": [
+        {
+          "resourceActions": [
+            {
+              "allowedResourceActions": [
+                "Microsoft.Intune_Organization_Read"
+              ],
+              "notAllowedResourceActions": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

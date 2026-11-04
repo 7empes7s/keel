@@ -1,0 +1,97 @@
+{
+  "restoreRef": "cf848eed-5e8a-8f95-b522-d58b16bc50bc",
+  "entry": {
+    "naturalKey": "deviceRegistrationPolicy:deviceRegistrationPolicy",
+    "resourceType": "deviceRegistrationPolicy",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-04T04:13:31.846Z",
+    "priorState": {
+      "id": "deviceRegistrationPolicy",
+      "azureADJoin": {
+        "localAdmins": {
+          "registeringUsers": {
+            "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+          },
+          "enableGlobalAdmins": true
+        },
+        "allowedToJoin": {
+          "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+        },
+        "isAdminConfigurable": true
+      },
+      "description": "Tenant-wide policy that manages initial provisioning controls using quota restrictions, additional authentication and authorization checks",
+      "displayName": "Device Registration Policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/deviceRegistrationPolicy/$entity",
+      "userDeviceQuota": 20,
+      "localAdminPassword": {
+        "isEnabled": false
+      },
+      "azureADRegistration": {
+        "allowedToRegister": {
+          "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+        },
+        "isAdminConfigurable": false
+      },
+      "multiFactorAuthConfiguration": "notRequired"
+    },
+    "intendedState": {
+      "azureADJoin": {
+        "localAdmins": {
+          "registeringUsers": {
+            "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+          },
+          "enableGlobalAdmins": true
+        },
+        "allowedToJoin": {
+          "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+        },
+        "isAdminConfigurable": true
+      },
+      "description": "Tenant-wide policy that manages initial provisioning controls using quota restrictions, additional authentication and authorization checks",
+      "displayName": "Device Registration Policy",
+      "userDeviceQuota": 50,
+      "localAdminPassword": {
+        "isEnabled": false
+      },
+      "azureADRegistration": {
+        "allowedToRegister": {
+          "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+        },
+        "isAdminConfigurable": false
+      },
+      "multiFactorAuthConfiguration": "notRequired"
+    },
+    "postState": {
+      "id": "deviceRegistrationPolicy",
+      "azureADJoin": {
+        "localAdmins": {
+          "registeringUsers": {
+            "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+          },
+          "enableGlobalAdmins": true
+        },
+        "allowedToJoin": {
+          "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+        },
+        "isAdminConfigurable": true
+      },
+      "description": "Tenant-wide policy that manages initial provisioning controls using quota restrictions, additional authentication and authorization checks",
+      "displayName": "Device Registration Policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/deviceRegistrationPolicy/$entity",
+      "userDeviceQuota": 50,
+      "localAdminPassword": {
+        "isEnabled": false
+      },
+      "azureADRegistration": {
+        "allowedToRegister": {
+          "@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"
+        },
+        "isAdminConfigurable": false
+      },
+      "multiFactorAuthConfiguration": "notRequired"
+    }
+  }
+}

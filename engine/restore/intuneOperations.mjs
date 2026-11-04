@@ -1221,7 +1221,7 @@ function intuneAssignmentRefusal(resource, verb) {
   if (!roleIdOf(resource.payload)) {
     return {
       outcome: 'skipped',
-      reason: `manual: this backup does not say which Intune role the assignment "${resource.payload?.displayName ?? resource.naturalKey}" gives (backups made before 2026-10-30 did not keep it); assign the role again by hand in ${INTUNE_ROLES_PORTAL}, or restore from a newer backup`,
+      reason: `manual: this backup does not say which Intune role the assignment "${resource.payload?.displayName ?? resource.naturalKey}" gives (backups made before 2026-10-30 did not keep it, and Intune may list it under no role); assign the role again by hand in ${INTUNE_ROLES_PORTAL}, or restore from a newer backup`,
     };
   }
   return null;
@@ -1240,12 +1240,14 @@ const sameRoleId = (left, right) => String(left ?? '').toLowerCase() === String(
 // answers 400 "No OData route exists"); each role lists its assignments instead.
 async function listedOnePage(io, path, what) {
   const read = await io.retryOperation(() => io.writer.read('beta', path));
-  if (read?.ok !== true) return { error: outcomeDetail(read) };
+  if (read?.ok !== true) return { error: outcomeDetail(read), status: read?.status ?? null };
   if (read.body?.['@odata.nextLink']) return { error: `${what} has more than one page` };
   return { value: Array.isArray(read.body?.value) ? read.body.value : [] };
 }
 const roleHolds = async (io, roleId, targetId) => {
   const listed = await listedOnePage(io, `${INTUNE_ROLES}/${encodeURIComponent(roleId)}/roleAssignments`, 'the role\'s assignment list');
+  // A role the target does not have holds nothing there.
+  if (listed.status === 404) return { held: false };
   return listed.error ? listed : { held: listed.value.some((row) => sameRoleId(row?.id, targetId)) };
 };
 

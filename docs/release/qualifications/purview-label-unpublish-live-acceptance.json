@@ -1,0 +1,134 @@
+{
+  "contractVersion": 1,
+  "gate": "purview-label-unpublish-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "d1fa38876104f14b658027402e90cfaf6ec420b3",
+  "operation": "purview-labels.unpublish-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-11-04T03:58:20.103Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "restorer": {
+        "permissions": [
+          "Exchange.ManageAsApp"
+        ],
+        "roles": [
+          "Compliance Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "ordinaryCall": {
+        "cmdlet": "Set-LabelPolicy",
+        "parameter": "RemoveLabels",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-LabelPolicy does not take RemoveLabels from KEEL"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-LabelPolicy",
+        "parameter": "AddLabels",
+        "refused": true,
+        "sent": false,
+        "reason": "an unpublish does not take AddLabels from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "purview.label-policy.remove-labels",
+        "version": "3.10.1",
+        "synthetic": false,
+        "policy": "KEEL-RT-20261005-policy",
+        "label": "KEEL-RT-20261005-anchor",
+        "publishedAtStart": true,
+        "ok": true,
+        "readBackVerified": true,
+        "putBack": true,
+        "collateralUnchanged": true,
+        "capturedAt": "2026-11-04T03:58:20.103Z",
+        "error": null
+      }
+    ],
+    "skipped": [],
+    "requests": [
+      {
+        "credential": "collector",
+        "cmdlet": "Get-Label",
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "cmdlet": "Get-LabelPolicy",
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-LabelPolicy",
+        "policy": "KEEL-RT-20261005-policy",
+        "labels": [
+          "KEEL-RT-20261005-anchor"
+        ],
+        "parameters": [
+          "Identity",
+          "RemoveLabels"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "cmdlet": "Get-Label",
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "cmdlet": "Get-LabelPolicy",
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-LabelPolicy",
+        "policy": "KEEL-RT-20261005-policy",
+        "labels": [
+          "KEEL-RT-20261005-anchor"
+        ],
+        "parameters": [
+          "AddLabels",
+          "Identity"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "cmdlet": "Get-Label",
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "cmdlet": "Get-LabelPolicy",
+        "outcome": "ok"
+      }
+    ],
+    "captureLogSha256": "3a6999c5ad7b2498b35e07030d1c7763d2fe0c2c2e2811ad763e99be6e3a7ba3"
+  },
+  "proof": {
+    "artifact": {
+      "path": "purview-label-unpublish-live-acceptance.capture.json",
+      "sha256": "3a6999c5ad7b2498b35e07030d1c7763d2fe0c2c2e2811ad763e99be6e3a7ba3"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "bd597b965ed6bbafc379f7ab99f8ebf72c0db522180bab80a6e7be2be7625a0a"
+    }
+  }
+}

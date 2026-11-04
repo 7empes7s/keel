@@ -319,7 +319,7 @@ test('empty disposable instance recovers fixture history with writers disabled',
   assert.equal(result.recovered.schedules.length, 10);
   assert.deepEqual(
     result.recovered.schedules.map((row) => `${row.job_kind}:${row.tier ?? ''}`).sort(),
-    ['api-drift:', 'collect:tier1', 'collect:tier2', 'collect:tier3', 'content-collect:', 'discover:', 'offsite:', 'prune:', 'workload-collect:'],
+    ['api-drift:', 'collect:tier1', 'collect:tier2', 'collect:tier3', 'content-collect:', 'discover:', 'insights-summary:', 'offsite:', 'prune:', 'workload-collect:'],
   );
   assert.equal(result.recovered.approvals.length, 2);
   assert.deepEqual(

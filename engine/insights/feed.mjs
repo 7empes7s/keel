@@ -25,8 +25,17 @@
  * Each row also carries `flags` (flags.mjs): what the change does, when a rule knows it
  * ("Turned off: Require MFA for admins."). A critical flag makes the row critical, a high
  * flag raises a low or normal row to high. Only the JSON paths the rules read are selected.
+ *
+ * Task 90 (issue #981): a reader scoped to some entities gets only drift rows for settings
+ * their entities own, filtered in the SQL that selects them with the same entity filter as
+ * Open changes (authz/entityScope.mjs#scopePredicate). Service reads, content backups and
+ * the audit log are tenant-wide, so they are not read for that reader. A person is named
+ * only when the reader's entities can see their account, and a flag never names a linked
+ * object (a role, a group, an app) the reader's entities may not own.
  */
+import { scopePredicate } from '../authz/entityScope.mjs';
 import { objectNameSql } from '../cir/objectName.mjs';
+import { visibleActorNames } from '../identity/attribution.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/openDrift.mjs';
 import { MEMBERSHIP_KINDS, ROLE_ASSIGNMENT_KINDS, evaluateFlags, flagPathsSql, flaggedPriority, serviceFlagFieldsSql, serviceFlagValues } from './flags.mjs';
 import { displayActor } from './people.mjs';
@@ -164,7 +173,8 @@ const FLAG_CONTEXT_SQL = `CASE
                    WHERE lower(app.payload->>'id') = ${KEY_PART(3)} AND app.snapshot_id = r.observed_snapshot LIMIT 1))
   END`;
 
-const DRIFT_SQL = `
+// `visible` is the entity filter: TRUE for a central reader.
+const driftSql = (visible = 'TRUE') => `
   SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at,
          ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors,
          ${templateFamilySql({ typeExpr: 'r.resource_type', payloads: ['r.after_payload', 'r.before_payload'], tenantExpr: 'r.tenant_ref' })} AS template_family,
@@ -195,6 +205,7 @@ const DRIFT_SQL = `
               OR a.operation = CASE r.change_type WHEN 'added' THEN 'create' WHEN 'removed' THEN 'delete' ELSE 'update' END)
     ) who ON true
    WHERE r.tenant_ref = $1 AND r.detected_at >= $2 AND r.detected_at <= $3
+     AND ${visible}
      AND NOT (prev.change_type IS NOT NULL AND prev.change_type = r.change_type
               AND prev.after_hash IS NOT DISTINCT FROM r.after_hash
               AND (NOT prev.acted_on OR prev.ignored))
@@ -288,29 +299,42 @@ function actorFrom(key) {
  * The newest changes in one tenant, newest first.
  * @param {{ query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }} client
  * @param {{ tenantRef: string, now?: Date, days?: number, limit?: number,
- *   namer?: ((key: string) => string) | null }} input
+ *   namer?: ((key: string) => string) | null, scope?: { central: boolean, entities?: string[] } }} input
  *   `namer` comes from anonymity.mjs#readNamer: null shows names, else people are code-named.
+ *   `scope` is the reader's entity scope; central (every row) when left out.
  * @returns {Promise<{ since: string, until: string, rows: object[], truncated: boolean }>}
  */
-export async function loadChangeFeed(client, { tenantRef, now = new Date(), days = DEFAULT_FEED_DAYS, limit = DEFAULT_FEED_LIMIT, namer = null }) {
+export async function loadChangeFeed(client, { tenantRef, now = new Date(), days = DEFAULT_FEED_DAYS, limit = DEFAULT_FEED_LIMIT, namer = null, scope = null }) {
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
+  const central = !scope || scope.central === true;
   const span = bounded(days, DEFAULT_FEED_DAYS, MAX_FEED_DAYS);
   const cap = bounded(limit, DEFAULT_FEED_LIMIT, MAX_FEED_LIMIT);
   const until = new Date(now);
   const since = new Date(until.getTime() - span * DAY_MS);
   const window = [tenantRef, since, until, cap + 1];
-  const read = async (table, sql) => ((await tableExists(client, table)) ? (await client.query(sql, window)).rows : []);
-  const [drift, service, audit] = [await read('drift', DRIFT_SQL), await read('workload_drift', SERVICE_SQL), await read('audit_change_fact', AUDIT_SQL)];
-  const [siteAccess, driveAccess] = [await read('content_item', SITE_ACCESS_SQL), await read('content_item', DRIVE_ACCESS_SQL)];
+  const read = async (table, sql, extra = []) => ((await tableExists(client, table)) ? (await client.query(sql, [...window, ...extra])).rows : []);
+  // The same entity filter as Open changes: the setting's lineage at the time it was found,
+  // and that lineage's current ownership.
+  const visible = central ? { sql: 'TRUE', values: [] } : scopePredicate(scope, {
+    tenantRef, typeExpr: 'r.resource_type', keyExpr: 'r.natural_key', asOfExpr: 'r.detected_at', at: now, nextParam: window.length + 1,
+  });
+  const tenantWide = async (table, sql) => (central ? read(table, sql) : []);
+  const [drift, service, audit] = [await read('drift', driftSql(visible.sql), visible.values), await tenantWide('workload_drift', SERVICE_SQL), await tenantWide('audit_change_fact', AUDIT_SQL)];
+  const [siteAccess, driveAccess] = [await tenantWide('content_item', SITE_ACCESS_SQL), await tenantWide('content_item', DRIVE_ACCESS_SQL)];
 
   // One names read for every audited object and every account a row points to.
   const actorKeys = new Set();
   for (const entry of drift) for (const key of entry.actors ?? []) actorKeys.add(key);
   for (const entry of audit) actorKeys.add(`${entry.actor_kind}:${String(entry.actor_id).toLowerCase()}`);
-  const actors = [...actorKeys].map(actorFrom).filter(Boolean);
+  // A reader scoped to some entities sees only accounts their entities can see; anyone
+  // else is neither named nor identified, as on Open changes.
+  const allActors = [...actorKeys].map(actorFrom).filter(Boolean);
+  const seen = central ? null : await visibleActorNames(client, tenantRef, allActors, scope, now);
+  const actors = central ? allActors : allActors.filter((actor) => seen.has(`${actor.kind}:${actor.id.toLowerCase()}`));
+  const known = new Set(actors.map((actor) => `${actor.kind}:${actor.id.toLowerCase()}`));
   const names = await lookupNames(client, { tenantRef, ids: [...audit.map((entry) => String(entry.target_id)), ...actors.map((actor) => actor.id)] });
   const person = (actor) => {
-    if (!actor) return null;
+    if (!actor || !known.has(`${actor.kind}:${actor.id.toLowerCase()}`)) return null;
     const found = names.get(actor.id);
     return displayActor({ kind: actor.kind, id: actor.id, name: found?.status !== 'unknown' ? found?.name ?? null : null }, namer);
   };
@@ -388,7 +412,10 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
     ...drift.map((entry) => {
       const type = String(entry.resource_type);
       const object = shown(type, entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' });
-      const context = entry.flag_context ? { ...entry.flag_context, roleName: shownName(entry.flag_context.roleName), groupName: shownName(entry.flag_context.groupName), appName: shownName(entry.flag_context.appName) } : null;
+      // A linked role, group or app is named to a central reader only: an entity-scoped
+      // reader's entities may not own it.
+      const linked = (value) => (central ? shownName(value) : null);
+      const context = entry.flag_context ? { ...entry.flag_context, roleName: linked(entry.flag_context.roleName), groupName: linked(entry.flag_context.groupName), appName: linked(entry.flag_context.appName) } : null;
       return row({
         id: `drift:${entry.id}`,
         source: 'drift',

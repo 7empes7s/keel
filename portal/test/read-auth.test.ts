@@ -10,7 +10,7 @@ import {
   readAccess,
   type DataSurface,
 } from "@/lib/read";
-import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { CAPABILITIES_HEADER, ENTITY_CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 
 // Task 34 intentionally gives the approval inbox its own approve-only contract:
 // a pure approver must not need general tenant-data read access. Its own closed
@@ -97,6 +97,38 @@ test("the declared capability reads each data surface and an expired grant reads
     assert.equal(expired.response.status, 403, `${name}: expired viewer`);
     assert.equal(expired.loaderCalls(), 0, `${name}: expired viewer loader`);
   }
+});
+
+// Task 90 and issue #981: an entity-scoped reader is admitted only where the loader
+// filters rows (and counts) by their entities in SQL. The list is closed, so a surface
+// cannot start admitting them without being named here.
+const ENTITY_SCOPED_SURFACES = [
+  "askApi", "askPage", "changeFeedApi", "driftApi", "driftAttributionApi", "driftPage", "insightsPage", "reportsPage", "valueReportApi",
+];
+
+test("entity-scoped readers reach exactly the surfaces whose loaders filter by entity", async () => {
+  const entityOnly = (capabilities: string) => {
+    const headers = new Headers();
+    headers.set(PRINCIPAL_ID_HEADER, "principal-entity-reader");
+    headers.set(CAPABILITIES_HEADER, "");
+    headers.set(ENTITY_CAPABILITIES_HEADER, capabilities);
+    return new Request("http://localhost/api/tenant-data", { headers });
+  };
+  const admitted = Object.entries(DATA_SURFACES).filter(([, surface]) => (surface as DataSurface).entityScoped === true).map(([name]) => name).sort();
+  assert.deepEqual(admitted, [...ENTITY_SCOPED_SURFACES].sort());
+  for (const name of ["changeFeedApi", "insightsPage", "driftPage"] as const) {
+    const surface = DATA_SURFACES[name];
+    assert.deepEqual(readAccess(entityOnly("read:CREOS").headers, surface)?.scope, { central: false, entities: ["CREOS"] }, name);
+    // Holding some other capability for an entity is still no read.
+    assert.equal(readAccess(entityOnly("restore:CREOS").headers, surface), null, `${name}: no read`);
+    assert.equal(readAccess(entityOnly("").headers, surface), null, `${name}: nothing`);
+  }
+  const { response, loaderCalls } = await responseFor(DATA_SURFACES.changeFeedApi, entityOnly("read:CREOS"));
+  assert.equal(response.status, 200);
+  assert.equal(loaderCalls(), 1);
+  const refused = await responseFor(DATA_SURFACES.changeFeedApi, entityOnly(""));
+  assert.equal(refused.response.status, 403);
+  assert.equal(refused.loaderCalls(), 0);
 });
 
 function appSources(directory: string): string[] {

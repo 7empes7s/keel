@@ -365,6 +365,16 @@ for (const path of ["/insights", "/insights?days=90"]) {
   });
 }
 
+// Every change and its API, which entity-scoped readers now reach too (issue #981), sit
+// behind the same sign-in check.
+for (const path of ["/changes?view=feed", "/changes?view=feed&days=7", "/api/changes/feed", "/api/changes/feed?days=7&by=service"]) {
+  test(`GET ${path} rejects an unauthenticated request with 401`, async () => {
+    const response = await middleware(request(path));
+
+    assert.equal(response.status, 401);
+  });
+}
+
 // The Owner review page (issue #964) goes through the same sign-in check as every page.
 test("GET /owner-review rejects an unauthenticated request with 401", async () => {
   const response = await middleware(request("/owner-review"));

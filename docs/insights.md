@@ -131,8 +131,15 @@ change feed read (`portal/lib/insights-view.ts`, `portal/components/insights/ins
 - **Shape of the period:** changes per day, by service, the people or apps with the most changes
   (code names when names are hidden) and the services with none.
 - **Record layer:** the window read, the count from each source and whether the limit was hit.
-- **Access:** the same as Every change: tenant-wide readers. An entity-scoped reader gets one sentence
-  and no feed read.
+- **Access:** the same as Every change. A tenant-wide reader sees every change. A reader scoped to some
+  entities (task 90) sees only approved-setup (drift) rows for settings their entities own, filtered in
+  the feed's SQL with the same entity filter as Open changes, so the two pages count the same changes.
+  Service reads, content backups and the audit log are tenant-wide and left out, and the page says so:
+  "You see changes to settings owned by <entities> only. A central administrator reviews tenant-wide
+  changes (service settings, sites and the audit log)." The verdict, Where to start, the shape of the
+  period, the CSV export and the API (`GET /api/changes/feed`, with `scope` and `scopeNote`) come from
+  those rows only. A person is named only when the reader's entities can see their account, and a flag
+  never names a linked role, group or app. A reader with no read at all is refused.
 - **Overview:** one "Needs attention" row, "3 flagged changes this week", for flagged changes of the
   last 7 days that no open alert shows. An alert counts when it is open, reopened or acknowledged
   and its `resource_key` is the flagged row's object key (the key A10 is expected to use).

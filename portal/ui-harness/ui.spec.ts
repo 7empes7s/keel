@@ -2723,9 +2723,43 @@ test("insights: verdict, where to start, the shape of the period and the record"
   expect(hidden).not.toContain("Amara Okafor");
   expect(hidden).not.toContain("Sam Lee");
 
+});
+
+// Issue #981: a reader scoped to one entity sees Insights and Every change built from the
+// drift rows their entity owns, with a note on what is left out, at phone and laptop
+// widths in both themes: no sideways scroll, no ids, and axe passes.
+const SCOPE_NOTE = "You see changes to settings owned by CREOS only. A central administrator reviews tenant-wide changes (service settings, sites and the audit log).";
+for (const hash of ["/insights/scoped", "/changes/feed-scoped"]) {
+  for (const width of [375, 390, 1278]) {
+    for (const theme of ["light", "dark"] as const) {
+      test(`contract · entity reader · ${hash} · ${width} · ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await open(page, hash, theme);
+        await expect(page.locator("main#main-content h1")).toHaveCount(1);
+        await expect(page.locator('[data-layer="verdict"]')).toHaveCount(1);
+        await expect(page.locator(".scope-note")).toBeVisible();
+        await expect(page.locator(".scope-note")).toHaveText(SCOPE_NOTE);
+        expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+        const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+        expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+        await page.screenshot({ path: `test-results/entity-reader${hash.replaceAll("/", "-")}-${width}-${theme}.png`, fullPage: true });
+      });
+    }
+  }
+}
+
+test("entity reader: the counts and groups come from their drift rows only", async ({ page }) => {
+  await page.setViewportSize({ width: 1278, height: 900 });
   await open(page, "/insights/scoped", "light");
-  await expect(page.locator(".verdict-sentence")).toHaveText(/needs tenant-wide read access/);
-  await page.screenshot({ path: "test-results/insights-scoped.png" });
+  await expect(page.locator(".verdict-sentence")).toHaveText(/^\d+ changes in the last 7 days; /);
+  const record = await page.locator('[data-layer="record"]').textContent();
+  expect(record).not.toContain("Changes from service reads");
+  expect(record).not.toContain("Changes from the audit log");
+  await expect(page.locator("#ins-quiet-heading").locator("xpath=ancestor::section[1]")).toContainText("Services with no change to your settings in this period.");
+  const main = await page.locator("main#main-content").textContent();
+  expect(main).not.toContain("Sharing settings");
 });
 
 test("contract · shell: eight sections, plain words, the page's sub-pages under its section", async ({ page }) => {

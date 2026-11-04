@@ -33,8 +33,9 @@ export const SHAREPOINT_TENANT_MODULE = 'PnP.PowerShell';
 const TENANT = () => 'tenant';
 
 // PnP and CSOM enums, by number, as ConvertTo-Json writes them (names are from the
-// SharePoint Online tenant administration types).
-const ENUMS = Object.freeze({
+// SharePoint Online tenant administration types). The ScubaGear rules read the same
+// numbers back (engine/benchmarks/scubagear/adapters.mjs).
+export const ENUMS = Object.freeze({
   sharing: ['Disabled', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly'],
   domainMode: ['None', 'AllowList', 'BlockList'],
   linkType: ['None', 'Direct', 'Internal', 'AnonymousAccess'],

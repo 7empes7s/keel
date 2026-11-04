@@ -37,6 +37,7 @@ import { FAMILIES as PURVIEW } from '../../collect/workloads/purviewRetentionDlp
 import { FAMILIES as POWER_PLATFORM } from '../../collect/workloads/powerPlatform.mjs';
 import { FAMILIES as TEAMS } from '../../collect/workloads/teamsPolicies.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../collect/workloads/teamsExtended.mjs';
+import { ENUMS as SHAREPOINT_ENUMS, SHAREPOINT_TENANT_WORKLOAD } from '../../collect/workloads/sharepointTenant.mjs';
 import { SENSITIVE_MASK } from '../registry.mjs';
 import { DEFAULT_SCUBA_CONFIG } from './config.mjs';
 
@@ -58,20 +59,7 @@ export const PURVIEW_DLP = 'purview-retention-dlp';
 export const TEAMS_POLICIES = 'teams-org-policies';
 export const TEAMS_VOICE = 'teams-voice-policies';
 export const POWER_PLATFORM_SETTINGS = 'power-platform-settings';
-// Keel's Get-PnPTenant read of the SharePoint admin settings (the sharepoint-tenant
-// workload, engine/collect/workloads/sharepointTenant.mjs). Until that read is on and
-// qualified, no backup holds it and the SharePoint rules read "could not check".
-export const SHAREPOINT_TENANT = 'sharepoint-tenant';
-
-// SharePoint's enum names, in number order, as the sharepoint-tenant read stores them
-// (the SharePoint Online tenant administration types). The rules compare the numbers.
-export const SHAREPOINT_ENUMS = Object.freeze({
-  sharing: Object.freeze(['Disabled', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly']),
-  domainMode: Object.freeze(['None', 'AllowList', 'BlockList']),
-  linkType: Object.freeze(['None', 'Direct', 'Internal', 'AnonymousAccess']),
-  linkPermission: Object.freeze(['None', 'View', 'Edit']),
-  anonymousLink: Object.freeze(['None', 'View', 'Edit']),
-});
+export const SHAREPOINT_TENANT = SHAREPOINT_TENANT_WORKLOAD;
 
 // ScubaGear's ScubaConfigDefaults.json `privilegedRoles` at the pinned tag.
 export const PRIVILEGED_ROLES = Object.freeze([
@@ -421,7 +409,7 @@ export function allowedDomains(value) {
 // The Get-SPOTenantRest fields the SharePoint rules read, and where Keel's
 // Get-PnPTenant read keeps each one. Both read the same tenant object; only OneDrive's
 // sharing level has another name in PnP. `enum` names the table the reader stores the
-// value's name by (SHAREPOINT_ENUMS); the rules compare the number.
+// value's name by (sharepointTenant.mjs ENUMS); the rules compare the number.
 export const SPO_TENANT_FIELDS = Object.freeze({
   SharingCapability: { from: 'SharingCapability', enum: 'sharing' },
   ODBSharingCapability: { from: 'OneDriveSharingCapability', enum: 'sharing' },

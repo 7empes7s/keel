@@ -12823,8 +12823,18 @@ item that needs it stays untouched.
 - Needs: #939 merged and deployed (build B). Check: `grep -q RemoveLabels /opt/keel-live/ops/powershell/run-cmdlet.ps1` and
   `test -f /opt/keel-live/tools/qualification/purviewUnpublishLive.mjs`.
   The `keel-powershell` image at B (rebuild it: `run-cmdlet.ps1` changed).
-- Status: todo
-- Result:
+- Status: done
+- Result: done, all steps as expected (2026-11-04 04:50 UTC, keel-operator). Build **B = d1fa3887** (#939: `RemoveLabels` in `run-cmdlet.ps1`, `purviewUnpublishLive.mjs` present). Restorer `/etc/keel/purview-restorer.json` for writes, Collector `/etc/keel/purview-collector.json` for reads. Global admin not used; nothing granted; no CA, no break-glass.
+  - **Image:** not rebuilt. `keel-powershell:latest` (built 2026-10-15) has exactly the Dockerfile's pins (ExchangeOnlineManagement 3.10.1, MicrosoftTeams 7.9.0, PnP.PowerShell 3.4.1), and the job queue mounts `ops/powershell` from the checkout over `/app`, so the new `run-cmdlet.ps1` is used. I left the shared `:latest` tag alone.
+  - **Step 1, before:** one KEEL-RT policy, `KEEL-RT-20261005-policy` (test-user Exchange location), publishing `KEEL-RT-20261005-label2`, `KEEL-RT-20261007-label`, `KEEL-RT-20261005-anchor`, `KEEL-RT-20261005-label`, `KEEL-RT-20261005-label3`. KEEL-RT labels: those 5 plus `KEEL-RT-20261005-protected` (unpublished).
+  - **Step 2, plan:** 2 refusals (RemoveLabels through the ordinary call; RemoveLabels+AddLabels through the unpublish call), the reads, then AddLabels (only if not published), RemoveLabels, AddLabels (only if published), and the read-backs. As expected.
+  - **Step 3, capture:** exit **0**; proven `["purview.label-policy.remove-labels"]`; notProven `[]`; skipped `[]`; `needsManualRevert` null; verify `{"ok":true,"failures":[]}`. pseudonymize exit 0 (both files).
+  - **Step 4a:** `claude/live-evidence-purview-unpublish` **d113fc36** (record + capture, secret scan 0). No PR. Import exit **0**, imported 26, refused `[]`; `purview-label-unpublish-live-acceptance.json` reads 0, writes 1. Ledger: `purview.label-policy.remove-labels` `live-write-capture`, ok, read-back verified, version 3.10.1.
+  - **Step 4b:** created **`KEEL-RT-270-label`** (File, Email; no encryption, no marking) as the Restorer, so no other gate's label was borrowed. Backup S = purview-labels collection **`c90c112f`** (run exit 3 from other workloads; purview-labels complete). Then published `KEEL-RT-270-label` on the policy (6 labels).
+  - **Step 4c, dry run:** artifact `426be3fa`: "Purview restore plan: 1 change(s), 0 manual, 0 refused". One `unpublish` (`Set-LabelPolicy -RemoveLabels KEEL-RT-270-label`) and one `weakens-protection` effect on `Labels`.
+  - **Step 4d:** restore request `d7bdb658` approved, effect not approved. Promote exit 1: "Purview restore blocked-content-effect: … 1 content effect(s) (weakens-protection) need a separate, current high-impact approval of exactly these effects." No write.
+  - **Step 4e:** effect approved by the operator's second principal (not the requester), **approval `a7b53809`**, request `3266552b`. Promote exit 0: "Purview: 3 of 3 write(s) qualified for this tenant", "Purview restore: verified". Evidence rows: `purview.label-policy.remove-labels` unpublish **verified** (writes 1, verified `RemoveLabels`); `purview.restore` **verified**. Collector read: `KEEL-RT-270-label` gone; policy labels equal to S (the 5 above).
+  - **Left in the tenant:** `KEEL-RT-270-label` (unpublished fixture). The policy is as it started.
 - **Tenant (test tenant only, standing authorizations of 2026-10-14/-16/-22/-27; nothing to ask the user):** Restorer
   (`/etc/keel/purview-restorer.json`) for writes, Collector (`/etc/keel/purview-collector.json`) for reads. Only a `KEEL-RT-` label
   policy and a `KEEL-RT-` label are written; every change is put back. Global admin not used. Nothing granted. No CA, no break-glass.

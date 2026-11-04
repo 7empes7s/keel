@@ -98,6 +98,7 @@ export function fakeDscTenant(initial = [], { moduleVersion = DSC_MODULE_VERSION
     return child;
   };
   // The PowerShell options a connection would carry, pointed at this fake.
-  const powershell = { tenantConfigPath: '/etc/keel/exchange-restorer.json', spawnFn, scriptMount: null };
+  // A fixture path must not resolve to credentials installed on the test host.
+  const powershell = { tenantConfigPath: '/etc/keel/KEEL-RT-fixture-exchange-restorer.json', spawnFn, scriptMount: null };
   return { lists, jobs, writes, powershell, find };
 }

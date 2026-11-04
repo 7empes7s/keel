@@ -406,6 +406,7 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
     const listed = [];
     const code = await discoverCli(['run', '--config', join(dir, 'tenant.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store', '--out', join(dir, 'inventory.json')], {
       fetchImpl: tenant.fetchImpl, getTokenFn: async () => ({ accessToken: 'cli-token' }), now: fixed,
+      existsFn: () => false, // No host workload scope belongs to this fixture tenant.
       // By default each module is listed live; one that cannot be keeps its reason.
       listCommandsFn: async (options) => {
         listed.push(options);
@@ -498,7 +499,9 @@ test('a scheduled run for another tenant is refused before any request; the matc
     writeFileSync(join(dir, 'tenant.json'), JSON.stringify({ tenantId: 'fixture-tenant' }));
     const tenant = fixtureTenant();
     const options = {
+      listCommandsFn: async () => ({ commands: {}, errors: {} }),
       fetchImpl: tenant.fetchImpl, getTokenFn: async () => ({ accessToken: 'cli-token' }), now: fixed,
+      existsFn: () => false, // No host workload scope belongs to this fixture tenant.
       connectFn: async () => { throw new Error('the database must not be touched'); },
       logger: { log() {} },
     };

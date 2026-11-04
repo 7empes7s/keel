@@ -12,7 +12,7 @@ import { applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-
 import { byText, byTime, pageWindow, sortRows } from "@/lib/paging";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
-  SITE_TILES, appStatus, backupStatus, backupWords, externalStatus, groupsWords, peopleStatus, sharingLevel, sharingStatus, siteAddress, siteName, sitesInOrder,
+  SITE_TILES, exposureStatus, siteVerdict, appStatus, backupStatus, backupWords, externalStatus, groupsWords, peopleStatus, sharingLevel, sharingStatus, siteAddress, siteName, sitesInOrder,
   type SitePermissions, type SitesContentRun,
 } from "@/lib/site-permissions-view";
 import { readList, useViewState } from "@/lib/use-view-state";
@@ -65,11 +65,13 @@ export function SitesTable({ sites, run, now }: { sites: SitePermissions[]; run:
         {SITE_TILES.map((tile) => {
           const entry = counts.get(tile.key);
           const value = entry?.count ?? 0;
-          const tone = value && tile.key !== "apps" ? (["no-owner", "attention", "wider"].includes(tile.key) ? "urgent" : "soon") : undefined;
+          const unchecked = ["everyone", "anyone-links"].includes(tile.key) && sites.some((site) => !site.people?.exposure || site.people.exposure.everyone === null || site.people.exposure.checked === false || site.people.exposure.links.unknown > 0);
+          const tone = value && tile.key !== "apps" ? (["no-owner", "attention", "wider", "everyone", "anyone-links"].includes(tile.key) ? "urgent" : "soon") : undefined;
           return (
             <button aria-pressed={entry?.picked ?? false} className="st-tile" data-tone={tone} key={tile.key} onClick={() => toggle(tile.key)} title={entry?.picked ? "Picked: click to remove it from the view" : "Click to add these to the view"} type="button">
               <span className="st-tile-label"><Icon name={tile.icon as IconName} />{tile.label}{entry?.picked ? <Icon className="st-tile-check" name="check" /> : null}</span>
-              <b className="st-tile-count">{value}</b>
+              <b className="st-tile-count">{unchecked ? value ? `${value} known` : "Not checked" : value}</b>
+              {unchecked ? <small>Not checked in this backup for some sites</small> : null}
               {entry?.adds ? <small>+{entry.adds} more</small> : null}
             </button>
           );
@@ -127,9 +129,11 @@ function SiteRow({ site, run, now }: { site: SitePermissions; run: SitesContentR
   const groups = groupsWords(site);
   const owners = site.people?.owners ?? [];
   return (
-    <tr data-tone={rowTone([backup, apps, people, external, sharing])}>
+    <tr data-tone={rowTone([backup, apps, people, external, sharing, exposureStatus(site.people?.exposure)])}>
       <th data-label="Site" scope="row">
         <Link className="st-name" href={`/sites/${encodeURIComponent(site.siteId)}`}>{siteName(site)}</Link>
+        <small>{siteVerdict(site, run).text}</small>
+        {exposureStatus(site.people?.exposure).key === "unchecked" && !siteVerdict(site, run).text.includes("not checked") ? <small>Everyone grants and link scope: not checked in this backup.</small> : null}
         {siteAddress(site) ? <small className="st-address">{siteAddress(site)}</small> : null}
       </th>
       <td data-label="Backup">

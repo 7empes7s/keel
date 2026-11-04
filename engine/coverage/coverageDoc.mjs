@@ -460,10 +460,9 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates policies and puts their settings back.',
     todo: 'Who a policy is assigned to is not backed up yet, so assign it again by hand.',
   }),
-  operationApprovalPolicy: auto('Multi admin approval policies', {
-    keeps: 'Puts back which admin changes need a second admin, and the groups whose members approve them. Groups are found in the target by name.',
-    todo: 'A restore that changes them waits for a second approver while restore approvals are on for Intune. A policy that now covers a different kind of change is made again by hand.',
-  }),
+  operationApprovalPolicy: manual('Multi admin approval policies', MS,
+    'KEEL backs up each policy, the kind of admin change it covers and the groups whose members approve it, but Microsoft only lets a signed-in admin change these policies, not an app like KEEL.',
+    'Make the policy again in the Intune admin center, under Tenant administration, Multi Admin Approval, Access policies, using the backed-up values.'),
   // Restore gaps batch 5: the script body is backed up per script.
   deviceCustomAttributeShellScript: auto('macOS custom attribute scripts', {
     keeps: 'Recreates scripts and puts the script, its settings and who it runs on back.',

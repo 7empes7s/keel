@@ -1,6 +1,6 @@
 /**
- * Approval-held kinds, batch 2: who holds Intune, Exchange and Defender admin roles,
- * and Intune multi admin approval policies. Driven through the production applyWave
+ * Approval-held kinds, batch 2: who holds Intune, Exchange and Defender admin roles.
+ * Driven through the production applyWave
  * path: the users, groups, apps and roles each names are matched in the target by
  * their natural keys, the approval effects name them, and nothing is written without
  * the approval. This file is the remapping proof qualification.mjs records for them.
@@ -49,13 +49,6 @@ const KINDS = {
       assert.equal(body.roleDefinition, undefined, 'the role is sent as its link only');
     },
     shown: { field: 'members', after: `[${JSON.stringify(GROUP)}]` },
-  },
-  operationApprovalPolicy: {
-    collection: '/deviceManagement/operationApprovalPolicies',
-    payload: { id: 'source-policy', displayName: 'KEEL-RT-approval', policyType: 'deviceWipe', policyPlatform: 'notApplicable', approverGroupIds: [SOURCE_GROUP] },
-    references: [{ field: 'approverGroupIds[0]', symbol: GROUP, required: true }],
-    written: (body) => assert.deepEqual(body.approverGroupIds, [TARGET_GROUP]),
-    shown: { field: 'approverGroupIds', after: `[${JSON.stringify(GROUP)}]` },
   },
   exchangeRoleAssignment: {
     collection: '/roleManagement/exchange/roleAssignments',

@@ -1271,19 +1271,6 @@ async function intuneAssignmentUpdateGuard(io, { payload, targetId }) {
   return { reason: `manual: ${description}`, completion: [{ kind: 'manual-setting', requirement: 'createOnly', fields: ['roleDefinition'], description }] };
 }
 
-// A multi admin approval policy's kind and platform are set when it is made.
-const APPROVAL_POLICY_KIND = ['policyType', 'policyPlatform', 'policySet'];
-function approvalPolicyRefusal(resource, verb) {
-  const undo = undoOnlyDelete('a multi admin approval policy', 'the Intune admin center, under Tenant administration, Multi Admin Approval')(resource, verb);
-  if (undo || verb !== 'update') return undo;
-  const live = resource.live?.payload ?? {};
-  const fields = APPROVAL_POLICY_KIND.filter((field) => resource.payload?.[field] !== undefined && !sameValue(resource.payload[field], live[field]));
-  if (fields.length === 0) return null;
-  const description = `This approval policy now covers a different kind of change (${fields.join(', ')}) than in the backup, and Intune sets that only when a policy is made. `
-    + 'Nothing was written: make the policy again by hand in the Intune admin center, under Tenant administration, Multi Admin Approval.';
-  return { outcome: 'skipped', reason: `manual: ${description}`, completion: [{ kind: 'manual-setting', requirement: 'createOnly', fields, description }] };
-}
-
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard, beforeDelete: removeChosenAssignments };
 
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
@@ -1937,20 +1924,10 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     updateGuard: intuneAssignmentUpdateGuard, checkedAfterWrite: ['roleDefinition@odata.bind'], afterWrite: intuneAssignmentAfterWrite,
     permission: 'DeviceManagementRBAC.ReadWrite.All',
   }),
-  // Approval-held kinds, batch 2. A multi admin approval policy: which admin
-  // changes need a second admin, and the groups whose members approve them
-  // (approverGroupIds, matched in the target by name).
-  operationApprovalPolicy: defineRecord({
-    resourceType: 'operationApprovalPolicy', version: 'beta', collection: '/deviceManagement/operationApprovalPolicies',
-    operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', 'approverGroupIds'], createOnly: APPROVAL_POLICY_KIND,
-    remapsReferences: true, sameField: sameIdLists(['approverGroupIds']), refusal: withApprovalGate(approvalPolicyRefusal),
-    preflight: createdOnce({
-      version: 'beta', path: '/deviceManagement/operationApprovalPolicies', label: 'multi admin approval policy',
-      matches: (row, payload) => String(row?.displayName ?? '').toLowerCase() === String(payload.displayName ?? '').toLowerCase(),
-      same: (row, payload) => sameAssignmentAccess(['approverGroupIds'])(row, payload) && APPROVAL_POLICY_KIND.every((field) => payload[field] === undefined || sameValue(row[field], payload[field])),
-    }),
-    permission: 'DeviceManagementConfiguration.ReadWrite.All',
-  }),
+  // A multi admin approval policy (operationApprovalPolicy) is not written:
+  // Intune refuses every non-read call on these policies from an app
+  // ("Application only authentication is not allowed for non-read operations
+  // on MAA access policies", Q271 part B), so it is restored by hand.
   notificationMessageTemplate: defineRecord({
     resourceType: 'notificationMessageTemplate', version: 'v1.0', collection: '/deviceManagement/notificationMessageTemplates',
     readQuery: '$expand=localizedNotificationMessages', operations: ['create', 'update'], excluded: ['localizedNotificationMessages', 'defaultLocale'],

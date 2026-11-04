@@ -304,16 +304,12 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     '@odata.type': '#microsoft.graph.deviceAndAppManagementRoleDefinition', displayName: 'Fixture Intune role', description: 'Fixture', isBuiltIn: false,
     rolePermissions: [{ resourceActions: [{ allowedResourceActions: ['Microsoft.Intune_Organization_Read'], notAllowedResourceActions: [] }] }],
   },
-  // Approval-held kinds, batch 2: who holds admin roles, and an approval policy.
+  // Approval-held kinds, batch 2: who holds admin roles.
   // The ids are of objects the fixture target already has (no remapping here).
   deviceManagementRoleAssignment: {
     '@odata.type': '#microsoft.graph.deviceAndAppManagementRoleAssignment', displayName: 'Fixture Intune role assignment', description: 'Fixture',
     members: ['11111111-1111-1111-1111-111111111111'], scopeMembers: [], resourceScopes: ['22222222-2222-2222-2222-222222222222'], scopeType: 'resourceScope',
     roleScopeTagIds: ['0'], roleDefinition: { id: '33333333-3333-3333-3333-333333333333', displayName: 'Read Only Operator', isBuiltIn: true },
-  },
-  operationApprovalPolicy: {
-    displayName: 'Fixture approval policy', description: 'Fixture', policyType: 'deviceWipe', policyPlatform: 'notApplicable',
-    approverGroupIds: ['11111111-1111-1111-1111-111111111111'],
   },
   exchangeRoleAssignment: {
     principalId: '/ServicePrincipals/44444444-4444-4444-4444-444444444444', roleDefinitionId: '55555555-5555-5555-5555-555555555555', directoryScopeId: '/', appScopeId: '/',
@@ -512,7 +508,7 @@ const FIXTURE_TARGET_IDS = Object.freeze({
 // Collections a record lists before it creates, to find one an earlier restore made.
 const LISTED_BEFORE_CREATE = new Set([
   '/deviceManagement/groupPolicyUploadedDefinitionFiles', '/roleManagement/defender/roleDefinitions',
-  '/deviceManagement/roleAssignments', '/deviceManagement/operationApprovalPolicies',
+  '/deviceManagement/roleAssignments',
   '/roleManagement/exchange/roleAssignments', '/roleManagement/defender/roleAssignments',
 ]);
 
@@ -730,7 +726,7 @@ export function fakeGraph() {
       if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path) && !objects.has(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       // Restore gaps batch 12: the imported ADMX files are listed before an upload.
       // and batch 21: the Defender roles are listed before a create, and approval-held
-      // batch 2: so are role assignments and approval policies.
+      // batch 2: so are role assignments.
       if (LISTED_BEFORE_CREATE.has(path)) {
         const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);
         return { ok: true, status: 200, body: { value } };
@@ -761,7 +757,7 @@ export function fakeGraph() {
 const governor = { async acquire() {}, observeRetryAfter() {} };
 
 // Types whose delete is only the undo of a create a restore made (an app's link).
-const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship', 'deviceManagementRoleDefinition', 'deviceManagementRoleAssignment', 'operationApprovalPolicy', 'exchangeRoleAssignment', 'defenderRoleAssignment']);
+const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship', 'deviceManagementRoleDefinition', 'deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment']);
 
 export function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);

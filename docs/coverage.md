@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 50 are full, 125 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 105 at least in part and 9 hold nothing to restore; the other 70 are restored by hand from the backup.
+KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 104 at least in part and 9 hold nothing to restore; the other 71 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -496,7 +496,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Managed Google Play connection | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Multi admin approval policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (Microsoft limit) | None |
 | macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Intune tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -637,8 +637,8 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 - **Windows hotpatch update policies.** Recreates policies and puts their settings back.
   - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand.
-- **Multi admin approval policies.** Puts back which admin changes need a second admin, and the groups whose members approve them. Groups are found in the target by name.
-  - *You do:* A restore that changes them waits for a second approver while restore approvals are on for Intune. A policy that now covers a different kind of change is made again by hand.
+- **Multi admin approval policies** (Microsoft limit). KEEL backs up each policy, the kind of admin change it covers and the groups whose members approve it, but Microsoft only lets a signed-in admin change these policies, not an app like KEEL.
+  - *You do:* Make the policy again in the Intune admin center, under Tenant administration, Multi Admin Approval, Access policies, using the backed-up values.
 - **macOS custom attribute scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
   - *You do:* Who a script runs on is put back only when the script is picked for a restore, from backups taken after assignments were read. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Intune tenant settings.** Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.

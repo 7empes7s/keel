@@ -38,15 +38,14 @@ const FIXTURES = Object.freeze({
   windowsDriverUpdateProfile: { collection: '/deviceManagement/windowsDriverUpdateProfiles', payload: { displayName: 'KEEL-RT-undo-driver' } },
   // Approval-held kinds: a custom Intune role a restore recreated.
   deviceManagementRoleDefinition: { collection: '/deviceManagement/roleDefinitions', payload: { displayName: 'KEEL-RT-undo-role', isBuiltIn: false } },
-  // Approval-held kinds, batch 2: an Intune role assignment and an approval policy a restore made.
+  // Approval-held kinds, batch 2: an Intune role assignment a restore made.
   deviceManagementRoleAssignment: { collection: '/deviceManagement/roleAssignments', payload: { displayName: 'KEEL-RT-undo-assignment', members: [] } },
-  operationApprovalPolicy: { collection: '/deviceManagement/operationApprovalPolicies', payload: { displayName: 'KEEL-RT-undo-approval', approverGroupIds: [] } },
 });
 
 // Every Intune record type that can be deleted, except app links, which are
 // deleted only through their app (intuneAppLinks.test.mjs).
 // Deleted only as the undo of their own create, and never assigned through /assign.
-const UNDO_ONLY = new Set(['deviceManagementRoleDefinition', 'deviceManagementRoleAssignment', 'operationApprovalPolicy']);
+const UNDO_ONLY = new Set(['deviceManagementRoleDefinition', 'deviceManagementRoleAssignment']);
 const DELETABLE = Object.values(INTUNE_EXTENDED_RECORDS)
   .filter((record) => record.operations.includes('delete') && record.resourceType !== 'mobileAppRelationship')
   .map((record) => record.resourceType)

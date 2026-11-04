@@ -422,11 +422,6 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-intune-assignment`, drift: 'take a new backup first (it now keeps the role), then delete the assignment: the restore recreates it with the same role, members and scope',
     note: 'Check the dry run names the group and role (not ids) under "Changes admin access", and that a promotion without the approval skips it.',
   },
-  operationApprovalPolicy: {
-    kind: 'named-object', fixture: `multi admin approval policy ${FIXTURE_PREFIX}-approval for device wipe, approvers the empty group ${FIXTURE_PREFIX}-group`,
-    select: `${FIXTURE_PREFIX}-approval`, drift: 'delete it: the restore recreates it with the same approver group; record Graph\'s answer if Intune asks for a second admin to approve the write itself',
-    note: 'Only a device action nobody uses on the test tenant; never cover role or policy changes, so the test tenant is never locked behind an approval.',
-  },
   exchangeRoleAssignment: {
     kind: 'by-reference', fixture: `Exchange role View-Only Configuration given to the ${FIXTURE_PREFIX} fixture app's service principal (Graph /roleManagement/exchange/roleAssignments)`,
     select: 'the assignment\'s id', drift: 'remove the assignment: the restore gives the role to the same app again',

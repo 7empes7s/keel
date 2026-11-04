@@ -437,6 +437,12 @@ test('loosenings: wider requestor scope, more requestors, approvers taken off; t
   const stage = before.requestApprovalSettings.stages[0];
   assert.deepEqual(policyLoosenings(before, { ...before, requestApprovalSettings: { ...before.requestApprovalSettings, stages: [{ ...stage, fallbackPrimaryApprovers: [] }] } }), ['it takes approvers off stage 1']);
   assert.deepEqual(policyLoosenings(before, { ...before, allowedTargetScope: 'notSpecified', reviewSettings: { isEnabled: true } }), []);
+  // How long access lasts: longer, or no expiry, loosens; shorter does not.
+  const longer = ['it lets access last longer before it expires'];
+  assert.deepEqual(policyLoosenings(before, { ...before, expiration: { type: 'afterDuration', duration: 'P90D' } }), longer);
+  assert.deepEqual(policyLoosenings(before, { ...before, expiration: { type: 'noExpiration' } }), longer);
+  assert.deepEqual(policyLoosenings(before, { ...before, expiration: { type: 'afterDateTime', endDateTime: '2027-01-01T00:00:00Z' } }), longer, 'one KEEL cannot compare counts as longer');
+  assert.deepEqual(policyLoosenings(before, { ...before, expiration: { type: 'afterDuration', duration: 'P7D' } }), []);
 });
 
 // ------------------------------------------------- production applyWave path

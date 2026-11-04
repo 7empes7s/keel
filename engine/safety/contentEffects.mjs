@@ -260,10 +260,11 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // configured), and its sponsors approve their requests.
   connectedOrganization: Object.freeze(['identitySources', 'state', 'internalSponsors', 'externalSponsors']),
   // Issue #993: who may request an access package through a policy, who approves
-  // and reviews it, and whether it is assigned automatically. A new policy lets
+  // and reviews it, whether it is assigned automatically, and how long access
+  // lasts before it expires. A new policy lets
   // people request a package nobody could request before, and a change can loosen
   // who may request or remove an approval step, so every change is held.
-  accessPackageAssignmentPolicy: Object.freeze(['allowedTargetScope', 'specificAllowedTargets', 'requestorSettings', 'requestApprovalSettings', 'reviewSettings', 'automaticRequestSettings']),
+  accessPackageAssignmentPolicy: Object.freeze(['allowedTargetScope', 'specificAllowedTargets', 'requestorSettings', 'requestApprovalSettings', 'reviewSettings', 'automaticRequestSettings', 'expiration']),
 });
 // Nested fields Microsoft sets on its own, at any depth: a restore never sends
 // them, and they are no change. Graph sets a default app credential rules

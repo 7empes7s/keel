@@ -340,6 +340,31 @@ const SCOPE_ORDER = ['notSpecified', 'specificDirectoryServicePrincipals', 'spec
   'allConfiguredConnectedOrganizationUsers', 'allMemberUsers', 'allDirectoryServicePrincipals', 'allDirectoryUsers', 'allExternalUsers'];
 const subjectKeys = (subjects) => list(subjects).map((subject) => JSON.stringify([lower(stripGraph(subject?.['@odata.type'])), lower(subject?.userId ?? subject?.groupId ?? subject?.connectedOrganizationId ?? subject?.managerLevel ?? subject?.membershipRule)]));
 
+// An ISO 8601 duration in days (P1Y2M3DT4H), or null when it cannot be read.
+function durationDays(value) {
+  const match = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(String(value ?? ''));
+  if (!match || value === 'P' || value === 'PT') return null;
+  const [y, mo, w, d, h, mi, s] = match.slice(1).map((part) => Number(part ?? 0));
+  return y * 365 + mo * 30 + w * 7 + d + h / 24 + mi / 1440 + s / 86400;
+}
+/**
+ * Whether access granted through the policy lasts longer: no expiry where there
+ * is one, or a longer duration. A change KEEL cannot compare (another kind, an
+ * end date) counts as longer (lesson 2026-10-22: unknown is listed, never guessed).
+ */
+function expiresLater(before, after) {
+  if (sameValue(before, after)) return false;
+  const kind = (value) => lower(value?.type);
+  if (kind(after) === 'noexpiration') return kind(before) !== 'noexpiration';
+  if (kind(before) === 'noexpiration') return false;
+  if (kind(before) === 'afterduration' && kind(after) === 'afterduration') {
+    const was = durationDays(before.duration);
+    const now = durationDays(after.duration);
+    return was === null || now === null || now > was;
+  }
+  return true;
+}
+
 /**
  * What a write of `after` over `before` loosens, in plain words (empty when
  * nothing): who may request, an approval step, reviews. A create loosens from
@@ -378,6 +403,7 @@ export function policyLoosenings(before, after) {
     }
   }
   if (turnsOff('reviewSettings.isEnabled')) out.push('it turns access reviews off');
+  if (expiresLater(before?.expiration, after?.expiration)) out.push('it lets access last longer before it expires');
   return [...new Set(out)];
 }
 
@@ -423,12 +449,12 @@ async function policyUpdateGuard(io, { targetId }) {
 }
 
 const samePackage = (desired, live) => lower(desired?.id) === lower(live?.id);
-const POLICY_ACCESS = ['allowedTargetScope', 'specificAllowedTargets', 'requestorSettings', 'requestApprovalSettings', 'reviewSettings', 'automaticRequestSettings'];
+const POLICY_ACCESS = ['allowedTargetScope', 'specificAllowedTargets', 'requestorSettings', 'requestApprovalSettings', 'reviewSettings', 'automaticRequestSettings', 'expiration'];
 
 export const ASSIGNMENT_POLICY_RECORD = defineRecord({
   resourceType: 'accessPackageAssignmentPolicy', version: 'v1.0', collection: ASSIGNMENT_POLICIES,
   operations: ['create', 'update'], updateMethod: 'PUT',
-  writable: ['displayName', 'description', 'accessPackage', ...POLICY_ACCESS, 'expiration', 'questions', 'notificationSettings'],
+  writable: ['displayName', 'description', 'accessPackage', ...POLICY_ACCESS, 'questions', 'notificationSettings'],
   // Custom extensions call Logic Apps with their own sign-in: never written.
   excluded: ['customExtensionStageSettings', 'catalog', 'assignments'],
   readQuery: '$expand=accessPackage',

@@ -1,0 +1,139 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-writers-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "224e353feca37407ac24b179776e0783d6e8ca61",
+  "operation": "workload.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-11-04T05:27:12.850Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "onedrive-site-settings",
+    "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "organization": null,
+    "tenantWide": false,
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "PnP.PowerShell",
+      "moduleVersion": "3.4.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "restorer": {
+        "permissions": [
+          "Sites.FullControl.All"
+        ],
+        "roles": [
+          "SharePoint Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-PnPTenantSite",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-PnPTenantSite is not a workload write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-PnPTenantSite",
+        "parameter": "Force",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-PnPTenantSite does not take Force from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "onedrive.site-settings.update",
+        "kind": "update",
+        "method": "Set-PnPTenantSite",
+        "version": "3.4.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+        "identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+        "field": "DefaultLinkPermission",
+        "type": "narrowing",
+        "before": 2,
+        "target": 1,
+        "final": 2,
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-11-04T05:27:12.850Z",
+        "error": null
+      }
+    ],
+    "skipped": [],
+    "created": [],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-PnPTenantSite",
+        "parameters": {
+          "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+          "DefaultLinkPermission": 1
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-PnPTenantSite",
+        "parameters": {
+          "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+          "DefaultLinkPermission": 2
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      }
+    ],
+    "captureLogSha256": "147188b82cbd5f1997921ece8d58934e0520788022cde54e6901bb4b40c1bc9c"
+  },
+  "proof": {
+    "artifact": {
+      "path": "workload-writers-onedrive-site-settings-live-acceptance.capture.json",
+      "sha256": "147188b82cbd5f1997921ece8d58934e0520788022cde54e6901bb4b40c1bc9c"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "89b26c56955bc871c0d276f430756e52759a38a513a3faa649176dd6ccb097f7"
+    }
+  }
+}

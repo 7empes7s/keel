@@ -149,11 +149,11 @@ export default [
   { resourceType: 'deviceManagementRoleDefinition', operation: 'update', path: '/deviceManagement/roleDefinitions', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Only the undo of a role a restore created (the record refuses any other delete).
   { resourceType: 'deviceManagementRoleDefinition', operation: 'delete', path: '/deviceManagement/roleDefinitions', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },
-  // Approval-held kinds, batch 2: who holds Intune, Exchange and Defender admin roles, and
-  // multi admin approval policies. Each delete is only the undo of a create by a restore.
+  // Approval-held kinds, batch 2: who holds Intune, Exchange and Defender admin roles.
+  // Each delete is only the undo of a create by a restore. Multi admin approval
+  // policies are not written: Intune refuses app writes to them (Q271 part B).
   ...[
     ['deviceManagementRoleAssignment', '/deviceManagement/roleAssignments', INTUNE, INTUNE_PROOF, ['create', 'update', 'delete']],
-    ['operationApprovalPolicy', '/deviceManagement/operationApprovalPolicies', INTUNE, INTUNE_PROOF, ['create', 'update', 'delete']],
     ['exchangeRoleAssignment', '/roleManagement/exchange/roleAssignments', IDENTITY, IDENTITY_PROOF, ['create', 'delete']],
     ['defenderRoleAssignment', '/roleManagement/defender/roleAssignments', IDENTITY, IDENTITY_PROOF, ['create', 'update', 'delete']],
   ].flatMap(([resourceType, path, handler, proofRef, operations]) => operations.map((operation) => ({

@@ -63,9 +63,11 @@ export default [
     note: 'Hardware hash is not readable; restore needs a re-import from the device.' },
   // Intune RBAC: who holds each Intune role, over which groups and scope tags.
   // Beta carries roleScopeTagIds, which v1.0 leaves out.
-  // The list leaves out which role an assignment holds, so each assignment's role
-  // is read on its own (id and name only), for a restore to bind it again.
+  // The list leaves out which role an assignment holds, and Graph has no route for
+  // an assignment's own role (Q271: 400 "No OData route exists"). Each role lists
+  // its assignments instead, so the role (id and name only) is read from that side,
+  // for a restore to bind it again.
   { type: 'deviceManagementRoleAssignment', path: '/deviceManagement/roleAssignments', version: 'beta', criticality: 'tier1', blastRadius: 'access-affecting',
-    itemReads: { as: 'roleDefinition', path: '/deviceManagement/roleAssignments/{item}/roleDefinition', single: true, fields: ['id', 'displayName', 'isBuiltIn'] },
+    linkedFrom: { as: 'roleDefinition', parents: '/deviceManagement/roleDefinitions', children: '/deviceManagement/roleDefinitions/{parent}/roleAssignments', fields: ['id', 'displayName', 'isBuiltIn'] },
     note: 'Intune admin access. Pairs with deviceManagementRoleDefinition.' },
 ];

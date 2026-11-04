@@ -1,3 +1,4 @@
+import { syncChangeFlags, resolveServiceFlags } from '../notify/changeFlags.mjs';
 // engine/govern/workloadDrift.mjs
 //
 // Workload drift: after each workload collection, compare it with the previous usable
@@ -220,11 +221,16 @@ export async function detectWorkloadDrift(client, { collectionId, hysteresis, no
     });
   }
 
+  const { rows: flagRows } = await client.query('SELECT id::text FROM workload_drift WHERE tenant_ref=$1 AND collection_id=$2', [run.tenant_ref, run.id]);
+  await syncChangeFlags(client, { tenantRef: run.tenant_ref, source: 'service', ids: flagRows.map((row) => row.id), notify });
+
   // A change this read no longer shows was put back or accepted: its alert resolves.
   // Only where the read can tell: the resource was read, or the read was complete. A
   // read whose differences were cut short resolves nothing.
   let resolved = 0;
   if (truncated === 0) {
+    await resolveServiceFlags(client, { tenantRef: run.tenant_ref, collectionId: run.id, workload: run.workload,
+      observedAt: run.observed_to, complete: COMPLETE.includes(run.outcome) });
     const still = new Set(outstanding.map((item) => item.resourceKey));
     const seen = new Set([...current.values()][0].observations.map((row) => row.resourceKey));
     const prefix = `${run.workload}:`;

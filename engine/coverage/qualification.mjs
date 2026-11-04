@@ -220,7 +220,7 @@ export const TYPE_DECISIONS = Object.freeze({
   androidManagedStoreAccountEnterpriseSettings: manual('the binding is made by signing in to Google; no tool can make it from a backup'),
   managedDeviceCleanupRule: automated('intune-devices-manageddevicecleanuprule', 'restore gaps batch 1: update through Graph beta, only when it makes the rule wait as long or longer before retiring devices; a deleted rule is recreated by hand', { view: 'graph-rest-beta' }),
   windowsQualityUpdatePolicy: automated('intune-softwareupdate-windowsqualityupdatepolicy', 'restore gaps batch 1: create and update through Graph beta; who it is assigned to is not backed up yet', { view: 'graph-rest-beta' }),
-  operationApprovalPolicy: automated('intune-rbac-operationapprovalpolicy', 'approval-held kinds batch 2: create and update through Graph beta of multi admin approval policies and their approver groups (matched in the target by name); each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; the kind of change a policy covers is set on create only', { view: 'graph-rest-beta' }),
+  operationApprovalPolicy: manual('Intune refuses every non-read call on multi admin approval policies from an app: creating one live gave 400 "Application only authentication is not allowed for non-read operations on MAA access policies" (Q271 part B), and KEEL restores as an app; a policy is set again by hand in the Intune admin center from the backup'),
   deviceCustomAttributeShellScript: automated('intune-devices-devicecustomattributeshellscript', 'restore gaps batch 5: create and update of the script and its settings through Graph beta; a backup without the script body is refused; batch 15: who it runs on is assigned again through /assign', { view: 'graph-rest-beta' }),
   // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; restore gaps batch 2 writes the singletons.
   externalIdentitiesPolicy: automated('externalidentitiespolicy', 'restore gaps batch 2: update in place through Graph beta of whether external users can leave and whether their data is removed', { view: 'graph-rest-beta' }),
@@ -239,12 +239,7 @@ export const TYPE_DECISIONS = Object.freeze({
   exchangeRoleAssignment: automated('unifiedroleassignment', 'approval-held kinds batch 2: create through Graph beta of who holds an Exchange role (a user, group or app, matched in the target), over which scope; each one is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; role group holders are a manual step', { view: 'graph-rest-beta' }),
   exchangeCustomAppScope: automated('customappscope', 'restore gaps batch 9: create and update of the name and recipient filter through Graph beta; the app role assignments that use it are not written', { view: 'graph-rest-beta' }),
   defenderRoleDefinition: automated('unifiedroledefinition', 'restore gaps batch 21: create and update through Graph beta of custom Defender roles (name, description and permissions); built-in roles are skipped; who holds the role is restored by hand', { view: 'graph-rest-beta' }),
-  defenderRoleAssignment: automated('unifiedroleassignmentmultiple', 'approval-held kinds batch 2: create and update through Graph beta of who holds a Defender role (people and groups, matched in the target) and the data sources it covers; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service', {
-    view: 'graph-rest-beta',
-    liveFailures: {
-      update: failedLive('2026-11-04', 'Graph 400 on PATCH with only principalIds: "AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided". The Defender assignment PATCH needs the full body (displayName, roleDefinitionId, principalIds, directoryScopeIds, appScopeIds).', 'send the whole assignment on update (PR #954), then rerun the Q271 update step'),
-    },
-  }),
+  defenderRoleAssignment: automated('unifiedroleassignmentmultiple', 'approval-held kinds batch 2: create and update through Graph beta of who holds a Defender role (people and groups, matched in the target) and the data sources it covers; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service', { view: 'graph-rest-beta' }),
   defenderCustomAppScope: manual('Graph has no write for Defender app access scopes (list only; create, update and delete are Exchange only)'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; no writer is built yet.
   deviceManagementSettings: automated('intune-shared-devicemanagement', 'restore gaps batch 17: update in place through Graph beta of the compliance settings; devices with no compliance policy are never turned compliant; the device cleanup window is the device cleanup rules', { view: 'graph-rest-beta' }),
@@ -355,7 +350,7 @@ recordRemappingProof('group', 'create', 'engine/restore/applyPatches.test.mjs');
 recordRemappingProof('roleAssignment', 'create', 'engine/restore/applyEngine.test.mjs');
 recordRemappingProof('conditionalAccessPolicy', 'create', 'cli/keel-restore.test.mjs');
 // Approval-held kinds, batch 2: users, groups and apps matched in the target by name.
-for (const resourceType of ['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'operationApprovalPolicy']) {
+for (const resourceType of ['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment']) {
   recordRemappingProof(resourceType, 'create', 'engine/restore/approvalHeldAssignments.test.mjs');
 }
 recordRemappingProof('conditionalAccessPolicy', 'update', 'engine/roadmap/fidelity-ledger.test.mjs');
@@ -1139,8 +1134,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update is fixture-tested and never shortens how long a rule waits before retiring devices; create is not registered'),
   windowsQualityUpdatePolicy: subset('device-management', 'POST /deviceManagement/windowsQualityUpdatePolicies (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'create and update are fixture-tested; assignments are not backed up yet'),
-  operationApprovalPolicy: subset('device-management', 'POST /deviceManagement/operationApprovalPolicies (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'create and update are fixture-tested, with approver groups matched in the target; written only with an approved "changes admin access" effect or with approvals off'),
+  operationApprovalPolicy: byHand('device-management', 'POST /deviceManagement/operationApprovalPolicies (beta): refused to application permissions (Q271 part B)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up; Intune answers 400 to any non-read call on these policies from an app, so a restore never writes them'),
   deviceCustomAttributeShellScript: subset('device-management', 'POST /deviceManagement/deviceCustomAttributeShellScripts (beta); PATCH .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementScripts.ReadWrite.All',
     'create and update are fixture-tested; assignments are written through /assign'),
   // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; manual until a writer is built.

@@ -246,16 +246,32 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   deviceRegistrationPolicy: Object.freeze(['userDeviceQuota', 'multiFactorAuthConfiguration', 'azureADRegistration', 'azureADJoin', 'localAdminPassword']),
   tenantAppManagementPolicy: Object.freeze(['isEnabled', 'applicationRestrictions', 'servicePrincipalRestrictions']),
   deviceManagementRoleDefinition: Object.freeze(['rolePermissions']),
-  // Batch 2: who holds an admin role, and who approves admin changes. Each names
+  // Batch 2: who holds an admin role. Each names
   // users, groups or apps by id; the effect shows them by name (namedAccessValue).
   // An Intune assignment's role is sent once, on create (its roleDefinition).
   deviceManagementRoleAssignment: Object.freeze(['roleDefinition', 'members', 'scopeMembers', 'resourceScopes', 'scopeType', 'roleScopeTagIds']),
   exchangeRoleAssignment: Object.freeze(['principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId']),
   defenderRoleAssignment: Object.freeze(['principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds']),
-  operationApprovalPolicy: Object.freeze(['approverGroupIds', 'policyType', 'policyPlatform', 'policySet']),
 });
+// Nested fields Microsoft sets on its own, at any depth: a restore never sends
+// them, and they are no change. Graph sets a default app credential rules
+// identifier URI restriction's isStateSetByMicrosoft itself (live Q268).
+export const MICROSOFT_SET_FIELDS = Object.freeze({
+  tenantAppManagementPolicy: Object.freeze(['isStateSetByMicrosoft']),
+});
+/** The value without the nested fields Microsoft sets on its own for this kind. */
+export function withoutMicrosoftSet(resourceType, value) {
+  const keys = MICROSOFT_SET_FIELDS[resourceType];
+  if (!keys) return value;
+  const strip = (held) => {
+    if (Array.isArray(held)) return held.map(strip);
+    if (!held || typeof held !== 'object') return held;
+    return Object.fromEntries(Object.entries(held).filter(([key]) => !keys.includes(key)).map(([key, child]) => [key, strip(child)]));
+  };
+  return strip(value);
+}
 // The batch 2 kinds: their access values name principals and roles.
-const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'operationApprovalPolicy']);
+const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment']);
 // Compared in a canonical form with nulls dropped, so a value that reads back with
 // its keys in another order, or with empty fields Graph adds, is no change.
 const withoutNulls = (value) => {
@@ -269,8 +285,8 @@ const withoutNulls = (value) => {
   }
   return out;
 };
-const accessValue = (field) => (payload) => {
-  const value = withoutNulls(payload?.[field]);
+const accessValue = (field, resourceType) => (payload) => {
+  const value = withoutNulls(withoutMicrosoftSet(resourceType, payload?.[field]));
   if (value === null || value === undefined) return null;
   return typeof value === 'object' ? canonical(value) : value;
 };
@@ -318,7 +334,7 @@ const namedAccessValue = (field) => (payload, resource) => {
   return typeof shown === 'object' ? canonical(shown) : shown;
 };
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
-  .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field)));
+  .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field, resourceType)));
 
 // Restore gaps batch 18: a Win32 app's command lines are plain text; its
 // detection and requirement scripts are base64 inside its rules (each of the

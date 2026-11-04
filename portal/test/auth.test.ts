@@ -28,6 +28,7 @@ const audience = "keel-test-audience";
 const trustedKeyId = "trusted-key";
 const authenticatedEmail = "operator@example.com";
 const readOnlyApiRoutes = [
+  "/api/change-flag-settings",
   "/api/dashboard",
   "/api/menu-status",
   "/api/coverage",
@@ -358,6 +359,16 @@ test("non-GET requests to /api/health do not bypass authentication", async () =>
 
 // Insights sits behind the same sign-in check as every page.
 for (const path of ["/insights", "/insights?days=90"]) {
+  test(`GET ${path} rejects an unauthenticated request with 401`, async () => {
+    const response = await middleware(request(path));
+
+    assert.equal(response.status, 401);
+  });
+}
+
+// Every change and its API, which entity-scoped readers now reach too (issue #981), sit
+// behind the same sign-in check.
+for (const path of ["/changes?view=feed", "/changes?view=feed&days=7", "/api/changes/feed", "/api/changes/feed?days=7&by=service"]) {
   test(`GET ${path} rejects an unauthenticated request with 401`, async () => {
     const response = await middleware(request(path));
 

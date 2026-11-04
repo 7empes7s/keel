@@ -37,6 +37,7 @@ export interface AlertItem {
   // Whether the newest backup still holds it, and when it went (engine/insights/names.mjs).
   // Null for service settings read outside backups, and when the lookup failed.
   object?: ObjectFacts | null;
+  flags?: { key: string; sentence: string; name: string | null; person: { name: string | null } | null; changeId: string; resolved: boolean }[];
   control: string;
   condition: string;
   state: AlertState;
@@ -178,6 +179,7 @@ const PLAIN_KIND_WORDS: Record<string, string> = {
 
 /** The current cause in one plain sentence. */
 export function causeSentence(alert: AlertItem): string {
+  if (alert.flags?.length) return [...new Set(alert.flags.map((flag) => flag.sentence))].join(" ");
   if (alert.control === "baseline" && alert.condition === "drift") {
     if (alertWorkload(alert.resourceKey)) {
       return WORKLOAD_CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "Its settings differ from the approved setup.";
@@ -448,6 +450,7 @@ export function alertService(alert: AlertItem): CloudService {
 /** Where to see the change behind the alert. Never a write: undo starts on Changes. */
 export function changeLink(alert: AlertItem): { href: string; label: string } {
   if (alert.control === "break-glass") return { href: "/emergency-access", label: "Open emergency access" };
+  if (alert.flags?.length) return { href: `/changes?view=feed&change=${encodeURIComponent(alert.flags[0].changeId)}`, label: "Open the change" };
   const workload = alertWorkload(alert.resourceKey);
   if (workload === SHAREPOINT_SITES) {
     const rest = alert.resourceKey.slice(workload.length + 1);

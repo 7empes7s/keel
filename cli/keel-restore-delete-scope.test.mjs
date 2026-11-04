@@ -36,9 +36,13 @@ const LIVE = {
 };
 
 function fakes(artifacts) {
-  const state = { writes: [], reads: [], waveCalls: [], waveResults: [], journal: [] };
+  const state = { writes: [], reads: [], waveCalls: [], waveResults: [], journal: [], flagReads: [] };
   const client = {
     query: async (sql, values) => {
+      if (/SELECT \* FROM change_flag_event WHERE tenant_ref=\$1 AND resource_key=ANY/.test(sql)) {
+        state.flagReads.push(values);
+        return { rows: [] }; // This fixture has no flagged change for the deleted group.
+      }
       if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:d7-test' }] };
       if (/FROM snapshot WHERE id = \$1 AND tenant_ref = \$2/.test(sql)) return { rows: [] };
       if (/recovery_completion_item/.test(sql)) return { rows: [] };
@@ -136,6 +140,7 @@ function runDeleteDryRun(keys, dependencies, { artifactId, extraArgv = [], error
   const errors = [];
   assert.equal(await runDeleteDryRun(['group:stale'], dryRun.dependencies, { artifactId, errors }), 0, errors.join('\n'));
   assert.equal(dryRun.state.writes.length, 0, 'a dry run never writes');
+  assert.deepEqual(dryRun.state.flagReads, [], 'a preview never clears change flags');
   assert.deepEqual(dryRun.state.waveCalls, [[{ naturalKey: 'group:stale', verb: 'delete' }]],
     'only the named key is planned, as a delete, in a delete wave');
   const artifact = artifacts.get(artifactId);
@@ -159,6 +164,8 @@ function runDeleteDryRun(keys, dependencies, { artifactId, extraArgv = [], error
   assert.deepEqual(promotion.state.writes, [{ path: '/groups/target-stale-id', method: 'DELETE' }]);
   assert.equal(promotion.state.journal.length, 1, 'the prior state is journaled before the delete');
   assert.deepEqual(promotion.state.reads, ['/groups/target-stale-id']);
+  assert.deepEqual(promotion.state.flagReads, [['sha256:d7-test', ['group:stale']]],
+    'only the successfully applied delete is checked for flag resolution');
 }
 
 // --- refused when the key is in the snapshot: nothing is read live or planned ---

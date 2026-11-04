@@ -1,3 +1,5 @@
+import { alertFlagDetails } from "../../engine/notify/changeFlags.mjs";
+import { peopleNamer } from "@/lib/people-names";
 import { readNamer } from "../../engine/insights/anonymity.mjs";
 import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
@@ -1738,7 +1740,16 @@ async function overviewSetup(client: KeelClient, ref: string, generatedAt: Date,
   const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
   const driftTrend = full ? await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt) : [];
   const waiting = await waitingFor(client, ref);
-  return { activeBaseline, lastCollectionRaw, drift, driftTrend, waiting };
+  const { rows: flaggedAlerts } = await client.query(`SELECT DISTINCT a.id::text, a.severity FROM alert a JOIN change_flag_event e ON e.alert_id=a.id
+    WHERE a.tenant_ref=$1 AND a.condition_active AND a.state <> 'suppressed' AND e.resolved_at IS NULL`, [ref]);
+  const flagDetails = await alertFlagDetails(client, { tenantRef: ref, alertIds: flaggedAlerts.map((row) => String(row.id)), namer: await peopleNamer(client) }) as Map<string, { sentence: string; name: string | null; person: { name: string | null } | null }[]>;
+  const changeFlagAlerts: DashboardAlert[] = flaggedAlerts.flatMap((alert) => {
+    const flags = flagDetails.get(String(alert.id));
+    if (!flags?.length) return [];
+    return [{ key: `change-flag:${alert.id}`, severity: alert.severity as DashboardAlert["severity"], title: flags[0].name ?? "Flagged change",
+      detail: `${flags.map((flag) => flag.sentence).join(" ")} Changed by ${flags.find((flag) => flag.person?.name)?.person?.name ?? "someone unknown"}.`, href: `/alerts?open=${encodeURIComponent(String(alert.id))}` }];
+  });
+  return { activeBaseline, lastCollectionRaw, drift, driftTrend, waiting, changeFlagAlerts };
 }
 
 async function overviewEvidence(client: KeelClient, ref: string): Promise<DashboardData["evidence"]> {
@@ -1845,7 +1856,7 @@ function overviewFrom([setup, rawCoverage, evidence, services]: OverviewParts, g
     compliance: "compliance" in services ? services.compliance : undefined,
   };
 
-  data.alerts = buildAlerts(data);
+  data.alerts = [...buildAlerts(data), ...setup.changeFlagAlerts];
   return data;
 }
 

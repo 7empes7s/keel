@@ -16,9 +16,6 @@ export const INSIGHTS_PERIODS = FEED_PERIODS;
 // A week is the question the page answers first.
 export const DEFAULT_INSIGHTS_PERIOD: FeedPeriod = "7";
 
-// What a reader with entity-scoped access sees instead of the page.
-export const TENANT_WIDE_ONLY = "Insights covers every change in the tenant, so it needs tenant-wide read access. A central administrator can see it.";
-
 /** The period from the address, or a week. */
 export function readInsightsPeriod(value: string | null | undefined): FeedPeriod {
   return INSIGHTS_PERIODS.includes(value as FeedPeriod) ? (value as FeedPeriod) : DEFAULT_INSIGHTS_PERIOD;

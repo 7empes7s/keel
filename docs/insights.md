@@ -84,6 +84,42 @@ two different things.
   backup to name the group or the permission. Without it, the flag still shows, with a general
   sentence.
 
+## Alerts from flags (#966)
+
+Each backup drift run, service collection and audit page evaluates its exact new rows.
+A critical flag raises a critical alert; a high flag raises a warning. Source row id plus
+flag key identifies the observation, so replay adds no alert or transition. Audit pages
+queue this work in the same transaction as the facts and cursor, then drain it after
+commit; a failed alert write retries on the next ingest.
+
+When the same object has active approved-setup drift, its flag sentences enrich that
+alert instead. Notifications use the existing channels, routing, mute and escalation,
+under the scheduler's existing notification capability. No new delivery channel exists.
+
+A later complete backup, or a covered service read, clears a flag when it proves the
+flagged state ended. Partial or missing fields prove nothing. In particular, an enterprise
+app backup without credential lists cannot prove that an audited secret was removed:
+that event remains for a person to review. Audit role and permission additions compare
+with the last complete backup before the event; only observed membership sets can clear
+them. Acting on the exact change also clears its flag. A rollback plan alone is not a
+completed rollback; only its verified applied resources, its recorded disposition or a later
+restored observation clear it.
+
+From Alerts, **Mark reviewed** closes a change-flag alert with a resolved observation.
+It needs `dispose-accept`; the reviewer and note commit with `alert-action` evidence.
+Acknowledging still leaves the alert active. Source replay after review cannot reopen it;
+a genuinely new flagged source row can.
+
+Alerts and Overview name the object, show the flag sentence and attribution, and link
+to Changes. The link selects the precise source row, including older rows outside the
+feed's default window. Labels are read using the current "Hide people's names" setting;
+source ids remain under Technical details. A pruned source falls back to a general flag
+sentence without names.
+
+In **Settings → Notifications → Flagged change alerts**, every key starts on. Changing
+a key needs `policies` and writes `alert-action` evidence in the same transaction. Turning
+a key off stops new firings and keeps existing alerts available for review.
+
 ## Site and OneDrive access (content backups)
 
 `engine/insights/sharingExposure.mjs` compares who can reach a site between two content backups,
@@ -102,6 +138,9 @@ What it cannot see:
 - **A backup saved before the counts existed** (summary version 1, or a OneDrive record without
   `exposure`) compares as unknown, never as zero. It produces no row, so the upgrade never reads as
   "removed".
+- **A backup that could not read a group's members** compares its Everyone grants, guests and
+  owners as unknown, since all three come from group members. It produces no row for them, and
+  neither does the next full backup. Anyone links still compare.
 - **A site that inherits its roles** saves no Everyone list. Its Everyone grants are not compared.
 - **A site's first backup** has nothing to compare with.
 - **OneDrive** is compared file by file, from each file's record before and after. Only additions
@@ -131,8 +170,15 @@ change feed read (`portal/lib/insights-view.ts`, `portal/components/insights/ins
 - **Shape of the period:** changes per day, by service, the people or apps with the most changes
   (code names when names are hidden) and the services with none.
 - **Record layer:** the window read, the count from each source and whether the limit was hit.
-- **Access:** the same as Every change: tenant-wide readers. An entity-scoped reader gets one sentence
-  and no feed read.
+- **Access:** the same as Every change. A tenant-wide reader sees every change. A reader scoped to some
+  entities (task 90) sees only approved-setup (drift) rows for settings their entities own, filtered in
+  the feed's SQL with the same entity filter as Open changes, so the two pages count the same changes.
+  Service reads, content backups and the audit log are tenant-wide and left out, and the page says so:
+  "You see changes to settings owned by <entities> only. A central administrator reviews tenant-wide
+  changes (service settings, sites and the audit log)." The verdict, Where to start, the shape of the
+  period, the CSV export and the API (`GET /api/changes/feed`, with `scope` and `scopeNote`) come from
+  those rows only. A person is named only when the reader's entities can see their account, and a flag
+  never names a linked role, group or app. A reader with no read at all is refused.
 - **Overview:** one "Needs attention" row, "3 flagged changes this week", for flagged changes of the
   last 7 days that no open alert shows. An alert counts when it is open, reopened or acknowledged
   and its `resource_key` is the flagged row's object key (the key A10 is expected to use).

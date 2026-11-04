@@ -47,7 +47,7 @@ async function open(page: Page, hash: string) {
 }
 
 // Runs in the page. Returns one line per problem, so a failure names what broke.
-function layoutProblems(): string[] {
+export function layoutProblems(): string[] {
   const viewport = document.documentElement.clientWidth;
   const problems: string[] = [];
   const name = (element: Element) => {
@@ -136,4 +136,20 @@ for (const width of [390, 1278]) {
     expect(row, "the picked row ends above the bar").toBeLessThanOrEqual(barTop + 1);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingBottom)).not.toBe("0px");
   });
+}
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of WIDTHS) {
+    test(`flag alert inbox mechanical checks · ${theme} · ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+      await open(page, "/alerts/change-flag");
+      expect(await page.evaluate(layoutProblems)).toEqual([]);
+      await expect(page.getByText("Turned off: Block legacy auth.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Changed by Person K7Q2", { exact: true })).toBeVisible();
+      await page.getByRole("link", { name: "Block legacy auth (sign-in rule)", exact: true }).click();
+      await expect(page.getByRole("link", { name: "Mark reviewed", exact: true })).toBeVisible();
+      expect(await page.evaluate(layoutProblems)).toEqual([]);
+    });
+  }
 }

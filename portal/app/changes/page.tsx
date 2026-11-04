@@ -29,11 +29,13 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.driftPage);
   const input = (await searchParams) ?? {};
-  if (access.scope.central && first(input.view) === "feed") {
+  // Every change: a reader scoped to some entities gets only drift rows for settings their
+  // entities own, filtered in the feed's SQL with the same filter as Open changes (#981).
+  if (first(input.view) === "feed") {
     const wanted = first(input.days);
     const period: FeedPeriod = FEED_PERIODS.includes(wanted as FeedPeriod) ? (wanted as FeedPeriod) : "30";
     try {
-      const [feed, anonymity] = await Promise.all([getChangeFeed({ days: Number(period) }), getAnonymitySetting()]);
+      const [feed, anonymity] = await Promise.all([getChangeFeed({ days: Number(period), changeId: first(input.change), scope: access.scope }), getAnonymitySetting()]);
       return (
         <>
           <PageHeader description={FEED_DESCRIPTION} generatedAt={feed.generatedAt} section="Baselines" title="Changes" />
@@ -87,7 +89,7 @@ export default async function DriftPage({ searchParams }: { searchParams?: Promi
   return (
     <>
       <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={data.baseline ? setupStatus(data.baseline, items, total) : undefined} title="Changes" />
-      {access.scope.central ? <ChangesViews current="open" /> : null}
+      <ChangesViews current="open" />
       {data.baseline || serviceChanges.total ? (
         <ChangeList
           baseline={data.baseline}

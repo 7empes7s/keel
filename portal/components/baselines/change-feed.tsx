@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
@@ -9,10 +10,11 @@ import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/a
 import { SelectableList, type Grouping } from "@/components/list/selectable-list";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
+import { ScopeNote } from "@/components/scope-note";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict } from "@/components/verdict";
 import {
-  CHANGE_WORDS, FEED_GROUPING_KEYS, FEED_GROUPING_LABELS, PRIORITY_WORDS, SOURCE_WORDS, feedCsv, feedFlags, feedGroupLabel, feedGroups, feedObjectName, feedPersonName, feedSummary,
+  CHANGE_WORDS, FEED_GROUPING_KEYS, FEED_GROUPING_LABELS, PRIORITY_WORDS, SOURCE_WORDS, feedCsv, feedFlags, feedGroupLabel, feedGroups, feedObjectName, feedPersonName, feedScopeNote, feedSummary,
   isFlagged, readFlaggedOnly, type ChangeFeedData, type FeedPeriod, type FeedPriority, type FeedRow, FEED_PERIODS,
 } from "@/lib/change-feed-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
@@ -133,10 +135,11 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
         text={summary.text}
         tone={summary.tone}
       />
+      <ScopeNote text={feedScopeNote(feed.scope)} />
 
       <div className="cf-tools">
         <Segmented label="Period" onChange={choosePeriod} options={FEED_PERIODS.map((value) => ({ value, label: `${value} days` }))} value={period} />
-        <p className="bl-help"><Icon name="info" /> Every change from backups, service reads and the Microsoft audit log. To accept or undo one, use Open changes.</p>
+        <p className="bl-help"><Icon name="info" /> {feed.scope ? "Every change backups found to settings your entities own." : "Every change from backups, service reads and the Microsoft audit log."} To accept or undo one, use Open changes.</p>
       </div>
 
       <section aria-label="Changes by priority" className="cf-tiles">
@@ -181,6 +184,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
 
       <section aria-labelledby="feed-heading" className="bl-section">
         <h2 className="visually-hidden" id="feed-heading">Every change</h2>
+        {view.get("change") ? <p>Showing the change linked from an alert. <Link href="/changes?view=feed">Show every change</Link></p> : null}
         {feed.rows.length === 0 ? (
           <div className="bl-card bl-empty">
             <span aria-hidden="true" className="bl-kind-icon" data-tone="fine"><Icon name="check" /></span>

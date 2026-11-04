@@ -38,6 +38,11 @@ const NOW = new Date('2026-10-03T12:00:00Z');
 const SINGLE_READS = CATALOG.filter((entry) => entry.itemReads?.single)
   .map((entry) => new RegExp(`^${entry.itemReads.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\\{item\\}', '[^/]+')}$`));
 
+// A related object read from the side that lists it (Q271: an Intune assignment's
+// role): each parent lists children of its own.
+const LINKED_CHILDREN = CATALOG.filter((entry) => entry.linkedFrom)
+  .map((entry) => new RegExp(`^${entry.linkedFrom.children.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\\{parent\\}', '[^/]+')}$`));
+
 function countingReader({ pages = 1, throttlesPerType = 0 } = {}) {
   const reader = {
     stats: { requests: 0, throttled: 0 },
@@ -48,6 +53,7 @@ function countingReader({ pages = 1, throttlesPerType = 0 } = {}) {
       if (FIELD_READS.has(String(path).split('?')[0])) return { items: [{ id: 'singleton' }], pages, status: 200, error: null };
       // A read of one related object per item (an Intune assignment's role) answers one object.
       if (SINGLE_READS.some((pattern) => pattern.test(String(path)))) return { items: [{ id: 'related' }], pages, status: 200, error: null };
+      if (LINKED_CHILDREN.some((pattern) => pattern.test(String(path)))) return { items: [{ id: `child-of-${path}` }], pages, status: 200, error: null };
       return { items: Array.from({ length: 250 }, (_, i) => ({ id: `i-${i}`, displayName: `Item ${i}` })), pages, status: 200, error: null };
     },
   };
@@ -64,6 +70,8 @@ test('the collector records measured requests and throttles per type, separately
   const reads = (type) => {
     const entry = CATALOG.find((candidate) => candidate.type === type);
     if (entry?.selectEach) return entry.selectEach.length;
+    // A kind read from the side that lists it: the list, the 250 parents, one read per parent.
+    if (entry?.linkedFrom) return 1 + 1 + 250;
     if (!entry?.parent) return entry?.itemReads?.single ? 251 : 1;
     return 251 + (entry.itemReads ? 250 * 250 : 0);
   };

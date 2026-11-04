@@ -68,6 +68,7 @@ const PAGES = [
   { name: "activity-names-hidden", hash: "/activity/anonymous" },
   { name: "approvals-names-hidden", hash: "/approvals/anonymous" },
   { name: "drift-names-hidden", hash: "/changes/anonymous" },
+  { name: "drift-feed-names-hidden", hash: "/changes/feed-anonymous" },
   { name: "principals-names-hidden", hash: "/people/anonymity" },
   { name: "principals-names-shown", hash: "/people/anonymity-off" },
   { name: "alerts-names-hidden", hash: "/alerts/anonymous" },
@@ -2580,6 +2581,32 @@ for (const { name, hash } of PAGES) {
       expect((await field.locator("dd").textContent())?.trim().length ?? 0).toBeGreaterThan(0);
     }
   });
+}
+
+// Insights A6: the change feed's flagged rows pass the mechanical checks at the phone and
+// laptop widths, in both themes, with names shown and hidden.
+for (const hash of ["/changes/feed", "/changes/feed-anonymous"]) {
+  for (const width of [375, 390, 1278]) {
+    for (const theme of ["light", "dark"] as const) {
+      test(`contract · every change flags · ${hash} · ${width} · ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await open(page, hash, theme);
+        await expect(page.locator("main#main-content h1")).toHaveCount(1);
+        await expect(page.locator('[data-layer="verdict"]')).toHaveCount(1);
+        expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const flags = page.locator(".cf-flags li");
+        expect(await flags.count()).toBeGreaterThan(0);
+        // Each sentence wraps inside its row: nothing pokes out or is cut off.
+        const outside = await flags.evaluateAll((items) => items.filter((item) => {
+          const row = item.closest(".cf-row")!.getBoundingClientRect();
+          const box = item.getBoundingClientRect();
+          return box.right > row.right + 1 || box.left < row.left - 1 || item.scrollWidth > item.clientWidth + 1;
+        }).map((item) => item.textContent));
+        expect(outside).toEqual([]);
+      });
+    }
+  }
 }
 
 test("contract · shell: eight sections, plain words, the page's sub-pages under its section", async ({ page }) => {
@@ -5932,7 +5959,7 @@ test("every change: grouping, priority tiles that add up, names instead of ids",
     await open(page, "/changes/feed", width === 390 ? "light" : "dark");
     await expect(page.getByRole("link", { name: "Every change" })).toHaveAttribute("aria-current", "page");
     const list = page.locator('[aria-label="Every change"]').first();
-    await expect(page.getByText("10 changes, 2 critical: look at those first.")).toBeVisible();
+    await expect(page.getByText("10 changes, 2 critical, 3 flagged for what they do: look at those first.")).toBeVisible();
     // By day by default, newest first.
     await expect(page.locator(".sel-group-name, .sel-group-label").first()).toContainText("Today");
     for (const label of ["Type", "Service", "Priority", "Who"]) {
@@ -5946,7 +5973,7 @@ test("every change: grouping, priority tiles that add up, names instead of ids",
     await page.locator(".cf-tile", { hasText: "Critical" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 2 of 10 changes");
     await page.locator(".cf-tile", { hasText: "High" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 4 of 10 changes");
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 5 of 10 changes");
     await page.getByRole("button", { name: "Clear all" }).click();
     const text = await page.locator("main").evaluate((main) => {
       const copy = main.cloneNode(true) as HTMLElement;
@@ -5957,6 +5984,51 @@ test("every change: grouping, priority tiles that add up, names instead of ids",
     expect(text).toContain("Unnamed device configuration");
     await expect(list).toBeVisible();
     await page.screenshot({ path: `test-results/every-change-${width}.png`, fullPage: true });
+  }
+});
+
+// Insights A6 (risk flags): a flagged change says what it does on its row, the Flagged
+// tile narrows the list to flagged changes, and with names hidden the sentences carry
+// code names only.
+test("every change: flag sentences on their rows, and a Flagged tile that narrows the list", async ({ page }) => {
+  for (const [width, theme] of [[390, "light"], [1278, "dark"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/changes/feed", theme);
+    const row = page.locator(".cf-row", { hasText: "Block legacy auth" }).first();
+    await expect(row.getByRole("list", { name: "What this change does" })).toContainText("Switched to report-only, so it no longer blocks anything: Block legacy auth.");
+    await expect(row.getByRole("listitem")).toHaveCount(2);
+    // Raised from low to high by its flag.
+    const branch = page.locator(".cf-row", { hasText: "Branch offices" });
+    await expect(branch).toContainText("Now trusted for sign-in: Branch offices.");
+    await expect(branch).toContainText("High");
+    await expect(page.locator(".cf-row", { hasText: "Helpdesk admins" }).getByRole("list", { name: "What this change does" })).toHaveCount(0);
+    const tile = page.locator(".cf-tile", { hasText: "Flagged" });
+    await expect(tile.locator(".cf-tile-count")).toHaveText("3");
+    await tile.click();
+    await expect(page).toHaveURL(/flagged=1/);
+    await expect(tile).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 3 of 10 changes");
+    // The priority tiles still add up, inside the flagged changes.
+    await page.locator(".cf-tile", { hasText: "Critical" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 1 of 10 changes");
+    await page.getByRole("button", { name: /Flagged only/ }).click();
+    await expect(page).not.toHaveURL(/flagged=1/);
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 2 of 10 changes");
+    // Find matches the flag sentences too.
+    await page.getByRole("button", { name: "Clear all" }).click();
+    await page.locator(".sel-find input[type=search]").fill("report-only");
+    await expect(page.locator(".cf-row")).toHaveCount(1);
+  }
+});
+
+test("every change with names hidden: flag sentences carry code names, never a person's name", async ({ page }) => {
+  for (const theme of ["light", "dark"] as const) {
+    await open(page, "/changes/feed-anonymous", theme);
+    const flagged = page.locator(".cf-row", { hasText: "holds admin roles" });
+    await expect(flagged).toContainText(/Someone was added to a group that holds admin roles: Person [A-Z2-9]{4}\./);
+    const text = await page.locator("main").innerText();
+    expect(text).not.toMatch(/Amara Okafor|Sam Lee|@contoso\.com/);
+    await expect(page.getByText("11 changes, 3 critical, 4 flagged for what they do: look at those first.")).toBeVisible();
   }
 });
 

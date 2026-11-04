@@ -18,9 +18,14 @@
  * A drift or service row names a person only when exactly one account's audit record
  * names the same object, with a matching operation, between the backup before and the
  * backup that found it. Otherwise the person is not known.
+ *
+ * Each row also carries `flags` (flags.mjs): what the change does, when a rule knows it
+ * ("Turned off: Require MFA for admins."). A critical flag makes the row critical, a high
+ * flag raises a low or normal row to high. Only the JSON paths the rules read are selected.
  */
 import { objectNameSql } from '../cir/objectName.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/openDrift.mjs';
+import { MEMBERSHIP_KINDS, ROLE_ASSIGNMENT_KINDS, evaluateFlags, flagPathsSql, flaggedPriority, serviceFlagFieldsSql, serviceFlagValues } from './flags.mjs';
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
 import { builtInOf, objectTypeName, settingKind, typeInfo } from './taxonomy.mjs';
@@ -89,7 +94,7 @@ function priorityOf(info, blastRadius) {
 // (an Intune antivirus policy is a Defender endpoint security policy, taxonomy settingKind).
 // `builtIn` is the object's isBuiltIn flag when its kind holds both built-in and custom
 // objects (an Entra admin role), so the row says which one it is.
-function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null }) {
+function row({ id, source, occurredAt, type, kind = type, service = null, blastRadius = null, object, change, activity = null, person = null, builtIn = null, flags = [] }) {
   const info = typeInfo(kind, service);
   const at = iso(occurredAt);
   return {
@@ -104,11 +109,12 @@ function row({ id, source, occurredAt, type, kind = type, service = null, blastR
     typeName: objectTypeName(kind, builtIn, service),
     kindName: info.name,
     service: info.service ?? service ?? null,
-    ...priorityOf(info, blastRadius),
+    ...flaggedPriority(priorityOf(info, blastRadius), flags),
     object,
     change,
     activity,
     person,
+    flags,
   };
 }
 
@@ -126,11 +132,42 @@ const OBJECT_IDS_SQL = `(ARRAY(SELECT lower(m[1]) FROM regexp_matches(CASE WHEN 
      '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', 'gi') AS m)
    || lower(coalesce(r.after_payload->>'id', r.before_payload->>'id')))`;
 
+// What a row's own values cannot say, from the backup that found it: the name of an admin
+// role someone was given, whether a group someone joined can hold admin roles, and the name
+// of an app permission (the API's appRoles list).
+// A link key is edge:<type>:<parent id>:<target> (diffSnapshots.mjs); an app permission's
+// target is <API id>:<permission id>. Read only for added rows of those kinds, each through
+// the resource_version (lower(payload->>'id'), snapshot_id) index (schema.d/93).
+const KEY_PART = (index) => `lower(split_part(r.natural_key, ':', ${index}))`;
+const FLAG_CONTEXT_SQL = `CASE
+    WHEN r.change_type = 'added' AND r.after_payload ? 'roleDefinitionId' AND r.resource_type IN (${ROLE_ASSIGNMENT_KINDS.map((kind) => `'${kind}'`).join(', ')}) THEN jsonb_build_object(
+      'roleName', (SELECT rd.payload->>'displayName' FROM resource_version rd
+                    WHERE lower(rd.payload->>'id') = lower(r.after_payload->>'roleDefinitionId') AND rd.snapshot_id = r.observed_snapshot
+                      AND rd.resource_type = 'roleDefinition'
+                    LIMIT 1))
+    WHEN r.change_type = 'added' AND r.natural_key LIKE 'edge:%' AND r.resource_type IN (${MEMBERSHIP_KINDS.map((kind) => `'${kind}'`).join(', ')}) THEN (
+      SELECT jsonb_build_object('roleAssignable', g.payload->'isAssignableToRole', 'groupName', g.payload->>'displayName')
+        FROM resource_version g
+       WHERE lower(g.payload->>'id') = ${KEY_PART(3)} AND g.snapshot_id = r.observed_snapshot AND g.resource_type = 'group'
+       LIMIT 1)
+    WHEN r.change_type = 'added' AND r.natural_key LIKE 'edge:%' AND r.resource_type = 'appRoleGrant' THEN jsonb_build_object(
+      'permission', (SELECT role->>'value'
+                       FROM resource_version api, jsonb_array_elements(CASE WHEN jsonb_typeof(api.payload->'appRoles') = 'array' THEN api.payload->'appRoles' ELSE '[]'::jsonb END) role
+                      WHERE lower(api.payload->>'id') = ${KEY_PART(4)} AND api.snapshot_id = r.observed_snapshot
+                        AND lower(role->>'id') = ${KEY_PART(5)}
+                      LIMIT 1),
+      'appName', (SELECT app.payload->>'displayName' FROM resource_version app
+                   WHERE lower(app.payload->>'id') = ${KEY_PART(3)} AND app.snapshot_id = r.observed_snapshot LIMIT 1))
+  END`;
+
 const DRIFT_SQL = `
   SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at,
          ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors,
          ${templateFamilySql({ typeExpr: 'r.resource_type', payloads: ['r.after_payload', 'r.before_payload'], tenantExpr: 'r.tenant_ref' })} AS template_family,
-         coalesce(r.after_payload->'isBuiltIn', r.before_payload->'isBuiltIn') AS is_built_in
+         coalesce(r.after_payload->'isBuiltIn', r.before_payload->'isBuiltIn') AS is_built_in,
+         ${flagPathsSql('r.before_payload', 'r.resource_type')} AS flag_before,
+         ${flagPathsSql('r.after_payload', 'r.resource_type')} AS flag_after,
+         ${FLAG_CONTEXT_SQL} AS flag_context
     FROM drift r
     JOIN snapshot s ON s.id = r.observed_snapshot
     LEFT JOIN LATERAL (
@@ -165,7 +202,8 @@ const SERVICE_FIELDS_SQL = (alias) => `jsonb_build_object(${SERVICE_NAME_FIELDS.
 const SERVICE_SQL = `
   SELECT d.id, d.workload, d.resource_key, d.change_type, d.blast_radius, c.observed_to,
          CASE WHEN cur.collection_id IS NOT NULL THEN ${SERVICE_FIELDS_SQL('cur')} END AS current_names,
-         CASE WHEN prev.collection_id IS NOT NULL THEN ${SERVICE_FIELDS_SQL('prev')} END AS previous_names
+         CASE WHEN prev.collection_id IS NOT NULL THEN ${SERVICE_FIELDS_SQL('prev')} END AS previous_names,
+         ${serviceFlagFieldsSql('d.workload', 'd.fields')} AS flag_fields
     FROM workload_drift d
     JOIN workload_collection c ON c.id = d.collection_id
     LEFT JOIN workload_observation cur ON cur.collection_id = d.collection_id AND cur.resource_key = d.resource_key
@@ -175,7 +213,7 @@ const SERVICE_SQL = `
    LIMIT $4`;
 
 const AUDIT_SQL = `
-  SELECT source_event_id, occurred_at, target_type, target_id, operation, activity, actor_kind, actor_id
+  SELECT source_event_id, occurred_at, target_type, target_id, operation, activity, fields, actor_kind, actor_id
     FROM audit_change_fact
    WHERE tenant_ref = $1 AND occurred_at >= $2 AND occurred_at <= $3
    ORDER BY occurred_at DESC, source_event_id
@@ -238,49 +276,72 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       name: type === 'user' && id ? namer(id) : hidePeopleText(object.name, namer),
     };
   };
+  // A name a flag sentence carries from a linked setting (a group, an app): never an id,
+  // and with names hidden, addresses in it are code-named.
+  const shownName = (value) => {
+    const name = usable(value);
+    return name && typeof namer === 'function' ? hidePeopleText(name, namer) : name;
+  };
   // Only one account can be named; several, or none, leave it unknown.
   const onlyActor = (keys) => (Array.isArray(keys) && keys.length === 1 ? person(actorFrom(keys[0])) : null);
 
   const rows = [
-    ...drift.map((entry) => row({
-      id: `drift:${entry.id}`,
-      source: 'drift',
-      occurredAt: entry.detected_at,
-      type: String(entry.resource_type),
-      kind: settingKind(String(entry.resource_type), entry.template_family ?? null),
-      builtIn: builtInOf({ isBuiltIn: entry.is_built_in }),
-      blastRadius: entry.blast_radius,
-      object: shown(String(entry.resource_type), entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' }),
-      change: String(entry.change_type),
-      person: onlyActor(entry.actors),
-    })),
-    ...service.map((entry) => row({
-      id: `service:${entry.id}`,
-      source: 'service',
-      occurredAt: entry.observed_to,
-      type: String(entry.workload),
-      blastRadius: entry.blast_radius,
-      object: shown(String(entry.workload), null, {
+    ...drift.map((entry) => {
+      const type = String(entry.resource_type);
+      const object = shown(type, entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' });
+      const context = entry.flag_context ? { ...entry.flag_context, roleName: shownName(entry.flag_context.roleName), groupName: shownName(entry.flag_context.groupName), appName: shownName(entry.flag_context.appName) } : null;
+      return row({
+        id: `drift:${entry.id}`,
+        source: 'drift',
+        occurredAt: entry.detected_at,
+        type,
+        kind: settingKind(type, entry.template_family ?? null),
+        builtIn: builtInOf({ isBuiltIn: entry.is_built_in }),
+        blastRadius: entry.blast_radius,
+        object,
+        change: String(entry.change_type),
+        person: onlyActor(entry.actors),
+        flags: evaluateFlags({ source: 'drift', type, change: String(entry.change_type), name: object.name, key: object.key, before: entry.flag_before, after: entry.flag_after, context }),
+      });
+    }),
+    ...service.map((entry) => {
+      const object = shown(String(entry.workload), null, {
         key: `${entry.workload}:${entry.resource_key}`,
         name: serviceObjectName(String(entry.resource_key), entry.change_type === 'removed' ? entry.previous_names : entry.current_names ?? entry.previous_names),
         status: entry.change_type === 'removed' ? 'deleted' : 'found',
-      }),
-      change: String(entry.change_type),
-    })),
+      });
+      return row({
+        id: `service:${entry.id}`,
+        source: 'service',
+        occurredAt: entry.observed_to,
+        type: String(entry.workload),
+        blastRadius: entry.blast_radius,
+        object,
+        change: String(entry.change_type),
+        flags: evaluateFlags({ source: 'service', type: String(entry.workload), change: String(entry.change_type), name: object.name, key: object.key, ...serviceFlagValues(entry.flag_fields) }),
+      });
+    }),
     ...audit.map((entry) => {
       const eventId = String(entry.source_event_id);
       const target = names.get(String(entry.target_id));
       const known = target && target.status !== 'unknown' && target.type;
+      const type = known ? target.type : String(entry.target_type);
+      const object = shown(known ? target.type : null, String(entry.target_id), { key: String(entry.target_id), name: known ? target.name : null, status: known ? target.status : 'unknown' });
+      const change = OPERATION_CHANGE[entry.operation] ?? 'modified';
       return row({
         id: `audit:${eventId}`,
         source: 'audit',
         occurredAt: entry.occurred_at,
-        type: known ? target.type : String(entry.target_type),
+        type,
         service: AUDIT_SERVICE[eventId.slice(0, eventId.indexOf(':'))] ?? null,
-        object: shown(known ? target.type : null, String(entry.target_id), { key: String(entry.target_id), name: known ? target.name : null, status: known ? target.status : 'unknown' }),
-        change: OPERATION_CHANGE[entry.operation] ?? 'modified',
+        object,
+        change,
         activity: text(entry.activity),
         person: person({ kind: String(entry.actor_kind), id: String(entry.actor_id).toLowerCase() }),
+        flags: evaluateFlags({
+          source: 'audit', type, change, name: object.name, key: object.key, activity: text(entry.activity),
+          operation: String(entry.operation), targetType: String(entry.target_type), fields: Array.isArray(entry.fields) ? entry.fields : [],
+        }),
       });
     }),
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));

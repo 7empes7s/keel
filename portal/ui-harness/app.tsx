@@ -484,16 +484,24 @@ const FEED_APP = { kind: "servicePrincipal" as const, id: "c0c00000-0000-4000-80
 const CHANGE_FEED: ChangeFeedData = {
   generatedAt: "2026-10-02T09:40:00Z", since: "2026-09-02T09:40:00Z", until: "2026-10-02T09:40:00Z", truncated: false,
   rows: [
-    feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA }),
+    feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA,
+      priorityReason: "Switched to report-only, so it no longer blocks anything: Block legacy auth.",
+      flags: [
+        { key: "ca-report-only", severity: "critical", sentence: "Switched to report-only, so it no longer blocks anything: Block legacy auth." },
+        { key: "ca-exclusions-added", severity: "critical", sentence: "Leaves out more groups: Block legacy auth." },
+      ] }),
     feedRow("audit:entra:f2:0", "2026-10-02T08:05:00Z", { type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "ca-1", name: "Block legacy auth", status: "found" }, activity: "Update conditional access policy", person: FEED_ADA }),
-    feedRow("service:f3", "2026-10-02T07:00:00Z", { source: "service", type: "sharepoint-tenant-settings", typeName: "SharePoint sharing settings", service: "SharePoint", priority: "high", object: { key: "sharepoint-tenant-settings:tenant", name: "Sharing settings", status: "found" } }),
+    feedRow("service:f3", "2026-10-02T07:00:00Z", { source: "service", type: "sharepoint-tenant-settings", typeName: "SharePoint sharing settings", service: "SharePoint", priority: "high", object: { key: "sharepoint-tenant-settings:tenant", name: "Sharing settings", status: "found" },
+      flags: [{ key: "sharing-widened", severity: "high", sentence: "SharePoint sharing opened wider: files can now be shared with anyone, with links that need no sign-in." }] }),
     feedRow("audit:entra:f4:0", "2026-10-02T06:40:00Z", { object: { key: "g-1", name: "Finance", status: "found" }, activity: "Add member to group", person: FEED_SAM }),
-    feedRow("audit:entra:f5:0", "2026-10-01T16:10:00Z", { object: { key: "g-2", name: "Helpdesk admins", status: "found" }, activity: "Update group", person: FEED_APP }),
+    feedRow("audit:entra:f5:0", "2026-10-01T16:10:00Z", { object: { key: "g-2", name: "Helpdesk admins", status: "found" }, activity: "Update group", person: FEED_APP, flags: [] }),
     feedRow("drift:f6", "2026-10-01T09:00:00Z", { source: "drift", type: "group", change: "removed", object: { key: "group:Old project team", name: "Old project team", status: "deleted" } }),
     feedRow("audit:intune:f7:0", "2026-10-01T08:30:00Z", { type: "deviceCompliancePolicy", typeName: "Device compliance policy", service: "Intune", priority: "high", object: { key: "dc-1", name: "Windows laptops must be encrypted", status: "found" }, activity: "Patch DeviceCompliancePolicy", person: FEED_SAM }),
     feedRow("service:f8", "2026-09-30T22:00:00Z", { source: "service", type: "exchange-mail-flow", typeName: "Mail flow rule", service: "Exchange", change: "added", object: { key: "exchange-mail-flow:rule:Forward to partner", name: "Forward to partner", status: "found" } }),
     feedRow("audit:intune:f9:0", "2026-09-30T14:00:00Z", { type: "DeviceConfiguration", typeName: "Device configuration", service: "Intune", change: "removed", object: { key: "dead0000-0000-4000-8000-000000000009", name: null, status: "unknown" }, activity: "Delete DeviceConfiguration", person: FEED_SAM }),
-    feedRow("drift:f10", "2026-09-29T09:00:00Z", { source: "drift", type: "namedLocation", typeName: "Named location", priority: "low", change: "added", object: { key: "namedLocation:Branch offices", name: "Branch offices", status: "found" } }),
+    // Low by its kind, raised to high by its flag.
+    feedRow("drift:f10", "2026-09-29T09:00:00Z", { source: "drift", type: "namedLocation", typeName: "Named location", priority: "high", priorityReason: "Now trusted for sign-in: Branch offices.", change: "added", object: { key: "namedLocation:Branch offices", name: "Branch offices", status: "found" },
+      flags: [{ key: "location-trusted", severity: "high", sentence: "Now trusted for sign-in: Branch offices." }] }),
   ],
 };
 const DRIFT = [
@@ -1529,6 +1537,19 @@ const hiddenSetup = (): SetupState => ({
   scopes: SETUP.scopes.map((scope) => (scope.run?.approvedByName ? { ...scope, run: { ...scope.run, approvedByName: codeName(scope.run.approvedByName) } } : scope)),
 });
 const ANONYMOUS_NOTE = <AnonymityNote setting={ANONYMITY_ON} />;
+// Every change with names hidden: people get code names, and so does a group named by a
+// person's address, in its flag sentence too (the engine code-names it the same way).
+const FEED_HIDDEN_GROUP = HARNESS_NAMER("amara.okafor@contoso.com");
+const CHANGE_FEED_HIDDEN: ChangeFeedData = {
+  ...CHANGE_FEED,
+  rows: [
+    feedRow("drift:h1", "2026-10-02T09:00:00Z", { source: "drift", type: "groupMembership", typeName: "Group membership", priority: "critical", change: "added",
+      object: { key: "edge:member:hidden", name: FEED_HIDDEN_GROUP, status: "found" }, person: displayActor(FEED_SAM, HARNESS_NAMER) as FeedRow["person"],
+      priorityReason: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.`,
+      flags: [{ key: "role-group-member-added", severity: "critical", sentence: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.` }] }),
+    ...CHANGE_FEED.rows.map((row) => (row.person && row.person.kind === "user" ? { ...row, person: displayActor(row.person, HARNESS_NAMER) as FeedRow["person"] } : row)),
+  ],
+};
 
 const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
   <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
@@ -2931,6 +2952,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/changes/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;
+    case "/changes/feed-anonymous": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      {ANONYMOUS_NOTE}
+      <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED_HIDDEN} period="30" /></div></>;
     case "/changes/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;

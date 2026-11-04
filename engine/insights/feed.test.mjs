@@ -5,6 +5,8 @@ import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { anonymityNamer } from './anonymity.mjs';
 import { FEED_GROUPINGS, feedGroupOf, groupChangeFeed, hidePeopleText, loadChangeFeed, serviceObjectName } from './feed.mjs';
+import { FLAG_PATHS, flagPathsSql, flagValues } from './flags.mjs';
+import { typeInfo } from './taxonomy.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
@@ -308,4 +310,122 @@ test('an admin role reads as built-in or custom by its isBuiltIn flag, and group
   assert.equal(byName['Global Administrator'].typeName, 'Built-in admin role');
   assert.equal(byName['KEEL-RT-Role'].typeName, 'Custom admin role');
   assert.deepEqual(groupChangeFeed(rows, 'type').map((group) => [group.key, group.label, group.count]), [['roleDefinition', 'Admin role', 2]]);
+});
+
+// Risk flags (insights A6): what a change does raises its row's priority.
+test('flagged drift, service and audit rows carry their flags and a raised priority; an unflagged row is unchanged', async () => {
+  const tenant = 'flags-tenant';
+  const GA = '62e90394-69f5-4237-9190-012177145e10';
+  const TIER0 = '7e000000-0000-4000-8000-0000000000a0';
+  const CRM = 'c4000000-0000-4000-8000-0000000000c4';
+  const GRAPH = 'e0000000-0000-4000-8000-0000000000e0';
+  const WRITE_ALL = '19dbc75e-c2e2-444c-a770-ec69d8559fc7';
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@contoso.test') RETURNING id", [tenant, hoursAgo(100)]);
+  const exclusions = (excludeGroups) => ({ id: POLICY, displayName: 'Require MFA for admins', state: 'enabled',
+    conditions: { users: { includeUsers: ['All'], excludeUsers: [], excludeGroups, excludeRoles: [] }, locations: { includeLocations: ['All'], excludeLocations: [] } },
+    grantControls: { operator: 'OR', builtInControls: ['mfa'], authenticationStrength: null } });
+  const snap = await snapshot(tenant, hoursAgo(12), [
+    ...people,
+    ['group:Tier 0 admins', 'group', { id: TIER0, displayName: 'Tier 0 admins', isAssignableToRole: true }],
+    finance,
+    ['servicePrincipal:CRM sync', 'servicePrincipal', { id: CRM, displayName: 'CRM sync' }],
+    ['servicePrincipal:Microsoft Graph', 'servicePrincipal', { id: GRAPH, displayName: 'Microsoft Graph', appRoles: [{ id: WRITE_ALL, value: 'Directory.ReadWrite.All', displayName: 'Read and write directory data' }] }],
+    [`roleDefinition:${GA}`, 'roleDefinition', { id: GA, templateId: GA, displayName: 'Global Administrator', isBuiltIn: true }],
+  ]);
+  const at = hoursAgo(11);
+  await drift(tenant, baseline.id, snap, { key: `conditionalAccessPolicy:${POLICY}`, type: 'conditionalAccessPolicy', change: 'modified', before: exclusions([]), after: exclusions([GROUP]), at });
+  await drift(tenant, baseline.id, snap, { key: `edge:member:${TIER0}:${ADA}`, type: 'groupMembership', change: 'added', after: null, at });
+  await drift(tenant, baseline.id, snap, { key: `edge:member:${GROUP}:${ADA}`, type: 'groupMembership', change: 'added', after: null, at });
+  await drift(tenant, baseline.id, snap, { key: `edge:appRoleGrant:${CRM}:${GRAPH}:${WRITE_ALL}`, type: 'appRoleGrant', change: 'added', after: null, at });
+  await drift(tenant, baseline.id, snap, { key: `roleAssignment:roleDefinition:${GA}@user:bob@contoso.test@/`, type: 'roleAssignment', change: 'added', after: { id: 'ra-1', principalId: BOB, roleDefinitionId: GA, directoryScopeId: '/' }, at });
+  // Rows no rule flags: a group renamed, and a role assignment taken away.
+  await drift(tenant, baseline.id, snap, { key: 'group:Finance', type: 'group', change: 'modified', before: { id: GROUP, displayName: 'Finance' }, after: { id: GROUP, displayName: 'Finance team' }, at });
+  await drift(tenant, baseline.id, snap, { key: `roleAssignment:roleDefinition:${GA}@user:ada@contoso.test@/`, type: 'roleAssignment', change: 'removed', before: { id: 'ra-0', principalId: ADA, roleDefinitionId: GA, directoryScopeId: '/' }, after: null, hash: null, at });
+  // Service reads: sharing opened to anyone links; a member added to an Exchange role group.
+  const read = async (workload, to) => (await client.query(
+    "INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to) VALUES ($1, $2, 'complete', $3, $3) RETURNING id", [tenant, workload, to],
+  )).rows[0].id;
+  const serviceChange = async (workload, key, fields) => {
+    const previous = await read(workload, hoursAgo(30));
+    const current = await read(workload, hoursAgo(6));
+    await client.query(
+      "INSERT INTO workload_drift (tenant_ref, workload, collection_id, previous_collection_id, resource_key, change_type, fields, blast_radius) VALUES ($1, $2, $3, $4, $5, 'modified', $6, 'scoped')",
+      [tenant, workload, current, previous, key, JSON.stringify(fields)],
+    );
+  };
+  await serviceChange('sharepoint-site-settings', 'tenant', [
+    { path: 'sharingCapability', kind: 'changed', before: 'ExternalUserSharingOnly', after: 'ExternalUserAndGuestSharing' },
+    { path: 'sharingAllowedDomainList', kind: 'changed', before: ['contoso.com'], after: ['contoso.com', 'fabrikam.com'] },
+  ]);
+  await serviceChange('exchange-role-groups', 'role-group:6b000000-0000-4000-8000-000000000001', [{ path: 'Members', kind: 'changed', before: ['ada'], after: ['ada', 'bob'] }]);
+  // Audit: someone added to an admin role (the role's row), and an update the log cannot judge.
+  await audit(tenant, 'entra:fl1:0', hoursAgo(4), { target: GA, targetType: 'role', operation: 'update', actor: BOB, activity: 'Add member to role' });
+  await audit(tenant, 'entra:fl1:1', hoursAgo(4), { target: ADA, targetType: 'user', operation: 'update', actor: BOB, activity: 'Add member to role' });
+  await audit(tenant, 'entra:fl2:0', hoursAgo(3), { target: POLICY, targetType: 'policy', operation: 'update', actor: BOB, activity: 'Update conditional access policy' });
+
+  const { rows } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW });
+  const byKey = (source, test) => rows.find((entry) => entry.source === source && test(entry));
+  const ca = byKey('drift', (entry) => entry.type === 'conditionalAccessPolicy');
+  assert.deepEqual(ca.flags, [{ key: 'ca-exclusions-added', severity: 'critical', sentence: 'Leaves out more groups: Require MFA for admins.' }]);
+  assert.equal(ca.priority, 'critical');
+  assert.equal(ca.priorityReason, 'Leaves out more groups: Require MFA for admins.');
+  const tier0 = byKey('drift', (entry) => entry.object.key.includes(TIER0));
+  assert.deepEqual([tier0.priority, tier0.flags.map((flag) => flag.sentence)], ['critical', ['Someone was added to a group that holds admin roles: Tier 0 admins.']]);
+  const ordinary = byKey('drift', (entry) => entry.object.key === `edge:member:${GROUP}:${ADA}`);
+  assert.deepEqual([ordinary.priority, ordinary.flags], ['high', []]);
+  const grant = byKey('drift', (entry) => entry.type === 'appRoleGrant');
+  assert.deepEqual([grant.priority, grant.flags.map((flag) => [flag.key, flag.sentence])], ['critical', [['app-permission-tenant-write', 'New tenant-wide permission Directory.ReadWrite.All for: CRM sync.']]]);
+  const given = byKey('drift', (entry) => entry.type === 'roleAssignment' && entry.change === 'added');
+  assert.equal(given.flags[0].sentence, 'Someone was given an admin role: Global Administrator.');
+  const sharing = byKey('service', (entry) => entry.type === 'sharepoint-site-settings');
+  assert.deepEqual(sharing.flags.map((flag) => flag.key), ['sharing-widened']);
+  // Already high by its kind: a high flag adds its sentence but leaves the priority and reason.
+  assert.deepEqual([sharing.priority, sharing.priorityReason], ['high', typeInfo('sharepoint-site-settings').priorityReason ?? null]);
+  const roleGroup = byKey('service', (entry) => entry.type === 'exchange-role-groups');
+  assert.deepEqual([roleGroup.priority, roleGroup.flags[0].key], ['critical', 'role-group-member-added-service']);
+  const role = rows.find((entry) => entry.id === 'audit:entra:fl1:0');
+  assert.deepEqual([role.priority, role.flags[0].sentence], ['critical', 'Someone was added to an admin role: Global Administrator.']);
+  // Unflagged rows keep the priority their kind gives them, and an empty flag list.
+  for (const id of ['audit:entra:fl1:1', 'audit:entra:fl2:0']) assert.deepEqual(rows.find((entry) => entry.id === id).flags, [], id);
+  const renamed = byKey('drift', (entry) => entry.type === 'group');
+  assert.deepEqual([renamed.priority, renamed.priorityReason, renamed.flags], [typeInfo('group').priority, typeInfo('group').priorityReason ?? null, []]);
+  const taken = byKey('drift', (entry) => entry.type === 'roleAssignment' && entry.change === 'removed');
+  assert.deepEqual([taken.priority, taken.priorityReason, taken.flags], [typeInfo('roleAssignment').priority, typeInfo('roleAssignment').priorityReason ?? null, []]);
+
+  // With names hidden, a flag sentence never carries a person's name or address.
+  const namer = anonymityNamer({ enabled: true, salt: 'test-salt' });
+  const hidden = await loadChangeFeed(client, { tenantRef: tenant, now: NOW, namer });
+  const sentences = hidden.rows.flatMap((entry) => entry.flags.map((flag) => flag.sentence)).join(' ');
+  assert.ok(!/Ada Admin|Bob Builder|@contoso\.test/.test(sentences), sentences);
+});
+
+test('a group whose name is an address is code-named in a flag sentence while names are hidden', async () => {
+  const tenant = 'flags-hidden';
+  const TEAM = '7e000000-0000-4000-8000-0000000000b1';
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@contoso.test') RETURNING id", [tenant, hoursAgo(100)]);
+  const snap = await snapshot(tenant, hoursAgo(12), [['group:ada@contoso.test', 'group', { id: TEAM, displayName: 'ada@contoso.test', isAssignableToRole: true }]]);
+  await drift(tenant, baseline.id, snap, { key: `edge:member:${TEAM}:${BOB}`, type: 'groupMembership', change: 'added', after: null, at: hoursAgo(11) });
+  const namer = anonymityNamer({ enabled: true, salt: 'test-salt' });
+  const { rows: [entry] } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW, namer });
+  assert.equal(entry.flags[0].sentence, `Someone was added to a group that holds admin roles: ${namer('ada@contoso.test')}.`);
+});
+
+test('the database reads the same flag values as flagValues does from a whole payload', async () => {
+  const payloads = {
+    conditionalAccessPolicy: { state: 'enabled', conditions: { users: { excludeUsers: ['u1'], excludeGroups: [], excludeRoles: ['r1'] }, locations: { excludeLocations: ['l1'] } }, grantControls: { builtInControls: ['mfa'], authenticationStrength: { id: 's1', displayName: 'MFA' } } },
+    namedLocation: { isTrusted: true, ipRanges: [{ cidrAddress: '203.0.113.0/24' }, { cidrAddress: '198.51.100.0/24' }] },
+    application: { passwordCredentials: [{ keyId: 'k1', hint: 'a' }], keyCredentials: [] },
+    authenticationMethodsPolicy: { authenticationMethodConfigurations: [{ id: 'Sms', state: 'enabled', includeTargets: [{ id: 'all_users' }] }, { id: 'Fido2', state: 'disabled' }] },
+    authenticationStrengthPolicy: { allowedCombinations: ['fido2', 'password,sms'] },
+    crossTenantAccessPolicyConfigurationDefault: { b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed' }, applications: { accessType: 'blocked' } } },
+    authorizationPolicy: { allowInvitesFrom: 'everyone', allowEmailVerifiedUsersToJoinOrganization: true },
+    identitySecurityDefaultsEnforcementPolicy: { isEnabled: false },
+  };
+  assert.deepEqual(Object.keys(payloads).sort(), Object.keys(FLAG_PATHS).filter((type) => type !== 'servicePrincipal').sort());
+  for (const [type, payload] of Object.entries(payloads)) {
+    const { rows: [row] } = await client.query(`SELECT ${flagPathsSql('$1::jsonb', '$2::text')} AS values`, [payload, type]);
+    assert.deepEqual(row.values, flagValues(type, payload), type);
+  }
+  const { rows: [other] } = await client.query(`SELECT ${flagPathsSql('$1::jsonb', '$2::text')} AS values`, [{ id: 'x' }, 'deviceConfiguration']);
+  assert.equal(other.values, null);
 });

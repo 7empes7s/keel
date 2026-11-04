@@ -11,7 +11,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
 import { GET as feedRoute } from "@/app/api/changes/feed/route";
 import {
-  feedCsv, feedDayLabel, feedGroups, feedObjectName, feedPersonName, feedSummary, readFeedGrouping, type FeedRow,
+  feedCsv, feedDayLabel, feedFlags, feedGroups, feedObjectName, feedPersonName, feedSummary, isFlagged, readFeedGrouping, readFlaggedOnly, type FeedRow,
 } from "@/lib/change-feed-view";
 import { CAPABILITIES_HEADER, ENTITY_CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
@@ -148,4 +148,31 @@ test("page helpers: CSV rows carry names, not ids, and the summary puts critical
   assert.deepEqual(feedSummary(rows), { text: "2 changes, 1 critical: look at those first.", tone: "urgent" });
   assert.deepEqual(feedSummary([]), { text: "No changes found in this period.", tone: "fine" });
   assert.deepEqual(feedGroups(rows, "priority").map((group) => group.key), ["critical", "normal"]);
+});
+
+test("flags: the summary counts flagged changes, the CSV carries what each does, and a row without flags reads as before", () => {
+  const off = { key: "ca-turned-off", severity: "critical" as const, sentence: "Turned off: Require MFA for admins." };
+  const trusted = { key: "location-trusted", severity: "high" as const, sentence: "Now trusted for sign-in: HQ." };
+  const rows = [
+    row({ id: "a", priority: "critical", flags: [off] }),
+    row({ id: "b", priority: "high", flags: [trusted] }),
+    row({ id: "c", priority: "high", flags: [] }),
+    row({ id: "d" }),
+  ];
+  assert.deepEqual(feedSummary(rows), { text: "4 changes, 1 critical, 2 flagged for what they do: look at those first.", tone: "urgent" });
+  assert.deepEqual(feedSummary(rows.slice(1)), { text: "3 changes, 2 high priority, 1 flagged for what it does.", tone: "soon" });
+  assert.deepEqual(feedSummary(rows.slice(2)), { text: "2 changes, 1 high priority.", tone: "soon" });
+  assert.deepEqual(rows.map(isFlagged), [true, true, false, false]);
+  assert.deepEqual(feedFlags(rows[3]), []);
+  const csv = feedCsv(rows).split("\n");
+  assert.match(csv[0], /What it does/);
+  assert.match(csv[1], /Turned off: Require MFA for admins\./);
+  assert.equal(readFlaggedOnly("1"), true);
+  assert.equal(readFlaggedOnly(null), false);
+  assert.equal(readFlaggedOnly("yes"), false);
+});
+
+test("the feed API sends each row's flags", async () => {
+  const body = await (await feedRoute(new Request("http://localhost/api/changes/feed", { headers: headers(reader, ["read"]) }))).json();
+  assert.ok(body.rows.every((entry: FeedRow) => Array.isArray(entry.flags)));
 });

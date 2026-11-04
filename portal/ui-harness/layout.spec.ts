@@ -99,11 +99,14 @@ function layoutProblems(): string[] {
 
 for (const hash of PAGES) {
   test(`layout fits · ${hash}`, async ({ page }) => {
-    for (const width of WIDTHS) {
-      await page.setViewportSize({ width, height: 900 });
-      await open(page, hash);
-      const problems = await page.evaluate(layoutProblems);
-      expect(problems, `${hash} at ${width} px`).toEqual([]);
+    for (const theme of (hash.startsWith("/sites") ? ["dark", "light"] : ["dark"]) as ("dark" | "light")[]) {
+      for (const width of WIDTHS) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme: theme });
+        await open(page, hash);
+        const problems = await page.evaluate(layoutProblems);
+        expect(problems, `${hash} at ${width} px in ${theme}`).toEqual([]);
+      }
     }
   });
 }

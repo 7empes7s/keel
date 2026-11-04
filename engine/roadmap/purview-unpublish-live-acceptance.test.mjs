@@ -118,7 +118,7 @@ const POLICIES = (labels = ['Confidential', 'KEEL-RT-Secret']) => [
   policy(12, 'KEEL-RT-Policy', labels),
 ];
 const capture = (tenant, overrides = {}) => captureUnpublish({
-  collector: tenant.side('/etc/keel/purview-collector.json'), restorer: tenant.side('/etc/keel/purview-restorer.json'),
+  collector: tenant.side('/etc/keel/KEEL-RT-fixture-purview-collector.json'), restorer: tenant.side('/etc/keel/KEEL-RT-fixture-purview-restorer.json'),
   tenantRef, build, credentials: { collector: 'app:keel-collector', restorer: 'app:keel-restorer' }, grants, moduleVersion: MODULE,
   now: () => observed, ...overrides,
 });
@@ -138,7 +138,7 @@ for (const published of [true, false]) {
     assert.equal(needsManualRevert, null);
     const sent = tenant.sent();
     // Only the fixture policy (not the one publishing to All), only the fixture label, only by the restorer.
-    assert.ok(sent.every((call) => call.parameters.Identity === id(12) && call.config === '/etc/keel/purview-restorer.json'));
+    assert.ok(sent.every((call) => call.parameters.Identity === id(12) && call.config === '/etc/keel/KEEL-RT-fixture-purview-restorer.json'));
     assert.deepEqual(sent.map(({ parameters: { Identity, ...rest } }) => rest), published
       ? [{ RemoveLabels: ['KEEL-RT-Public'] }, { AddLabels: ['KEEL-RT-Public'] }]
       : [{ AddLabels: ['KEEL-RT-Public'] }, { RemoveLabels: ['KEEL-RT-Public'] }]);

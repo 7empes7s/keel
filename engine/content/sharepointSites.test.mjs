@@ -771,3 +771,29 @@ test('permissions stored before the summary existed are stored once more with it
   await run();
   assert.equal(store.items.filter((item) => item.itemKey === 'site/permissions').length, before * 2);
 });
+
+test('REST exposure: Everyone direct and group grants retain levels; real SharingLinks patterns classify scopes', async () => {
+  const base = '/sites/KEEL-RT-Site/_api/web';
+  const names = ['AnonymousView', 'AnonymousEdit', 'OrganizationView', 'OrganizationEdit', 'FlexibleView', 'FlexibleEdit', 'Flexible'];
+  const groups = names.map((name, index) => ({ Id: 100 + index, Title: `SharingLinks.abc.${name}.def` }));
+  groups.push({ Id: 5, Title: 'Ordinary members' });
+  const everyone = { Id: 20, Title: 'Everyone', LoginName: 'c:0(.s|true', PrincipalType: 4 };
+  const internal = { Id: 21, Title: 'Everyone except external users', LoginName: 'c:0-.f|rolemanager|spo-grid-all-users/tenant', PrincipalType: 4 };
+  const override = {
+    [`${base}/sitegroups`]: () => ({ status: 200, body: { value: groups } }),
+    [`${base}/sitegroups/GetById(5)/users`]: () => ({ status: 200, body: { value: [internal] } }),
+    [`${base}/roleassignments`]: () => ({ status: 200, body: { value: [
+      { ...assignment(20, 'Everyone', [[1, 'Read']]), Member: everyone },
+      assignment(5, 'Ordinary members', [[2, 'Edit']]),
+    ] } }),
+  };
+  for (const group of groups.filter((g) => g.Id !== 5)) override[`${base}/sitegroups/GetById(${group.Id})/users`] = () => ({ status: 200, body: { value: [] } });
+  const store = memoryStore();
+  await backupSharePointSites({ transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: fakeSharePoint({ override }).transport,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
+  const summary = store.items.find((item) => item.container === `site:${ROOT}` && item.itemKey === 'site/permissions').metadata.summary;
+  assert.deepEqual(summary.exposure.everyone, [ { audience: 'everyone', roles: ['Read'] }, { audience: 'everyone-except-external', roles: ['Edit'] } ]);
+  assert.deepEqual(summary.exposure.links, { anyone: { view: 1, edit: 1, unknown: 0 }, organisation: { view: 1, edit: 1, unknown: 0 }, specificPeople: { view: 1, edit: 1, unknown: 1 }, unknown: 0 });
+  assert.equal(summary.people, 1); // The site collection admin is still a person.
+  assert.equal(summary.sharingLinks, 7);
+});

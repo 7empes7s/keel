@@ -12,8 +12,8 @@ import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict } from "@/components/verdict";
 import {
-  CHANGE_WORDS, FEED_GROUPING_KEYS, FEED_GROUPING_LABELS, PRIORITY_WORDS, SOURCE_WORDS, feedCsv, feedGroupLabel, feedGroups, feedObjectName, feedPersonName, feedSummary,
-  type ChangeFeedData, type FeedPeriod, type FeedPriority, type FeedRow, FEED_PERIODS,
+  CHANGE_WORDS, FEED_GROUPING_KEYS, FEED_GROUPING_LABELS, PRIORITY_WORDS, SOURCE_WORDS, feedCsv, feedFlags, feedGroupLabel, feedGroups, feedObjectName, feedPersonName, feedSummary,
+  isFlagged, readFlaggedOnly, type ChangeFeedData, type FeedPeriod, type FeedPriority, type FeedRow, FEED_PERIODS,
 } from "@/lib/change-feed-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import type { RiskTone } from "@/lib/menu-status";
@@ -26,6 +26,9 @@ import { useViewState } from "@/lib/use-view-state";
 // backups, service reads and the Microsoft audit log, as one list. Grouped by day, type,
 // service, priority or who (kept in the address as `group`); the priority tiles add up
 // (`priority=critical,high`). Read-only: deciding on a change happens under Open changes.
+// A rule that knows what a change does flags it ("Turned off: Require MFA for admins.",
+// engine/insights/flags.mjs): the sentence shows on the row, and the Flagged tile
+// (`flagged=1`) narrows whatever the priority tiles show to flagged changes.
 
 const PRIORITY_TONES: Record<FeedPriority, RiskTone | null> = { critical: "urgent", high: "soon", normal: "low", low: null };
 const PRIORITY_ICONS: Record<FeedPriority, IconName> = { critical: "alert", high: "clock", normal: "info", low: "check" };
@@ -41,6 +44,7 @@ const NOUN = { one: "change", many: "changes" };
 const changesWord = (count: number) => `${count} ${count === 1 ? "change" : "changes"}`;
 
 const TILES: FilterTile<FeedRow>[] = PRIORITIES.map((priority) => ({ key: priority, test: (row) => row.priority === priority }));
+const FLAGGED_ONLY = [isFlagged];
 
 function groupAbout(group: { count: number; priorities: Record<FeedPriority, number> }): string {
   const urgent = PRIORITIES.filter((priority) => priority === "critical" || priority === "high")
@@ -81,7 +85,7 @@ const SORTS = [
 ];
 
 function rowText(row: FeedRow): string {
-  return [feedObjectName(row), row.typeName, row.service ?? "", CHANGE_WORDS[row.change], row.activity ?? "", feedPersonName(row), SOURCE_WORDS[row.source].label].join(" ").toLowerCase();
+  return [feedObjectName(row), row.typeName, row.service ?? "", CHANGE_WORDS[row.change], row.activity ?? "", ...feedFlags(row).map((flag) => flag.sentence), feedPersonName(row), SOURCE_WORDS[row.source].label].join(" ").toLowerCase();
 }
 
 export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: FeedPeriod }) {
@@ -89,11 +93,18 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
   const view = useViewState();
   const now = feed.generatedAt;
   const picked = readPicked(TILES, view.get("priority"));
-  const shown = useMemo(() => applyFilters(feed.rows, TILES, picked), [feed.rows, picked.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
-  const counts = useMemo(() => new Map(tileCounts(feed.rows, TILES, picked).map((entry) => [entry.key, entry])), [feed.rows, picked.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const flaggedOnly = readFlaggedOnly(view.get("flagged"));
+  const others = flaggedOnly ? FLAGGED_ONLY : [];
+  const shown = useMemo(() => applyFilters(feed.rows, TILES, picked, others), [feed.rows, picked.join(","), flaggedOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  const counts = useMemo(() => new Map(tileCounts(feed.rows, TILES, picked, others).map((entry) => [entry.key, entry])), [feed.rows, picked.join(","), flaggedOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Flagged changes among what the priority tiles show.
+  const flaggedCount = useMemo(() => applyFilters(feed.rows, TILES, picked).filter(isFlagged).length, [feed.rows, picked.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const lists = useMemo(() => groupings(now), [now]);
   const summary = feedSummary(feed.rows);
-  const activeFilters: ActiveFilter[] = picked.map((priority) => ({ key: `priority:${priority}`, label: `${PRIORITY_WORDS[priority as FeedPriority]} priority`, clear: { priority: withoutTile(picked, priority) } }));
+  const activeFilters: ActiveFilter[] = [
+    ...(flaggedOnly ? [{ key: "flagged", label: "Flagged only", clear: { flagged: null } }] : []),
+    ...picked.map((priority) => ({ key: `priority:${priority}`, label: `${PRIORITY_WORDS[priority as FeedPriority]} priority`, clear: { priority: withoutTile(picked, priority) } })),
+  ];
 
   function choosePeriod(next: FeedPeriod) {
     const params = new URLSearchParams(window.location.search);
@@ -151,6 +162,19 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
             </button>
           );
         })}
+        <button
+          aria-current={flaggedOnly || undefined}
+          aria-pressed={flaggedOnly}
+          className="cf-tile cf-tile-flagged"
+          data-tone={flaggedCount ? "urgent" : undefined}
+          onClick={() => view.set({ flagged: flaggedOnly ? null : "1", page: null })}
+          title={flaggedOnly ? "On: click to show every change again" : "Click to show only flagged changes"}
+          type="button"
+        >
+          <span className="cf-tile-label"><Icon name="alert" />Flagged{flaggedOnly ? <Icon className="tile-check" name="check" /> : null}</span>
+          <b className="cf-tile-count">{flaggedCount}</b>
+          <small>A rule knows what these do: turned off, opened wider, new admin</small>
+        </button>
       </section>
 
       <ActiveFilters filters={activeFilters} noun={NOUN} shown={shown.length} total={feed.rows.length} />
@@ -183,6 +207,13 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
                 <span className="bl-row-name">
                   <span className="cf-row-title"><b>{feedObjectName(row)}</b>{row.object.status === "deleted" ? <span className="cf-gone"> (deleted)</span> : null}</span>
                   <small>{[row.typeName, CHANGE_WORDS[row.change], row.activity].filter(Boolean).join(" · ")}</small>
+                  {isFlagged(row) ? (
+                    <ul aria-label="What this change does" className="cf-flags">
+                      {feedFlags(row).map((flag) => (
+                        <li data-severity={flag.severity} key={flag.key}><Icon name="alert" /><span>{flag.sentence}</span></li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </span>
                 <RiskChip tone={toneOf(row)}>{PRIORITY_WORDS[row.priority]}</RiskChip>
                 <span className="bl-row-who">
@@ -199,7 +230,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
         <TechnicalDetails summary="Technical details: these changes">
           <RecordField copy={false} label="Read with" value="GET /api/changes/feed?by=day|type|service|priority|person&days=30" />
           {feed.rows.map((row) => (
-            <RecordField key={row.id} label={`Change feed ID · ${row.type}`} usage={`${SOURCE_WORDS[row.source].label}. Setting ${row.object.key}${row.person ? `, by ${row.person.kind} ${row.person.id}` : ""}, at ${row.occurredAt}`} value={row.id} />
+            <RecordField key={row.id} label={`Change feed ID · ${row.type}`} usage={`${SOURCE_WORDS[row.source].label}. Setting ${row.object.key}${row.person ? `, by ${row.person.kind} ${row.person.id}` : ""}, at ${row.occurredAt}${isFlagged(row) ? `. Flags: ${feedFlags(row).map((flag) => `${flag.key} (${flag.severity})`).join(", ")}` : ""}`} value={row.id} />
           ))}
         </TechnicalDetails>
       </section>
@@ -211,7 +242,7 @@ const CSS = `
 .cf-tools { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-sm) var(--space-md); }
 .cf-tools .segmented { display: inline-flex; width: auto; }
 .cf-tools .bl-help { display: flex; align-items: center; gap: var(--space-2xs); max-width: 36rem; }
-.cf-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-sm); }
+.cf-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-sm); }
 .cf-tile { display: grid; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .cf-tile:hover { border-color: var(--line-strong); background: var(--surface-raised); }
 .cf-tile:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -224,6 +255,14 @@ const CSS = `
 .cf-tile small { color: var(--text-soft); font-size: 0.75rem; line-height: 1.35; }
 .cf-row-title { overflow-wrap: anywhere; }
 .cf-gone { color: var(--text-soft); font-weight: 400; }
+.cf-flags { display: grid; gap: 2px; margin: var(--space-2xs) 0 0; padding: 0; list-style: none; }
+.cf-flags li { display: flex; align-items: flex-start; gap: var(--space-2xs); color: var(--check-soon); font-size: 0.8125rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.cf-flags li[data-severity="critical"] { color: var(--urgent); }
+.cf-flags li svg { flex: none; margin-top: 0.15em; }
+@media (max-width: 64rem) {
+  .cf-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cf-tile-flagged { grid-column: 1 / -1; }
+}
 @media (max-width: 40rem) {
   .cf-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

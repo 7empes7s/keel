@@ -7,7 +7,7 @@ import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technic
 import { Badge } from "@/components/ui/badge";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
-  appName, appStatus, backupStatus, backupWords, externalStatus, peopleStatus, roleLabel, rolesLabel, sharingStatus, siteAddress,
+  everyoneStatus, linkScopeStatus, exposureStatus, appName, appStatus, backupStatus, backupWords, externalStatus, peopleStatus, roleLabel, rolesLabel, sharingStatus, siteAddress,
   tenantSharingWords, type SitePermissions, type SitePermissionsData, type SiteStatus, type SitesContentRun, type SitesRun,
 } from "@/lib/site-permissions-view";
 
@@ -43,7 +43,9 @@ export function SiteList({ data }: { data: SitePermissionsData }) {
       {!run ? <p className="empty-state">No SharePoint read has stored any sites yet. Sites appear here after the daily SharePoint read.</p> : null}
       {run && !sites.length ? <p className="empty-state">The last read found no sites.</p> : null}
       {sites.length ? <SitesTable now={data.generatedAt} run={data.contentRun ?? null} sites={sites} /> : null}
+      {data.oneDrives?.length ? <section aria-label="OneDrive sharing"><h2>OneDrive sharing</h2>{data.oneDrives.map((drive, index) => <p key={index}>{drive.name}: {exposureStatus(drive.exposure).detail?.replace("this site", "content in this OneDrive")}</p>)}</section> : null}
       {sharing ? <p className="st-footnote"><Icon name="link" /> Sharing allowed across the tenant: <b>{sharing}</b>.</p> : null}
+      {data.oneDrives?.length ? <p className="st-footnote">OneDrive sharing comes from saved file and folder permissions. OneDrives without saved content are not included.</p> : null}
       {run ? <ReadNote contentRun={data.contentRun} now={data.generatedAt} run={run} /> : null}
       {run ? (
         <TechnicalDetails>
@@ -109,6 +111,10 @@ export function SiteDetail({ site, run, latest, now, contentRun = null, tenantSh
         <StatusTile icon="backup" status={backup} title="Backup" value={backup.at ? <small><time dateTime={backup.at} title={formatTimestamp(backup.at)}>{ago(backup.at, now)}</time></small> : null}>
           {held ? <p className="st-status-fact">Holds {held}</p> : null}
         </StatusTile>
+        <StatusTile icon="person" status={everyoneStatus(summary?.exposure)} title="Open to everyone">
+          {summary?.exposure?.everyone?.map((grant, index) => <p key={index}>{grant.audience === "everyone" ? "Everyone" : "Everyone except external users"}: {grant.roles.map(plainRole).join(", ")}</p>)}
+        </StatusTile>
+        <StatusTile icon="link" status={linkScopeStatus(summary?.exposure)} title="Anyone links" />
         <StatusTile icon="link" status={apps} title="Apps with access" />
         <StatusTile icon="link" status={siteSharing} title="Sharing setting">
           {sharing ? <p className="st-status-fact">Organisation default: {sharing}</p> : null}
@@ -171,6 +177,9 @@ export function SiteDetail({ site, run, latest, now, contentRun = null, tenantSh
         <RecordField label="SharePoint read" value={run.id} />
         <RecordField copy={false} label="Read outcome" value={run.outcome} />
         <RecordField copy={false} label="Read finished" value={run.observedTo} />
+        <RecordGroup title="Saved sharing exposure">
+          <RecordField copy={false} label="Everyone grants and link counts" value={summary?.exposure ? { ...summary.exposure } : null} />
+        </RecordGroup>
         <RecordGroup note={site.sharing.status} title="Sharing setting">
           <RecordField copy={false} label="Read status" value={site.sharing.status} />
           <RecordField copy={false} label="Value as stored" value={site.sharing.value} />

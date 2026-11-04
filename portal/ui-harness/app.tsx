@@ -44,7 +44,8 @@ import { Icon } from "@/components/shell/icons";
 import { PeoplePage } from "@/components/people/people-page";
 import { PoliciesPage } from "@/components/policies/policies-page";
 import { PolicyPage } from "@/components/policies/policy-page";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { evidenceTarget, OLD_ROUTE_TARGETS } from "@/lib/old-routes";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
 import { lastRestoreTile, pastRestoresVerdict } from "@/lib/restore-view";
@@ -486,16 +487,24 @@ const FEED_APP = { kind: "servicePrincipal" as const, id: "c0c00000-0000-4000-80
 const CHANGE_FEED: ChangeFeedData = {
   generatedAt: "2026-10-02T09:40:00Z", since: "2026-09-02T09:40:00Z", until: "2026-10-02T09:40:00Z", truncated: false,
   rows: [
-    feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA }),
+    feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA,
+      priorityReason: "Switched to report-only, so it no longer blocks anything: Block legacy auth.",
+      flags: [
+        { key: "ca-report-only", severity: "critical", sentence: "Switched to report-only, so it no longer blocks anything: Block legacy auth." },
+        { key: "ca-exclusions-added", severity: "critical", sentence: "Leaves out more groups: Block legacy auth." },
+      ] }),
     feedRow("audit:entra:f2:0", "2026-10-02T08:05:00Z", { type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "ca-1", name: "Block legacy auth", status: "found" }, activity: "Update conditional access policy", person: FEED_ADA }),
-    feedRow("service:f3", "2026-10-02T07:00:00Z", { source: "service", type: "sharepoint-tenant-settings", typeName: "SharePoint sharing settings", service: "SharePoint", priority: "high", object: { key: "sharepoint-tenant-settings:tenant", name: "Sharing settings", status: "found" } }),
+    feedRow("service:f3", "2026-10-02T07:00:00Z", { source: "service", type: "sharepoint-tenant-settings", typeName: "SharePoint sharing settings", service: "SharePoint", priority: "high", object: { key: "sharepoint-tenant-settings:tenant", name: "Sharing settings", status: "found" },
+      flags: [{ key: "sharing-widened", severity: "high", sentence: "SharePoint sharing opened wider: files can now be shared with anyone, with links that need no sign-in." }] }),
     feedRow("audit:entra:f4:0", "2026-10-02T06:40:00Z", { object: { key: "g-1", name: "Finance", status: "found" }, activity: "Add member to group", person: FEED_SAM }),
-    feedRow("audit:entra:f5:0", "2026-10-01T16:10:00Z", { object: { key: "g-2", name: "Helpdesk admins", status: "found" }, activity: "Update group", person: FEED_APP }),
+    feedRow("audit:entra:f5:0", "2026-10-01T16:10:00Z", { object: { key: "g-2", name: "Helpdesk admins", status: "found" }, activity: "Update group", person: FEED_APP, flags: [] }),
     feedRow("drift:f6", "2026-10-01T09:00:00Z", { source: "drift", type: "group", change: "removed", object: { key: "group:Old project team", name: "Old project team", status: "deleted" } }),
     feedRow("audit:intune:f7:0", "2026-10-01T08:30:00Z", { type: "deviceCompliancePolicy", typeName: "Device compliance policy", service: "Intune", priority: "high", object: { key: "dc-1", name: "Windows laptops must be encrypted", status: "found" }, activity: "Patch DeviceCompliancePolicy", person: FEED_SAM }),
     feedRow("service:f8", "2026-09-30T22:00:00Z", { source: "service", type: "exchange-mail-flow", typeName: "Mail flow rule", service: "Exchange", change: "added", object: { key: "exchange-mail-flow:rule:Forward to partner", name: "Forward to partner", status: "found" } }),
     feedRow("audit:intune:f9:0", "2026-09-30T14:00:00Z", { type: "DeviceConfiguration", typeName: "Device configuration", service: "Intune", change: "removed", object: { key: "dead0000-0000-4000-8000-000000000009", name: null, status: "unknown" }, activity: "Delete DeviceConfiguration", person: FEED_SAM }),
-    feedRow("drift:f10", "2026-09-29T09:00:00Z", { source: "drift", type: "namedLocation", typeName: "Named location", priority: "low", change: "added", object: { key: "namedLocation:Branch offices", name: "Branch offices", status: "found" } }),
+    // Low by its kind, raised to high by its flag.
+    feedRow("drift:f10", "2026-09-29T09:00:00Z", { source: "drift", type: "namedLocation", typeName: "Named location", priority: "high", priorityReason: "Now trusted for sign-in: Branch offices.", change: "added", object: { key: "namedLocation:Branch offices", name: "Branch offices", status: "found" },
+      flags: [{ key: "location-trusted", severity: "high", sentence: "Now trusted for sign-in: Branch offices." }] }),
   ],
 };
 const DRIFT = [
@@ -884,6 +893,7 @@ const RULE_DELETE_FIELDS = [
   { field: "blastRadius", before: "tenant-lockout", after: null }, { field: "maxBlastRadius", before: "cosmetic", after: null },
   { field: "maxActionsPerWindow", before: null, after: null }, { field: "windowSeconds", before: null, after: null },
 ];
+const UNNAMED_SCRIPT_KEY = "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1";
 const EVIDENCE = [
   { seq: "18205", occurred_at: "2026-10-02T09:39:02Z", kind: "approval-decision", actor: "amara.okafor@contoso.example", subject: { requestId: "a9e10000-0000-4000-8000-000000000100", action: "restore", decision: "approved", executor: "worker", jobId: "a3" } },
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
@@ -891,7 +901,8 @@ const EVIDENCE = [
   { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
   { seq: "18201", occurred_at: "2026-10-02T09:05:10Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: false } },
   { seq: "18200", occurred_at: "2026-10-02T08:52:30Z", kind: "action-attempt", actor: "sam.ortiz@contoso.example", subject: { action: "restore", decision: "denied", reason: "capability" } },
-  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: true } },
+  // A setting no backup names: its key is only an id, so the page names its kind.
+  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: UNNAMED_SCRIPT_KEY, matched: true } },
   { seq: "18180", occurred_at: "2026-09-29T11:20:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "deleted", policyId: "5a000000-0000-4000-8000-000000000002", name: "KEEL-RT Alert on lockout risk", action: "alert", fields: RULE_DELETE_FIELDS } },
   { seq: "18179", occurred_at: "2026-09-29T11:10:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "edited", policyId: "5a000000-0000-4000-8000-000000000001", name: "KEEL-RT Undo low-risk group changes", action: "auto_remediate", fields: RULE_EDIT_FIELDS } },
   { seq: "18171", occurred_at: "2026-09-28T06:10:00Z", kind: "recovery-drill", actor: "scheduler", subject: { mode: "live", outcome: "passed", cleanup: { status: "complete" } } },
@@ -951,7 +962,9 @@ const activityJobs = (jobs: Job[]): Job[] => [
   job("y1", "restore", "failed", { requestedBy: "amara.okafor@contoso.example", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: Exchange Online would not accept 2 of the mailbox rules", createdAt: "2026-10-01T16:50:00Z", startedAt: "2026-10-01T16:50:30Z", finishedAt: "2026-10-01T16:52:00Z", references: refs("amara.okafor@contoso.example", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010", resources: 2, snapshotAt: "2026-10-01T09:12:00Z" } }) }),
   job("y2", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier2" }, createdAt: "2026-10-01T02:00:00Z", startedAt: "2026-10-01T02:00:10Z", finishedAt: "2026-10-01T02:09:00Z" }),
   job("y3", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier1" }, createdAt: "2026-09-30T02:00:00Z", startedAt: "2026-09-30T02:00:10Z", finishedAt: "2026-09-30T02:03:00Z" }),
-  job("y4", "collect", "succeeded", { requestedBy: "scheduler", params: {}, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z" }),
+  // An automatic roll back of a change to a setting no backup names.
+  job("y4", "remediate", "succeeded", { requestedBy: "policy-automation", params: { driftIds: ["d6e00000-0000-4000-8000-0000000000e1"] }, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z",
+    references: refs("policy-automation", { changes: [{ kind: "change", id: "d6e00000-0000-4000-8000-0000000000e1", name: null, readable: true, naturalKey: UNNAMED_SCRIPT_KEY, resourceType: "deviceManagementScript", changeType: "modified" }] }) }),
 ];
 const CAPTURED = (capturedAt: string, sourceSnapshotId: string | null, basis: BaselineCapture["basis"] = "source-snapshot"): BaselineCapture => ({
   basis, capturedAt, ageMs: Date.parse(now) - Date.parse(capturedAt), sourceSnapshotId,
@@ -1588,6 +1601,19 @@ const hiddenSetup = (): SetupState => ({
   scopes: SETUP.scopes.map((scope) => (scope.run?.approvedByName ? { ...scope, run: { ...scope.run, approvedByName: codeName(scope.run.approvedByName) } } : scope)),
 });
 const ANONYMOUS_NOTE = <AnonymityNote setting={ANONYMITY_ON} />;
+// Every change with names hidden: people get code names, and so does a group named by a
+// person's address, in its flag sentence too (the engine code-names it the same way).
+const FEED_HIDDEN_GROUP = HARNESS_NAMER("amara.okafor@contoso.com");
+const CHANGE_FEED_HIDDEN: ChangeFeedData = {
+  ...CHANGE_FEED,
+  rows: [
+    feedRow("drift:h1", "2026-10-02T09:00:00Z", { source: "drift", type: "groupMembership", typeName: "Group membership", priority: "critical", change: "added",
+      object: { key: "edge:member:hidden", name: FEED_HIDDEN_GROUP, status: "found" }, person: displayActor(FEED_SAM, HARNESS_NAMER) as FeedRow["person"],
+      priorityReason: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.`,
+      flags: [{ key: "role-group-member-added", severity: "critical", sentence: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.` }] }),
+    ...CHANGE_FEED.rows.map((row) => (row.person && row.person.kind === "user" ? { ...row, person: displayActor(row.person, HARNESS_NAMER) as FeedRow["person"] } : row)),
+  ],
+};
 
 const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
   <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
@@ -2561,6 +2587,7 @@ const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e17000
 const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
 const SITE_TEAM = `${SITE_HOST},5e170000-0000-4000-8000-000000000007,5e170000-0000-4000-8000-000000000008`;
 const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
+  exposure: { everyone: [], links: { anyone: { view: 0, edit: 0 }, organisation: { view: 0, edit: 0 }, specificPeople: { view: 0, edit: 0 }, unknown: 0 } },
   inherits: false, owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-02T01:10:00Z",
   groups: [
     { name: "Owners", members: 1, roles: ["Full Control"] },
@@ -2572,6 +2599,10 @@ const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
 // Each site's own sharing setting (one PnP read), compared with the tenant default below.
 const SITE_SHARING_READ = { status: "observed", operation: "sharepoint.site-sharing" };
 const SITES_READ: SitePermissionsData = {
+  oneDrives: [
+    { name: "Amara’s OneDrive", exposure: { everyone: [], links: { anyone: { view: 1, edit: 0 }, organisation: { view: 2, edit: 0 }, specificPeople: { view: 0, edit: 1 }, unknown: 0 } } },
+    { name: "Dev’s OneDrive", exposure: null },
+  ],
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
@@ -2586,7 +2617,7 @@ const SITES_READ: SitePermissionsData = {
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
     ] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
-    people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
+    people: SITE_PEOPLE({ exposure: { everyone: [{ audience: "everyone-except-external", roles: ["Edit"] }], links: { anyone: { view: 2, edit: 1 }, organisation: { view: 1, edit: 0 }, specificPeople: { view: 0, edit: 1 }, unknown: 0 } }, owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
     { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, sharingCapability: "Disabled", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
     { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, sharingCapability: "ExternalUserSharingOnly", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
@@ -2641,11 +2672,11 @@ const SERVICE_CHANGES: DriftRecord[] = [
   }, "a1e70000-0000-4000-8000-0000000000a9"),
 ];
 
-function sitesPage() {
-  const verdict = sitesVerdict(SITES);
+function sitesPage(data: SitePermissionsData = SITES) {
+  const verdict = sitesVerdict(data);
   return <>{header("Backup", "Sites", "Every SharePoint site: is it backed up, who owns it, and which apps and guests can reach it. Problems first.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><SiteList data={SITES} /></div></>;
+    <div data-layer="explanation"><SiteList data={data} /></div></>;
 }
 
 function sitePage(path: string) {
@@ -2914,6 +2945,18 @@ function IncidentsRoute({ viewer }: { viewer: boolean }) {
   </>;
 }
 
+// An old address the portal redirects on the server: the harness replaces the address
+// the same way, so the checks run on the page a person lands on.
+function Redirect({ to }: { to: string }) {
+  const router = useRouter();
+  useEffect(() => { router.replace(to); }, [router, to]);
+  return null;
+}
+
+function OldEvidence() {
+  return <Redirect to={evidenceTarget(Object.fromEntries(useSearchParams()))} />;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
@@ -2938,6 +2981,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <JobRefresher active={active} />
       </>;
     }
+    case "/backups": case "/coverage": case "/jobs": return <Redirect to={OLD_ROUTE_TARGETS[path]} />;
+    case "/evidence": return <OldEvidence />;
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
       return <>
@@ -2975,6 +3020,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/reports/many": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_MANY} />;
     case "/reports/capped": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_CAPPED} />;
     case "/sites": return sitesPage();
+    case "/sites/old-backup": return sitesPage({ ...SITES, oneDrives: [{ name: "Amara’s OneDrive", exposure: null }], sites: SITES.sites.map((site) => ({ ...site, people: site.people ? { ...site.people, exposure: null } : null })) });
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);
@@ -2990,6 +3036,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/changes/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;
+    case "/changes/feed-anonymous": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      {ANONYMOUS_NOTE}
+      <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED_HIDDEN} period="30" /></div></>;
     case "/changes/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;

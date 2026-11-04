@@ -171,7 +171,19 @@ test('a stored point counts open changes, the newest read per service, and each 
   const retired = await collection('retired-workload', 'complete', hoursAgo(3));
   await client.query('INSERT INTO workload_observation (collection_id, resource_key) VALUES ($1, $2)', [retired, 'thing:KEEL-RT-1']);
 
-  const score = await computeBaselineScore(client, { tenantRef });
+  // One connection runs one query at a time: pg warns (and pg 9 will refuse) when a
+  // second query is sent before the first has answered (operator queue Q308).
+  let running = 0;
+  let mostAtOnce = 0;
+  const reader = {
+    query(...args) {
+      running += 1;
+      mostAtOnce = Math.max(mostAtOnce, running);
+      return client.query(...args).finally(() => { running -= 1; });
+    },
+  };
+  const score = await computeBaselineScore(reader, { tenantRef });
+  assert.equal(mostAtOnce, 1, 'queries overlapped on one connection');
   assert.deepEqual(score.services, {
     // 8 held + 1 added judged; 1 changed and the added one do not match.
     Entra: { matching: 7, judged: 9 },

@@ -298,3 +298,17 @@ test("Open changes and Every change count the same changes for the same entity r
     );
   }
 });
+
+test("a change opened by its id (#978) stays inside the reader's entities", async () => {
+  const id = async (key: string) => `drift:${(await client.query("SELECT id FROM drift WHERE natural_key = $1", [key])).rows[0].id}`;
+  const creos = await id(`conditionalAccessPolicy:${CREOS_POLICY}`);
+  const enovos = await id(`conditionalAccessPolicy:${ENOVOS_POLICY}`);
+  assert.deepEqual((await getChangeFeed({ changeId: creos, scope: CREOS })).rows.map((row) => row.id), [creos]);
+  const other = await getChangeFeed({ changeId: enovos, scope: CREOS });
+  assert.deepEqual(other.rows, []);
+  assert.ok(!JSON.stringify(other).includes("Retail"));
+  // Tenant-wide rows by id are not read for an entity reader either.
+  const service = String((await client.query("SELECT id FROM workload_drift LIMIT 1")).rows[0].id);
+  assert.deepEqual((await getChangeFeed({ changeId: `service:${service}`, scope: CREOS })).rows, []);
+  assert.equal((await getChangeFeed({ changeId: `service:${service}` })).rows.length, 1);
+});

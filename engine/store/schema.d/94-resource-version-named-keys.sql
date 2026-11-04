@@ -1,5 +1,5 @@
 -- The keys that have at least one saved version with a name: the condition is
--- mayHaveNameSql() in engine/cir/objectName.mjs, kept as the same text (schema test checks).
+-- mayHaveNameSql() in engine/cir/objectName.mjs, kept as the same text (engine/insights/names.test.mjs checks the name probe uses this index).
 -- Plain (not concurrent) build, like fragments 91 and 93: writes to resource_version wait
 -- a few seconds the first time this is applied.
 --

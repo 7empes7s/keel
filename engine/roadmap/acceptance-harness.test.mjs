@@ -20,7 +20,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -35,6 +35,7 @@ import {
   loadEntraLiveFiles, loadLiveRecords, runLedgerCommand,
 } from '../../tools/release/acceptanceLedger.mjs';
 import { signEvidence } from '../../tools/release/qualification.mjs';
+import { TYPE_DECISIONS } from '../coverage/qualification.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -301,17 +302,37 @@ function passingFixture() {
   })));
 }
 
+const ENTRA_LIVE_DIR = new URL('../../docs/release/qualifications/entra-live/', import.meta.url);
+
+/** The committed demotions with no newer live record of the same write, read straight from the files. */
+function committedDemotionsThatDecide() {
+  return readdirSync(ENTRA_LIVE_DIR).filter((name) => name.endsWith('.demotion.json')).flatMap((name) => {
+    const demotion = JSON.parse(readFileSync(new URL(name, ENTRA_LIVE_DIR), 'utf8'));
+    const recordUrl = new URL(name.replace(/\.demotion\.json$/, '.json'), ENTRA_LIVE_DIR);
+    const record = existsSync(recordUrl) ? JSON.parse(readFileSync(recordUrl, 'utf8')) : null;
+    return record && Date.parse(record.observedAt) > Date.parse(demotion.decidedAt) ? [] : [demotion];
+  });
+}
+
 test('the checked-in qualification records keep readiness from ready and report fixtures separately', () => {
   const live = loadLiveRecords();
   const ledger = buildReleaseLedger({ fixture: journeyFixtureRecord(results), live, hmacKey: null });
-  // Every committed Entra demotion (issue #148) has a later verified rerun (Q45 to Q53), so no
-  // write is demoted; without the key those reruns are unverified and the label stays pending.
-  // A demotion that still decides is checked with fixtures below (it blocks).
-  assert.equal(ledger.readiness.label, 'pending');
-  assert.notEqual(ledger.readiness.label, 'ready');
+  // A committed Entra demotion (issue #148) decides until a newer live record replaces it.
+  // Each one that still decides must show as demoted and block the release; with none,
+  // the reruns are unverified without the key and the label stays pending.
+  const deciding = committedDemotionsThatDecide();
   const entra = ledger.live.find((gate) => gate.gate === 'entra-live-acceptance');
-  assert.equal(entra.status, 'pending');
-  assert.ok(entra.operations.every((row) => row.status !== 'demoted'), JSON.stringify(entra.failures));
+  const demoted = entra.operations.filter((row) => row.status === 'demoted').map((row) => `${row.resourceType} ${row.operation}`);
+  assert.deepEqual(demoted.sort(), deciding.map((d) => `${d.resourceType} ${d.operation}`).sort(), JSON.stringify(entra.failures));
+  for (const demotion of deciding) {
+    // A demotion that still decides keeps its write registered only with the failure and its fix recorded.
+    const failure = TYPE_DECISIONS[demotion.resourceType.split('#')[0]].liveFailures?.[demotion.operation];
+    assert.ok(failure?.fix, `${demotion.resourceType} ${demotion.operation}: recorded under liveFailures with its fix`);
+  }
+  assert.equal(ledger.readiness.label, deciding.length > 0 ? 'blocked' : 'pending');
+  assert.notEqual(ledger.readiness.label, 'ready');
+  assert.equal(entra.status, deciding.length > 0 ? 'failed' : 'pending');
+  if (deciding.length > 0) assert.ok(ledger.readiness.reasons.some((reason) => reason.includes('entra-live-acceptance')));
   assert.ok(entra.operations.some((row) => row.status === 'unverified'), 'committed reruns are unverified without the key');
   assert.ok(entra.operations.every((row) => row.status !== 'live-qualified'), 'nothing qualifies without the key');
   assert.equal(ledger.fixture.evidenceLevel, 'fixture-tested');

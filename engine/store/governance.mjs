@@ -1,3 +1,4 @@
+import { resolveChangeFlags } from '../notify/changeFlags.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE, sameRecordedDifference } from './openDrift.mjs';
 import { DRIFT_TEMPLATE_FAMILY_SQL } from '../insights/templateAreas.mjs';
 
@@ -160,5 +161,7 @@ export async function recordDisposition(client, {
      RETURNING id`,
     [driftId, action, actor, reason, expiresAt ?? null, planId ?? null],
   );
+  const { rows: [drift] } = await client.query('SELECT tenant_ref FROM drift WHERE id=$1', [driftId]);
+  if (drift) await resolveChangeFlags(client, { tenantRef: drift.tenant_ref, sourceId: `drift:${driftId}` });
   return rows[0].id;
 }

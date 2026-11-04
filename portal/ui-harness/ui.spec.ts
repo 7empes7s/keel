@@ -8,6 +8,7 @@ import { RAW_ERROR_PATTERN } from "../lib/error-words";
 const HARNESS = pathToFileURL(join(__dirname, "dist/index.html")).href;
 
 const PAGES = [
+  { name: "alerts-change-flag", hash: "/alerts/change-flag" },
   { name: "dashboard", hash: "/" },
   { name: "protect", hash: "/protect" },
   { name: "schedules", hash: "/schedules" },

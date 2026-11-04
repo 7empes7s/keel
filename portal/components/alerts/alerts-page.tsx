@@ -237,6 +237,7 @@ export function AlertsPage({ alerts, linked, counts: serverCounts, now, canRespo
             <ObjectStatusBadge deletedSince={alert.object?.deletedSince} status={alert.object?.status} />
           </span>
           <small>{causeSentence(alert)}</small>
+          {alert.flags?.length ? <small>Changed by {alert.flags.find((flag) => flag.person?.name)?.person?.name ?? "someone unknown"}</small> : null}
         </span>
         <span className="al-row-mid">
           <span className="al-row-badges">
@@ -330,7 +331,7 @@ export function AlertsPage({ alerts, linked, counts: serverCounts, now, canRespo
           footer={canRespond && isActive(opened) || canMute ? (
             <div className="al-sheet-actions">
               {canRespond && isWaiting(opened) ? <button aria-busy={busy || undefined} className="btn btn-primary" disabled={busy || optionalReasonMessage(note) !== null} form="al-ack" type="submit">Acknowledge</button> : null}
-              {canRespond && isActive(opened) ? <Link className="btn" href={openHref(opened.id, "resolve")} onClick={(event) => follow(event, openHref(opened.id, "resolve"))}>Resolve</Link> : null}
+              {canRespond && isActive(opened) ? <Link className="btn" href={openHref(opened.id, "resolve")} onClick={(event) => follow(event, openHref(opened.id, "resolve"))}>{opened.control === "change-flag" ? "Mark reviewed" : "Resolve"}</Link> : null}
               {canMute && opened.state !== "suppressed" ? <Link className="btn" href={openHref(opened.id, "mute")} onClick={(event) => follow(event, openHref(opened.id, "mute"))}><Icon name="pause" />Mute</Link> : null}
               {canMute && opened.state === "suppressed" ? <button className="btn" disabled={busy} onClick={() => void run("unmute", [opened.id])} type="button"><Icon name="play" />Unmute</button> : null}
             </div>
@@ -346,8 +347,8 @@ export function AlertsPage({ alerts, linked, counts: serverCounts, now, canRespo
 
       {step === "resolve" && (opened || pickedAlerts.length) ? (
         <ConfirmSheet
-          confirmLabel={opened ? "Resolve alert" : `Resolve ${plural(pickedAlerts.filter(isActive).length)}`}
-          effect={opened ? "The alert closes now. If the change is still there, the next check opens it again, and its history is kept." : bulkDetail("resolve", pickedAlerts)}
+          confirmLabel={opened?.control === "change-flag" ? "Mark reviewed" : opened ? "Resolve alert" : `Resolve ${plural(pickedAlerts.filter(isActive).length)}`}
+          effect={opened?.control === "change-flag" ? "The flag is marked reviewed and the alert closes. Your name and note are kept in the audit record." : opened ? "The alert closes now. If the change is still there, the next check opens it again, and its history is kept." : bulkDetail("resolve", pickedAlerts)}
           kicker={opened ? alertTitle(opened) : `${plural(pickedAlerts.length)} selected`}
           onClose={back}
           onConfirm={async (reason) => {
@@ -406,6 +407,7 @@ function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
     <div className="al-panel">
       <section className="al-panel-cause">
         <p>{causeSentence(alert)}</p>
+        {alert.flags?.length ? <p>Changed by {alert.flags.find((flag) => flag.person?.name)?.person?.name ?? "someone unknown"}</p> : null}
         <Link className="btn btn-sm" href={link.href}><Icon name="link" />{link.label}</Link>
       </section>
 

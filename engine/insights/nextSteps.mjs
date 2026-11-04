@@ -16,7 +16,8 @@
  *    change or a new approved setup replaced it.
  *
  * A row is dealt with when it is decided or closed, or when an alert keyed to its object
- * (alert.resource_key = the row's object key) was acknowledged or resolved after the change.
+ * (alert.resource_key = the row's object key), or the flag alert raised for that exact row
+ * (change_flag_event.source_id = the row id), was acknowledged or resolved after the change.
  * An open alert does not count. Callers count "needs a look" from `dealtWith` only.
  *
  * Every read is one bounded query for the whole page (never one per row). People who
@@ -117,9 +118,17 @@ const SERVICE_STATE_SQL = `
 
 // Alerts on the rows' objects that someone acknowledged or that were resolved.
 const ALERTS_SQL = `
-  SELECT id::text AS id, resource_key, state, acknowledged_by, acknowledged_at, resolved_at
+  SELECT id::text AS id, resource_key, NULL::text AS source_id, state, acknowledged_by, acknowledged_at, resolved_at
     FROM alert
    WHERE tenant_ref = $1 AND resource_key = ANY($2::text[]) AND state IN ('acknowledged', 'resolved')`;
+
+// The same, for a flag alert linked to the exact feed row (change_flag_event.source_id).
+// Audit rows carry Microsoft's id, while their flag alerts use the object's natural key.
+const FLAG_ALERTS_SQL = `
+  SELECT a.id::text AS id, a.resource_key, e.source_id, a.state, a.acknowledged_by, a.acknowledged_at, a.resolved_at
+    FROM change_flag_event e
+    JOIN alert a ON a.id = e.alert_id AND a.tenant_ref = e.tenant_ref
+   WHERE e.tenant_ref = $1 AND e.source_id = ANY($2::text[]) AND a.state IN ('acknowledged', 'resolved')`;
 
 // The newest complete backup from before each deleted object's change that holds it, by
 // its key or its Microsoft id (both indexed with the backup, schema.sql and schema.d/93).
@@ -208,10 +217,12 @@ export async function loadNextSteps(client, { tenantRef, now = new Date(), namer
   }
 
   const alerts = new Map();
+  const flagAlerts = new Map();
+  const push = (map, key, row) => { if (!map.has(key)) map.set(key, []); map.get(key).push(row); };
   if (await tableExists(client, 'alert')) {
-    for (const row of (await client.query(ALERTS_SQL, [tenantRef, [...new Set(items.map((item) => item.key))]])).rows) {
-      if (!alerts.has(row.resource_key)) alerts.set(row.resource_key, []);
-      alerts.get(row.resource_key).push(row);
+    for (const row of (await client.query(ALERTS_SQL, [tenantRef, [...new Set(items.map((item) => item.key))]])).rows) push(alerts, row.resource_key, row);
+    if (await tableExists(client, 'change_flag_event')) {
+      for (const row of (await client.query(FLAG_ALERTS_SQL, [tenantRef, items.map((item) => item.id)])).rows) push(flagAlerts, row.source_id, row);
     }
   }
 
@@ -251,7 +262,7 @@ export async function loadNextSteps(client, { tenantRef, now = new Date(), namer
   }
 
   // Alerts acknowledged or resolved after the change, newest first.
-  const handledAlert = (item) => (alerts.get(item.key) ?? [])
+  const handledAlert = (item) => [...(alerts.get(item.key) ?? []), ...(flagAlerts.get(item.id) ?? [])]
     .map((alert) => ({ id: String(alert.id), state: String(alert.state), at: iso(alert.state === 'resolved' ? alert.resolved_at ?? alert.acknowledged_at : alert.acknowledged_at), by: alert.state === 'acknowledged' ? alert.acknowledged_by ?? null : null }))
     .filter((alert) => alert.at && alert.at >= item.occurredAt)
     .sort((a, b) => b.at.localeCompare(a.at))[0] ?? null;

@@ -695,7 +695,7 @@ export interface DashboardAlert {
   detail: string;
   // Which computed problem this is, so the Overview can drop one its verdict already
   // states, and the list behind it.
-  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "partial" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable";
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "partial" | "stale" | "uncovered" | "audit" | "audit-unchecked" | "no-offsite" | "deletable" | `change-flag:${string}`;
   href?: string;
 }
 

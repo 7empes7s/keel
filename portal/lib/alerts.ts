@@ -1,3 +1,4 @@
+import { alertFlagDetails } from "../../engine/notify/changeFlags.mjs";
 import {
   ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, alertStateCounts, listAlerts, listAlertTransitionsFor,
   resolveAlert, suppressAlert, unsuppressAlert,
@@ -165,7 +166,8 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
       const { rows: found } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1)", [[...ids]]);
       for (const person of found) people.set(String(person.id), person);
     }
-    const namer = people.size ? await peopleNamer(client as QueryClient) : null;
+    const namer = await peopleNamer(client as QueryClient);
+    const flags = await alertFlagDetails(client, { tenantRef, alertIds: rows.map((row) => String(row.id)), namer }) as Map<string, NonNullable<AlertItem["flags"]>>;
     const keys = rows.map((row) => String(row.resource_key));
     const families = new Map<string, string>();
     const unnamedRefs = new Map<string, UnnamedReference[]>();
@@ -180,7 +182,8 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),
-        name: resourceNames.get(String(row.resource_key)) ?? objects.get(String(row.resource_key))?.name ?? null,
+        flags: flags.get(String(row.id)) ?? [],
+        name: flags.get(String(row.id))?.[0]?.name ?? resourceNames.get(String(row.resource_key)) ?? objects.get(String(row.resource_key))?.name ?? null,
         object: objectFacts(objects.get(String(row.resource_key))),
         control: String(row.control),
         condition: String(row.condition),

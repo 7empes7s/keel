@@ -199,6 +199,16 @@ test("the Overview loader counts flagged changes of the last week that still nee
   await alert(APPS[2], "acknowledged");
   assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, needsLook: 1 });
   assert.equal(flaggedChangesRow(await getFlaggedThisWeek())?.title, "1 flagged change this week needs a look");
+  // A flag alert carries the object's natural key, not the audit row's Microsoft id. Its
+  // source link to the exact row still counts once someone acknowledges it.
+  const { rows: [linked] } = await client.query(`UPDATE alert SET resource_key = 'servicePrincipal:Payroll', state = 'acknowledged',
+      acknowledged_by = 'ops@contoso.test', acknowledged_at = now()
+    WHERE tenant_ref = $1 AND resource_key = $2 RETURNING id`, [ref, APPS[0]]);
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, needsLook: 1 }, "the natural key alone does not match the audit row");
+  await client.query(`INSERT INTO change_flag_event (tenant_ref, source_id, flag_key, resource_key, observed_at, evaluation, alert_id, alert_occurrence)
+    VALUES ($1, 'audit:entra:cred0:0', 'app-credential-added-audit', 'servicePrincipal:Payroll', $2, '{}', $3, 1)`, [ref, hoursAgo(10), linked.id]);
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, needsLook: 0 });
+  await client.query("DELETE FROM change_flag_event WHERE tenant_ref = $1", [ref]);
   await client.query("DELETE FROM alert WHERE tenant_ref = $1", [ref]);
   await client.query("DELETE FROM audit_change_fact WHERE tenant_ref = $1", [ref]);
 });

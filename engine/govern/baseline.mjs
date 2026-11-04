@@ -1,3 +1,4 @@
+import { resolveChangeFlags } from '../notify/changeFlags.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { isServerError } from '../../tools/tenant-probe/graph.mjs';
 import { can } from '../authz/can.mjs';
@@ -252,6 +253,9 @@ export async function acceptDrift(client, { driftId, actor, reason }) {
     await client.query('ROLLBACK');
     throw error;
   }
+  const { rows: [decided] } = await client.query('SELECT tenant_ref FROM drift WHERE id=$1', [driftId]);
+  await resolveChangeFlags(client, { tenantRef: decided.tenant_ref, sourceId: `drift:${driftId}` });
+
 }
 
 /**

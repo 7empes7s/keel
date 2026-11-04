@@ -592,6 +592,20 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     breakGlass: 'The fixture policy targets only the fixture group and excludes every break-glass account. KEEL writes it report-only; the lockout gate must allow it.',
     restoreBefore: 'Turn the fixture policy on (it blocks only carla) BEFORE the snapshot, so the backup has it enabled; after the snapshot delete it (soft delete only). The restore brings it back report-only and leaves the "turn on" item the next step uses.',
   },
+  // Issue #994: sign-in settings (engine/restore/signInSettingsOperations.mjs).
+  authenticationContextClassReference: {
+    kind: 'named-object',
+    fixture: `an authentication context in a slot nothing uses (no Conditional Access policy, SharePoint site or sensitivity label names it), named ${FIXTURE_PREFIX}-context, not available`,
+    select: `${FIXTURE_PREFIX}-context`, drift: 'change its description; for the create round, a slot KEEL has never written (the upsert creates it under the same id)',
+    note: 'Check the dry run says nothing uses the slot. A context cannot be deleted once a policy used it: never point a Conditional Access policy at the fixture slot. Leave it not available at the end.',
+  },
+  featureRolloutPolicy: {
+    kind: 'named-object', lockout: true,
+    fixture: `staged rollout ${FIXTURE_PREFIX}-rollout for passwordHashSync, switched off, not organization-wide, applied to the empty group ${FIXTURE_PREFIX}-rollout-group`,
+    select: `${FIXTURE_PREFIX}-rollout`, drift: 'change its description and remove the group; for the create round delete the rollout: the restore recreates it switched off and adds the group back',
+    breakGlass: 'The fixture rollout stays switched off and applies only to the empty fixture group; no break-glass account is in it. The lockout gate must allow the write and the dry run\'s "Changes sign-in" effects must be approved.',
+    note: 'Never switch the fixture rollout on, never make it organization-wide, and delete it at the end.',
+  },
 });
 
 /** The supported ledger rows, plus edges: the only source of operations. */

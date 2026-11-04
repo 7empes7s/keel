@@ -41,8 +41,9 @@ import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/resto
 import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
+import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects } from './signInSettingEffects.mjs';
 
-export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing']);
+export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing', SIGN_IN_EFFECT]);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
 
 const NOT_BACKED_UP = 'KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.';
@@ -69,6 +70,11 @@ const DISCLOSURES = Object.freeze({
   'access-changing': 'This puts back settings that decide who has admin access, who may join or register devices, '
     + 'or which secrets and certificates apps may add. If the backup was changed after it was taken, that changed access is granted. '
     + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
+  // Issue #994: an authentication context that something uses, or a staged rollout.
+  [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
+    + 'or which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom. '
+    + 'People may be asked for other sign-in methods, may stop being asked, or may not be able to sign in until it is set right. '
+    + `Check the change with the person who owns sign-in before approving. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {
@@ -598,6 +604,11 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // Batch 2: a role assignment or an approval policy is judged on create too:
   // recreating it gives access back (or names who approves admin changes).
   ...Object.fromEntries([...NAMED_ACCESS_KINDS].map((kind) => [kind, { reviewed: true, judgesCreates: true, rules: accessRules(kind) }])),
+  // Issue #994: sign-in settings whose effects depend on more than the object
+  // (signInSettingEffects.mjs): what uses an authentication context, and the
+  // groups a staged rollout covers. Each is judged on create too.
+  authenticationContextClassReference: { reviewed: true, effectsOf: authenticationContextEffects },
+  featureRolloutPolicy: { reviewed: true, effectsOf: featureRolloutEffects },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to
@@ -802,6 +813,10 @@ export function classifyContentEffects(resources) {
 
     effects.push(...protectionEffects(resource));
     const review = CONTENT_EFFECT_RULES[resourceType];
+    if (review?.effectsOf) {
+      for (const item of review.effectsOf(resource)) effects.push({ naturalKey, resourceType, ...item, disclosure: disclosureFor(item.effect) });
+      continue;
+    }
     if (review?.reviewed) {
       if (verb === 'delete' && review.onDelete) {
         effects.push({ naturalKey, resourceType, field: '(object deleted)', effect: review.onDelete, before: 'present', after: 'deleted', disclosure: disclosureFor(review.onDelete) });

@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 104 at least in part and 9 hold nothing to restore; the other 71 are restored by hand from the backup.
+KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 106 at least in part and 9 hold nothing to restore; the other 69 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -30,7 +30,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Enterprise apps | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Delegated app consents | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | External identity providers | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
-| Certificate sign-in settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Certificate sign-in settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
 | Built-in admin roles | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Custom admin roles | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin role templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
@@ -95,8 +95,8 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 - **External identity providers** (Microsoft limit). Microsoft never lets anyone read the client secret of an identity provider.
   - *Not brought back:* client secret (Microsoft never returns it).
   - *You do:* Recreate the provider in the Entra admin center using the settings in the backup, and enter a fresh secret from the provider.
-- **Certificate sign-in settings** (not built yet). A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.
-  - *You do:* Restore the certificate authorities by hand in the Entra admin center using the backup, and test sign-in before closing the session.
+- **Certificate sign-in settings** (KEEL choice). A wrong trusted certificate authority lets anyone holding a certificate from it sign in, or locks every certificate user out, so KEEL never writes the list.
+  - *You do:* A restore lists each backed-up authority (issuer, root or intermediate, expiry, revocation list) and whether it is missing or different now. Upload or correct those by hand in the Entra admin center, and test a certificate sign-in before closing the session.
 - **Built-in admin roles** (Nothing to restore). Microsoft provides the built-in roles. They are switched on from Microsoft's templates, never written.
   - *You do:* Nothing to restore. Who holds each role is restored with role assignments.
 - **Custom admin roles.** Recreates custom roles and puts their permissions back. The dry run lists permissions a restore adds and removes.
@@ -213,7 +213,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Conditional Access policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant |
 | Authentication strengths | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Named locations | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Authentication contexts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Authentication contexts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Authentication methods | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-14) |
 | User and guest permissions | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -229,7 +229,7 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 | Sign-in routing (home realm discovery) | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Token issuance policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Default app credential rules | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-11-04, fix in progress |
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -260,8 +260,9 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* a change to the allowed sign-in method combinations (in the backup, but KEEL does not write it yet).
   - *You do:* Built-in strengths cannot be changed by anyone. A change to the allowed sign-in method combinations is reported, not restored: set it by hand. Removing extra strengths is done by hand.
 - **Named locations.** Recreates named locations, puts their settings back and removes ones added since the backup.
-- **Authentication contexts** (not built yet). Each context has a fixed slot that Conditional Access policies and SharePoint labels point to. KEEL cannot yet check what uses a slot before changing it.
-  - *You do:* Restore the name and description by hand in the Entra admin center, keeping each one in the same slot as in the backup.
+- **Authentication contexts.** Puts back each context's name, description and whether it is available, always in the same slot (c1 to c99) as in the backup (tested against a simulated tenant only).
+  - *Not brought back:* which SharePoint sites and sensitivity labels require the context (stored separately and not in the backup yet).
+  - *You do:* The dry run lists the Conditional Access policies that use each slot. Making a used context available or unavailable needs the restore approval. Check SharePoint sites and sensitivity labels that require a context by hand.
 - **Authentication methods.** Puts the authentication methods policy and each method's settings back, only when the break-glass accounts can still sign in afterwards.
   - *You do:* A method that no longer exists in your tenant is not added back.
 - **Security defaults.** Turns security defaults on or off as in the backup, only when the break-glass accounts can still sign in afterwards.
@@ -294,9 +295,9 @@ KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it
 - **Token lifetime policy.** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet); being the organization default (KEEL recreates it as an ordinary policy) (in the backup, but KEEL does not write it yet).
   - *You do:* Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.
-- **Staged rollout of sign-in features** (not built yet). Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.
-  - *Not brought back:* which groups the rollout covers (stored separately and not in the backup yet).
-  - *You do:* Recreate the rollout by hand using the backup, then add the same groups.
+- **Staged rollout of sign-in features.** Recreates the rollout and puts its name, feature and scope back, and adds the groups it covered when they exist (tested against a simulated tenant only). Only after the break-glass check and the restore approval.
+  - *Not brought back:* whether the rollout is on (it is restored switched off until someone approves switching it on) (in the backup, but KEEL does not write it yet).
+  - *You do:* A recreated rollout comes back switched off; switching it on is a separate approved step. A group that no longer exists is added by hand. Groups added since the backup are not removed.
 - **App credential policies.** Recreates the policies and puts their rules back.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Which apps each policy applies to is not backed up yet, so assign the policies again by hand.

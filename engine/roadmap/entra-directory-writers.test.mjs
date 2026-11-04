@@ -138,8 +138,10 @@ test('each writer type is a fixture-tested create and update, delete is unsuppor
 });
 
 test('the formerly unknown Entra types without a writer stay manual and are restored by hand', () => {
-  const stillManual = ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'authenticationContextClassReference',
-    'activityBasedTimeoutPolicy', 'featureRolloutPolicy', 'accessReviewScheduleDefinition', 'accessPackage', 'connectedOrganization'];
+  // Issue #994 gave authentication contexts and staged rollout a writer
+  // (sign-in-settings.test.mjs); certificate authorities stay manual by design.
+  const stillManual = ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule',
+    'activityBasedTimeoutPolicy', 'accessReviewScheduleDefinition', 'accessPackage', 'connectedOrganization'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);

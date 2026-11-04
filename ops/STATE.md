@@ -102,6 +102,11 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   (`defenderRoleAssignment.update`, `tenantAppManagementPolicy.update`): fix, then recapture.
 - Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in
   `docs/roadmap/release-signoff.md`.
+- Sign-in settings (#994, fixture-tested only): authentication context upsert and staged rollout create and
+  update need live captures. Contexts: a `KEEL-RT-994-context` in a slot nothing uses, left not available.
+  Rollout: `KEEL-RT-994-rollout` (switched off) applied to the empty group `KEEL-RT-994-rollout-group`, behind
+  the lockout gate with its "Changes sign-in" effects approved. `authenticationMethodsPolicy.update` now writes
+  less (no x509 binding or mode fields); its existing record still holds.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

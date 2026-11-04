@@ -171,7 +171,12 @@ const REGISTERED = Object.freeze({
   homeRealmDiscoveryPolicy: ['create', 'update'],
   permissionGrantPolicy: ['create', 'update'],
   oauth2PermissionGrant: ['create', 'update'],
+  // Issue #994: authentication contexts (an upsert under the backup's id) and staged rollout.
+  authenticationContextClassReference: ['create', 'update'],
+  featureRolloutPolicy: ['create', 'update'],
 });
+
+const UPSERT_TYPES = new Set(['authenticationContextClassReference']);
 
 function governor() {
   return new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });
@@ -238,7 +243,9 @@ test('every registered operation is fixture-tested with a named proof and correc
       assert.equal(capability.credentialMode, 'restorer');
       // Wave 2: a pair with a registered writer names that writer's handler.
       assert.equal(capability.handler, writerFor(resourceType, operation)?.handler ?? 'engine/restore/applyEngine.mjs#applyWave');
-      assert.equal(capability.idOutcome, operation === 'create' ? 'server-assigned' : operation === 'delete' ? 'terminal' : 'preserved');
+      // Issue #994: an authentication context is upserted under the backup's own id, so even its create keeps it.
+      const upsert = UPSERT_TYPES.has(resourceType);
+      assert.equal(capability.idOutcome, operation === 'create' && !upsert ? 'server-assigned' : operation === 'delete' ? 'terminal' : 'preserved');
       assert.equal(capability.path, graphPathFor(resourceType));
       assert.equal(capability.contractVersion, CAPABILITY_CONTRACT_VERSION);
     }

@@ -3,6 +3,7 @@
 // and kinds, each channel's health from what was last sent through it, plain sentences
 // for provider errors, rule and escalation titles, the counts behind the tiles, the
 // status pill and the verdict. Ids never appear in anything these return.
+import { SUMMARY_EVENT_KIND, SUMMARY_REFUSED_CHANNEL_KINDS } from "../../engine/insights/summary.mjs";
 import type { IconName } from "@/components/shell/icons";
 import type { BadgeTone } from "@/components/ui/badge";
 import { plainLabel } from "@/lib/baselines-view";
@@ -212,15 +213,30 @@ function fromNowWords(value: string, now: string): string {
   return `in ${hours} ${hours === 1 ? "hour" : "hours"}`;
 }
 
+// Issue #980: the weekly summary is its own kind of event. Only a rule that names it gets
+// it; "All alerts" never does.
+export const WEEKLY_SUMMARY = SUMMARY_EVENT_KIND as "summary.weekly";
+export const SUMMARY_WHEN = "every Monday at 07:00";
+
+export const isSummaryRule = (rule: Pick<Subscription, "event_glob">): boolean => rule.event_glob === WEEKLY_SUMMARY;
+
+/** Why a channel cannot get the weekly summary (PagerDuty, text message), or null. */
+export function summaryRefusal(channel: Pick<Channel, "kind"> | null): string | null {
+  if (!channel) return null;
+  return (SUMMARY_REFUSED_CHANNEL_KINDS as Record<string, string>)[channel.kind] ?? null;
+}
+
 /** Which alerts a rule sends, in words: "All alerts", "An alert opened". */
 export function eventWords(glob: string): string {
   if (glob === "*") return "All alerts";
+  if (glob === WEEKLY_SUMMARY) return "Weekly summary";
   if (glob in DISPLAY_ENUMS.eventKind) return displayEnum("eventKind", glob);
   return `Events matching “${glob}”`;
 }
 
 export function patternWords(glob: string): string {
   if (glob === "*") return "all alerts";
+  if (glob === WEEKLY_SUMMARY) return "the weekly summary";
   const exact = eventWords(glob);
   return exact.startsWith("Events") ? `events matching “${glob}”` : `“${exact.toLowerCase()}” alerts`;
 }
@@ -230,6 +246,7 @@ export const RULE_EVENTS: { value: string; label: string; hint: string }[] = [
   { value: "*", label: "All alerts", hint: "Every alert Keel raises, and tests" },
   { value: "alert.opened", label: "An alert opened", hint: "The first time a check fails" },
   { value: "alert.reopened", label: "An alert came back", hint: "A resolved alert fails again" },
+  { value: WEEKLY_SUMMARY, label: "Weekly summary", hint: "What changed this week and where to start" },
 ];
 
 export function severityWords(minSeverity: string): string {
@@ -238,8 +255,14 @@ export function severityWords(minSeverity: string): string {
   return "All severities";
 }
 
+/** The second line under a rule: its severity, or when the weekly summary goes out. */
+export function ruleDetail(rule: Pick<Subscription, "event_glob" | "min_severity">): string {
+  return isSummaryRule(rule) ? "Every Monday at 07:00" : severityWords(rule.min_severity);
+}
+
 export function ruleSentence(rule: Pick<Subscription, "event_glob" | "min_severity">, channel: Pick<Channel, "kind" | "config"> | null): string {
   const to = channel ? channelName(channel) : "a channel that is no longer readable";
+  if (isSummaryRule(rule)) return `Sends the weekly summary ${SUMMARY_WHEN} to ${to}.`;
   const what = rule.event_glob === "*" ? "every alert" : patternWords(rule.event_glob);
   const rated = rule.min_severity === "notice" ? "" : ` rated ${displayEnum("severity", rule.min_severity).toLowerCase()} or above`;
   return `Sends ${what}${rated} to ${to}.`;
@@ -280,6 +303,7 @@ export function escalationTarget(rule: Pick<EscalationRule, "escalate_channel_id
 export function deliveryTitle(delivery: Pick<Delivery, "event">): string {
   const { kind, resourceKey } = delivery.event;
   const subject = typeof resourceKey === "string" && resourceKey.includes(":") ? plainLabel(resourceKey) : typeof resourceKey === "string" && resourceKey ? resourceKey : null;
+  if (kind === WEEKLY_SUMMARY) return "Weekly summary";
   const lead = kind === "alert.opened" ? "Alert opened" : kind === "alert.reopened" ? "Alert came back" : kind === "alert.escalated" ? "Nobody responded" : kind === "test" ? "Test alert" : displayEnum("eventKind", kind);
   return subject && kind !== "test" ? `${lead}: ${subject}` : lead;
 }
@@ -449,6 +473,7 @@ export function clockWords(value: string | null): string {
 /** Toast wording after each write. */
 export const OUTCOME_WORDS = {
   testQueued: (name: string) => ({ title: `Test alert queued for ${name}`, detail: "It appears under Sent as soon as Keel has tried it." }),
+  summaryQueued: (name: string) => ({ title: `This week's summary queued for ${name}`, detail: "It appears under Sent as soon as Keel has tried it." }),
   channelAdded: (name: string) => ({ title: `${name} added` }),
   channelOff: (name: string) => ({ title: `${name} turned off`, detail: "Its history is kept. Rules that use it stop sending until you pick another channel." }),
   channelOn: (name: string) => ({ title: `${name} turned back on` }),
@@ -464,7 +489,7 @@ export const OUTCOME_WORDS = {
 export function writeError(status: number, payload: { error?: string } | null): string {
   if (status === 403) return "Your access does not allow changing notification settings.";
   if (status === 404) return "That is no longer there. The page will refresh.";
-  if (status === 409 && payload?.error === "channel_off") return "This channel is turned off. Turn it back on to send a test.";
+  if (status === 409 && payload?.error === "channel_off") return "This channel is turned off. Turn it back on to send to it.";
   if (status === 400 && payload?.error && payload.error !== "invalid_request") return payload.error;
   if (status === 400) return "Keel could not read the form. Check the fields and try again.";
   if (status === 0) return "Keel could not be reached. Check the connection and try again.";

@@ -33,7 +33,7 @@ export const weeklyDedupKey = (event) => `${event.kind}:${event.week}`;
  * The scheduled run: one delivery per subscribed channel, at most once a week each.
  * @returns {Promise<{ event: object, deliveries: { delivery: object, job: object }[] }>}
  */
-export async function sendWeeklySummary(client, { tenantRef, requestedBy, now = new Date(), portalUrl, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS }) {
+export async function sendWeeklySummary(client, { tenantRef, requestedBy, now = new Date(), portalUrl = process.env.KEEL_PORTAL_URL, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS }) {
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
   const event = await weeklySummaryEvent(client, { tenantRef, now, portalUrl });
   const deliveries = await dispatchAlert(client, { event, requestedBy, maxAttempts, dedupKey: weeklyDedupKey(event) });
@@ -44,7 +44,7 @@ export async function sendWeeklySummary(client, { tenantRef, requestedBy, now = 
  * "Send this week's summary now": one delivery to one channel, through the same durable
  * path. Needs the same capability as managing channels.
  */
-export async function sendSummaryNow(client, { tenantRef, channelId, requestedBy, now = new Date(), portalUrl, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS }) {
+export async function sendSummaryNow(client, { tenantRef, channelId, requestedBy, now = new Date(), portalUrl = process.env.KEEL_PORTAL_URL, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS }) {
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
   const requester = await findPrincipalById(client, requestedBy);
   if (!(await can(client, requester, 'configuration', new Date()))) {

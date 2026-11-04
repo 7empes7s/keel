@@ -14,6 +14,13 @@ export const SUMMARY_START_LIMIT = 5;
 export const SUMMARY_TITLE = 'Keel weekly summary';
 export const SUMMARY_LINK_PATH = `/insights?days=${SUMMARY_DAYS}`;
 
+// Channels that cannot carry the summary, with the reason a person reads. A rule for
+// them is refused (notify/notifications.mjs), and the portal's rule form says why.
+export const SUMMARY_REFUSED_CHANNEL_KINDS = Object.freeze({
+  pagerduty: 'PagerDuty opens an incident for every event it gets, so it cannot get the weekly summary. Send the summary to email, Teams, Slack or a web address instead.',
+  sms: 'A text message is too short for the weekly summary. Send the summary to email, Teams, Slack or a web address instead.',
+});
+
 /**
  * The ISO week a moment falls in: "2026-W45". A rerun in the same week gets the same
  * week, so it does not send twice.

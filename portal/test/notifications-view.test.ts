@@ -18,8 +18,11 @@ import {
   notificationsStatus,
   notificationsVerdict,
   orderChannels,
+  RULE_EVENTS,
+  ruleDetail,
   ruleSentence,
   severityWords,
+  summaryRefusal,
   writeError,
 } from "@/lib/notifications-view";
 
@@ -187,8 +190,29 @@ test("the status pill and the verdict name the failing channel first", () => {
 
 test("a refused write is explained in words", () => {
   assert.equal(writeError(403, null), "Your access does not allow changing notification settings.");
-  assert.equal(writeError(409, { error: "channel_off" }), "This channel is turned off. Turn it back on to send a test.");
+  assert.equal(writeError(409, { error: "channel_off" }), "This channel is turned off. Turn it back on to send to it.");
   assert.equal(writeError(400, { error: "provider is required (supported: twilio)" }), "provider is required (supported: twilio)");
   assert.equal(writeError(400, { error: "invalid_request" }), "Keel could not read the form. Check the fields and try again.");
   assert.equal(writeError(0, null), "Keel could not be reached. Check the connection and try again.");
+});
+
+// Issue #980: the weekly summary is a rule choice of its own, never part of "All alerts".
+test("Weekly summary is a rule choice with its own sentence, and the Sent list names it", () => {
+  const choice = RULE_EVENTS.find((event) => event.value === "summary.weekly");
+  assert.deepEqual(choice, { value: "summary.weekly", label: "Weekly summary", hint: "What changed this week and where to start" });
+  // The "All alerts" hint stays true: it sends alerts and tests, and never the summary.
+  assert.equal(RULE_EVENTS[0].hint, "Every alert Keel raises, and tests");
+  assert.equal(eventWords("summary.weekly"), "Weekly summary");
+  assert.equal(ruleSentence({ event_glob: "summary.weekly", min_severity: "notice" }, SLACK), "Sends the weekly summary every Monday at 07:00 to Slack.");
+  assert.equal(ruleSentence({ event_glob: "summary.weekly", min_severity: "notice" }, EMAIL), "Sends the weekly summary every Monday at 07:00 to Email to secops@contoso.com.");
+  assert.equal(ruleSentence({ event_glob: "*", min_severity: "notice" }, SLACK), "Sends every alert to Slack.");
+  assert.equal(ruleDetail({ event_glob: "summary.weekly", min_severity: "notice" }), "Every Monday at 07:00");
+  assert.equal(ruleDetail({ event_glob: "*", min_severity: "warning" }), "Warning or above");
+  assert.equal(deliveryTitle({ event: { kind: "summary.weekly", severity: "notice", verdict: "3 changes in the last 7 days; 1 needs a look." } }), "Weekly summary");
+  assert.match(summaryRefusal(PAGERDUTY) ?? "", /^PagerDuty opens an incident for every event it gets, so it cannot get the weekly summary\./);
+  assert.match(summaryRefusal({ kind: "sms" }) ?? "", /^A text message is too short for the weekly summary\./);
+  assert.equal(summaryRefusal(SLACK), null);
+  assert.equal(summaryRefusal(EMAIL), null);
+  // A summary rule alone does not count as sending critical alerts anywhere.
+  assert.equal(criticalCovered([{ id: "r", channel_id: SLACK.id, event_glob: "summary.weekly", min_severity: "notice" }], CHANNELS), false);
 });

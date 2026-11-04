@@ -385,6 +385,63 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+// Issue #980: "Weekly summary" is a choice in the rule form, its rule reads as a sentence,
+// "Send this week's summary now" posts to the channel's summary route, PagerDuty is
+// refused with a plain reason, and the Sent list names the summary. Phone, small phone
+// and laptop widths, both themes, axe clean.
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [375, 390, 1278]) {
+    test(`Notifications · weekly summary rule · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width < 400 ? 844 : 1000 });
+      await open(page, "/notifications/weekly-summary?tab=rules&open=5b500000-0000-4000-8000-0000000000f4", theme);
+      const sheet = page.getByRole("dialog", { name: "Edit rule" });
+      await expect(sheet).toBeVisible();
+      await expect(sheet.locator(".bl-help").last()).toHaveText("Sends the weekly summary every Monday at 07:00 to Email to secops@contoso.com.");
+      await expect(sheet.getByText("What changed in the last 7 days and where to start, with a link to Insights.", { exact: false })).toBeVisible();
+      await expect(sheet.getByRole("radiogroup", { name: "Rated at least" })).toHaveCount(0);
+      const sendNow = sheet.getByRole("button", { name: "Send this week's summary now" });
+      await expect(sendNow).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+      expect(results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }))).toEqual([]);
+      await page.screenshot({ path: test.info().outputPath(`notifications-weekly-summary-${width}-${theme}.png`), fullPage: false });
+    });
+  }
+}
+
+test("Notifications · Weekly summary: the rule form offers it, refuses PagerDuty, and Send now posts once", async ({ page }) => {
+  await page.setViewportSize({ width: 1278, height: 1000 });
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.method === "POST" && call.url.endsWith("/summary")).map((call) => call.url);
+  // A new rule offers the summary among the real events Keel sends.
+  await open(page, "/notifications/weekly-summary?tab=rules&add=rule");
+  const form = page.getByRole("dialog", { name: "Add a rule" });
+  await form.getByRole("button", { name: /^Which alerts/ }).click();
+  await expect(page.getByRole("option", { name: /Weekly summary/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.goto(`${HARNESS}#/notifications/weekly-summary?tab=rules&open=5b500000-0000-4000-8000-0000000000f4`);
+  const sheet = page.getByRole("dialog", { name: "Edit rule" });
+  await expect(sheet.getByRole("button", { name: "Which alerts: Weekly summary" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Send this week's summary now" }).click();
+  await expect(page.locator(".toast").first()).toContainText("This week's summary queued for Email to secops@contoso.com");
+  expect(await posts()).toEqual(["/api/channels/c4e10000-0000-4000-8000-0000000000c2/summary"]);
+  // Pick PagerDuty: the form says why and will not save.
+  await sheet.getByRole("button", { name: /Send to/ }).click();
+  await page.getByRole("option", { name: /PagerDuty/ }).click();
+  await expect(sheet.getByRole("alert")).toContainText("PagerDuty opens an incident for every event it gets, so it cannot get the weekly summary.");
+  await expect(page.getByRole("button", { name: "Save rule" })).toBeDisabled();
+  // The Sent list names the summary.
+  await page.goto(`${HARNESS}#/notifications/weekly-summary?tab=sent`);
+  await expect(page.getByText("Weekly summary", { exact: true }).first()).toBeVisible();
+});
+
+test("Schedules · the weekly summary is listed in plain words", async ({ page }) => {
+  await page.setViewportSize({ width: 1278, height: 1000 });
+  await open(page, "/schedules/weekly-summary");
+  await expect(page.getByText("Weekly summary to notification channels").first()).toBeVisible();
+});
+
 test("destructive writes ask for confirmation with Cancel focused", async ({ page }) => {
   await open(page, "/notifications?tab=rules");
   await page.getByRole("button", { name: "Delete", exact: true }).first().click();

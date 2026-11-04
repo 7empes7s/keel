@@ -55,6 +55,7 @@ const KIND_ICONS: Record<string, IconName> = {
   "drift-detect": "baselines",
   "policy-evaluate": "automation",
   notify: "bell",
+  "insights-summary": "bell",
   discover: "search",
 };
 

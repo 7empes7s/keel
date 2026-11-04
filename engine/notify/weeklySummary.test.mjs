@@ -293,6 +293,21 @@ test('Teams gets a card with the verdict, the places to start and a button to In
   assert.doesNotMatch(JSON.stringify(sent[0]), GUID);
 });
 
+test('names from the tenant cannot add a link or formatting to the Teams card', async () => {
+  const sent = [];
+  const transport = createAdapterTransport('teams', {
+    resolveSecret: async () => 'https://prod-01.westeurope.logic.azure.com/workflows/abc?sig=secret',
+    fetchImpl: async (url, init) => { sent.push(JSON.parse(init.body)); return new Response('', { status: 202 }); },
+  });
+  const rows = fixtureRows('Amara Okafor');
+  rows[1] = { ...rows[1], object: { ...rows[1].object, name: '[Sign in again](https://evil.example/login) *now*' } };
+  const event = buildWeeklySummary({ ...fixtureFeed('x'), rows }, { now: NOW, portalUrl: PORTAL });
+  await transport({ channel: { kind: 'teams', config: { endpointRef: 'env:KEEL_INTEGRATION_TEAMS' } }, event, delivery: { id: 'd4' } });
+  const line = sent[0].attachments[0].content.body.map((block) => block.text).find((text) => text.includes('Sign in again'));
+  assert.equal(line, '- Amara Okafor changed \\[Sign in again\\]\\(https://evil.example/login\\) \\*now\\*, a group, 30 hours ago.');
+  assert.deepEqual(sent[0].attachments[0].content.actions.map((action) => action.url), ['https://keel.contoso.test/insights?days=7']);
+});
+
 test('Slack gets the text with a Slack link; email gets the same text; a webhook gets JSON with the same fields', async () => {
   const slack = [];
   await createAdapterTransport('slack', {

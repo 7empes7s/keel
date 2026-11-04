@@ -51,8 +51,11 @@ import {
   notificationCounts,
   notificationsVerdict,
   orderChannels,
+  isSummaryRule,
+  ruleDetail,
   ruleSentence,
-  severityWords,
+  summaryRefusal,
+  WEEKLY_SUMMARY,
   writeError,
   type ChannelKind,
 } from "@/lib/notifications-view";
@@ -179,6 +182,14 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
     const delivery = (result.payload?.delivery ?? null) as Partial<Delivery> | null;
     if (delivery?.id) setQueued((current) => [{ ...(delivery as Delivery), channel_kind: channel.kind, created_at: delivery.created_at ?? now }, ...current]);
     const words = OUTCOME_WORDS.testQueued(channelName(channel));
+    toast({ tone: "info", title: words.title, detail: words.detail, href: href({ tab: "sent", channel: channel.id, open: null, add: null, status: null }), hrefLabel: "Show under Sent" });
+  });
+  // Issue #980: one delivery of this week's summary to one channel, through the same
+  // durable path as a test.
+  const sendSummary = (channel: Channel) => run(`summary:${channel.id}`, () => notificationCalls.sendSummary(channel.id), (result) => {
+    const delivery = (result.payload?.delivery ?? null) as Partial<Delivery> | null;
+    if (delivery?.id) setQueued((current) => [{ ...(delivery as Delivery), channel_kind: channel.kind, created_at: delivery.created_at ?? now }, ...current]);
+    const words = OUTCOME_WORDS.summaryQueued(channelName(channel));
     toast({ tone: "info", title: words.title, detail: words.detail, href: href({ tab: "sent", channel: channel.id, open: null, add: null, status: null }), hrefLabel: "Show under Sent" });
   });
   const turnOff = (channel: Channel) => run(`off:${channel.id}`, () => notificationCalls.turnChannelOff(channel.id), () => { const words = OUTCOME_WORDS.channelOff(channelName(channel)); toast({ tone: "info", title: words.title, detail: words.detail }); });
@@ -319,7 +330,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
         <span aria-hidden="true" className="nf-kind"><Icon name="filter" /></span>
         <span className="nf-row-name">
           <Link className="nf-row-link" href={href({ open: rule.id, add: null })} onClick={(event) => openPanel(event, rule.id)}>{eventWords(rule.event_glob)}</Link>
-          <small>{severityWords(rule.min_severity)}</small>
+          <small>{ruleDetail(rule)}</small>
         </span>
         <span className="nf-row-mid">
           <span className="nf-to">{channel ? <><Icon name={channelIcon(channel.kind)} />{channelName(channel)}</> : <><Icon name="alert" />A channel that is no longer readable</>}</span>
@@ -327,7 +338,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
         </span>
         <span className="nf-row-acts">
           <Link className="btn btn-sm" href={href({ open: rule.id, add: null })} onClick={(event) => openPanel(event, rule.id)}>Edit</Link>
-          <ConfirmButton confirmLabel="Delete rule" description={<p>{eventWords(rule.event_glob)} ({severityWords(rule.min_severity).toLowerCase()}) will no longer be sent to {channel ? channelName(channel) : "this channel"}. Add the rule again to restore it.</p>} disabled={isBusy} onConfirm={() => void deleteRule(rule)} size="sm" title="Delete this rule?" tone="danger">Delete</ConfirmButton>
+          <ConfirmButton confirmLabel="Delete rule" description={<p>{eventWords(rule.event_glob)} ({ruleDetail(rule).toLowerCase()}) will no longer be sent to {channel ? channelName(channel) : "this channel"}. Add the rule again to restore it.</p>} disabled={isBusy} onConfirm={() => void deleteRule(rule)} size="sm" title="Delete this rule?" tone="danger">Delete</ConfirmButton>
         </span>
       </div>
     );
@@ -445,7 +456,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
                 groupings={ruleGroupings}
                 items={subscriptions}
                 label="Who gets which alerts"
-                matches={(item, text) => { const channel = channelById.get(item.channel_id); return `${eventWords(item.event_glob)} ${severityWords(item.min_severity)} ${channel ? channelName(channel) : ""}`.toLowerCase().includes(text); }}
+                matches={(item, text) => { const channel = channelById.get(item.channel_id); return `${eventWords(item.event_glob)} ${ruleDetail(item)} ${channel ? channelName(channel) : ""}`.toLowerCase().includes(text); }}
                 noun={{ one: "rule", many: "rules" }}
                 renderRow={renderRule}
                 rowName={(item) => `${eventWords(item.event_glob)} to ${channelById.get(item.channel_id) ? channelName(channelById.get(item.channel_id) as Channel) : "an unreadable channel"}`}
@@ -555,6 +566,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
           href={href}
           now={now}
           onClose={closePanel}
+          onSummary={() => void sendSummary(openChannel)}
           onTest={() => void sendTest(openChannel)}
           onTurnOff={() => void turnOff(openChannel)}
           onTurnOn={() => void turnOn(openChannel)}
@@ -571,6 +583,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
           error={error}
           onClose={closePanel}
           onDelete={() => void deleteRule(openRule)}
+          onSummary={(channel) => void sendSummary(channel)}
           onSave={(body) => run(`save:${openRule.id}`, () => notificationCalls.changeRule(openRule.id, body), () => { toast({ tone: "success", title: OUTCOME_WORDS.ruleChanged.title }); closePanel(); })}
           rule={openRule}
         />
@@ -678,7 +691,7 @@ function Spark({ buckets }: { buckets: number[] }) {
   );
 }
 
-function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, readOnly, href, openPanel, switchTo, onClose, onTest, onTurnOff, onTurnOn }: {
+function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, readOnly, href, openPanel, switchTo, onClose, onSummary, onTest, onTurnOff, onTurnOn }: {
   channel: Channel;
   health: ReturnType<typeof channelHealth>;
   rules: Subscription[];
@@ -691,11 +704,13 @@ function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, re
   openPanel: (event: MouseEvent, id: string) => void;
   switchTo: (changes: Record<string, string | null>) => void;
   onClose: () => void;
+  onSummary: () => void;
   onTest: () => void;
   onTurnOff: () => void;
   onTurnOn: () => void;
 }) {
   const name = channelName(channel);
+  const summaryOk = !summaryRefusal(channel);
   const own = deliveries.filter((delivery) => delivery.channel_id === channel.id).sort((a, b) => new Date(deliveryTime(b) ?? 0).valueOf() - new Date(deliveryTime(a) ?? 0).valueOf());
   const recent = own.slice(0, 5);
   const isBusy = busy !== null;
@@ -706,6 +721,7 @@ function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, re
       footer={!readOnly ? <>
         {channel.enabled ? <>
           <button aria-busy={busy === `test:${channel.id}` || undefined} className="btn btn-primary" disabled={isBusy} onClick={onTest} type="button"><Icon name="swap" />Send test</button>
+          {summaryOk ? <button aria-busy={busy === `summary:${channel.id}` || undefined} className="btn" disabled={isBusy} onClick={onSummary} type="button"><Icon name="inbox" />Send this week&apos;s summary now</button> : null}
           {health.state === "failing" ? <Link className="btn" href={href({ add: "channel", open: null })} onClick={(event) => { if (event.metaKey || event.ctrlKey) return; event.preventDefault(); switchTo({ add: "channel", open: null }); }}><Icon name="plus" />Add a new {channelKindLabel(channel.kind)} channel</Link> : null}
           <ConfirmButton confirmLabel="Turn off" description={<p>Alerts sent to {name} stop at once, including critical ones. Its history is kept, and rules that use it stay set up.</p>} disabled={isBusy} onConfirm={onTurnOff} title={`Turn off ${name}?`}><Icon name="pause" />Turn off</ConfirmButton>
           <p className="bl-help">A test alert goes only to this channel and shows under Sent. Turning off keeps its history; rules that use it stop sending until you pick another channel.</p>
@@ -734,7 +750,7 @@ function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, re
           <h3>Rules that use it</h3>
           {rules.length ? (
             <ul className="nf-links">
-              {rules.map((rule) => <li key={rule.id}><Link href={href({ tab: "rules", open: rule.id, add: null })} onClick={(event) => { if (event.metaKey || event.ctrlKey) return; event.preventDefault(); switchTo({ tab: "rules", open: rule.id, add: null }); }}>{eventWords(rule.event_glob)} · {severityWords(rule.min_severity).toLowerCase()}</Link></li>)}
+              {rules.map((rule) => <li key={rule.id}><Link href={href({ tab: "rules", open: rule.id, add: null })} onClick={(event) => { if (event.metaKey || event.ctrlKey) return; event.preventDefault(); switchTo({ tab: "rules", open: rule.id, add: null }); }}>{eventWords(rule.event_glob)} · {ruleDetail(rule).toLowerCase()}</Link></li>)}
             </ul>
           ) : <p className="nf-plain nf-muted">No rule sends to it yet{readOnly ? "." : <>. <Link className="nf-inline-link" href={href({ tab: "rules", add: "rule", open: null })} onClick={(event) => { if (event.metaKey || event.ctrlKey) return; event.preventDefault(); switchTo({ tab: "rules", add: "rule", open: null }); }}>Add a rule</Link></>}</p>}
         </section>
@@ -836,7 +852,7 @@ function ChannelSheet({ busy, error, onClose, onSave }: {
   );
 }
 
-function RuleSheet({ rule, channels, busy, error, onClose, onSave, onDelete }: {
+function RuleSheet({ rule, channels, busy, error, onClose, onSave, onDelete, onSummary }: {
   rule: Subscription | null;
   channels: Channel[];
   busy: string | null;
@@ -844,6 +860,7 @@ function RuleSheet({ rule, channels, busy, error, onClose, onSave, onDelete }: {
   onClose: () => void;
   onSave: (body: { channelId: string; eventGlob: string; minSeverity: string }) => void;
   onDelete?: () => void;
+  onSummary?: (channel: Channel) => void;
 }) {
   const usable = channels.filter((channel) => channel.enabled || channel.id === rule?.channel_id);
   const [channelId, setChannelId] = useState<string | null>(rule?.channel_id ?? usable[0]?.id ?? null);
@@ -853,23 +870,34 @@ function RuleSheet({ rule, channels, busy, error, onClose, onSave, onDelete }: {
   const eventOptions: ChoiceOption<string>[] = RULE_EVENTS.some((event) => event.value === eventGlob) ? RULE_EVENTS : [...RULE_EVENTS, { value: eventGlob, label: eventWords(eventGlob), hint: "Not an alert Keel sends today" }];
   const chosen = channels.find((channel) => channel.id === channelId) ?? null;
   const isBusy = busy !== null;
+  // Issue #980: the weekly summary is always a notice, and PagerDuty and text messages
+  // cannot get it; the form says why instead of saving a rule the server refuses.
+  const summary = eventGlob === WEEKLY_SUMMARY;
+  const refusal = summary ? summaryRefusal(chosen) : null;
+  const savedSummary = rule && isSummaryRule(rule) && chosen && chosen.id === rule.channel_id && chosen.enabled && !summaryRefusal(chosen) ? chosen : null;
   return (
     <DetailsSheet
       footer={<>
-        <button aria-busy={busy === "add-rule" || busy === `save:${rule?.id}` || undefined} className="btn btn-primary" disabled={isBusy || !channelId} form="nf-rule-form" type="submit">{rule ? "Save rule" : "Add rule"}</button>
+        <button aria-busy={busy === "add-rule" || busy === `save:${rule?.id}` || undefined} className="btn btn-primary" disabled={isBusy || !channelId || Boolean(refusal)} form="nf-rule-form" type="submit">{rule ? "Save rule" : "Add rule"}</button>
+        {savedSummary && onSummary ? <button aria-busy={busy === `summary:${savedSummary.id}` || undefined} className="btn" disabled={isBusy} onClick={() => onSummary(savedSummary)} type="button"><Icon name="inbox" />Send this week&apos;s summary now</button> : null}
         {rule && onDelete ? <ConfirmButton confirmLabel="Delete rule" description={<p>{eventWords(rule.event_glob)} will no longer be sent to {chosen ? channelName(chosen) : "this channel"}. Add the rule again to restore it.</p>} disabled={isBusy} onConfirm={onDelete} title="Delete this rule?" tone="danger">Delete</ConfirmButton> : null}
-        <p className="bl-help">{chosen ? ruleSentence({ event_glob: eventGlob, min_severity: severity }, chosen) : "Pick a channel to send to."}{rule ? " Changes apply to the next alert." : ""}</p>
+        <p className="bl-help">{chosen ? ruleSentence({ event_glob: eventGlob, min_severity: severity }, chosen) : "Pick a channel to send to."}{rule && !summary ? " Changes apply to the next alert." : ""}</p>
       </>}
       kicker={<span>Who gets which alerts</span>}
       onClose={onClose}
       title={rule ? "Edit rule" : "Add a rule"}
     >
-      <form className="nf-form" id="nf-rule-form" onSubmit={(event) => { event.preventDefault(); if (channelId) onSave({ channelId, eventGlob, minSeverity: severity }); }}>
+      <form className="nf-form" id="nf-rule-form" onSubmit={(event) => { event.preventDefault(); if (channelId && !refusal) onSave({ channelId, eventGlob, minSeverity: summary ? "notice" : severity }); }}>
         <fieldset disabled={isBusy}>
           {usable.length ? <OptionPicker label="Send to" onChange={setChannelId} options={channelOptions} value={channelId} /> : <p className="nf-error" role="alert"><Icon name="alert" />No channel is on. Add or turn on a channel first.</p>}
           <OptionPicker label="Which alerts" onChange={setEventGlob} options={eventOptions} value={eventGlob} />
-          <Segmented label="Rated at least" onChange={setSeverity} options={SEVERITIES} value={severity} />
-          <p className="nf-plain nf-muted">{severity === "notice" ? "Every alert, whatever its severity." : severity === "warning" ? "Warning and critical alerts; notices are left out." : "Critical alerts only."}</p>
+          {summary ? <>
+            <p className="nf-plain nf-muted">What changed in the last 7 days and where to start, with a link to Insights. &ldquo;All alerts&rdquo; rules do not send it.</p>
+            {refusal ? <p className="nf-error" role="alert"><Icon name="alert" />{refusal}</p> : null}
+          </> : <>
+            <Segmented label="Rated at least" onChange={setSeverity} options={SEVERITIES} value={severity} />
+            <p className="nf-plain nf-muted">{severity === "notice" ? "Every alert, whatever its severity." : severity === "warning" ? "Warning and critical alerts; notices are left out." : "Critical alerts only."}</p>
+          </>}
           {error ? <p className="nf-error" role="alert"><Icon name="alert" />{error}</p> : null}
         </fieldset>
       </form>

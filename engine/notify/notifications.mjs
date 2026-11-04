@@ -10,7 +10,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { enqueue } from '../jobs/queue.mjs';
 import { BlockedDestinationError, assertDestinationAllowed, guardedRequest } from '../safety/outboundDestination.mjs';
-import { SUMMARY_EVENT_KIND, summaryText } from '../insights/summary.mjs';
+import { SUMMARY_EVENT_KIND, SUMMARY_REFUSED_CHANNEL_KINDS, summaryText } from '../insights/summary.mjs';
 import {
   ADAPTER_KINDS, ChannelConfigError, MAX_RETRY_AFTER_MS, NotificationSendError, createAdapterTransports,
   validateChannelConfig,
@@ -64,11 +64,9 @@ function globToRegExp(glob) {
 // starts getting summaries on its own.
 export const OPT_IN_EVENT_KINDS = Object.freeze([SUMMARY_EVENT_KIND]);
 
-// Channels that cannot carry the weekly summary, with the reason a person reads.
-export const SUMMARY_REFUSED_CHANNEL_KINDS = Object.freeze({
-  pagerduty: 'PagerDuty opens an incident for every event it gets, so it cannot get the weekly summary. Send the summary to email, Teams, Slack or a web address instead.',
-  sms: 'A text message is too short for the weekly summary. Send the summary to email, Teams, Slack or a web address instead.',
-});
+// Channels that cannot carry the weekly summary, with the reason a person reads
+// (insights/summary.mjs, pure, so the portal's rule form shows the same reason).
+export { SUMMARY_REFUSED_CHANNEL_KINDS };
 
 export class SubscriptionRefusedError extends Error {
   constructor(message) { super(message); this.name = 'SubscriptionRefusedError'; }
@@ -165,12 +163,15 @@ export async function sendTestAlert(client, { channelId, requestedBy, maxAttempt
   const { rows: [channel] } = await client.query('SELECT id, kind, enabled FROM channel WHERE id = $1', [channelId]);
   if (!channel) throw new Error(CHANNEL_NOT_FOUND);
   if (!channel.enabled) throw new Error(CHANNEL_OFF);
-  return queueDelivery(client, {
+  const queued = await queueDelivery(client, {
     channelId: channel.id,
     requestedBy,
     maxAttempts,
     event: { kind: TEST_EVENT_KIND, severity: 'notice', requestedBy, sentAt: new Date().toISOString() },
   });
+  // A test carries no dedup key, so a delivery is always made.
+  if (!queued) throw new Error('test delivery was not queued');
+  return queued;
 }
 
 // Create the durable delivery rows before enqueuing the jobs. The transaction ensures

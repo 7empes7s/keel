@@ -23,14 +23,14 @@ export const SCHEDULE_GROUPS: Record<ScheduleGroup, { label: string; icon: IconN
   backups: { label: "Backups", icon: "backup", about: "Settings backed up by tier" },
   settings: { label: "Settings and content backups", icon: "cloud", about: "Service settings, mail, files and Teams" },
   checks: { label: "Checks", icon: "search", about: "What the tenant holds and what Microsoft changed" },
-  upkeep: { label: "Upkeep", icon: "settings", about: "Clean-up and the off-site copy" },
+  upkeep: { label: "Upkeep", icon: "settings", about: "Clean-up, the off-site copy and the weekly summary" },
 };
 export const SCHEDULE_GROUP_ORDER: ScheduleGroup[] = ["backups", "settings", "checks", "upkeep"];
 
 export function scheduleGroup(schedule: Pick<Schedule, "job_kind">): ScheduleGroup {
   if (schedule.job_kind === "collect" || schedule.job_kind === "backup") return "backups";
   if (schedule.job_kind === "workload-collect" || schedule.job_kind === "content-collect") return "settings";
-  if (schedule.job_kind === "prune" || schedule.job_kind === "offsite") return "upkeep";
+  if (schedule.job_kind === "prune" || schedule.job_kind === "offsite" || schedule.job_kind === "insights-summary") return "upkeep";
   return "checks";
 }
 
@@ -88,7 +88,7 @@ export function lastResult(schedule: Schedule, now: string): { label: string; to
 
 /** The load chip: how hard the schedule works Microsoft. */
 export function loadChip(schedule: Pick<Schedule, "job_kind">, forecast: ScheduleForecast | undefined): { label: string; tone: BadgeTone; icon: IconName } {
-  if (!forecast) return schedule.job_kind === "prune" || schedule.job_kind === "offsite"
+  if (!forecast) return schedule.job_kind === "prune" || schedule.job_kind === "offsite" || schedule.job_kind === "insights-summary"
     ? { label: "No Microsoft calls", tone: "neutral", icon: "info" }
     : { label: "Load not measured", tone: "neutral", icon: "info" };
   if (openWarnings(forecast).length) return { label: "Heavy load", tone: "soon", icon: "clock" };
@@ -321,6 +321,7 @@ const KIND_PLURAL: Record<string, string> = {
   collect: "Backups", backup: "Backups", prune: "Clean-ups", offsite: "Off-site copies",
   "workload-collect": "Settings backups", "content-collect": "Content backups",
   "api-drift": "Microsoft API checks", discover: "Checks of what the tenant holds",
+  "insights-summary": "Weekly summaries",
 };
 
 function gapWords(minutes: number): string {

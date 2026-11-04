@@ -899,6 +899,7 @@ test("notification routes enforce configuration while viewers can read recent de
   const { POST: disable } = await import("@/app/api/channels/[id]/disable/route");
   const { POST: enable } = await import("@/app/api/channels/[id]/enable/route");
   const { POST: sendTest } = await import("@/app/api/channels/[id]/test/route");
+  const { POST: sendSummary } = await import("@/app/api/channels/[id]/summary/route");
   const { DELETE: remove, PATCH: change } = await import("@/app/api/subscriptions/[id]/route");
   const { GET: escalations, POST: createEscalation } = await import("@/app/api/escalation-rules/route");
   const { POST: escalationOff } = await import("@/app/api/escalation-rules/[id]/disable/route");
@@ -920,6 +921,7 @@ test("notification routes enforce configuration while viewers can read recent de
     assert.equal((await disable(routeRequest(`/api/channels/${randomUUID()}/disable`, "POST", actor))).status, 403);
     assert.equal((await enable(routeRequest(`/api/channels/${randomUUID()}/enable`, "POST", actor))).status, 403);
     assert.equal((await sendTest(routeRequest(`/api/channels/${randomUUID()}/test`, "POST", actor))).status, 403);
+    assert.equal((await sendSummary(routeRequest(`/api/channels/${randomUUID()}/summary`, "POST", actor))).status, 403);
     assert.equal((await remove(routeRequest(`/api/subscriptions/${randomUUID()}`, "DELETE", actor))).status, 403);
     assert.equal((await change(routeRequest(`/api/subscriptions/${randomUUID()}`, "PATCH", { ...actor, body: { channelId: randomUUID(), eventGlob: "*", minSeverity: "notice" } }))).status, 403);
     assert.equal((await escalations(routeRequest("/api/escalation-rules", "GET", actor))).status, 403);
@@ -973,6 +975,31 @@ test("notification routes enforce configuration while viewers can read recent de
   assert.equal(testDelivery.channel_id, channel.id);
   assert.equal((await client.query("SELECT count(*)::int AS n FROM job WHERE params->>'deliveryId' = $1", [testDelivery.id])).rows[0].n, 1);
   assert.equal((await sendTest(routeRequest(`/api/channels/${randomUUID()}/test`, "POST", admin))).status, 404);
+
+  // Issue #980: "Weekly summary" is a rule of its own, stored at notice; PagerDuty and text
+  // messages are refused with a plain reason; "Send this week's summary now" queues one
+  // summary delivery through the same durable path.
+  const summaryRule = await createSubscription(routeRequest("/api/subscriptions", "POST", { ...admin, body: { channelId: channel.id, eventGlob: "summary.weekly", minSeverity: "critical" } }));
+  assert.equal(summaryRule.status, 201);
+  assert.equal((await summaryRule.json()).subscription.min_severity, "notice");
+  const pager = (await (await createChannel(routeRequest("/api/channels", "POST", { ...admin, body: { kind: "pagerduty", config: { routingKeyRef: "env:KEEL_INTEGRATION_PD_TEST" } } }))).json()).channel;
+  const refused = await createSubscription(routeRequest("/api/subscriptions", "POST", { ...admin, body: { channelId: pager.id, eventGlob: "summary.weekly", minSeverity: "notice" } }));
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error, /^PagerDuty opens an incident for every event it gets, so it cannot get the weekly summary\./);
+  const pagerAll = (await (await createSubscription(routeRequest("/api/subscriptions", "POST", { ...admin, body: { channelId: pager.id, eventGlob: "*", minSeverity: "critical" } }))).json()).subscription;
+  const refusedChange = await change(routeRequest(`/api/subscriptions/${pagerAll.id}`, "PATCH", { ...admin, body: { channelId: pager.id, eventGlob: "summary.weekly", minSeverity: "notice" } }));
+  assert.equal(refusedChange.status, 400, "a rule cannot be changed into a summary to PagerDuty either");
+  assert.equal((await client.query("SELECT event_glob FROM subscription WHERE id = $1", [pagerAll.id])).rows[0].event_glob, "*");
+  assert.equal((await sendSummary(routeRequest(`/api/channels/${pager.id}/summary`, "POST", admin))).status, 400);
+  const summarySent = await sendSummary(routeRequest(`/api/channels/${channel.id}/summary`, "POST", admin));
+  assert.equal(summarySent.status, 202);
+  const { delivery: summaryDelivery } = await summarySent.json();
+  assert.equal(summaryDelivery.event.kind, "summary.weekly");
+  assert.equal(summaryDelivery.event.severity, "notice");
+  assert.match(summaryDelivery.event.link, /\/insights\?days=7$/);
+  assert.doesNotMatch(JSON.stringify(summaryDelivery.event), /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  assert.equal((await client.query("SELECT count(*)::int AS n FROM job WHERE kind = 'notify' AND params->>'deliveryId' = $1", [summaryDelivery.id])).rows[0].n, 1);
+  assert.equal((await sendSummary(routeRequest(`/api/channels/${randomUUID()}/summary`, "POST", admin))).status, 404);
 
   // Escalation rules: list, add, turn off and back on, with the owner's name joined in.
   const noneYet = await escalations(routeRequest("/api/escalation-rules", "GET", admin));

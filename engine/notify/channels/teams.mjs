@@ -39,22 +39,27 @@ const adaptiveCard = (body, actions = []) => ({
   }],
 });
 
+// A TextBlock renders Markdown, and names in the summary come from the tenant (a policy
+// can be named "[Sign in](https://...)"). Every Markdown control character is escaped, so
+// the card's only link is its Open Insights button.
+export const escapeMarkdown = (value) => String(value ?? '').replace(/[\\`*_[\]()<>]/g, '\\$&');
+
 // Issue #980: the weekly summary as a card: the verdict, where to start, the services,
 // and a button to Insights when the link is a full address.
 export function summaryCard(event) {
   const text = (value, extra = {}) => ({ type: 'TextBlock', text: capText(value, TEXT_LIMIT), wrap: true, ...extra });
   const body = [
-    text(event.title ?? 'Keel weekly summary', { weight: 'Bolder', size: 'Medium' }),
-    text(event.verdict ?? ''),
+    text(escapeMarkdown(event.title ?? 'Keel weekly summary'), { weight: 'Bolder', size: 'Medium' }),
+    text(escapeMarkdown(event.verdict)),
   ];
   const items = Array.isArray(event.whereToStart) ? event.whereToStart : [];
   if (items.length) {
     body.push(text('Where to start', { weight: 'Bolder', spacing: 'Medium' }));
-    for (const item of items) body.push(text(`- ${startLine(item)}`, { spacing: 'Small' }));
+    for (const item of items) body.push(text(`- ${escapeMarkdown(startLine(item))}`, { spacing: 'Small' }));
   }
-  for (const line of [event.byServiceLine, event.quietLine]) if (line) body.push(text(line, { spacing: 'Medium', isSubtle: true }));
+  for (const line of [event.byServiceLine, event.quietLine]) if (line) body.push(text(escapeMarkdown(line), { spacing: 'Medium', isSubtle: true }));
   const link = typeof event.link === 'string' ? event.link : '';
-  if (!/^https:\/\//.test(link)) body.push(text(`Open Insights in Keel: ${link}`, { spacing: 'Medium' }));
+  if (!/^https:\/\//.test(link)) body.push(text(`Open Insights in Keel: ${escapeMarkdown(link)}`, { spacing: 'Medium' }));
   return adaptiveCard(body, /^https:\/\//.test(link) ? [{ type: 'Action.OpenUrl', title: 'Open Insights', url: link }] : []);
 }
 

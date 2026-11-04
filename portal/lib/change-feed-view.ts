@@ -2,6 +2,7 @@
 // and audit event as one row (engine/insights/feed.mjs), grouped by day, type, service,
 // priority or person. Pure, so server pages, the API and client lists share it.
 import { FEED_GROUPINGS, groupChangeFeed } from "../../engine/insights/feedGroups.mjs";
+import { feedFlags as engineFlags, feedObjectName as engineObjectName, feedPersonName as enginePersonName } from "../../engine/insights/view.mjs";
 import { csvLine } from "@/lib/csv";
 
 export type FeedSource = "drift" | "service" | "backup" | "audit";
@@ -102,17 +103,11 @@ export function feedGroups(rows: readonly FeedRow[], by: FeedGrouping): FeedGrou
 
 /** The object as a reader names it: never an id. */
 export function feedObjectName(row: Pick<FeedRow, "object" | "typeName">): string {
-  if (row.object.name) return row.object.name;
-  // "Unnamed group", but "Unnamed Conditional Access policy": a name that starts with a
-  // proper noun keeps its capitals.
-  const [head, next] = row.typeName.split(" ");
-  const common = /^[A-Z][a-z]+$/.test(head ?? "") && !/^[A-Z]/.test(next ?? "");
-  return `Unnamed ${common ? row.typeName.charAt(0).toLowerCase() + row.typeName.slice(1) : row.typeName}`;
+  return engineObjectName(row);
 }
 
 export function feedPersonName(row: Pick<FeedRow, "person">): string {
-  if (!row.person) return "Not known";
-  return row.person.name ?? (row.person.kind === "servicePrincipal" ? "Unnamed app" : "Unnamed person");
+  return enginePersonName(row);
 }
 
 /** "Today", "Yesterday" or the date in words, for a day group (UTC days). */
@@ -132,7 +127,7 @@ export function feedGroupLabel(group: Pick<FeedGroup, "key" | "label">, by: Feed
 
 /** The row's flags, most severe first (the engine sends them so). */
 export function feedFlags(row: Pick<FeedRow, "flags">): FeedFlag[] {
-  return Array.isArray(row.flags) ? row.flags : [];
+  return engineFlags(row) as FeedFlag[];
 }
 
 export const isFlagged = (row: Pick<FeedRow, "flags">): boolean => feedFlags(row).length > 0;

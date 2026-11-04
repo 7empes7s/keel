@@ -3,6 +3,7 @@
 // Pure helpers, shared by the pages, the UI harness and the tests. "Approved setup" is
 // the reader's word for a baseline (redesign rule 3); ids stay in the record layer.
 import { approvalWords, type ApprovalModeName } from "@/lib/approval-words";
+import { kindMatch as engineKindMatch, matchPercent, scoreByService } from "../../engine/govern/baselineScoreRules.mjs";
 import { objectTypeName, typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
@@ -10,8 +11,8 @@ import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { ComplianceScore } from "@/lib/compliance-view";
-import { itemArea, itemKind } from "@/lib/type-groups";
-import type { BackupGap, BaselineRecord, DriftRecord } from "@/lib/types";
+import { itemArea, itemKind, kindOrder } from "@/lib/type-groups";
+import type { BackupGap, BaselineCapture, BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
@@ -96,6 +97,54 @@ export function changedBy(item: Pick<DriftRecord, "attribution">): string | null
   return named.length === 1 ? named[0] : `${named[0]} and ${named.length - 1} more`;
 }
 
+// Why a setting type is not in an approved setup, from the reason its source backup gave
+// (engine/govern/baselineCompliance.mjs leftOutOf). Plain words, a risk colour each.
+const LEFT_OUT_REASONS: Record<string, { label: string; detail: string; tone: RiskTone | null }> = {
+  "microsoft-service-error": { label: "Microsoft error", detail: "Microsoft kept answering with an error when the backup was taken.", tone: "soon" },
+  refused: { label: "Access refused", detail: "Microsoft refused Keel access to it when the backup was taken.", tone: "urgent" },
+  partial: { label: "Partly read", detail: "The backup read only part of it, so it was left out whole.", tone: "soon" },
+  failed: { label: "Read failed", detail: "The backup could not read it.", tone: "soon" },
+  "no-licence": { label: "No licence", detail: "The tenant had no licence for it, so there was nothing to read.", tone: null },
+  "not-read": { label: "Not backed up then", detail: "Keel did not back it up yet when the backup was taken.", tone: "low" },
+};
+const UNKNOWN_REASON = { label: "Reason not recorded", detail: "The backup did not record why.", tone: null };
+
+export interface LeftOutRow {
+  type: string;
+  name: string;
+  service: CloudService;
+  reason: { label: string; detail: string; tone: RiskTone | null };
+  // The newest complete backup read it in full: capturing a new version adds it.
+  canAdd: boolean;
+}
+
+/** Every setting type the setup does not hold, with why, by service and then type group
+ * (lib/type-groups.ts), so the list reads like the others. */
+export function leftOutRows(capture: Pick<BaselineCapture, "leftOut"> | undefined): LeftOutRow[] {
+  const seen = new Set<string>();
+  return (capture?.leftOut ?? [])
+    .filter((item) => typeof item?.type === "string" && !seen.has(item.type) && Boolean(seen.add(item.type)))
+    .map((item) => ({
+      type: item.type,
+      name: plainKind(item.type),
+      service: typeService(item.type),
+      reason: LEFT_OUT_REASONS[item.reason] ?? UNKNOWN_REASON,
+      canAdd: item.readLater === true,
+    }))
+    .sort((a, b) => kindOrder(a.type) - kindOrder(b.type) || a.name.localeCompare(b.name));
+}
+
+/** One line above the list: how many are left out, and how many a new version would add. */
+export function leftOutSummary(rows: LeftOutRow[], canCapture: boolean): { text: string; tone: RiskTone } | null {
+  if (!rows.length) return null;
+  const addable = rows.filter((row) => row.canAdd).length;
+  const head = `${plural(rows.length, "setting type")} ${rows.length === 1 ? "is" : "are"} not in this setup, so changes to ${rows.length === 1 ? "it are" : "them are"} not checked.`;
+  if (!addable) return { text: `${head} No later backup has read ${rows.length === 1 ? "it" : "them"} yet.`, tone: "low" };
+  const them = addable === 1 ? "it" : "them";
+  const read = `A later backup read ${addable === rows.length ? (rows.length === 1 ? "it" : "all of them") : `${addable.toLocaleString("en-GB")} of them`}`;
+  return { text: `${head} ${read}: ${canCapture ? `capture a new version to add ${them}.` : `a new version would add ${them}.`}`, tone: "soon" };
+}
+
 export interface ServiceSummary {
   service: CloudService;
   // What the service is measured against. Entra ID and Intune settings sit in the
@@ -141,24 +190,16 @@ export interface MatchCount {
 /** Matching ÷ judged as a score, rounded down so it never reads 100% with a change left
  * (the same rule as the Compliance score). */
 export function matchScore({ matching, judged }: MatchCount): ComplianceScore {
-  return { passed: matching, evaluated: judged, excepted: 0, percent: judged ? Math.floor((matching / judged) * 100) : null };
+  return { passed: matching, evaluated: judged, excepted: 0, percent: matchPercent({ matching, judged }) };
 }
 
 /** The open changes to one kind of setting, by what they did. */
 export type ChangeTally = Record<DriftRecord["changeType"], number>;
 
-/**
- * How many settings of one kind match the approved setup.
- * - A kind the approved setup holds: it holds `held` settings. Each one changed or
- *   removed since no longer matches, and each one added is a setting it does not hold.
- * - A service read: the latest read found `held` settings. Each one added or changed since
- *   the read before does not match, and each one removed is a setting that is missing.
- */
+/** How many settings of one kind match the approved setup (engine/govern/baselineScoreRules.mjs,
+ * which the stored history uses too, so the page and the history agree). */
 export function kindMatch(held: number, changes: ChangeTally, basis: ServiceSummary["basis"]): MatchCount {
-  if (basis === "approved-setup") {
-    return { judged: held + changes.added, matching: Math.max(0, held - changes.modified - changes.removed) };
-  }
-  return { judged: held + changes.removed, matching: Math.max(0, held - changes.added - changes.modified) };
+  return engineKindMatch(held, changes, basis) as MatchCount;
 }
 
 /** Every service's match counts added up: the overall score. */
@@ -214,7 +255,10 @@ export function serviceSummaries(
     if (!summary.changedKinds.includes(kind)) summary.changedKinds.push(kind);
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;
   }
-  for (const type of new Set(backedUp)) {
+  // Types the setup left out count as not covered even when the latest backup could not
+  // read them either: the setup still does not hold them.
+  const leftOut = (baseline?.capture?.leftOut ?? []).map((item) => item.type);
+  for (const type of new Set([...backedUp, ...leftOut])) {
     if (!reads.has(type) && !captured.has(type) && !changedTypes.has(type)) entry(type).notCovered.push(type);
   }
   for (const read of serviceReads) {
@@ -225,31 +269,24 @@ export function serviceSummaries(
     if (!read.read && heldServices.has(read.type)) summary.notRead = [...(summary.notRead ?? []), read.type];
   }
   if (held) {
-    // Each kind is scored on its own, then added up under its service. Kinds not covered
-    // or not read are left out: nothing is known about them.
-    const tallies = new Map<string, ChangeTally>();
+    // Each kind is scored on its own, then added up under its service, by the engine's
+    // rules. Kinds not covered or not read are left out: nothing is known about them.
+    const changes: Record<string, ChangeTally> = {};
     for (const item of items) {
-      const tally = tallies.get(item.resourceType) ?? { added: 0, modified: 0, removed: 0 };
+      const tally = changes[item.resourceType] ??= { added: 0, modified: 0, removed: 0 };
       tally[item.changeType ?? "modified"] += 1;
-      tallies.set(item.resourceType, tally);
     }
-    const readCounts = new Map(serviceReads.map((read) => [read.type, read.read && read.open ? read.itemCount ?? null : null]));
-    const readOpen = new Map(serviceReads.map((read) => [read.type, read.open ?? null]));
-    const scored = new Set([...captured, ...changedTypes, ...serviceReads.filter((read) => read.read).map((read) => read.type)]);
-    const counts = new Map<string, MatchCount>();
-    for (const type of scored) {
-      const basis = reads.has(type) ? "previous-backup" : "approved-setup";
-      const count = basis === "approved-setup" ? heldServices.get(type) ?? held[type] ?? 0 : readCounts.get(type);
-      // A service read whose size is not known cannot be scored.
-      if (count === null || count === undefined) continue;
-      // A service read counts its open changes in full; the list of changes may hold only recent ones.
-      const changes = (basis === "previous-backup" || heldServices.has(type) ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
-      const match = kindMatch(count, changes, basis);
-      if (!match.judged) continue;
-      const code = entry(type).service.code;
-      const sum = counts.get(code) ?? { matching: 0, judged: 0 };
-      counts.set(code, { matching: sum.matching + match.matching, judged: sum.judged + match.judged });
-    }
+    const listed = new Set(serviceReads.map((read) => read.type));
+    const counts = scoreByService({
+      captured: [...captured],
+      held,
+      heldServices: Object.fromEntries(heldServices),
+      changes,
+      changed: [...changedTypes],
+      // A service read the page knows only from its changes has no count, so no score.
+      reads: [...serviceReads, ...[...reads].filter((type) => !listed.has(type)).map((type) => ({ type, read: false }))],
+      serviceOf: (type: string) => entry(type).service.code,
+    }) as Map<string, MatchCount>;
     for (const [code, count] of counts) byCode.get(code)!.score = matchScore(count);
   }
   const rank: Record<RiskTone, number> = { urgent: 0, soon: 1, low: 2, fine: 3 };

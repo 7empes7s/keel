@@ -69,11 +69,12 @@ export function SetupPage({ state, canStart, canBackup, services = null }: {
               <small>{scope.scope === "read" ? "Needed for backups" : "Needed for restores"}</small>
             </button>
           ) : null)}
-          <button className="su-tile" data-tone={permissions.missing ? "urgent" : undefined} onClick={() => document.getElementById("setup-permissions")?.scrollIntoView({ behavior: "smooth", block: "start" })} type="button">
+          {/* Missing blocks work (red); extra access Keel never uses is excess privilege to remove (amber). */}
+          <button className="su-tile" data-tone={permissions.missing ? "urgent" : permissions.unused ? "soon" : undefined} onClick={() => document.getElementById("setup-permissions")?.scrollIntoView({ behavior: "smooth", block: "start" })} type="button">
             <span className="su-tile-label"><Icon name="settings" />Permissions</span>
-            <b className="su-tile-count">{permissions.missing ? `${permissions.missing} missing` : permissions.granted ? "All granted" : "Not checked"}</b>
+            <b className="su-tile-count">{permissions.missing ? `${permissions.missing} missing` : permissions.unused ? `${permissions.unused} to remove` : permissions.granted ? "All granted" : "Not checked"}</b>
             <small>
-              {permissions.granted} granted{permissions.optional ? `, ${permissions.optional} optional` : ""}{permissions.unused ? `, ${permissions.unused} not used by Keel` : ""}
+              {permissions.granted} granted{permissions.optional ? `, ${permissions.optional} optional` : ""}{permissions.unused ? `, ${permissions.unused} extra Keel never uses` : ""}
             </small>
           </button>
           <Link className="su-tile" data-tone={first?.notRead ? "soon" : undefined} href="/protect">

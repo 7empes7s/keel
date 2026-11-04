@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { ApprovalText } from "@/components/approval-mode-context";
 import { ActivateBaseline } from "@/components/activate-baseline";
@@ -9,10 +10,10 @@ import { ResnapshotBaseline } from "@/components/resnapshot-baseline";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  captureBlockedWords, coverageWords, kindsWords, notHeldWords, overallScore, putBackWords, serviceSettingsWords, serviceSummaries, setupName, versionState,
-  type ServiceReadKind, type ServiceSummary,
+  captureBlockedWords, coverageWords, kindsWords, leftOutRows, leftOutSummary, notHeldWords, overallScore, putBackWords, serviceSettingsWords, serviceSummaries, setupName, versionState,
+  type LeftOutRow, type ServiceReadKind, type ServiceSummary,
 } from "@/lib/baselines-view";
-import { captureScope, changesSentence, leftOutWords, resnapshotSource, scoreTone, type ComplianceScore } from "@/lib/compliance-view";
+import { captureScope, changesSentence, resnapshotSource, scoreTone, type ComplianceScore } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { BackupGap, BaselineRecord, DriftRecord } from "@/lib/types";
 
@@ -36,6 +37,63 @@ function Fact({ label, value, note }: { label: string; value: string; note?: str
   );
 }
 
+// Rows shown before "Show more": enough for a phone screen.
+const LEFT_OUT_SHOWN = 8;
+
+function LeftOutGroups({ rows }: { rows: LeftOutRow[] }) {
+  const groups: { code: string; name: string; rows: LeftOutRow[] }[] = [];
+  for (const row of rows) {
+    const last = groups.at(-1);
+    if (last?.code === row.service.code) last.rows.push(row);
+    else groups.push({ code: row.service.code, name: row.service.name, rows: [row] });
+  }
+  return (
+    <>
+      {groups.map((group) => (
+        <div className="bl-leftout-group" key={group.code}>
+          <h4>{group.name}</h4>
+          <ul>
+            {group.rows.map((row) => (
+              <li data-can-add={row.canAdd || undefined} key={row.type}>
+                <b>{row.name}</b>
+                <span className="bl-leftout-why"><RiskChip tone={row.reason.tone}>{row.reason.label}</RiskChip><small>{row.reason.detail}</small></span>
+                <span className="bl-leftout-now">{row.canAdd ? <RiskChip tone="fine">Read since: can be added</RiskChip> : <RiskChip tone={null}>Not read since</RiskChip>}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Every setting type the setup does not hold, why, and whether a new version would
+ * add it. "Capture new version" sits here when a later backup read any of them. */
+function LeftOut({ rows, capture }: { rows: LeftOutRow[]; capture: ReactNode | null }) {
+  const summary = leftOutSummary(rows, capture !== null);
+  if (!summary) return null;
+  const addable = rows.filter((row) => row.canAdd).length;
+  const shown = rows.slice(0, LEFT_OUT_SHOWN);
+  const rest = rows.slice(LEFT_OUT_SHOWN);
+  return (
+    <section aria-labelledby="bl-leftout-heading" className="bl-leftout" data-tone={summary.tone}>
+      <div className="bl-leftout-head">
+        <h3 id="bl-leftout-heading">Not in this setup</h3>
+        <RiskChip tone={summary.tone}>{addable ? `${addable} can be added` : `${rows.length} left out`}</RiskChip>
+      </div>
+      <p className="bl-leftout-summary" role="note">{summary.text}</p>
+      {addable && capture ? <div className="bl-leftout-action">{capture}</div> : null}
+      <LeftOutGroups rows={shown} />
+      {rest.length ? (
+        <details className="bl-leftout-more">
+          <summary>Show {rest.length} more</summary>
+          <LeftOutGroups rows={rest} />
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 /** The approved setup in use: what it is, how old, who approved it, and what to do next. */
 function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, now, sources }: {
   active: BaselineRecord;
@@ -50,10 +108,13 @@ function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, n
   const captured = active.capture?.capturedAt ?? null;
   const compare = compareHref(active, latest);
   const source = resnapshotSource(active, sources);
-  const leftOut = leftOutWords(active.capture);
+  const leftOut = leftOutRows(active.capture);
   const putBack = putBackWords(active, baselines, now);
-  const notHeld = notHeldWords(active, backedUp);
+  const notHeld = leftOut.length ? null : notHeldWords(active, backedUp);
   const capture = captureBlockedWords({ capturedAt: captured, gap, hasSource: Boolean(source), now, sources });
+  const captureButton = <ResnapshotBaseline baselineId={active.id} disabled={!canBaseline} label={setupName(active)} snapshotId={source?.id ?? null} />;
+  // A later backup read a type this setup left out: offer the new version beside that list.
+  const captureBesideList = leftOut.some((row) => row.canAdd) && Boolean(source) && canBaseline;
   return (
     <section aria-labelledby="bl-current-heading" className="bl-card bl-current">
       <div className="bl-current-head">
@@ -73,9 +134,7 @@ function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, n
       {putBack ? (
         <p className="bl-help" data-part="put-back" role="note"><RiskChip tone="soon">Put back</RiskChip> {putBack}</p>
       ) : null}
-      {leftOut ? (
-        <p className="bl-help" role="note"><RiskChip tone="soon">Left out</RiskChip> {leftOut}</p>
-      ) : null}
+      <LeftOut capture={captureBesideList ? captureButton : null} rows={leftOut} />
       {notHeld && !putBack ? (
         <p className="bl-help" data-part="not-held" role="note"><RiskChip tone="low">Not covered</RiskChip> {notHeld}</p>
       ) : null}
@@ -83,7 +142,7 @@ function CurrentSetup({ active, backedUp, baselines, canBaseline, gap, latest, n
         {compare ? (
           <Link className="btn" href={compare}><Icon name="page" />Compare with the latest backup</Link>
         ) : null}
-        <ResnapshotBaseline baselineId={active.id} disabled={!canBaseline} label={setupName(active)} snapshotId={source?.id ?? null} />
+        {captureBesideList ? null : captureButton}
         <Link className="btn" href="/approved-setups/new"><Icon name="plus" />New approved setup</Link>
       </div>
       <p className="bl-help" data-part="capture-reason">
@@ -346,7 +405,7 @@ export function ApprovedSetup({
           <dl className="bl-legend">
             <div><dt data-part="changed">Changed</dt><dd>Setting types that differ from the approved setup. The colour shows the worst risk among them.</dd></div>
             <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup, including Exchange, SharePoint, Teams, Purview and Power Platform settings. Accept keeps it up to date.</dd></div>
-            <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet, or the latest read of it failed. Capture a new version to add it.</dd></div>
+            <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet, or the latest read of it failed. &ldquo;Not in this setup&rdquo; above says why; capture a new version to add it.</dd></div>
             {anyRead ? (
               <>
                 <div><dt data-part="not-covered">Not read</dt><dd>The latest backup could not read it, or has not read it yet. <Link href="/protect">What&apos;s protected</Link> says why.</dd></div>

@@ -21,6 +21,7 @@ function files(dir: string): string[] {
 // Single pickers that write the address but are not list filters, with the reason.
 const NOT_FILTERS: Record<string, string> = {
   "incidents/incidents-page.tsx:Incident": "opens one incident; it does not filter a list",
+  "baselines/score-history.tsx:Show": "picks which one line the chart draws (overall or one service); it does not filter a list",
 };
 
 const pickers = files(ROOT).flatMap((path) => {

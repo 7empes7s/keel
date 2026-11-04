@@ -3062,7 +3062,9 @@ test("Setup · Connections lists each Keel app by group, problems first, with wa
   const grants = reader.getByRole("table", { name: "Keel Settings Reader: wanted and granted" });
   await expect(grants.locator("tbody tr").first()).toHaveAttribute("data-status", "missing");
   await expect(grants.locator("tbody tr").first()).toContainText("Role: Read Only Operator");
-  await expect(grants.locator('tbody tr[data-status="extra"]')).toContainText("Not used by Keel");
+  await expect(grants.locator('tbody tr[data-status="extra"]')).toContainText("Extra access");
+  await expect(grants.locator('tbody tr[data-status="extra"] .badge')).toHaveAttribute("data-tone", "soon");
+  await expect(grants.locator('tbody tr[data-status="extra"]')).toContainText("Remove it from the app in Entra ID");
   await expect(grants.locator("tbody tr").last()).toHaveAttribute("data-status", "extra");
   await reader.getByRole("button", { name: "Hide permissions" }).click();
   await expect(grants).toHaveCount(0);
@@ -3098,10 +3100,11 @@ test("Setup · Connections on a working host: a certificate ending soon is amber
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
-// Production host: a grant Keel never uses is reported as found in the tenant, grey and
-// last in the permission table, never as a warning or something Keel will remove. With
-// read access confirmed, the first backup is the page's one amber action.
-test("Setup · a grant Keel never uses is listed grey and last, and the first backup runs from the verdict", async ({ page }) => {
+// Production host (backlog C4): a grant Keel never uses is excess privilege. It is
+// flagged amber on the tile, in an alert that says why it matters and links to where an
+// admin removes it, and on its row; Keel itself never removes it. With read access
+// confirmed, the first backup is still the page's one primary button.
+test("Setup · a grant Keel never uses is flagged amber as extra access to remove, and the first backup runs from the verdict", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/setup/checked", "light");
   const restore = page.locator("section.su-track", { has: page.getByRole("heading", { name: "Write access for restores" }) });
@@ -3111,17 +3114,31 @@ test("Setup · a grant Keel never uses is listed grey and last, and the first ba
   await expect(consent.getByRole("link", { name: "Permissions" })).toHaveAttribute("href", "#setup-permissions");
   await expect(page.locator(".su-page")).not.toContainText("Extra:");
   const panel = page.locator("#setup-permissions");
-  await expect(panel.locator(".su-pp-alert")).toHaveCount(0);
-  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("All granted");
+  const extra = panel.locator(".su-pp-alert");
+  await expect(extra).toHaveCount(1);
+  await expect(extra).toHaveAttribute("data-tone", "soon");
+  await expect(extra.locator(".su-pp-alert-title")).toHaveText("The restore writer app holds 1 permission Keel never uses. Remove it.");
+  await expect(extra).toContainText("anyone who got hold of the app's sign-in could use it");
+  await expect(extra).toContainText("Keel never removes access for you.");
+  await expect(extra.getByRole("button", { name: "Copy Microsoft names" })).toBeVisible();
+  const permissionsTile = page.locator(".su-tile", { hasText: "Permissions" });
+  await expect(permissionsTile).toHaveAttribute("data-tone", "soon");
+  await expect(permissionsTile.locator(".su-tile-count")).toHaveText("1 to remove");
+  await expect(permissionsTile.locator("small")).toContainText("1 extra Keel never uses");
   // Large table: pages of 50; the unused grant is found from its tile.
   await expect(panel.getByRole("navigation", { name: "Pages of Permissions" })).toBeVisible();
-  await panel.locator(".su-pp-tile", { hasText: "Not used by Keel" }).click();
+  const extraTile = panel.locator(".su-pp-tile", { hasText: "Extra access" });
+  await expect(extraTile).toHaveAttribute("data-tone", "soon");
+  await expect(panel.locator(".su-pp-tile-label")).toHaveText(["Extra access", "Granted"]);
+  await extraTile.click();
   const unused = panel.locator('.su-ptable-row[data-status="unused"]');
   await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
   await expect(unused).toContainText("Channel.Create");
-  await expect(unused.locator(".badge")).toHaveText("Not used by Keel");
-  await expect(unused.locator(".badge")).toHaveAttribute("data-tone", "neutral");
-  await expect(panel.locator(".su-ptable-group")).toHaveText([/Not used by Keel/]);
+  await expect(unused).toContainText("Remove it from the app in Entra ID");
+  await expect(unused.locator(".badge")).toHaveText("Extra access");
+  await expect(unused.locator(".badge")).toHaveAttribute("data-tone", "soon");
+  await expect(panel.locator(".su-ptable-group")).toHaveText([/Extra access Keel never uses/]);
+  await expect(panel.locator(".su-ptable-app .badge", { hasText: "1 extra" })).toHaveAttribute("data-tone", "soon");
   await expect(restore.locator('.su-step[data-state="current"] h3')).toHaveText('Activate your "Privileged Role Administrator" role');
   // The restorer's app id is unknown here: no consent link anywhere on the page.
   await expect(page.locator('a[href^="https://login.microsoftonline.com/"]')).toHaveCount(0);
@@ -3138,7 +3155,7 @@ test("Setup · a missing admin role is listed with the permissions and links to 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page, "/setup", "light");
   const panel = page.locator("#setup-permissions");
-  const alert = panel.locator(".su-pp-alert", { hasText: "backup reader app" });
+  const alert = panel.locator('.su-pp-alert[data-tone="urgent"]', { hasText: "backup reader app" });
   await expect(alert.locator(".su-pp-alert-title")).toHaveText("The backup reader app is missing 1 admin role. Backups that need it stay incomplete until an admin assigns it.");
   await expect(alert).toContainText("Approving permissions never assigns an admin role.");
   await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveCount(0);
@@ -3171,8 +3188,13 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(page.locator(".su-tile", { hasText: "Permissions" })).toHaveAttribute("data-tone", "urgent");
   await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("5 missing");
 
-  await expect(panel.locator(".su-pp-alert")).toHaveCount(2);
-  const alert = panel.locator(".su-pp-alert", { hasText: "restore writer app" });
+  // Missing first (red), then extra access Keel never uses (amber), one alert per app.
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(3);
+  expect(await panel.locator(".su-pp-alert").evaluateAll((alerts) => alerts.map((alert) => alert.getAttribute("data-tone")))).toEqual(["urgent", "urgent", "soon"]);
+  const extra = panel.locator('.su-pp-alert[data-tone="soon"]');
+  await expect(extra.locator(".su-pp-alert-title")).toHaveText("The backup reader app holds 1 permission Keel never uses. Remove it.");
+  await expect(extra.getByRole("link", { name: /Remove in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\//);
+  const alert = panel.locator('.su-pp-alert[data-tone="urgent"]', { hasText: "restore writer app" });
   await expect(alert.locator(".su-pp-alert-title")).toHaveText("The restore writer app is missing 4 permissions. Restores that need them stop until an admin approves them.");
   await expect(alert).toContainText("1 of them is not on the app's permission list yet, so approving cannot grant it. Add it in Entra ID first: Exchange.ManageAsApp.");
   await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("href",
@@ -3214,8 +3236,8 @@ test("Setup · missing permissions come first with a consent link, and the table
   await tile("Missing").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
   await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
-  await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 more if picked");
-  await tile("Not used by Keel").click();
+  await expect(tile("Extra access").locator("small")).toHaveText("+1 more if picked");
+  await tile("Extra access").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(6);
   await panel.getByRole("button", { name: "App: All apps" }).click();
   await page.getByRole("option", { name: "Restore writer" }).click();
@@ -3324,6 +3346,20 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(score.getByRole("img", { name: /^Overall: \d+% match\. [\d,]+ of [\d,]+ settings match\.$/ })).toBeVisible();
     await expect(score).toContainText(/\d+% of settings match the approved setup/);
     await expect(score).toContainText(/settings? differs?/);
+    // Baselines gap 3: every setting type the setup left out, with why, grouped by service, and
+    // "Capture new version" beside the list because a later backup read some of them.
+    const leftOut = current.locator(".bl-leftout");
+    await expect(leftOut.locator(".bl-leftout-head")).toContainText("6 can be added");
+    await expect(leftOut.locator(".bl-leftout-summary")).toContainText("10 setting types are not in this setup");
+    await expect(leftOut.locator(".bl-leftout-action").getByRole("button", { name: "Capture new version" })).toBeEnabled();
+    await expect(current.getByRole("button", { name: "Capture new version" })).toHaveCount(1);
+    await expect(leftOut.locator("li:visible")).toHaveCount(8);
+    await expect(leftOut.locator(".bl-leftout-group h4:visible").first()).toHaveText("Entra ID");
+    await expect(leftOut.locator("li", { hasText: "No licence" }).first()).toContainText("Not read since");
+    await expect(leftOut.locator("li[data-can-add]").first()).toContainText("Read since: can be added");
+    await leftOut.getByText("Show 2 more").click();
+    await expect(leftOut.locator("li:visible")).toHaveCount(10);
+    expectPlainText(await leftOut.innerText());
     const entra = page.locator(".bl-service", { hasText: "Entra ID" });
     await expect(entra).toContainText(/Changed\s*3\s*types/);
     // Each service has its own ring.
@@ -3380,6 +3416,45 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(versions.first().locator(".bl-version-when")).toContainText(/^Approved 31 days ago\s*Settings from 31 days ago · Not compared yet$/);
     await expect(page.locator("#bl-versions-heading").locator("xpath=..")).toContainText("until a backup reads every type in full, they show Not compared yet");
     await expect(page.getByText("No complete backup to compare with yet")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
+}
+
+// The match over time: a trend of the percentage after each backup, overall or for one
+// service, with every point listed newest first. Fits a phone and a desktop.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`the approved setup shows its match over time and fits ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/approved-setups", viewport.width < 600 ? "dark" : "light");
+    const card = page.locator(".bh-card");
+    await expect(page.getByRole("heading", { name: "Match over time" })).toBeVisible();
+    // The last 30 days by default: the newest point, the change since the first, the dip.
+    await expect(card.locator(".bh-facts")).toContainText(/Latest\s*\d+%/);
+    await expect(card.locator(".bh-facts")).toContainText(/Lowest\s*\d+%/);
+    await expect(card.getByRole("img", { name: /^Overall match over the last 30 days: \d+% now, lowest \d+%, highest \d+%, \d+ points$/ })).toBeVisible();
+    const thirty = Number((await card.locator('[data-fact="points"] dd').textContent()) ?? 0);
+    await card.getByRole("radio", { name: "All" }).click();
+    await expect(page).toHaveURL(/bh-range=all/);
+    await expect(card.locator('[data-fact="points"] dd')).toHaveText("22");
+    expect(thirty).toBeLessThan(22);
+    // One service's line.
+    await card.getByRole("button", { name: /Show/ }).click();
+    await page.getByRole("option", { name: "Entra ID" }).click();
+    await expect(page).toHaveURL(/bh-line=Entra/);
+    await expect(card.getByRole("img", { name: /^Entra ID match over every point stored: \d+% now, lowest 64%/ })).toBeVisible();
+    await expect(card.locator('[data-fact="lowest"]')).toHaveAttribute("data-tone", "soon");
+    // Every point, newest first, with its change since the one before and each service.
+    const rows = page.locator(".bh-row");
+    await expect(rows).toHaveCount(22);
+    await expect(rows.first()).toContainText(/settings match/);
+    await expect(rows.first().locator(".bh-delta")).toHaveText("▼ Down 1 point");
+    await expect(rows.last().locator(".bh-delta")).toHaveText("First point");
+    await expect(rows.first().locator(".bh-services li", { hasText: "Entra ID" })).toBeVisible();
+    await expect(page.locator(".bh-row", { hasText: "New approved setup in use" })).toHaveCount(1);
+    // The list sorts by match, worst first when descending.
+    await page.locator(".paged-rows").getByRole("button", { name: /Order by/ }).click();
+    await page.getByRole("option", { name: "Match" }).click();
+    await expect(rows.first().locator(".bh-percent")).toHaveText(/^\d+%$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 }

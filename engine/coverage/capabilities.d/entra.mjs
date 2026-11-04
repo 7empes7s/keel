@@ -21,8 +21,28 @@ export const ENTRA_WRITE_PATHS = Object.freeze({
   oauth2PermissionGrant: '/oauth2PermissionGrants',
 });
 
-export default Object.entries(ENTRA_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({
-  resourceType, operation, path, handler: ENTRA_HANDLER,
-  idOutcome: operation === 'create' ? 'server-assigned' : 'preserved',
-  proofRef: ENTRA_PROOF,
-})));
+/**
+ * Issue #994: authentication contexts and staged rollout
+ * (engine/restore/signInSettingsOperations.mjs). A context is upserted under its
+ * own id (c1..c99), so even a create keeps the backup's id. A rollout create gets
+ * a new id. Delete is not registered for either.
+ */
+export const SIGN_IN_HANDLER = 'engine/restore/signInSettingsOperations.mjs#applySignInSettingWrite';
+export const SIGN_IN_PROOF = 'engine/roadmap/sign-in-settings.test.mjs';
+export const SIGN_IN_WRITE_PATHS = Object.freeze({
+  authenticationContextClassReference: '/identity/conditionalAccess/authenticationContextClassReferences',
+  featureRolloutPolicy: '/policies/featureRolloutPolicies',
+});
+
+export default [
+  ...Object.entries(ENTRA_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({
+    resourceType, operation, path, handler: ENTRA_HANDLER,
+    idOutcome: operation === 'create' ? 'server-assigned' : 'preserved',
+    proofRef: ENTRA_PROOF,
+  }))),
+  ...Object.entries(SIGN_IN_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({
+    resourceType, operation, path, handler: SIGN_IN_HANDLER,
+    idOutcome: operation === 'create' && resourceType === 'featureRolloutPolicy' ? 'server-assigned' : 'preserved',
+    proofRef: SIGN_IN_PROOF,
+  }))),
+];

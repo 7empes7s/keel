@@ -34,10 +34,11 @@ function arg(opts, name, fallback) {
  * policy's assignments (issue #155), each group's direct members and owners,
  * so a restore can put a group's membership back, and who owns each app and
  * service principal plus the application permissions granted to each service
- * principal, so privilege changes show up in backups and drift.
+ * principal, so privilege changes show up in backups and drift. Issue #994:
+ * the groups each staged rollout applies to, so a restore can add them back.
  */
 export const COLLECT_RELATIONSHIPS = Object.freeze({
-  families: Object.freeze(['assignment', 'member', 'owner', 'appOwner', 'servicePrincipalOwner', 'appRoleGrant']),
+  families: Object.freeze(['assignment', 'member', 'owner', 'appOwner', 'servicePrincipalOwner', 'appRoleGrant', 'rolloutAppliesTo']),
   // Gap D5: nested membership of groups a Conditional Access policy names, read
   // only for those groups, so break-glass readiness can check exclusions.
   conditionalAccessTransitive: true,

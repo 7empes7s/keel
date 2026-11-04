@@ -100,6 +100,8 @@ const packagedApp = (payload) => (appGroupOf(payload) === 'packaged'
 const syncedApp = (payload) => (appGroupOf(payload) === 'synced' ? always(payload) : []);
 
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
+// Issue #994: a staged rollout that was on.
+const enabledRollout = (payload) => (payload?.isEnabled === true ? always(payload) : []);
 
 /**
  * One record per catalogue type, reviewed by hand. `managed` marks a type
@@ -132,6 +134,7 @@ export const COMPLETENESS = Object.freeze({
   ] },
   oauth2PermissionGrant: {},
   identityProvider: { whole: 'not-written', missing: [part('Client secret', 'secret', always)] },
+  // Issue #994: manual by design; a restore lists each authority and what differs live.
   certificateBasedAuthConfiguration: { whole: 'not-written' },
   directoryRole: { managed: true },
   roleDefinition: {},
@@ -177,7 +180,7 @@ export const COMPLETENESS = Object.freeze({
   conditionalAccessPolicy: {},
   authenticationStrengthPolicy: { missing: [part('A change to the allowed sign-in method combinations', 'not-written')] },
   namedLocation: {},
-  authenticationContextClassReference: { whole: 'not-written' },
+  authenticationContextClassReference: { missing: [part('Which SharePoint sites and sensitivity labels require the context', 'other-route')] },
   authenticationMethodsPolicy: {},
   identitySecurityDefaultsEnforcementPolicy: {},
   authorizationPolicy: {},
@@ -193,7 +196,7 @@ export const COMPLETENESS = Object.freeze({
   homeRealmDiscoveryPolicy: { missing: STS_POLICY_MISSING },
   tokenIssuancePolicy: { missing: STS_POLICY_MISSING },
   tokenLifetimePolicy: { missing: STS_POLICY_MISSING },
-  featureRolloutPolicy: { whole: 'not-written', missing: [part('Which groups the rollout covers', 'other-route')] },
+  featureRolloutPolicy: { missing: [part('Whether the rollout is on (it is restored switched off until someone approves switching it on)', 'not-written', enabledRollout)] },
   // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
   appManagementPolicy: { missing: [part('Which apps the policy is assigned to', 'other-route')] },
   tenantAppManagementPolicy: {},

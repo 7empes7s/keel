@@ -15,12 +15,13 @@
  * Microsoft object id (the `id` or `appId` in the saved object). Names that hold an
  * object id are never returned, so a caller can show `name` without checking it.
  */
-import { objectNameSql } from '../cir/objectName.mjs';
+import { mayHaveNameSql, objectNameSql } from '../cir/objectName.mjs';
 import { typeInfo } from './taxonomy.mjs';
 
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const BARE_GUID = new RegExp(`^${GUID.source}$`, 'i');
 const NAME_SQL = objectNameSql('rv.payload', 'rv.resource_type');
+const MAY_HAVE_NAME_SQL = mayHaveNameSql('rv.payload', 'rv.resource_type');
 
 /** At most this many ids per call; the rest come back unknown (bounded work per page). */
 export const MAX_NAME_IDS = 2000;
@@ -130,6 +131,25 @@ const versionsInSql = (w, s) => `
           FROM resource_version rv
          WHERE lower(${w}) = ANY($3::text[]) AND lower(rv.payload->>'appId') = lower(${w}) AND rv.snapshot_id = ${s}`;
 
+// The newest backup that holds a key, in two steps. Most keys are in one of the last few
+// backups: hourly backups hold most kinds, daily and weekly ones the rest. So the newest
+// RECENT_BACKUPS backups are probed first, newest first, one index probe each. A key none
+// of them holds (a weekly kind, or an object deleted a while ago) is found from its own
+// saved versions instead (resource_version_key_idx, then each version's backup by id),
+// rather than by probing every older backup: the newest of them is the same backup.
+// Live (operator queue Q313): ~1,200 keys, 623 backups.
+export const RECENT_BACKUPS = 48;
+/** When the oldest of the newest RECENT_BACKUPS backups started (as `since`): one row. */
+export const RECENT_BACKUPS_SQL = `SELECT min(started_at) AS since FROM (
+    SELECT started_at FROM snapshot WHERE tenant_ref = $1 ORDER BY started_at DESC LIMIT ${RECENT_BACKUPS}) r`;
+// ARRAY(...) reads the key's versions first, so the planner cannot turn it back into a
+// walk of every backup.
+/** The newest backup holding backup key `key` (SQL text; $1 is the tenant), when `when` holds. */
+export const newestBackupWithKeySql = (key, when = 'TRUE') => `SELECT s.id, s.started_at FROM snapshot s
+          WHERE ${when} AND s.tenant_ref = $1
+            AND s.id = ANY(ARRAY(SELECT rv.snapshot_id FROM resource_version rv WHERE rv.natural_key = ${key}))
+          ORDER BY s.started_at DESC LIMIT 1`;
+
 const usableNameSql = (name) => `(${name} IS NOT NULL AND ${name} !~* '${GUID.source}')`;
 
 // For each wanted id, the newest saved version of the object it names (by backup key,
@@ -147,13 +167,21 @@ const usableNameSql = (name) => `(${name} IS NOT NULL AND ${name} !~* '${GUID.so
 // per id, so the planner cannot turn it into a scan of every saved version.
 const LOOKUP_SQL = `
   WITH wanted AS (SELECT unnest($2::text[]) AS id),
+  recent AS (${RECENT_BACKUPS_SQL}),
   latest AS (
     SELECT w.id AS wanted, b.id AS snapshot_id, b.started_at
       FROM wanted w
       CROSS JOIN LATERAL (
-        SELECT s.id, s.started_at FROM snapshot s
-         WHERE s.tenant_ref = $1 AND ${holdsSql('w.id', 's.id')}
-         ORDER BY s.started_at DESC LIMIT 1) b
+        (SELECT s.id, s.started_at FROM snapshot s
+          WHERE s.tenant_ref = $1 AND s.started_at >= (SELECT since FROM recent) AND ${holdsSql('w.id', 's.id')}
+          ORDER BY s.started_at DESC LIMIT 1)
+        UNION ALL
+        (SELECT s.id, s.started_at FROM snapshot s
+          WHERE lower(w.id) = ANY($3::text[]) AND s.tenant_ref = $1 AND ${holdsSql('w.id', 's.id')}
+          ORDER BY s.started_at DESC LIMIT 1)
+        UNION ALL
+        (${newestBackupWithKeySql('w.id', 'NOT (lower(w.id) = ANY($3::text[]))')})
+        LIMIT 1) b
      WHERE (SELECT 1 FROM resource_version rv WHERE rv.natural_key = w.id LIMIT 1) IS NOT NULL
         OR (lower(w.id) = ANY($3::text[])
             AND ((SELECT 1 FROM resource_version rv WHERE lower(rv.payload->>'id') = lower(w.id) LIMIT 1) IS NOT NULL
@@ -166,7 +194,12 @@ const LOOKUP_SQL = `
      ORDER BY l.wanted, v.natural_key, v.name NULLS LAST
   )
   SELECT n.wanted, n.natural_key, n.resource_type, n.object_id, n.last_seen,
-         CASE WHEN ${usableNameSql('n.name')} THEN n.name ELSE (
+         CASE WHEN ${usableNameSql('n.name')} THEN n.name
+              -- A backup key none of whose versions may carry a name has none to find:
+              -- one probe of resource_version_named_key_idx, not a walk of every backup.
+              WHEN NOT (lower(n.wanted) = ANY($3::text[]))
+               AND (SELECT 1 FROM resource_version rv WHERE rv.natural_key = n.wanted AND ${MAY_HAVE_NAME_SQL} LIMIT 1) IS NULL THEN NULL
+              ELSE (
            SELECT v.name FROM snapshot s CROSS JOIN LATERAL (${versionsInSql('n.wanted', 's.id')}) v
             WHERE s.tenant_ref = $1 AND s.started_at <= n.last_seen AND ${usableNameSql('v.name')}
             ORDER BY s.started_at DESC LIMIT 1) END AS name,
@@ -185,14 +218,22 @@ const RENAMED_SQL = `
       FROM unnest($2::text[], $3::text[], $4::uuid[]) AS w(object_id, resource_type, after_snapshot)
       JOIN snapshot s0 ON s0.id = w.after_snapshot
       -- Newest backup first, one probe of the object id index (store/schema.d/93) each,
-      -- stopping at the first that holds it. The exact match keeps the old meaning.
+      -- stopping at the first that holds it. The exact match keeps the old meaning. The
+      -- probe is scalar (see holdsSql): as a join, the planner read every saved version of
+      -- the object id in full and then dropped the older ones (557 ms on live, Q313).
       CROSS JOIN LATERAL (
-        SELECT rv.natural_key, ${NAME_SQL} AS name, s.started_at
-          FROM snapshot s
-          JOIN resource_version rv ON lower(rv.payload->>'id') = lower(w.object_id) AND rv.snapshot_id = s.id
+        SELECT s.id, s.started_at FROM snapshot s
          WHERE s.tenant_ref = $1 AND s.started_at > s0.started_at
+           AND (SELECT 1 FROM resource_version rv
+                 WHERE lower(rv.payload->>'id') = lower(w.object_id) AND rv.snapshot_id = s.id
+                   AND rv.resource_type = w.resource_type AND rv.payload->>'id' = w.object_id LIMIT 1) IS NOT NULL
+         ORDER BY s.started_at DESC LIMIT 1) b
+      CROSS JOIN LATERAL (
+        SELECT rv.natural_key, ${NAME_SQL} AS name, b.started_at
+          FROM resource_version rv
+         WHERE lower(rv.payload->>'id') = lower(w.object_id) AND rv.snapshot_id = b.id
            AND rv.resource_type = w.resource_type AND rv.payload->>'id' = w.object_id
-         ORDER BY s.started_at DESC LIMIT 1) v
+         LIMIT 1) v
   )
   SELECT l.object_id, l.resource_type, l.name, l.started_at,
          ${goneSinceSql('l.natural_key', 'l.resource_type', 'l.started_at')} AS gone_since

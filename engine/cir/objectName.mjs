@@ -94,3 +94,22 @@ export function objectNameSql(payload, type) {
   const relationships = RELATIONSHIP_KINDS.map((kind) => `WHEN '${kind}' THEN ${relationshipSql(payload)}`);
   return `(CASE ${type} ${[...own, ...relationships].join(' ')} ELSE ${coalesce(payload, NAME_FIELDS)} END)`;
 }
+
+/** The top-level fields any kind is named by (objectNameSql reads no other), plus the kinds named by their id. */
+const ALL_NAME_FIELDS = [...new Set([
+  ...NAME_FIELDS, ...Object.values(OWN_NAME_FIELDS).flat(), 'sourceDisplayName', 'targetDisplayName',
+])].filter((field) => field !== 'id').sort();
+const ID_NAMED_KINDS = Object.entries(OWN_NAME_FIELDS).filter(([, fields]) => fields.includes('id')).map(([kind]) => kind).sort();
+
+/**
+ * True for every saved version objectNameSql could name, and for few others: the kind is
+ * named by its id, or one of the name fields holds a value. Never false when the name is
+ * set, so adding it to a query that asks for a name changes no result. It is the
+ * condition of the index resource_version_named_key_idx (store/schema.d/94), which must
+ * hold the same text (store/schema.test checks), so "has any version of this key a name?"
+ * is one index probe instead of a read of every version.
+ */
+export function mayHaveNameSql(payload = 'payload', type = 'resource_type') {
+  const kinds = ID_NAMED_KINDS.map((kind) => `'${kind}'`).join(', ');
+  return `(${type} IN (${kinds}) OR COALESCE(${ALL_NAME_FIELDS.map((field) => `${payload}->>'${field}'`).join(', ')}) IS NOT NULL)`;
+}

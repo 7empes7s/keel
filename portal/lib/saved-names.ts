@@ -1,6 +1,7 @@
 // The name each saved setting carries, read from the tenant's most recent backup that
 // holds one. The job page uses it so follow-ups and undo items never show a bare id.
-import { objectNameSql } from "../../engine/cir/objectName.mjs";
+import { mayHaveNameSql, objectNameSql } from "../../engine/cir/objectName.mjs";
+import { newestBackupWithKeySql, RECENT_BACKUPS_SQL } from "../../engine/insights/names.mjs";
 import { templateFamilySql } from "../../engine/insights/templateAreas.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, type IdNames, NO_ID_NAMES, referencedIds, unnamedReferences } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
@@ -11,6 +12,7 @@ interface QueryClient {
 }
 
 const NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
+const MAY_HAVE_NAME_SQL = mayHaveNameSql("rv.payload", "rv.resource_type");
 
 /** Every key, and each side of a relationship edge ("parent|family|target"). */
 export function keysToName(keys: (string | null | undefined)[]): string[] {
@@ -42,24 +44,31 @@ export function keysToName(keys: (string | null | undefined)[]): string[] {
 // engine/insights/names.mjs). Only the chosen version's payload is read in full.
 const SAVED_NAMES_SQL = `
   WITH wanted AS (SELECT DISTINCT unnest($2::text[]) AS key),
+  recent AS (${RECENT_BACKUPS_SQL}),
+  -- The newest few backups first, then the key's own versions (engine/insights/names.mjs).
   newest AS (
     SELECT w.key, b.id AS snapshot_id, b.started_at
       FROM wanted w
       CROSS JOIN LATERAL (
-        SELECT s.id, s.started_at FROM snapshot s
-         WHERE s.tenant_ref = $1
-           AND (SELECT 1 FROM resource_version rv WHERE rv.natural_key = w.key AND rv.snapshot_id = s.id LIMIT 1) IS NOT NULL
-         ORDER BY s.started_at DESC LIMIT 1) b
+        (SELECT s.id, s.started_at FROM snapshot s
+          WHERE s.tenant_ref = $1 AND s.started_at >= (SELECT since FROM recent)
+            AND (SELECT 1 FROM resource_version rv WHERE rv.natural_key = w.key AND rv.snapshot_id = s.id LIMIT 1) IS NOT NULL
+          ORDER BY s.started_at DESC LIMIT 1)
+        UNION ALL
+        (${newestBackupWithKeySql("w.key")})
+        LIMIT 1) b
      WHERE (SELECT 1 FROM resource_version rv WHERE rv.natural_key = w.key LIMIT 1) IS NOT NULL
   ),
   -- The newest version with a name, else the newest version: UNION ALL ... LIMIT 1
-  -- stops at the first branch that returns a row.
+  -- stops at the first branch that returns a row. A key none of whose versions may carry
+  -- a name skips the walk: one probe of resource_version_named_key_idx (store/schema.d/94).
   picked AS (
     SELECT v.* FROM newest n
      CROSS JOIN LATERAL (
        (SELECT rv.natural_key, rv.resource_type, rv.payload FROM snapshot s
           JOIN resource_version rv ON rv.natural_key = n.key AND rv.snapshot_id = s.id
          WHERE s.tenant_ref = $1 AND s.started_at <= n.started_at AND ${NAME_SQL} IS NOT NULL
+           AND (SELECT 1 FROM resource_version rv WHERE rv.natural_key = n.key AND ${MAY_HAVE_NAME_SQL} LIMIT 1) IS NOT NULL
          ORDER BY s.started_at DESC LIMIT 1)
        UNION ALL
        (SELECT rv.natural_key, rv.resource_type, rv.payload FROM resource_version rv

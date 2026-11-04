@@ -658,8 +658,8 @@ export const TYPE_GUIDE = Object.freeze({
   securityZone: manual('Exposure management zones', NOT_BUILT,
     'KEEL backs up each zone\'s name and description but not the environments in it, and does not restore it yet.',
     'Create the zone again in the Microsoft Defender portal, under Exposure management, and add the same environments.'),
-  sharedEmailDomain: manual('Shared email domains', NOT_BUILT,
-    'KEEL backs up which shared email domains the tenant uses. Microsoft sets them up; there is nothing to restore.',
+  sharedEmailDomain: manual('Shared email domains', MS,
+    'KEEL backs up which shared email domains the tenant uses. Microsoft sets them up, so there is nothing to restore.',
     'Ask Microsoft support if a shared domain is missing.'),
   schemaExtension: manual('Schema extensions', NOT_BUILT,
     'KEEL backs up the schema extensions this tenant\'s own apps defined, but not the values stored in them on users and groups, and does not restore them yet.',
@@ -802,11 +802,15 @@ const cell = (text) => String(text).replace(/\|/g, '\\|');
 const list = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 
 /** The guide entry for a type, checked against the code's current decision. */
-function guideFor(type, decision, guide) {
+function guideFor(type, decision, guide, state = null) {
   const entry = guide[type];
   if (!entry) throw new Error(`docs/coverage.md: no plain-English entry for configuration type ${type}; add one to TYPE_GUIDE`);
   if (entry.decision !== decision) {
     throw new Error(`docs/coverage.md: the text for ${type} was written for '${entry.decision}' but the code now says '${decision}'; review TYPE_GUIDE`);
+  }
+  // Microsoft-managed means nothing to restore: the text must give Microsoft as the reason.
+  if (state === 'microsoft-managed' && entry.limit !== MS) {
+    throw new Error(`docs/coverage.md: ${type} is Microsoft-managed, but its TYPE_GUIDE text gives '${entry.limit}' as the reason; review both`);
   }
   return entry;
 }
@@ -869,7 +873,9 @@ function notesFor(ledgerType, entry) {
     if (entry.todo) lines.push(`  - *You do:* ${entry.todo}`);
     return lines;
   }
-  return [`- **${entry.name}** (${LIMIT_WORDS[entry.limit]}). ${entry.why}`, ...missingLines(ledgerType), `  - *You do:* ${entry.todo}`];
+  // A Microsoft-managed kind is not a by-hand restore: its note says so, like its row.
+  const label = ledgerType.completeness.state === 'microsoft-managed' ? 'Nothing to restore' : LIMIT_WORDS[entry.limit];
+  return [`- **${entry.name}** (${label}). ${entry.why}`, ...missingLines(ledgerType), `  - *You do:* ${entry.todo}`];
 }
 
 /**
@@ -951,10 +957,11 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
   const extraWorkloads = Object.keys(workloadGuide).filter((workload) => !WORKLOADS.includes(workload));
   if (extraWorkloads.length > 0) throw new Error(`docs/coverage.md: WORKLOAD_GUIDE has text for unknown workloads: ${extraWorkloads.join(', ')}`);
 
-  const counts = { automated: 0, manual: 0 };
+  // Microsoft-managed kinds hold nothing to restore, so they are never counted as by hand.
+  const counts = { automated: 0, manual: 0, nothing: 0 };
   const states = Object.fromEntries(COVERAGE_STATES.map((state) => [state, 0]));
   for (const row of ledger.types) {
-    counts[row.decision] += 1;
+    counts[row.completeness.state === 'microsoft-managed' ? 'nothing' : row.decision] += 1;
     states[row.completeness.state] += 1;
   }
 
@@ -965,7 +972,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '',
     'For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.',
     '',
-    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one${gatedWords(ledger)}. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
+    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one${gatedWords(ledger)}. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part and ${counts.nothing} hold nothing to restore; the other ${counts.manual} are restored by hand from the backup.`,
     '',
     '## How to read this page',
     '',
@@ -975,7 +982,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '  - *Incomplete:* the backup holds everything KEEL can read, but some parts cannot be brought back automatically. It is recreated from the backup, by KEEL or by hand, and the missing parts are listed below the table as follow-up steps. Each backup flags the incomplete objects it holds.',
     '  - *Microsoft-managed:* Microsoft owns it, so there is nothing to restore.',
     '  - *Not readable:* KEEL cannot read it, for the reason given.',
-    '- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.',
+    '- **KEEL can restore:** what a KEEL restore does. "Nothing to restore" means Microsoft owns it, so there is nothing for anyone to put back; it is not counted as by hand. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.',
     '- **Proof:** "Tested against a simulated tenant" means the restore code has passed tests against a fake Microsoft service. It is not yet proven on a live tenant. A failed live test is listed with its date until a fix passes.',
     '- **Microsoft limit:** Microsoft offers no way for any tool to do this. KEEL cannot work around it; the steps say what to do instead.',
     '- **KEEL choice:** KEEL could write it, but leaves it to a person for safety or because part of it is not backed up.',
@@ -990,7 +997,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     lines.push(`## ${heading}`, '', '| Setting | Backed up | Coverage | KEEL can restore | Proof |', '| --- | --- | --- | --- | --- |');
     const notes = [];
     for (const row of rows) {
-      const entry = guideFor(row.resourceType, row.decision, typeGuide);
+      const entry = guideFor(row.resourceType, row.decision, typeGuide, row.completeness.state);
       lines.push(typeRow(row, entry, { cadence, edges: ledger.edges }));
       notes.push(...notesFor(row, entry));
     }

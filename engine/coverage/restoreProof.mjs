@@ -57,6 +57,16 @@ export function hasRestoreWriter(entry) {
   return operations(entry).some((capability) => TESTED_CLAIMS.has(capability.claim));
 }
 
+/**
+ * Whether the kind holds nothing to restore: Microsoft owns it (completeness state
+ * "microsoft-managed", engine/coverage/completeness.mjs). It is not a gap, so it is
+ * never shown or counted as a manual restore. Reads the engine entry
+ * (`qualification.completeness.state`) and the portal's (`qualification.nothingToRestore`).
+ */
+export function nothingToRestore(entry) {
+  return entry?.qualification?.nothingToRestore === true || entry?.qualification?.completeness?.state === 'microsoft-managed';
+}
+
 /** Whether Keel can put the kind back at all. */
 export function canRestore(entry) {
   const status = entry?.status ?? entry?.reportStatus;

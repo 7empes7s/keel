@@ -41,6 +41,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { structuredFailure } from '../../collect/workloads/exchange.mjs';
 import { lockState } from '../../collect/workloads/purview.mjs';
+import { oneDriveEnumName } from '../../collect/workloads/onedrive.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
@@ -112,9 +113,11 @@ const expiresSooner = shorterBy(expiryDays);
 const widensAudience = (before, after) => !same(before, after) && /everyone|external|guest|anonym|public/i.test(String(after ?? ''));
 const rule = (field, effect, when) => Object.freeze({ field, effect, when });
 // A move up an ordered scale, narrowest first; a value off the scale cannot be judged, so it counts.
-const widensOn = (order) => (before, after) => {
+// With `field`, a OneDrive enum's number is read as its name first (onedrive.mjs ONEDRIVE_ENUMS).
+const widensOn = (order, field = null) => (before, after) => {
   if (same(before, after)) return false;
-  const rank = (value) => order.findIndex((item) => item.toLowerCase() === String(value ?? '').toLowerCase());
+  const name = (value) => (field ? oneDriveEnumName(field, value) : value);
+  const rank = (value) => order.findIndex((item) => item.toLowerCase() === String(name(value) ?? '').toLowerCase());
   return rank(before) < 0 || rank(after) < 0 || rank(after) > rank(before);
 };
 // SharePoint and OneDrive keep a domain list as one text of domains, split by spaces.
@@ -146,12 +149,12 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
   // One OneDrive site's sharing: anything that lets more people, or people outside, reach
   // its files, or keeps their access longer, discloses content.
   onedriveSiteSettings: [
-    rule('SharingCapability', SHARING, widensOn(['Disabled', 'ExistingExternalUserSharingOnly', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing'])),
-    rule('SharingDomainRestrictionMode', SHARING, widensOn(['AllowList', 'BlockList', 'None'])),
+    rule('SharingCapability', SHARING, widensOn(['Disabled', 'ExistingExternalUserSharingOnly', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing'], 'SharingCapability')),
+    rule('SharingDomainRestrictionMode', SHARING, widensOn(['AllowList', 'BlockList', 'None'], 'SharingDomainRestrictionMode')),
     rule('SharingAllowedDomainList', SHARING, addsDomain),
     rule('SharingBlockedDomainList', SHARING, removesDomain),
-    rule('DefaultSharingLinkType', SHARING, widensOn(['Direct', 'Internal', 'AnonymousAccess'])),
-    rule('DefaultLinkPermission', SHARING, widensOn(['View', 'Edit'])),
+    rule('DefaultSharingLinkType', SHARING, widensOn(['Direct', 'Internal', 'AnonymousAccess'], 'DefaultSharingLinkType')),
+    rule('DefaultLinkPermission', SHARING, widensOn(['View', 'Edit'], 'DefaultLinkPermission')),
     rule('OverrideTenantExternalUserExpirationPolicy', SHARING, changes),
     rule('ExternalUserExpirationInDays', SHARING, expiresLater),
     rule('OverrideTenantAnonymousLinkExpirationPolicy', SHARING, changes),

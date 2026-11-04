@@ -100,8 +100,9 @@ const HEALTH_GROUPS: { key: string; label: string; icon: IconName; about: string
   { key: "not-backed-up", label: "Not backed up", icon: "info", about: "Keel cannot read these, or this tenant does not have them", has: (health) => health === "not-collected" || health === "unavailable" },
 ];
 
-const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "proven", "partial", "protected"];
+const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "proven", "partial", "protected", "nothing-to-restore"];
 const STANDING_ABOUT: Record<RestoreStanding, string> = {
+  "nothing-to-restore": "Microsoft owns these; the backup is a record",
   "cannot-restore": "Kept for reference, or not read yet",
   unproven: "No live test restore on this tenant yet",
   proven: "A live test restore on this tenant worked",

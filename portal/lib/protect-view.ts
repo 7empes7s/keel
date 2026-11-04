@@ -6,6 +6,7 @@ import type { Schedule } from "@/lib/schedules";
 import type { CoverageData, CoverageSummary, CoverageType, RestoreProofSummary, WriteOperationCapability } from "@/lib/types";
 import {
   hasRestoreWriter as engineHasRestoreWriter,
+  nothingToRestore as engineNothingToRestore,
   provenAt as engineProvenAt,
   restoreProof as engineRestoreProof,
   restoreProofSummary,
@@ -36,7 +37,13 @@ export function typeName(type: string): string {
 
 // The answers the contract allows for "can Keel put this type back?". "proven" is a
 // write that ran live on this tenant before any drill measured what comes back.
-export type RestoreStanding = "protected" | "partial" | "proven" | "cannot-restore" | "unproven";
+// "nothing-to-restore" is not a gap: Microsoft owns the kind, so it is never a manual step.
+export type RestoreStanding = "protected" | "partial" | "proven" | "cannot-restore" | "unproven" | "nothing-to-restore";
+
+/** Microsoft owns the kind, so there is nothing to put back. */
+export function hasNothingToRestore(item: CoverageType): boolean {
+  return engineNothingToRestore(item);
+}
 
 /**
  * Whether Keel has a tested writer for the type: an automated recovery decision and at
@@ -59,6 +66,7 @@ export function restoreProofCounts(types: readonly CoverageType[]): RestoreProof
 }
 
 export function restoreStanding(item: CoverageType): RestoreStanding {
+  if (hasNothingToRestore(item)) return "nothing-to-restore";
   const proof = restoreProof(item);
   if (proof === "none") return "cannot-restore";
   if (item.fidelity.measured) return item.fidelity.measured === "full" && item.fidelity.declared === "full" ? "protected" : "partial";
@@ -71,6 +79,7 @@ export const STANDING_LABEL: Record<RestoreStanding, string> = {
   proven: "Restore proven",
   "cannot-restore": "Cannot be restored",
   unproven: "Restore not yet proven",
+  "nothing-to-restore": "Nothing to restore",
 };
 
 /** One sentence: protected, partially protected, cannot be restored, or no proven restore. */
@@ -94,6 +103,8 @@ export function standingSentence(item: CoverageType): string {
       return item.fidelity.declared === "partial"
         ? "Backed up, but some fields cannot be restored, and no restore has been proven on this tenant yet."
         : "Backed up, but no restore has been proven on this tenant yet.";
+    case "nothing-to-restore":
+      return "Nothing to restore: Microsoft owns this, so Keel keeps the backup as a record.";
     case "cannot-restore":
       if (item.protectionState === "not-covered" || !item.adapter) return "Keel has no collector for this type, so it is neither backed up nor restorable.";
       if (item.outcome === "unavailable") return "Nothing to restore: this tenant does not have the licence or feature Microsoft needs for this type.";
@@ -219,6 +230,7 @@ export function recoveryDecisionSentence(item: CoverageType): string | null {
   const remapping = remaps.length === 0 ? ""
     : remaps.every(([, proven]) => proven) ? " If it comes back with a new ID, Keel updates what refers to it."
       : " If it would come back with a new ID, Keel stops rather than leave broken references.";
+  if (hasNothingToRestore(item)) return "Nothing to restore: Microsoft owns this type. It is not a manual step.";
   if (decision.decision === "automated") return `Keel restores this type on its own.${remapping}`;
   if (decision.decision === "manual") return "Restoring this type is a manual step; Keel lists it for you to do by hand.";
   return "Whether Keel can restore this type on its own is not yet decided.";
@@ -489,6 +501,8 @@ export interface ProtectCounts extends CoverageBuckets {
   proven: number;
   tested: number;
   restorable: number;
+  // Kinds Microsoft owns: in no restore count, as neither restorable nor manual.
+  nothingToRestore: number;
 }
 
 export function protectCounts(types: CoverageType[]): ProtectCounts {
@@ -498,6 +512,7 @@ export function protectCounts(types: CoverageType[]): ProtectCounts {
     proven: proof.proven,
     tested: proof.tested,
     restorable: proof.restorable,
+    nothingToRestore: types.filter(hasNothingToRestore).length,
   };
 }
 

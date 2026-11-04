@@ -901,11 +901,13 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('rbacapplication-post-roleassignments'),
   }),
   // Who holds a Defender XDR admin role: the people and groups (matched in the
-  // target), the role and the data sources it covers.
+  // target), the role and the data sources it covers. Graph refuses an update
+  // that leaves out the name, role or app scopes (live proof, Q271), so an
+  // update sends the whole assignment.
   defenderRoleAssignment: defineRecord({
     resourceType: 'defenderRoleAssignment', version: 'beta', collection: DEFENDER_ASSIGNMENTS,
     operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', 'principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds'],
-    remapsReferences: true, sameField: sameIdLists(DEFENDER_LISTS),
+    remapsReferences: true, updateSendsWhole: true, sameField: sameIdLists(DEFENDER_LISTS),
     refusal: withApprovalGate(undoOnlyDelete('a Defender role assignment', 'the Microsoft Defender portal, under System, Permissions, Roles')),
     preflight: createdOnce({
       version: 'beta', path: DEFENDER_ASSIGNMENTS, label: 'Defender role assignment',

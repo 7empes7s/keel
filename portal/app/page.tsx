@@ -5,19 +5,23 @@ import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { approvalInboxScope } from "@/lib/approval-inbox";
+import { getFlaggedThisWeek } from "@/lib/insights";
 import { pendingApprovalCount } from "@/lib/pending-approvals";
 import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { getDashboardData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import type { DashboardData } from "@/lib/types";
+import type { DashboardData, FlaggedThisWeek } from "@/lib/types";
 
 export default async function Home() {
   await connection();
-  await requireReadAccess(DATA_SURFACES.dashboardPage);
+  const access = await requireReadAccess(DATA_SURFACES.dashboardPage);
 
+  // The change feed is tenant-wide, so only a central reader gets the flagged-changes row.
+  // It never holds up the Overview: an error leaves the row out.
+  const flagged: Promise<FlaggedThisWeek | null> = access.scope.central ? getFlaggedThisWeek().catch(() => null) : Promise.resolve(null);
   let data: DashboardData;
   try {
-    data = await getDashboardData();
+    data = { ...(await getDashboardData()), flaggedThisWeek: await flagged };
   } catch {
     return (
       <>

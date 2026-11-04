@@ -32,9 +32,16 @@ only; a cross-tenant policy restore is refused (a policy cannot be created).
 | roleDefinition (custom only) | create | `POST /roleManagement/directory/roleDefinitions` | display name, description, enabled, role permissions, template id | RoleManagement.ReadWrite.Directory |
 | roleDefinition (custom only) | update | `PATCH /roleManagement/directory/roleDefinitions/{id}` | display name, description, enabled, role permissions | RoleManagement.ReadWrite.Directory |
 | roleEligibilitySchedule | create | `POST /roleManagement/directory/roleEligibilityScheduleRequests` (`action: adminAssign`) | principal, role, directory scope, schedule, justification | RoleEligibilitySchedule.ReadWrite.Directory |
+| roleAssignmentSchedule (admin-assigned, time-bound) | create | `POST /roleManagement/directory/roleAssignmentScheduleRequests` (`action: adminAssign`) | principal, role, directory scope, schedule, justification | RoleAssignmentSchedule.ReadWrite.Directory |
 | unifiedRoleManagementPolicy | update | `PATCH /policies/roleManagementPolicies/{id}/rules/{ruleId}`, one call per changed rule | reviewed rules only | RoleManagementPolicy.ReadWrite.Directory |
 
-Proof for all four: `engine/roadmap/admin-role-fidelity.test.mjs`. None of the
+Issue #991 added the active time-bound assignment: only `assignmentType: "Assigned"`
+is restored (an activation is never replayed), the snapshot end date is kept, an
+expired, permanent (restored as roleAssignment) or group-held one is skipped, an
+existing one is matched by principal, role and scope, and the write is a
+"changes admin access" effect held until the restore's dry run is approved.
+
+Proof for all five: `engine/roadmap/admin-role-fidelity.test.mjs`. None of the
 permissions is verified as granted to the KEEL Restorer.
 
 ## Rules

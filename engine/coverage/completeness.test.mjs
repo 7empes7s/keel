@@ -29,9 +29,10 @@ test('no type is left unknown: every catalogue type has one of the four coverage
 });
 
 // Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs),
-// issue #992 one for access packages (accessPackageOperations.mjs), and issue #994
-// authentication contexts and staged rollout (signInSettingsOperations.mjs).
-const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage',
+// issue #992 one for access packages (accessPackageOperations.mjs), issue #991 one for
+// roleAssignmentSchedule (adminRoleOperations.mjs), and issue #994 authentication
+// contexts and staged rollout (signInSettingsOperations.mjs).
+const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage', 'roleAssignmentSchedule',
   'authenticationContextClassReference', 'featureRolloutPolicy']);
 // Issue #994: certificate authorities are manual by design, not waiting for a writer.
 const MANUAL_BY_DESIGN = new Set(['certificateBasedAuthConfiguration']);

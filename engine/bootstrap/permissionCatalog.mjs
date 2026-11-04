@@ -164,6 +164,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('Directory.ReadWrite.All', 'entra', 'Groups', 'Change the directory', 'Restore group expiry policy, the only setting with no narrower permission'),
   write('RoleManagement.ReadWrite.Directory', 'entra', 'Roles', 'Change admin roles', 'Restore admin roles and who holds them'),
   write('RoleEligibilitySchedule.ReadWrite.Directory', 'entra', 'Roles', 'Change who can activate a role', 'Restore role eligibility'),
+  write('RoleAssignmentSchedule.ReadWrite.Directory', 'entra', 'Roles', 'Change time-limited active admin roles', 'Restore time-limited active admin roles'),
   write('RoleManagementPolicy.ReadWrite.Directory', 'entra', 'Roles', 'Change role activation rules', 'Restore role activation settings'),
   write('RoleManagement.ReadWrite.Exchange', 'entra', 'Roles', 'Change Exchange admin roles', 'Restore Exchange role scopes and who holds Exchange admin roles'),
   write('RoleManagement.ReadWrite.Defender', 'entra', 'Roles', 'Change Defender admin roles', 'Restore custom Defender roles and who holds them'),

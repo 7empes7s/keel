@@ -129,9 +129,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Makes people eligible for an admin role again, keeping the original end date.',
     todo: 'Expired eligibilities and ones inherited through a group are not restored. Changing or removing an eligibility is done by hand.',
   }),
-  roleAssignmentSchedule: manual('Time-limited active admin roles', NOT_BUILT,
-    'Restoring a time-limited active role safely needs an expiry check and a guard against replaying a past activation. That is not built yet. Permanent assignments are covered by admin role assignments.',
-    'Use the backup to see who held which role until when, then assign it again in Privileged Identity Management.'),
+  roleAssignmentSchedule: auto('Time-limited active admin roles', {
+    keeps: 'Gives an admin back a time-limited active role an admin assigned, keeping the original end date. It waits for a second person to approve "Changes admin access", unless you turned restore approvals off for Entra ID.',
+    todo: 'Roles people activated themselves are never replayed. Expired ones and ones inherited through a group are not restored. Permanent ones are restored as admin role assignments. Changing or removing an active role is done by hand.',
+  }),
   unifiedRoleManagementPolicy: auto('Admin role activation settings', {
     keeps: 'Puts activation rules back: how long a role lasts, what activation needs, and who approves.',
     todo: 'A restore that would weaken protection waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID. Approvers must still exist.',

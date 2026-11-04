@@ -41,10 +41,11 @@ import {
   backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer, unreadAssignmentsStep,
 } from './intuneOperations.mjs';
 import {
-  adminRoleWriteRefusal, eligibilityLookupPath, eligibilityPostStateRefusal, eligibilityRequestBody, isAdminRoleGoverned,
-  matchingEligibility, policyPostStateRefusal, policyReadPath, policyRuleWrites, roleActionChanges, roleDefinitionPostStateRefusal,
-  roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
+  activeAssignmentConflict, adminRoleWriteRefusal, eligibilityLookupPath, eligibilityPostStateRefusal, eligibilityRequestBody, isAdminRoleGoverned,
+  isScheduleRequestType, matchingActiveAssignment, matchingEligibility, policyPostStateRefusal, policyReadPath, policyRuleWrites, roleActionChanges, roleDefinitionPostStateRefusal,
+  roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, scheduleRequestPath, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
+import { approvalHeldRefusal } from './approvalHeld.mjs';
 import { writerFor } from './writers/registry.mjs';
 import { assertNoPlannedIds, isPlannedId } from './plannedIds.mjs';
 import { journalIntendedState, trustFieldStep } from './recordWriter.mjs';
@@ -634,6 +635,17 @@ export async function applyWave(writer, governor, wave, {
         ? { naturalKey: resource.naturalKey, reason: adminRoleRefusal.reason }
         : { naturalKey: resource.naturalKey, error: adminRoleRefusal.reason });
       return;
+    }
+    // Issue #991: an active admin role assignment changes admin access, so it is
+    // written only once the restore's dry run is approved (restore/approvalHeld.mjs).
+    if (resource.resourceType === 'roleAssignmentSchedule') {
+      const held = approvalHeldRefusal(resource, effectiveVerb, { mode, approvedContentEffects });
+      if (held) {
+        (held.outcome === 'skipped' ? skipped : failed).push(held.outcome === 'skipped'
+          ? { naturalKey: resource.naturalKey, reason: held.reason, ...(held.completion ? { completion: held.completion } : {}) }
+          : { naturalKey: resource.naturalKey, error: held.reason });
+        return;
+      }
     }
 
     // Roadmap task-64: a planned recovery mechanism is re-checked here, so a
@@ -1762,7 +1774,7 @@ async function applyAdminRoleWrite(writer, resource, verb, {
   if (remapRefusal) return { failed: { naturalKey, error: remapRefusal } };
   const context = { mode, retryOperation, rollbackClient, runId, restoreRef, now, targetId, approvedContentEffects };
   if (resource.resourceType === 'roleDefinition') return applyRoleDefinitionWrite(writer, resource, verb, desired, context);
-  if (resource.resourceType === 'roleEligibilitySchedule') return applyEligibilityCreate(writer, resource, desired, context);
+  if (isScheduleRequestType(resource.resourceType)) return applyScheduleRequestCreate(writer, resource, desired, context);
   return applyRolePolicyUpdate(writer, resource, desired, context);
 }
 
@@ -1820,13 +1832,21 @@ async function applyRoleDefinitionWrite(writer, resource, verb, desired, {
   return { applied: { naturalKey, targetId: writtenId, changes } };
 }
 
-async function applyEligibilityCreate(writer, resource, desired, {
+/**
+ * A PIM eligibility, or (issue #991) an active time-bound assignment, created
+ * through its schedule request. Both keep the snapshot end date, are matched in
+ * the target by principal, role and scope first, and are read back.
+ */
+async function applyScheduleRequestCreate(writer, resource, desired, {
   mode, retryOperation, rollbackClient, runId, restoreRef, now,
 }) {
-  const { naturalKey } = resource;
+  const { naturalKey, resourceType } = resource;
+  const active = resourceType === 'roleAssignmentSchedule';
+  const noun = active ? 'active assignment' : 'eligibility';
+  const matching = active ? matchingActiveAssignment : matchingEligibility;
   let body;
   try {
-    body = eligibilityRequestBody(desired, { now });
+    body = eligibilityRequestBody(desired, { now, resourceType });
   } catch (err) {
     return { failed: { naturalKey, error: err.message } };
   }
@@ -1839,20 +1859,26 @@ async function applyEligibilityCreate(writer, resource, desired, {
   // The stored key is the old schedule id, which a recreate never gets back:
   // the target is matched by principal, role and scope, and an eligibility that
   // already exists is never requested again. A failed read is never "absent".
-  const lookupPath = eligibilityLookupPath(body);
+  const lookupPath = eligibilityLookupPath(body, resourceType);
   const existing = await retryOperation(() => writer.read('v1.0', lookupPath));
   if (existing?.ok !== true || !Array.isArray(existing.body?.value) || existing.body['@odata.nextLink']) {
-    return { failed: { naturalKey, error: `lookup-failed: the target's eligibilities for this principal and role could not be read completely (status ${existing?.status ?? 'unknown'}), so none is requested` } };
+    return { failed: { naturalKey, error: `lookup-failed: the target's ${active ? 'active assignments' : 'eligibilities'} for this principal and role could not be read completely (status ${existing?.status ?? 'unknown'}), so none is requested` } };
   }
-  const already = matchingEligibility(existing.body.value, body);
+  const already = matching(existing.body.value, body);
   if (already) return { applied: { naturalKey, targetId: already.id ?? null, changes: { ...changes, existing: true } } };
+  // The principal holds the role now through an activation: an assignment is
+  // never requested over it. It ends on its own; run the restore again after.
+  const activation = active ? activeAssignmentConflict(existing.body.value, body) : null;
+  if (activation) {
+    return { failed: { naturalKey, error: `conflict: the principal holds this role now through an activation of their eligibility, so no active assignment is requested over it; run the restore again after the activation ends` } };
+  }
 
   const journal = await journalBeforeMutation(rollbackClient, {
     runId, restoreRef, resource, operation: 'create', priorState: null, intendedState: body,
   });
   if (!journal.ok) return { failed: { naturalKey, error: 'refusing to create: rollback journal write failed' } };
 
-  const result = await retryOperation(() => writer.write('v1.0', '/roleManagement/directory/roleEligibilityScheduleRequests', { method: 'POST', body }));
+  const result = await retryOperation(() => writer.write('v1.0', scheduleRequestPath(resourceType), { method: 'POST', body }));
   if (!result.ok) {
     await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
     return { failed: graphFailure(naturalKey, result) };
@@ -1860,18 +1886,18 @@ async function applyEligibilityCreate(writer, resource, desired, {
   const ungranted = ungrantedRequest(result.body);
   if (ungranted) {
     await noteOutcome(rollbackClient, journal, 'uncertain', { postState: result.body ?? null, detail: `request ${ungranted}` });
-    return { failed: { naturalKey, error: `the eligibility request ended ${ungranted}, so no eligibility was granted` } };
+    return { failed: { naturalKey, error: `the ${noun} request ended ${ungranted}, so no ${noun} was granted` } };
   }
   const reRead = await readAfterWrite(writer, 'v1.0', lookupPath,
-    (r) => isNotFound(r) || (r?.ok === true && !matchingEligibility(r.body?.value, body)), { retryOperation });
+    (r) => isNotFound(r) || (r?.ok === true && !matching(r.body?.value, body)), { retryOperation });
   if (reRead?.ok === false) {
-    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'eligibility could not be re-read' });
+    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${noun} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };
   }
-  const schedule = matchingEligibility(reRead?.body?.value, body);
-  const refusal = eligibilityPostStateRefusal(body, schedule);
+  const schedule = matching(reRead?.body?.value, body);
+  const refusal = eligibilityPostStateRefusal(body, schedule, noun);
   if (refusal) {
-    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: schedule, detail: 'eligibility post-state did not verify' });
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: schedule, detail: `${noun} post-state did not verify` });
     return { failed: { naturalKey, error: refusal } };
   }
   await noteOutcome(rollbackClient, journal, 'succeeded', { targetId: schedule.id ?? null, postState: schedule });

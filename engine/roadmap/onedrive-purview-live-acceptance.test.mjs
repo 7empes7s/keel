@@ -208,7 +208,7 @@ function exchangeSide() {
     return { status: 200, headers: {}, body: { ...settings } };
   };
   const side = (config) => ({ transport, powershell: { spawnFn: container.spawnFn, timeoutMs: 200, tenantConfigPath: config } });
-  return { collector: side('/etc/keel/exchange-collector.json'), restorer: side('/etc/keel/exchange-restorer.json') };
+  return { collector: side('/etc/keel/KEEL-RT-fixture-exchange-collector.json'), restorer: side('/etc/keel/KEEL-RT-fixture-exchange-restorer.json') };
 }
 
 const SP_FILE = 'sharepoint-live-acceptance.json';
@@ -329,7 +329,7 @@ function purviewFake({
   const side = (config) => ({ powershell: { spawnFn: container.spawnFn, timeoutMs: 200, tenantConfigPath: config } });
   return {
     state, calls: container.calls, jobs: container.jobs, contentCalls: container.contentCalls,
-    collector: side('/etc/keel/purview-collector.json'), restorer: side('/etc/keel/purview-restorer.json'),
+    collector: side('/etc/keel/KEEL-RT-fixture-purview-collector.json'), restorer: side('/etc/keel/KEEL-RT-fixture-purview-restorer.json'),
     writes: () => container.calls.filter((call) => call.cmdlet.startsWith('Set-')).map((call) => call.cmdlet),
   };
 }
@@ -376,14 +376,14 @@ test('a valid independently captured record verifies, and the capture touched on
   // Only the fixture OneDrive (and the absent probe) were addressed, and only by the collector, in the PnP session.
   const siteCalls = fake.calls.filter((call) => call.cmdlet === 'Get-PnPTenantSite');
   assert.deepEqual(siteCalls.map((call) => call.parameters.Identity).sort(), [PROBE_SITE, SITE].sort());
-  assert.ok(siteCalls.every((call) => call.session === 'PnP.PowerShell:pnp' && call.config === '/etc/keel/purview-collector.json'));
+  assert.ok(siteCalls.every((call) => call.session === 'PnP.PowerShell:pnp' && call.config === '/etc/keel/KEEL-RT-fixture-purview-collector.json'));
   // Zero content calls: no file, list item, item label or label usage cmdlet was ever sent.
   assert.equal(fake.contentCalls(), 0);
   assert.deepEqual([...new Set(fake.calls.map((call) => call.cmdlet))].sort(), ['Get-Label', 'Get-LabelPolicy', 'Get-PnPTenantSite', 'Set-Label', 'Set-LabelPolicy']);
   // Each value is one argument in a data job, never script source; writes use the restorer's config only.
   for (const job of fake.jobs) assert.deepEqual(Object.keys(job).sort(), ['adapter', 'cmdlet', 'jobId', 'mode', 'module', 'parameters', 'tenantConfigPath']);
   const sets = fake.calls.filter((call) => call.cmdlet.startsWith('Set-'));
-  assert.ok(sets.every((call) => call.config === '/etc/keel/purview-restorer.json' && call.session === 'ExchangeOnlineManagement:ipps'));
+  assert.ok(sets.every((call) => call.config === '/etc/keel/KEEL-RT-fixture-purview-restorer.json' && call.session === 'ExchangeOnlineManagement:ipps'));
   assert.deepEqual(sets.map((call) => [call.cmdlet, call.parameters.Identity, Object.keys(call.parameters).sort()]), [
     ['Set-Label', LABEL_ID, ['Comment', 'Identity']], ['Set-Label', LABEL_ID, ['Comment', 'Identity']], ['Set-LabelPolicy', POLICY_ID, ['AddLabels', 'Identity']],
   ]);

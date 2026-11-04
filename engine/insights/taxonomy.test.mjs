@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { WORKLOADS } from '../collect/workloadContract.mjs';
+import { EXPOSURE_KINDS } from './sharingExposure.mjs';
 import { EDGE_TAXONOMY, OTHER_CATEGORY, PRIORITIES, SERVICES, SERVICE_FILES, SUBKIND_TAXONOMY, TAXONOMY, compareInService, compareTypes, placeUnmapped, builtInOf, objectTypeName, settingArea, settingKind, templateFamilyOf, typeInfo } from './taxonomy.mjs';
 
 const DIR = new URL('./taxonomy.d/', import.meta.url);
@@ -24,6 +25,8 @@ test('every catalogued type and workload read has an entry', () => {
     ...CATALOG.map((entry) => entry.type),
     ...WORKLOAD_COLLECTORS.map((collector) => collector.workload),
     ...WORKLOADS,
+    // Kinds only the change feed names: who can reach a site or OneDrive, between two backups.
+    ...EXPOSURE_KINDS,
   ]);
   const missing = [...required].filter((type) => !TAXONOMY[type]);
   assert.deepEqual(missing, [], `add these to engine/insights/taxonomy.d/: ${missing.join(', ')}`);

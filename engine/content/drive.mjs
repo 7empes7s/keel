@@ -36,6 +36,7 @@
  * records go under `<itemId>` with version `record:<hash>`. `metadata.kind` tells
  * them apart ('drive-content' or 'drive-record').
  */
+import { drivePermissionExposure } from './permissionExposure.mjs';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 
@@ -194,6 +195,7 @@ export async function syncDrive({
   now = () => new Date(),
   maxVersions = DEFAULT_MAX_VERSIONS,
   permissions = true,
+  ownerName = null,
   maxRetries = DEFAULT_MAX_RETRIES,
   maxPages = DEFAULT_MAX_PAGES,
 }) {
@@ -275,7 +277,7 @@ export async function syncDrive({
     if (current.items[id]?.recordHash === hash) return;
     await store.putItem(Readable.from([Buffer.from(JSON.stringify(record))]), {
       tenantRef, workload, container: where, itemKey: id, version: `record:${hash.slice(0, 32)}`,
-      metadata: { kind: 'drive-record', driveId, itemId: id, name: record.name, path: record.path, deleted: record.deleted, observedAt: now().toISOString() },
+      metadata: { kind: 'drive-record', ownerName, driveId, itemId: id, name: record.name, path: record.path, deleted: record.deleted, observedAt: now().toISOString(), exposure: record.deleted ? null : drivePermissionExposure(record.permissions) },
     });
     current.items[id].recordHash = hash;
     stats.records += 1;
@@ -332,6 +334,7 @@ export async function syncDrive({
       remoteItem: item.remoteItem ? { id: item.remoteItem.id, driveId: item.remoteItem.parentReference?.driveId ?? null } : null,
       shared: item.shared ?? null,
       permissions: granted,
+      exposureVersion: 1,
       currentVersion: content.currentVersion,
       versions: Object.entries(content.versions)
         .map(([versionId, value]) => ({ versionId, ref: value.ref, sha256: value.sha256, bytes: value.bytes, lastModifiedDateTime: value.lastModifiedDateTime }))

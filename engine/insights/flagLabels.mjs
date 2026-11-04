@@ -22,6 +22,10 @@ const LABELS = Object.freeze({
   'auth-strength-loosened': 'More sign-in methods accepted',
   'cross-tenant-opened': 'Access with other organizations opened up',
   'guest-invites-opened': 'More people allowed to invite guests',
+  'shared-wider': 'Sharing defaults opened to more people',
+  'opened-to-everyone-edit': 'Everyone given edit or full access',
+  'opened-to-everyone': 'Everyone given access',
+  'anyone-links-added': 'New Anyone sharing links',
   'sharing-widened': 'Sharing opened to more people',
   'anyone-link-expiry-longer': 'Anyone links allowed to last longer',
 });

@@ -262,7 +262,7 @@ function exchangeFake({
   const side = (config) => ({ transport, powershell: { spawnFn, timeoutMs: 200, tenantConfigPath: config } });
   return {
     mailbox, organization, calls, graphCalls, jobs,
-    collector: side('/etc/keel/exchange-collector.json'), restorer: side('/etc/keel/exchange-restorer.json'),
+    collector: side('/etc/keel/KEEL-RT-fixture-exchange-collector.json'), restorer: side('/etc/keel/KEEL-RT-fixture-exchange-restorer.json'),
     writes: () => [...graphCalls.filter((call) => !call.startsWith('GET')), ...calls.filter((call) => call.cmdlet.startsWith('Set-')).map((call) => call.cmdlet)],
   };
 }
@@ -307,8 +307,8 @@ test('a valid independently captured record verifies, and the capture touched on
   assert.ok(!fake.calls.some((call) => /Folder|Message|Search|Export|InboxRule|Calendar|Remove-/.test(call.cmdlet)), 'zero content calls, no deletion');
   // Each identity is one argument in a data job, never script source; collector and restorer use their own configs.
   for (const job of fake.jobs) assert.deepEqual(Object.keys(job).sort(), ['adapter', 'cmdlet', 'jobId', 'mode', 'module', 'parameters', 'tenantConfigPath']);
-  assert.ok(fake.calls.filter((call) => call.cmdlet.startsWith('Set-')).every((call) => call.config === '/etc/keel/exchange-restorer.json'));
-  assert.ok(fake.calls.filter((call) => call.cmdlet === 'Get-OrganizationConfig').every((call) => call.config === '/etc/keel/exchange-collector.json'));
+  assert.ok(fake.calls.filter((call) => call.cmdlet.startsWith('Set-')).every((call) => call.config === '/etc/keel/KEEL-RT-fixture-exchange-restorer.json'));
+  assert.ok(fake.calls.filter((call) => call.cmdlet === 'Get-OrganizationConfig').every((call) => call.config === '/etc/keel/KEEL-RT-fixture-exchange-collector.json'));
   // Writes: 2 settings PATCHes, 2 Set-CASMailbox, 1 Set-Mailbox; never Set-OrganizationConfig.
   assert.deepEqual(fake.writes().sort(), [
     `PATCH /v1.0/users/${MAILBOX}/mailboxSettings`, `PATCH /v1.0/users/${MAILBOX}/mailboxSettings`, 'Set-CASMailbox', 'Set-CASMailbox', 'Set-Mailbox',
@@ -706,8 +706,8 @@ test('gap W7: the opt-in organization capture moves only the large-audience thre
   // Exactly two organization writes, by the restorer, each with that one parameter: up by one, then back.
   const sets = fake.calls.filter((call) => call.cmdlet === 'Set-OrganizationConfig');
   assert.deepEqual(sets.map((call) => call.args), [[['MailTipsLargeAudienceThreshold', 26]], [['MailTipsLargeAudienceThreshold', 25]]]);
-  assert.ok(sets.every((call) => call.config === '/etc/keel/exchange-restorer.json'));
-  assert.ok(fake.calls.filter((call) => call.cmdlet === 'Get-OrganizationConfig').every((call) => call.config === '/etc/keel/exchange-collector.json'));
+  assert.ok(sets.every((call) => call.config === '/etc/keel/KEEL-RT-fixture-exchange-restorer.json'));
+  assert.ok(fake.calls.filter((call) => call.cmdlet === 'Get-OrganizationConfig').every((call) => call.config === '/etc/keel/KEEL-RT-fixture-exchange-collector.json'));
   // Post-state: the organization is exactly where it started.
   assert.deepEqual(fake.organization, {
     FocusedInboxOn: true, MailTipsAllTipsEnabled: true, MailTipsExternalRecipientsTipsEnabled: false, MailTipsGroupMetricsEnabled: true,

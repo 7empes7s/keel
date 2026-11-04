@@ -141,7 +141,7 @@ test("audit entries name the actor and the object, never an email, code or id", 
   assert.ok(visible.includes("An account that no longer exists asked for approval"), visible);
   assert.ok(!visible.includes("@") && !GUID.test(visible), visible);
   // Without a saved name the object is named in general words.
-  assert.equal(evidenceSentence(entries[1], "Keel", {}), "Policies checked a change to Unnamed group, and one applied");
+  assert.equal(evidenceSentence(entries[1], "Keel", {}), "Policies checked a change to an unnamed group, and one applied");
   // A lookup that failed leaves the actor as "Someone", never the stored value.
   const unresolved = await renderActivityAt("show=records", { canBackup: false, jobs: [], entries: entries.slice(0, 1), integrity: null, people: {}, now: NOW });
   assert.ok(text(unresolved).includes("Someone approved a request"));

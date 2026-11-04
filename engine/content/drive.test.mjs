@@ -358,3 +358,22 @@ test('a user OneDrive is found by GET /users/{id}/drive', async () => {
   assert.equal(found.driveId, DRIVE);
   assert.deepEqual(seen.map((r) => [r.method, r.url]), [['GET', `${GRAPH}/users/KEEL-RT-user%40contoso.test/drive`]]);
 });
+
+test('OneDrive saves exposure in plain metadata on a sharing-only delta and clears it on deletion', async () => {
+  const drive = fixtureDrive();
+  const store = fakeStore();
+  const first = await sync(drive, store, { ownerName: 'Amara' });
+  const beforeContentReads = drive.contentRequests().length;
+  drive.share('i-report', { id: 'everyone', roles: ['write'], grantedToV2: { siteUser: { loginName: 'c:0(.s|true' } } });
+  drive.share('i-report', { id: 'anyone', roles: ['read'], link: { scope: 'anonymous', type: 'view' } });
+  const second = await sync(drive, store, { state: first.state, ownerName: 'Amara' });
+  const metadata = records(store, 'i-report').at(-1).metadata;
+  assert.equal(metadata.ownerName, 'Amara');
+  assert.deepEqual(metadata.exposure.everyone, [{ audience: 'everyone', roles: ['write'] }]);
+  assert.equal(metadata.exposure.links.anyone.view, 1);
+  assert.deepEqual(metadata.exposure.linkGrants, [{ id: 'anyone', scope: 'anonymous', type: 'view' }]);
+  assert.equal(drive.contentRequests().length, beforeContentReads);
+  drive.remove('i-report');
+  await sync(drive, store, { state: second.state });
+  assert.equal(records(store, 'i-report').at(-1).metadata.exposure, null);
+});

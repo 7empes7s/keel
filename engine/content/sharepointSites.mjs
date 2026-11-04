@@ -38,6 +38,7 @@
  *    Each object is stored as canonical JSON (sorted keys), so an unchanged object
  *    hashes the same on every run and the store deduplicates it.
  */
+import { everyoneAudience, emptyLinks, sharingLinkKind } from './permissionExposure.mjs';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 
@@ -320,8 +321,8 @@ export async function readSitePermissions(permissionsReader, webUrl) {
 
 // Version of the plain summary saved beside each `site/permissions` item. A stored item
 // with an older summary (or none) is stored again on the next run so the portal can read it.
-export const PERMISSIONS_SUMMARY_VERSION = 1;
-const SYSTEM_LOGINS = /^(SHAREPOINT\\system|c:0\(\.s\|true|i:0i\.t\|00000003-0000-0ff1-ce00-000000000000)/i;
+export const PERMISSIONS_SUMMARY_VERSION = 2;
+const SYSTEM_LOGINS = /^(SHAREPOINT\\system|i:0i\.t\|00000003-0000-0ff1-ce00-000000000000)/i;
 const GUEST = /#ext#|urn%3aspo%3aguest/i;
 const OWNER_ROLE = /^full control$/i;
 const SHARING_LINK_GROUP = /^SharingLinks\./i;
@@ -338,7 +339,7 @@ export function permissionsSummary(value) {
   const rolesOf = new Map((assignments ?? []).map((row) => [row.principalId, (row.roles ?? []).map((role) => role.name).filter((name) => name && name !== 'Limited Access')]));
   // SharePoint user ids are unique within a site, so they join a group member to an admin.
   const principalKey = (principal) => (principal.id !== null && principal.id !== undefined ? `id:${principal.id}` : principal.loginName ?? principal.title);
-  const real = (principal) => principal && !SYSTEM_LOGINS.test(principal.loginName ?? '') && principal.title !== 'System Account';
+  const real = (principal) => principal && !everyoneAudience(principal.loginName) && !SYSTEM_LOGINS.test(principal.loginName ?? '') && principal.title !== 'System Account';
   const people = new Map();
   const guests = new Set();
   const note = (principal) => {
@@ -348,6 +349,19 @@ export function permissionsSummary(value) {
     if (GUEST.test(principal.loginName ?? '') || GUEST.test(principal.userPrincipalName ?? '')) guests.add(key);
   };
   const sharingLinks = groups.filter((group) => SHARING_LINK_GROUP.test(group.title ?? ''));
+  const links = emptyLinks();
+  for (const group of sharingLinks) {
+    const kind = sharingLinkKind(group.title);
+    if (kind) links[kind.scope][kind.access] += 1;
+    else links.unknown += 1;
+  }
+  const everyone = [];
+  const addEveryone = (principal, roles) => {
+    const audience = everyoneAudience(principal?.loginName);
+    if (audience && roles.length) everyone.push({ audience, roles });
+  };
+  for (const row of assignments ?? []) addEveryone(row.member, rolesOf.get(row.principalId) ?? []);
+  for (const group of groups) for (const member of group.members ?? []) addEveryone(member, rolesOf.get(group.id) ?? []);
   const shown = groups.filter((group) => !SHARING_LINK_GROUP.test(group.title ?? '') && !/^Limited Access System Group/i.test(group.title ?? ''));
   for (const group of groups) for (const member of group.members ?? []) note(member);
   for (const admin of admins) note(admin);
@@ -373,6 +387,7 @@ export function permissionsSummary(value) {
     people: people.size,
     guests: guests.size,
     sharingLinks: sharingLinks.length,
+    exposure: { checked: !groups.some((g) => g.members === null), everyone: assignments === null ? null : everyone, links },
     directRoles: (assignments ?? []).filter((row) => row.member?.principalType === 1).length,
     uniqueLists: Array.isArray(value?.lists) ? value.lists.length : 0,
   };
@@ -534,7 +549,8 @@ export async function backupSharePointSites({
         // (the restore picks a backup by time). Unchanged permissions are still not stored.
         const hash = createHash('sha256').update(canonicalJson(value)).digest('hex');
         entry.refs.permissions = await putSetting('site/permissions', value, `sha256:${hash}@${startedAt}`, {
-          metadata: { summary: permissionsSummary(value) }, summary: PERMISSIONS_SUMMARY_VERSION,
+          // The site's name too, so the change feed can name a site whose access changed.
+          metadata: { summary: permissionsSummary(value), siteName: discovered.displayName ?? null }, summary: PERMISSIONS_SUMMARY_VERSION,
         });
         if (failed.length) throw Object.assign(new Error(`${failed.length} permission read(s) failed, first ${failed[0].what}: ${failed[0].error}`), { status: failed[0].httpStatus });
       });

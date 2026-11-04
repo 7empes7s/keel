@@ -20,6 +20,7 @@ import { BLAST_SEVERITY, applyConditionEvent } from '../notify/alerts.mjs';
 import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { SHAREPOINT_WORKLOAD } from '../collect/workloads/sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, TEMPLATE_STORAGE_FIELDS } from '../collect/workloads/sharepointStructure.mjs';
+import { SHARING_DIRECTION_WORKLOADS, sharingDirection } from './sharingDirection.mjs';
 
 // Fields that move on their own, without a setting changing: the time Microsoft last
 // saved the object and its version tag.
@@ -40,6 +41,7 @@ export const DRIFT_WORKLOADS = Object.freeze({
     // A change limited to these fields renames a site; anything else (app grants,
     // tenant sharing settings) changes who can reach what.
     cosmetic: new Set(['displayName', 'name', 'webUrl', 'hostname', 'createdDateTime']),
+    direction: sharingDirection,
   },
   // A site template is kept whole for a restore but compared through its summaries
   // (lists, columns, content types, navigation): the XML moves with every PnP version.
@@ -47,6 +49,10 @@ export const DRIFT_WORKLOADS = Object.freeze({
     volatile: new Set([...MOVES_ON_ITS_OWN, ...TEMPLATE_STORAGE_FIELDS]),
     cosmetic: new Set([...NAMES, 'Title', 'title', 'PreviewImageUrl', 'PreviewImageAltText', 'LogoUrl']),
   },
+  // Sharing settings have a direction (sharingDirection.mjs): a change that only narrows
+  // who can reach files is low priority, a widening affects access.
+  ...Object.fromEntries(SHARING_DIRECTION_WORKLOADS.filter((workload) => workload !== SHAREPOINT_WORKLOAD)
+    .map((workload) => [workload, { ...DEFAULT_RULES, direction: sharingDirection }])),
 });
 
 const USABLE = USABLE_OUTCOMES;
@@ -60,7 +66,11 @@ const CHANGE_TYPE = { added: 'added', removed: 'removed', changed: 'modified' };
 function blastRadius(item, rules) {
   if (item.changeType === 'added') return 'cosmetic';
   if (item.changeType === 'removed') return 'access-affecting';
-  return item.fields.every((field) => rules.cosmetic.has(field.path)) ? 'cosmetic' : 'access-affecting';
+  const behaviour = item.fields.filter((field) => !rules.cosmetic.has(field.path));
+  if (behaviour.length === 0) return 'cosmetic';
+  // Only narrowed sharing (fewer people can reach files): low priority, like a rename.
+  if (rules.direction && behaviour.every((field) => rules.direction(field.path, field.before, field.after) === 'narrower')) return 'cosmetic';
+  return 'access-affecting';
 }
 
 /**

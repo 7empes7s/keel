@@ -132,6 +132,11 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "intune-baselines/page.tsx",
   },
+  // Issue #964: groups, teams, apps and sites with no working owner.
+  ownerReviewPage: {
+    capability: "read",
+    source: "owner-review/page.tsx",
+  },
   jobsPage: {
     capability: "read",
     source: "jobs/page.tsx",

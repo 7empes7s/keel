@@ -211,3 +211,27 @@ Nothing can recreate these, with KEEL or any other tool:
   - lifecycle workflow and provisioning run history;
   - who accepted terms of use or terms and conditions (users are asked again);
   - each member tenant's acceptance of a multitenant organization.
+
+### Oversharing evidence on Sites
+
+The content backup saves Everyone (`c:0(.s|true`) and Everyone except external
+users (`spo-grid-all-users/<tenant id>`) grants with their permission levels,
+including grants through SharePoint groups. Site-wide grants come from the site's
+role assignments; inherited site access or unreadable group membership is marked
+not checked. Sharing-link scope comes from `SharingLinks.*` group names:
+`AnonymousView/Edit`, `OrganizationView/Edit`, and `Flexible` (specific people,
+with view/edit only when the name says so). Unrecognised names remain unknown.
+These groups are evidence of saved links, not a live test that a link still opens.
+
+OneDrive's existing Graph file/folder permissions read supplies link scope and
+Everyone grants for the content read. The Sites summary includes OneDrives and
+counts distinct saved link permission IDs within each drive. These grants describe
+content in a OneDrive, not access to the whole drive. Old or partly refreshed
+backups remain not checked where this evidence is absent; they are not treated as
+zero. The next read refreshes SharePoint summary versions; OneDrive evidence is
+updated as files and folders are read by delta sync.
+
+No app permissions are added. SharePoint list-item and folder unique role
+assignments are still not read (`ITEM_PERMISSIONS_MISSING` stays). SharePoint
+list/library role assignments are backed up but are not presented as site-wide
+Everyone access. The separate Graph file/folder permission read remains in place.

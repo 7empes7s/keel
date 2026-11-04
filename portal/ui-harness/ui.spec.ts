@@ -50,6 +50,9 @@ const PAGES = [
   { name: "benchmarks", hash: "/compliance" },
   { name: "intune-baselines", hash: "/intune-baselines" },
   { name: "intune-baselines-never", hash: "/intune-baselines/never" },
+  { name: "owner-review", hash: "/owner-review" },
+  { name: "owner-review-none", hash: "/owner-review/none" },
+  { name: "owner-review-read-failed", hash: "/owner-review/read-failed" },
   { name: "benchmarks-scuba-lists", hash: "/compliance/scuba" },
   { name: "benchmarks-scuba-lists-edit", hash: "/compliance/scuba?lists=edit" },
   { name: "principals", hash: "/people" },
@@ -77,6 +80,11 @@ const PAGES = [
   { name: "benchmarks-names-hidden", hash: "/compliance/anonymous" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
+  // Old addresses that redirect: the checks run on the page they land on.
+  { name: "backups", hash: "/backups" },
+  { name: "coverage", hash: "/coverage" },
+  { name: "evidence", hash: "/evidence" },
+  { name: "jobs", hash: "/jobs" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -114,6 +122,40 @@ for (const theme of ["dark", "light"] as const) {
     });
   }
 }
+
+// The old addresses the portal redirects (issue #965): the page each lands on passes
+// axe at phone and laptop widths too, and carries the old filters under their new names.
+const OLD_ADDRESSES = [
+  { name: "backups", hash: "/backups", lands: "/protect" },
+  { name: "coverage", hash: "/coverage", lands: "/protect" },
+  { name: "evidence", hash: "/evidence", lands: "/activity?show=records" },
+  { name: "jobs", hash: "/jobs", lands: "/activity?show=jobs" },
+];
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [375, 390, 1278]) {
+    for (const { name, hash, lands } of OLD_ADDRESSES) {
+      test(`a11y · ${name} · ${width} · ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await open(page, hash, theme);
+        expect(new URL(page.url()).hash).toBe(`#${lands}`);
+        const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+        const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+        expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+      });
+    }
+  }
+}
+
+test("old addresses · /evidence keeps its filters, and unnamed settings read by their kind", async ({ page }) => {
+  await open(page, "/evidence?kind=policy-evaluation&from=2026-10-01T00:00:00Z&to=2026-10-02T23:59:59Z");
+  expect(new URL(page.url()).hash).toBe("#/activity?show=records&what=policy&range=2026-10-01..2026-10-02");
+  await expect(page.locator(".ac-row-link")).toHaveText([
+    "Policies checked a change to Finance approvers (group)",
+    "Policies checked a change to an unnamed device management script, and one applied",
+  ]);
+  await open(page, "/jobs");
+  await expect(page.locator(".ac-row-link").last()).toHaveText("Roll back of 1 change, including an unnamed device management script");
+});
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
 const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial", "job-content-partial"];
@@ -2105,8 +2147,8 @@ test("sites list and a site's page fit a phone without sideways scrolling", asyn
   await expect(rows).toHaveCount(4);
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.locator("main#main-content h1")).toHaveText("Finance");
-  await expect(page.locator('[data-layer="verdict"]')).toContainText("It is shared more widely than your organisation's default, and 1 app has full control.");
-  await expect(page.locator(".st-status")).toHaveCount(5);
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("Everyone in the company can edit this site. 3 links anyone can open.");
+  await expect(page.locator(".st-status")).toHaveCount(7);
   await expect(page.locator('.st-status[data-tone="urgent"]', { hasText: "Sharing setting" })).toContainText("More open than your organisation's default");
   await expect(page.getByRole("rowheader", { name: "Payroll connector" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Edit" })).toBeVisible();
@@ -2520,7 +2562,13 @@ const RECORD_IDS: Record<string, string[]> = {
   "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
   sites: ["c0110000-0000-4000-8000-0000000000c5"],
   site: ["contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002", "a9900000-0000-4000-8000-0000000000a1", "a9900000-0000-4000-8000-0000000000a2", "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE"],
+  // The old addresses land on Protect and Activity; the unnamed device script's key and
+  // the roll back's change id stay in the record while the rows name its kind.
+  evidence: ["18190", "18205", "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1", "a9e10000-0000-4000-8000-000000000100"],
+  jobs: ["a4", "y4", "d6e00000-0000-4000-8000-0000000000e1", "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1"],
 };
+RECORD_IDS.backups = RECORD_IDS.protect;
+RECORD_IDS.coverage = RECORD_IDS.protect;
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {
   // Each text node on its own line, so adjacent blocks never run together.
@@ -6155,3 +6203,65 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+// Owner review (issue #964): problems found, nothing to do, and app owner reads refused.
+// At each width and theme the verdict fits, nothing scrolls sideways or is clipped, and
+// no id shows outside Technical details.
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [375, 390, 1278]) {
+    for (const hash of ["/owner-review", "/owner-review/none", "/owner-review/read-failed"]) {
+      test(`Owner review · ${width} · ${theme} · ${hash}: verdict first, no sideways scroll or clipped text`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width < 600 ? 812 : 900 });
+        await open(page, hash, theme);
+        const verdict = page.locator('[data-layer="verdict"]');
+        await expect(verdict).toBeVisible();
+        expect((await verdict.boundingBox())!.y).toBeLessThan(width < 600 ? 812 : 900);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".or-page *, .page-header *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const visibleIds = await page.locator("main#main-content").evaluate((main) => {
+          const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+          const found: string[] = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (node.parentElement?.closest('[data-layer="record"], details, .technical-details')) continue;
+            if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(node.textContent ?? "")) found.push(node.textContent!.trim());
+          }
+          return found;
+        });
+        expect(visibleIds).toEqual([]);
+      });
+    }
+  }
+}
+
+test("Owner review: the verdict counts what has no working owner, and the tiles filter by problem", async ({ page }) => {
+  await open(page, "/owner-review");
+  await expect(page.locator(".verdict-sentence")).toHaveText("3 groups, 1 app and 1 site have no working owner.");
+  await expect(page.locator(".or-row")).toHaveCount(9);
+  await page.locator(".cp-tile", { hasText: "Guest owners" }).click();
+  await expect(page).toHaveURL(/owners=guest-owner/);
+  await expect(page.locator(".or-row")).toHaveCount(3);
+  await page.locator(".cp-tile", { hasText: "Only disabled owners" }).click();
+  await expect(page.locator(".or-row")).toHaveCount(5);
+  await page.getByRole("button", { name: "Remove filter: Guest owners" }).click();
+  await expect(page.locator(".or-row")).toHaveCount(2);
+  await expect(page.locator(".or-row").first()).toContainText("Every owner's account is turned off: Dan Okafor.");
+});
+
+test("Owner review: refused app owner reads say so with the Setup fix, never no owner", async ({ page }) => {
+  await open(page, "/owner-review/read-failed");
+  await expect(page.locator(".verdict-sentence")).toHaveText("No ownerless group, app or site found, but owners could not be read for app registrations.");
+  await expect(page.getByText("Owners could not be read for app registrations.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Check Application.Read.All in Setup" }).first()).toHaveAttribute("href", /\/setup\?perm-app=collector&perm-q=Application.Read.All#setup-permissions$/);
+  await expect(page.locator(".or-row", { hasText: /\bNo owner\b/ })).toHaveCount(0);
+});
+
+test("Owner review: nothing to review", async ({ page }) => {
+  await open(page, "/owner-review/none");
+  await expect(page.locator(".verdict-sentence")).toHaveText("Every group, app and site Keel checked has a working owner.");
+  await expect(page.locator(".or-row")).toHaveCount(0);
+  await expect(page.locator(".empty-state")).toContainText("Nothing to review");
+});

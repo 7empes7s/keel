@@ -173,7 +173,7 @@ test('the transport answers one result per call, and a wrong module version or a
   assert.equal(answer.results[0].state.Ensure, 'Present');
   assert.equal(answer.results[0].state.Name, 'KEEL-RT-dl-read');
   assert.equal(answer.results[1].state.Ensure, 'Absent');
-  assert.equal(tenant.jobs[0].tenantConfigPath, '/etc/keel/exchange-restorer.json');
+  assert.equal(tenant.jobs[0].tenantConfigPath, '/etc/keel/KEEL-RT-fixture-exchange-restorer.json');
   assert.equal(tenant.jobs[0].moduleVersion, DSC_MODULE_VERSION);
 
   const older = fakeDscTenant([list], { moduleVersion: '2.25.1.1' });

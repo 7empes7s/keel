@@ -79,6 +79,7 @@ const drift = (type, change, before, after, extra = {}) => ({
   before: flagValues(type, before), after: flagValues(type, after), ...extra,
 });
 const service = (type, change, fields, name = 'Sharing settings') => ({ source: 'service', type, change, name, ...serviceFlagValues(fields) });
+const backup = (type, exposure, change = exposure.change, name = 'Finance') => ({ source: 'backup', type, change, name, context: { exposure } });
 const audit = (activity, { operation = 'update', targetType = 'policy', name = null } = {}) => ({ source: 'audit', type: targetType, targetType, change: 'modified', activity, operation, name, fields: [] });
 
 // [rule key, must flag, must not flag, sentence the flag carries]
@@ -185,6 +186,22 @@ const CASES = [
     service('sharepoint-tenant', 'modified', [{ path: 'RequireAnonymousLinksExpireInDays', kind: 'changed', before: 14, after: 0 }], 'Tenant settings'),
     service('sharepoint-tenant', 'modified', [{ path: 'RequireAnonymousLinksExpireInDays', kind: 'changed', before: 0, after: 14 }], 'Tenant settings'),
     'Anyone links no longer expire (they expired after 14 days).'],
+  ['shared-wider',
+    service('sharepoint-tenant', 'modified', [{ path: 'DefaultSharingLinkType', kind: 'changed', before: 'Internal', after: 'AnonymousAccess' }], 'Tenant settings'),
+    service('sharepoint-tenant', 'modified', [{ path: 'DefaultSharingLinkType', kind: 'changed', before: 'AnonymousAccess', after: 'Direct' }], 'Tenant settings'),
+    'Shared wider than before: new links are for anyone with the link by default (Tenant settings).'],
+  ['opened-to-everyone-edit',
+    backup('sharepoint-site-access', { what: 'everyone', change: 'added', audience: 'everyone-except-external', level: 'edit' }),
+    backup('sharepoint-site-access', { what: 'everyone', change: 'removed', audience: 'everyone-except-external', level: 'edit' }, 'removed'),
+    'Opened to everyone in the company: everyone in the company can now edit Finance.'],
+  ['opened-to-everyone',
+    backup('sharepoint-site-access', { what: 'everyone', change: 'added', audience: 'everyone', level: 'view' }),
+    backup('sharepoint-site-access', { what: 'everyone', change: 'removed', audience: 'everyone', level: 'view' }, 'removed'),
+    'Opened to everyone in the company: everyone in the company, guests included can now view Finance.'],
+  ['anyone-links-added',
+    backup('onedrive-access', { what: 'anyone-links', change: 'added', count: 2, total: null }, 'added', 'Ada’s OneDrive'),
+    backup('sharepoint-site-access', { what: 'guests', change: 'added', count: 2, total: 3 }),
+    'Anyone links added: 2 new links that need no sign-in on Ada’s OneDrive.'],
 ];
 
 test('every rule has a case, and every case names a rule', () => {
@@ -310,4 +327,19 @@ test('flagValues reads only the declared paths, and nothing for a kind no rule r
   assert.ok(!JSON.stringify(values).includes('CRM sync'), 'names and other fields are not read');
   assert.equal(flagValues('deviceConfiguration', { id: 'x' }), null);
   assert.equal(flagValues('application', null), null);
+});
+
+test('shared wider than before: OneDrive settings, anyone-link types, and narrowing never flags', () => {
+  const onedrive = (fields) => service('onedrive-site-settings', 'modified', fields, 'Ada’s OneDrive');
+  const [sharing] = evaluateFlags(onedrive([{ path: 'SharingCapability', before: 0, after: 2 }]));
+  assert.deepEqual([sharing.key, sharing.sentence], ['shared-wider', 'Shared wider than before: files can be shared with anyone, with links that need no sign-in (Ada’s OneDrive).']);
+  const [expiry] = evaluateFlags(onedrive([{ path: 'AnonymousLinkExpirationInDays', before: 7, after: 30 }, { path: 'DefaultSharingLinkType', before: 'Direct', after: 'Internal' }]));
+  assert.equal(expiry.sentence, 'Shared wider than before: new links are for people in the organization by default and anyone links last 30 days instead of 7 (Ada’s OneDrive).');
+  const [edit] = evaluateFlags(service('sharepoint-tenant', 'modified', [{ path: 'FolderAnonymousLinkType', before: 'View', after: 'Edit' }]));
+  assert.equal(edit.sentence, 'Shared wider than before: anyone links to folders can now edit (Sharing settings).');
+  // Narrower, or a value with no direction (`None`: use the tenant's default), never flags.
+  assert.deepEqual(evaluateFlags(onedrive([{ path: 'SharingCapability', before: 'ExternalUserAndGuestSharing', after: 'Disabled' }, { path: 'AnonymousLinkExpirationInDays', before: 0, after: 14 }])), []);
+  assert.deepEqual(evaluateFlags(onedrive([{ path: 'DefaultSharingLinkType', before: 'Direct', after: 'None' }])), []);
+  // Rule 9 speaks for the tenant sharing level: one flag, not two.
+  assert.deepEqual(evaluateFlags(service('sharepoint-tenant', 'modified', [{ path: 'SharingCapability', before: 'Disabled', after: 'ExternalUserSharingOnly' }])).map((flag) => flag.key), ['sharing-widened']);
 });

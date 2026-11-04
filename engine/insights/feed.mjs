@@ -7,6 +7,9 @@
  *   listed once, at the first backup that found it; later backups that still find the
  *   same difference are not new changes.
  * - `service`: a service setting that changed between two reads (table workload_drift).
+ * - `backup`: who can reach a site or OneDrive, compared between two content backups
+ *   (sharingExposure.mjs): an Everyone grant added or removed, anyone links added, new
+ *   guests, the last owner removed. One row per change, named by the site.
  * - `audit`: a create, update or delete the Microsoft audit log recorded
  *   (table audit_change_fact, Entra and Intune logs).
  *
@@ -28,12 +31,13 @@ import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/open
 import { MEMBERSHIP_KINDS, ROLE_ASSIGNMENT_KINDS, evaluateFlags, flagPathsSql, flaggedPriority, serviceFlagFieldsSql, serviceFlagValues } from './flags.mjs';
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
+import { ONEDRIVE_ACCESS_KIND, SITE_ACCESS_KIND, compareDriveExposure, compareSiteExposure, exposureActivity } from './sharingExposure.mjs';
 import { builtInOf, objectTypeName, settingKind, typeInfo } from './taxonomy.mjs';
 import { templateFamilySql } from './templateAreas.mjs';
 
 export { FEED_GROUPINGS, feedGroupOf, groupChangeFeed } from './feedGroups.mjs';
 
-export const FEED_SOURCES = Object.freeze(['drift', 'service', 'audit']);
+export const FEED_SOURCES = Object.freeze(['drift', 'service', 'backup', 'audit']);
 export const DEFAULT_FEED_DAYS = 30;
 export const MAX_FEED_DAYS = 90;
 export const DEFAULT_FEED_LIMIT = 500;
@@ -213,6 +217,50 @@ const SERVICE_SQL = `
    ORDER BY c.observed_to DESC, d.id
    LIMIT $4`;
 
+// Content backups that save who can reach a site or OneDrive (engine/content/sharepointSites.mjs
+// SITES_WORKLOAD, engine/content/onedrives.mjs ONEDRIVE_WORKLOAD), and the SharePoint read
+// that names sites (engine/collect/workloads/sharepoint.mjs).
+const SITES_CONTENT = 'sharepoint-sites';
+const ONEDRIVE_CONTENT = 'onedrive';
+const SITE_READ = 'sharepoint-site-settings';
+const EARLIER_ITEM = (alias, extra = '') => `
+  SELECT p.metadata FROM content_item p
+   WHERE p.tenant_ref = ${alias}.tenant_ref AND p.workload = ${alias}.workload AND p.container = ${alias}.container
+     AND p.item_key = ${alias}.item_key ${extra}
+     AND (p.created_at < ${alias}.created_at OR (p.created_at = ${alias}.created_at AND p.id < ${alias}.id))
+   ORDER BY p.created_at DESC, p.id DESC LIMIT 1`;
+
+// Each site's permissions as one backup saved them, beside the backup before. A site
+// backed up for the first time has nothing to compare with and is left out.
+const SITE_ACCESS_SQL = `
+  SELECT c.id, c.container, c.created_at, c.metadata->'summary' AS summary, c.metadata->>'siteName' AS site_name,
+         prev.metadata->'summary' AS previous_summary,
+         (SELECT coalesce(o.fields->>'displayName', o.fields->>'name', o.fields->>'webUrl')
+            FROM workload_observation o JOIN workload_collection w ON w.id = o.collection_id
+           WHERE w.tenant_ref = $1 AND w.workload = '${SITE_READ}' AND o.resource_key = c.container
+           ORDER BY w.created_at DESC LIMIT 1) AS read_name
+    FROM content_item c
+    JOIN LATERAL (${EARLIER_ITEM('c')}) prev ON true
+   WHERE c.tenant_ref = $1 AND c.workload = '${SITES_CONTENT}' AND c.item_key = 'site/permissions'
+     AND c.created_at >= $2 AND c.created_at <= $3
+     AND coalesce(c.metadata->>'removed', '') <> 'true'
+   ORDER BY c.created_at DESC, c.id
+   LIMIT $4`;
+
+// OneDrive files whose saved Everyone grants or links differ from their record before.
+const DRIVE_ACCESS_SQL = `
+  SELECT c.id, c.container, c.created_at, c.metadata->>'ownerName' AS owner_name,
+         c.metadata->'exposure' AS exposure, prev.metadata->'exposure' AS previous_exposure
+    FROM content_item c
+    JOIN LATERAL (${EARLIER_ITEM('c', "AND p.metadata->>'kind' = 'drive-record'")}) prev ON true
+   WHERE c.tenant_ref = $1 AND c.workload = '${ONEDRIVE_CONTENT}' AND c.metadata->>'kind' = 'drive-record'
+     AND c.created_at >= $2 AND c.created_at <= $3
+     AND jsonb_typeof(c.metadata->'exposure') = 'object' AND jsonb_typeof(prev.metadata->'exposure') = 'object'
+     AND (c.metadata->'exposure'->'everyone' IS DISTINCT FROM prev.metadata->'exposure'->'everyone'
+          OR c.metadata->'exposure'->'linkGrants' IS DISTINCT FROM prev.metadata->'exposure'->'linkGrants')
+   ORDER BY c.created_at DESC, c.id
+   LIMIT $4`;
+
 const AUDIT_SQL = `
   SELECT source_event_id, occurred_at, target_type, target_id, operation, activity, fields, actor_kind, actor_id
     FROM audit_change_fact
@@ -264,6 +312,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
     return (await client.query(scoped, [...window.slice(0, 3), selection.ids])).rows;
   };
   const [drift, service, audit] = [await read('drift', DRIFT_SQL), await read('workload_drift', SERVICE_SQL), await read('audit_change_fact', AUDIT_SQL)];
+  const [siteAccess, driveAccess] = [await read('content_item', SITE_ACCESS_SQL), await read('content_item', DRIVE_ACCESS_SQL)];
 
   // One names read for every audited object and every account a row points to.
   const actorKeys = new Set();
@@ -297,7 +346,58 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
   const onlyActor = (keys) => (Array.isArray(keys) && keys.length === 1 ? person(actorFrom(keys[0])) : null);
 
   const flagged = (input) => ({ flags: evaluateFlags(input), ...(selection ? { evaluation: input } : {}) });
+
+  // One row per change a backup found in who can reach a site or OneDrive.
+  const backupRows = ({ id, at, type, service: serviceName, key, name, changes }) => changes.map((exposure) => {
+    const object = { key, name, status: 'found' };
+    const suffix = exposure.what === 'everyone' ? `${exposure.what}:${exposure.audience}` : exposure.what;
+    return {
+      ...row({
+        id: `backup:${id}:${suffix}`,
+        source: 'backup',
+        occurredAt: at,
+        type,
+        object,
+        change: exposure.change,
+        activity: exposureActivity(exposure),
+        flags: evaluateFlags({ source: 'backup', type, change: exposure.change, name: object.name, key: object.key, context: { exposure } }),
+      }),
+      service: serviceName,
+    };
+  });
+  const sites = siteAccess.flatMap((entry) => backupRows({
+    id: entry.id,
+    at: entry.created_at,
+    type: SITE_ACCESS_KIND,
+    service: 'SharePoint',
+    key: String(entry.container),
+    name: shownName(entry.site_name) ?? shownName(entry.read_name),
+    changes: compareSiteExposure(entry.previous_summary, entry.summary),
+  }));
+  // A OneDrive's changed files, one backup (day) at a time.
+  const drives = new Map();
+  for (const entry of driveAccess) {
+    const at = iso(entry.created_at);
+    const group = `${entry.container}@${at.slice(0, 10)}`;
+    if (!drives.has(group)) drives.set(group, { container: String(entry.container), at, owner: text(entry.owner_name), files: [] });
+    drives.get(group).files.push({ before: entry.previous_exposure, after: entry.exposure });
+  }
+  const oneDrives = [...drives.entries()].flatMap(([group, drive]) => {
+    const owner = drive.owner && typeof namer === 'function' ? namer(drive.owner.toLowerCase()) : drive.owner;
+    return backupRows({
+      id: group,
+      at: drive.at,
+      type: ONEDRIVE_ACCESS_KIND,
+      service: 'OneDrive',
+      key: drive.container,
+      name: owner ? `${owner}’s OneDrive` : 'OneDrive',
+      changes: compareDriveExposure(drive.files),
+    });
+  });
+
   const rows = [
+    ...sites,
+    ...oneDrives,
     ...drift.map((entry) => {
       const type = String(entry.resource_type);
       const object = shown(type, entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' });

@@ -51,7 +51,7 @@ const seedList = (fields = {}) => fakeList({ Name: SEED, Members: ['m1@contoso.t
 const seedOf = (tenant) => ({ name: SEED, guid: tenant.find(SEED)?.Guid ?? '00000000-0000-4000-8000-00000000dead' });
 const capture = (tenant, overrides = {}) => captureDscWrites({
   seed: seedOf(tenant),
-  collector: { ...tenant.powershell, tenantConfigPath: '/etc/keel/exchange-collector.json' }, restorer: tenant.powershell, tenantRef, build,
+  collector: { ...tenant.powershell, tenantConfigPath: '/etc/keel/KEEL-RT-fixture-exchange-collector.json' }, restorer: tenant.powershell, tenantRef, build,
   credentials: { collector: 'app:keel-collector', restorer: 'app:keel-restorer' }, grants,
   now: () => observed, sleep: async () => {}, readBackDelayMs: 0, suffix: () => `c${suffixSeq += 1}`, ...overrides,
 });

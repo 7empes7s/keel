@@ -205,14 +205,29 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['exchange-mail-flow', 'exchange-extended'],
   },
   {
+    pattern: /\b(?:(?:tenant )?allow\/?block list|allow list|block list|blocked senders?|allowed senders?|spoofed senders?|advanced delivery|secops mailbox(?:es)?|built-in protection|teams protection|zero-hour (?:auto )?purge|zap|report(?:ed)? (?:message|submission)s?|user reported|arc sealers?|trusted arc)\b/i,
+    label: 'Defender email protection: allow and block lists, advanced delivery, Built-in and Teams protection, reported messages and ARC',
+    kinds: ['defender-email-protection'],
+  },
+  {
     pattern: /\b(?:attack simulations?|phishing simulations?|simulated phishing|security awareness training)\b/i,
-    label: 'attack simulations and their automations',
-    kinds: ['attackSimulation', 'simulationAutomation'],
+    label: 'attack simulations, their automations, and the payloads, login and landing pages and notifications they use',
+    kinds: ['attackSimulation', 'simulationAutomation', 'attackSimulationPayload', 'attackSimulationLoginPage', 'attackSimulationLandingPage', 'attackSimulationNotification'],
   },
   {
     pattern: /\b(?:dlp|data loss prevention|data leak(?:age)? prevention)\b/i,
     label: 'data loss prevention and retention policies',
     kinds: ['purview-retention-dlp'],
+  },
+  {
+    pattern: /\b(?:sensitive info(?:rmation)? types?|keyword dictionar(?:y|ies)|classifiers?)\b/i,
+    label: 'sensitive information types and keyword dictionaries',
+    kinds: ['purview-classifiers'],
+  },
+  {
+    pattern: /\baudit (?:log )?retention(?: polic(?:y|ies))?\b/i,
+    label: 'audit log retention policies',
+    kinds: ['purview-audit-retention'],
   },
   {
     pattern: /\b(?:retention(?: polic(?:y|ies)| labels?)?|records management|legal holds?|litigation holds?)\b/i,
@@ -233,6 +248,11 @@ export const CONCEPT_WORDS = Object.freeze([
     pattern: /\b(?:distribution (?:lists?|groups?)|mailing lists?|dynamic distribution|mail-enabled security groups?|room mailboxes?|meeting rooms?|room booking|equipment mailboxes?|mail contacts?|calendar processing)\b/i,
     label: 'Exchange distribution lists, rooms and contacts',
     kinds: ['exchange-distribution-groups', 'exchange-recipients'],
+  },
+  {
+    pattern: /\b(?:(?:unified |admin )?audit log(?:ging)? (?:settings?|config(?:uration)?)|audit log(?:ging)? (?:on|off|enabled|disabled)|message encryption|ome (?:settings?|config(?:uration)?)|irm (?:settings?|config(?:uration)?)|information rights management|free\/busy|availability (?:settings?|address spaces?)|message classifications?|policy tips?|partner applications?|hybrid (?:configuration|organization))\b/i,
+    label: 'Exchange audit, encryption and organization settings',
+    kinds: ['exchange-org-config'],
   },
   {
     pattern: /\b(?:activesync|mobile device access|owa polic(?:y|ies)|outlook on the web)\b/i,

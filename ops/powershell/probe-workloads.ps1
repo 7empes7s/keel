@@ -305,6 +305,23 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeAttachmentRule' -Block { Get-SafeAttachmentRule }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ATPProtectionPolicyRule' -Block { Get-ATPProtectionPolicyRule }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AtpPolicyForO365' -Block { Get-AtpPolicyForO365 }
+        # Defender email protection (engine/collect/workloads/defenderEmail.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType Sender' -Block { Get-TenantAllowBlockListItems -ListType Sender }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType Url' -Block { Get-TenantAllowBlockListItems -ListType Url }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType FileHash' -Block { Get-TenantAllowBlockListItems -ListType FileHash }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType IP' -Block { Get-TenantAllowBlockListItems -ListType IP }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListSpoofItems' -Block { Get-TenantAllowBlockListSpoofItems }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PhishSimOverridePolicy' -Block { Get-PhishSimOverridePolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ExoPhishSimOverrideRule' -Block { Get-ExoPhishSimOverrideRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TenantAllowBlockListItems -ListType Url -ListSubType AdvancedDelivery' -Block { Get-TenantAllowBlockListItems -ListType Url -ListSubType AdvancedDelivery }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SecOpsOverridePolicy' -Block { Get-SecOpsOverridePolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ExoSecOpsOverrideRule' -Block { Get-ExoSecOpsOverrideRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ATPBuiltInProtectionRule' -Block { Get-ATPBuiltInProtectionRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TeamsProtectionPolicy' -Block { Get-TeamsProtectionPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TeamsProtectionPolicyRule' -Block { Get-TeamsProtectionPolicyRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ReportSubmissionPolicy' -Block { Get-ReportSubmissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ReportSubmissionRule' -Block { Get-ReportSubmissionRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ArcConfig' -Block { Get-ArcConfig }
         # Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs): reads only.
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RoleGroup' -Block { Get-RoleGroup }
         # Exchange recipients and mailbox permissions (engine/collect/workloads/exchangeRecipients.mjs): reads only.
@@ -335,6 +352,18 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-EmailAddressPolicy' -Block { Get-EmailAddressPolicy }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CASMailboxPlan' -Block { Get-CASMailboxPlan }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MailboxPlan' -Block { Get-MailboxPlan }
+        # Exchange audit, encryption and organization settings (engine/collect/workloads/exchangeOrgConfig.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AdminAuditLogConfig' -Block { Get-AdminAuditLogConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-IRMConfiguration' -Block { Get-IRMConfiguration }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OMEConfiguration' -Block { Get-OMEConfiguration }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PerimeterConfig' -Block { Get-PerimeterConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AvailabilityConfig' -Block { Get-AvailabilityConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AvailabilityAddressSpace' -Block { Get-AvailabilityAddressSpace }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MessageClassification' -Block { Get-MessageClassification }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PolicyTipConfig' -Block { Get-PolicyTipConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ResourceConfig' -Block { Get-ResourceConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PartnerApplication' -Block { Get-PartnerApplication }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OnPremisesOrganization' -Block { Get-OnPremisesOrganization }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"
@@ -370,7 +399,6 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionComplianceRule' -Block { Get-RetentionComplianceRule }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpComplianceRule' -Block { Get-DlpComplianceRule }
                 # Alert policies (configuration): Get-ProtectionAlert never returns a raised alert.
-                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ProtectionAlert' -Block { Get-ProtectionAlert }
                 # Wave 1 READ-TEAMS-PV: retention labels, adaptive scopes, auto-labeling and
                 # eDiscovery cases and holds (configuration only, never case evidence). The
                 # hold reads run against the first case and hold, if there is one.
@@ -387,6 +415,13 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                     @(Get-ComplianceCase) | Select-Object -First 1 | ForEach-Object { @(Get-CaseHoldPolicy -Case $_.Identity) } |
                         Select-Object -First 1 | ForEach-Object { Get-CaseHoldRule -Policy $_.Guid }
                 }
+                # The Purview pieces DLP depends on, and audit log retention policies
+                # (engine/collect/workloads/purviewDlpSupport.mjs): reads only.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpSensitiveInformationType' -Block { Get-DlpSensitiveInformationType }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpSensitiveInformationTypeRulePackage' -Block { Get-DlpSensitiveInformationTypeRulePackage }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpKeywordDictionary' -Block { Get-DlpKeywordDictionary }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ProtectionAlert' -Block { Get-ProtectionAlert }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-UnifiedAuditLogRetentionPolicy' -Block { Get-UnifiedAuditLogRetentionPolicy }
             }
             if ($Workloads -contains 'defender') {
                 Add-Result -Workload 'defender' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null
@@ -515,7 +550,12 @@ try {
             @{ name = "Get-PnPHubSite"; block = { Get-PnPHubSite } },
             @{ name = "Get-PnPSiteDesign"; block = { Get-PnPSiteDesign } },
             @{ name = "Get-PnPSiteScript"; block = { Get-PnPSiteScript } },
-            @{ name = "Get-PnPSiteTemplate -Handlers Fields"; block = { Get-PnPSiteTemplate -Handlers Fields } }
+            @{ name = "Get-PnPSiteTemplate -Handlers Fields"; block = { Get-PnPSiteTemplate -Handlers Fields } },
+            # SharePoint tenant settings (engine/collect/workloads/sharepointTenant.mjs): reads only.
+            @{ name = "Get-PnPTenantSyncClientRestriction"; block = { Get-PnPTenantSyncClientRestriction } },
+            @{ name = "Get-PnPBrowserIdleSignout"; block = { Get-PnPBrowserIdleSignout } },
+            @{ name = "Get-PnPTenantRestrictedSearchMode"; block = { Get-PnPTenantRestrictedSearchMode } },
+            @{ name = "Get-PnPTenantRestrictedSearchAllowedList"; block = { Get-PnPTenantRestrictedSearchAllowedList } }
         )) {
         try {
             $out = & $c.block

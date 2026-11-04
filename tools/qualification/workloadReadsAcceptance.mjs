@@ -4,7 +4,11 @@
  * apart from workloadReadsLive.mjs so tools/release/qualification.mjs can register the gate
  * without an import cycle.
  */
+import { DEFENDER_EMAIL_MODULE, DEFENDER_EMAIL_WORKLOAD, FAMILIES as DEFENDER_EMAIL } from '../../engine/collect/workloads/defenderEmail.mjs';
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
+import {
+  EXCHANGE_ORG_CONFIG_MODULE, EXCHANGE_ORG_CONFIG_WORKLOAD, FAMILIES as EXCHANGE_ORG_CONFIG,
+} from '../../engine/collect/workloads/exchangeOrgConfig.mjs';
 import {
   DISTRIBUTION_GROUP_FAMILIES, EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_MODULE, EXCHANGE_RECIPIENTS_WORKLOAD, RECIPIENT_FAMILIES,
 } from '../../engine/collect/workloads/exchangeRecipients.mjs';
@@ -13,6 +17,9 @@ import {
 } from '../../engine/collect/workloads/exchangeOrgPolicies.mjs';
 import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
+import {
+  AUDIT_RETENTION_FAMILIES, CLASSIFIER_FAMILIES, DLP_SUPPORT_MODULE, PURVIEW_AUDIT_RETENTION_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD,
+} from '../../engine/collect/workloads/purviewDlpSupport.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
 import {
@@ -29,6 +36,9 @@ import {
 } from '../../engine/collect/workloads/sharepointStructure.mjs';
 import { DEFENDER_INDICATORS_WORKLOAD, FAMILIES as DEFENDER_INDICATORS } from '../../engine/collect/workloads/defenderIndicators.mjs';
 import { FAMILIES as POWER_PLATFORM, POWER_PLATFORM_WORKLOAD } from '../../engine/collect/workloads/powerPlatform.mjs';
+import {
+  FAMILIES as SHAREPOINT_TENANT, SHAREPOINT_TENANT_MODULE, SHAREPOINT_TENANT_WORKLOAD,
+} from '../../engine/collect/workloads/sharepointTenant.mjs';
 import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
 
@@ -51,6 +61,7 @@ export const READ_FAMILIES = Object.freeze({
   [EXCHANGE_RECIPIENTS_WORKLOAD]: RECIPIENT_FAMILIES,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: ACCESS_FAMILIES,
   [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: DEFAULTS_FAMILIES,
+  [EXCHANGE_ORG_CONFIG_WORKLOAD]: EXCHANGE_ORG_CONFIG,
   'teams-org-policies': TEAMS_POLICIES,
   'teams-voice-policies': TEAMS_EXTENDED,
   [TEAMS_VOICE_NETWORK_WORKLOAD]: VOICE_NETWORK_FAMILIES,
@@ -59,6 +70,8 @@ export const READ_FAMILIES = Object.freeze({
   [TEAMS_MEETING_SETTINGS_WORKLOAD]: MEETING_SETTINGS_FAMILIES,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: CLASSIFIER_FAMILIES,
+  [PURVIEW_AUDIT_RETENTION_WORKLOAD]: AUDIT_RETENTION_FAMILIES,
   // Not a written workload: only its per-site sharing read runs through PowerShell.
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
   // Read only; its site templates need the sites a capture names (--site).
@@ -66,6 +79,10 @@ export const READ_FAMILIES = Object.freeze({
   // Admin REST, not PowerShell: see REST_WORKLOADS.
   [POWER_PLATFORM_WORKLOAD]: POWER_PLATFORM,
   [DEFENDER_INDICATORS_WORKLOAD]: DEFENDER_INDICATORS,
+  // Read only, tenant-wide on the admin site.
+  [SHAREPOINT_TENANT_WORKLOAD]: SHAREPOINT_TENANT,
+  // Read only: the Defender email protection settings.
+  [DEFENDER_EMAIL_WORKLOAD]: DEFENDER_EMAIL,
 });
 
 // Workloads read from an admin REST API rather than a PowerShell module. Their proof is bound
@@ -81,9 +98,12 @@ const READ_ONLY_MODULES = Object.freeze({
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE, [EXCHANGE_RECIPIENTS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE,
   [TEAMS_COLLABORATION_WORKLOAD]: TEAMS_COLLABORATION_MODULE, [TEAMS_MEETING_SETTINGS_WORKLOAD]: TEAMS_COLLABORATION_MODULE,
-  [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
+  [EXCHANGE_ORG_CONFIG_WORKLOAD]: EXCHANGE_ORG_CONFIG_MODULE,
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE, [SHAREPOINT_TENANT_WORKLOAD]: SHAREPOINT_TENANT_MODULE,
   [TEAMS_VOICE_NETWORK_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE, [TEAMS_DEVICE_POLICIES_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: DLP_SUPPORT_MODULE, [PURVIEW_AUDIT_RETENTION_WORKLOAD]: DLP_SUPPORT_MODULE,
+  [DEFENDER_EMAIL_WORKLOAD]: DEFENDER_EMAIL_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

@@ -14,7 +14,12 @@
  *  - the Exchange and Defender settings mail flow does not read (READ-EXO);
  *  - Teams calling, voice and live event policies and policy assignments, and Purview
  *    retention labels, adaptive scopes, auto-labeling and eDiscovery cases and holds
- *    (Wave 1 READ-TEAMS-PV).
+ *    (Wave 1 READ-TEAMS-PV);
+ *  - Purview sensitive information types and keyword dictionaries (the pieces DLP
+ *    depends on), and audit log retention policies;
+ *  - the Defender for Office 365 settings neither Exchange read covers: the Tenant
+ *    Allow/Block List, advanced delivery, Built-in and Teams protection, report
+ *    submission and ARC (gap audit 2026-10-30, section B).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -48,11 +53,15 @@ export const WORKLOADS = Object.freeze([
   'exchange-role-groups',
   'exchange-distribution-groups', 'exchange-recipients',
   'exchange-org-access', 'exchange-org-defaults',
+  'exchange-org-config',
   'sharepoint-structure',
+  'sharepoint-tenant',
   'teams-voice-policies', 'teams-collaboration-policies', 'teams-meeting-settings', 'purview-governance',
   'teams-voice-network', 'teams-device-policies',
   'power-platform-settings',
   'defender-endpoint-indicators',
+  'purview-classifiers', 'purview-audit-retention',
+  'defender-email-protection',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -76,9 +85,13 @@ const CONTENT_SEGMENTS = new Set([
   'extractsensitivitylabels', 'assignsensitivitylabel', 'sensitivitylabel', 'permissions', 'invite', 'createlink',
 ]);
 // Cmdlets: read verbs only, and no noun that reads content. A noun naming a policy,
-// rule or configuration about content (Get-SafeAttachmentPolicy) is configuration.
-const CONTENT_NOUN = /(File|ListItem|FolderItem|Folder|Message(?!ing)|Attachment|ComplianceSearch|MailboxExport|SearchResult|Page)/;
+// rule or configuration about content (Get-SafeAttachmentPolicy) is configuration, and
+// so is a message classification (the tenant's list of labels, Get-MessageClassification).
+const CONTENT_NOUN = /(File|ListItem|FolderItem|Folder|Message(?!ing|Classification)|Attachment|ComplianceSearch|MailboxExport|SearchResult|Page)/;
 const CONFIGURATION_NOUN = /(Policy|Rule|Configuration|Config|Settings)$/;
+// Cmdlets whose noun looks like content but names tenant configuration: the Tenant
+// Allow/Block List entries are senders, URLs and file hashes an admin allowed or blocked.
+const CONFIGURATION_CMDLETS = new Set(['Get-TenantAllowBlockListItems']);
 const AUTHZ_FAILURE = /\b(401|403)\b|forbidden|access (is )?denied|insufficient privileges|unauthori[sz]ed|not authorized|does not have permission/i;
 
 // Tenant setup a read needs that is neither a permission nor a role (rbac.setup).
@@ -146,6 +159,16 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   },
   {
     id: 'sharepoint.site-sharing', workload: 'sharepoint-site-settings', resource: 'SharePoint per-site sharing settings',
+    operation: cmdlet('Get-PnPTenantSite', 'PnP.PowerShell'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
+    source: Object.freeze({ url: 'https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html', retrievedAt: null }),
+  },
+  {
+    // The same Get-PnPTenantSite answer: each site's lock state, access policy, sensitivity
+    // label, custom script, restricted access and storage quota, proven on its own.
+    id: 'sharepoint.site-settings', workload: 'sharepoint-site-settings', resource: 'SharePoint per-site admin settings',
     operation: cmdlet('Get-PnPTenantSite', 'PnP.PowerShell'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
@@ -350,6 +373,41 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
+  // Defender email protection (gap audit 2026-10-30, section B), in the Exchange Online
+  // session. The Allow/Block List entries are read one list at a time with a fixed
+  // -ListType (and -ListSubType for the phishing simulation URLs). The Built-in and Teams
+  // protection reads need Microsoft Defender for Office 365;
+  // engine/collect/workloads/defenderEmail.mjs treats them as optional.
+  ...[
+    ['defender-email-protection.allow-block-senders', 'Tenant Allow/Block List: senders', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType Sender' }],
+    ['defender-email-protection.allow-block-urls', 'Tenant Allow/Block List: URLs', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType Url' }],
+    ['defender-email-protection.allow-block-file-hashes', 'Tenant Allow/Block List: files', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType FileHash' }],
+    ['defender-email-protection.allow-block-ips', 'Tenant Allow/Block List: IP addresses', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType IP' }],
+    ['defender-email-protection.allow-block-spoofed-senders', 'Tenant Allow/Block List: spoofed senders', 'Get-TenantAllowBlockListSpoofItems'],
+    ['defender-email-protection.phish-sim-override-policies', 'Advanced delivery: phishing simulation policy', 'Get-PhishSimOverridePolicy'],
+    ['defender-email-protection.phish-sim-override-rules', 'Advanced delivery: phishing simulation senders', 'Get-ExoPhishSimOverrideRule'],
+    ['defender-email-protection.phish-sim-urls', 'Advanced delivery: phishing simulation URLs', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType', '-ListSubType'], probeName: 'Get-TenantAllowBlockListItems -ListType Url -ListSubType AdvancedDelivery' }],
+    ['defender-email-protection.secops-override-policies', 'Advanced delivery: security operations mailbox policy', 'Get-SecOpsOverridePolicy'],
+    ['defender-email-protection.secops-override-rules', 'Advanced delivery: security operations mailboxes', 'Get-ExoSecOpsOverrideRule'],
+    ['defender-email-protection.built-in-protection-rules', 'Built-in protection exceptions', 'Get-ATPBuiltInProtectionRule'],
+    ['defender-email-protection.teams-protection-policies', 'Teams protection policy', 'Get-TeamsProtectionPolicy'],
+    ['defender-email-protection.teams-protection-rules', 'Teams protection exceptions', 'Get-TeamsProtectionPolicyRule'],
+    ['defender-email-protection.report-submission-policies', 'Reported message settings', 'Get-ReportSubmissionPolicy'],
+    ['defender-email-protection.report-submission-rules', 'Reported message mailbox', 'Get-ReportSubmissionRule'],
+    ['defender-email-protection.arc-trusted-sealers', 'Trusted ARC sealers', 'Get-ArcConfig'],
+  ].map(([id, resource, name, options]) => ({
+    id, workload: 'defender-email-protection', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
   // Exchange admin role groups, in the Exchange Online session with no parameters.
   // engine/collect/workloads/exchangeRoleGroups.mjs holds the fields and identity.
   {
@@ -379,6 +437,29 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     ['exchange-org-defaults.mailbox-plans', 'exchange-org-defaults', 'Mailbox defaults for new mailboxes', 'Get-MailboxPlan'],
   ].map(([id, workload, resource, name]) => ({
     id, workload, resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
+  // Exchange organization settings (audit, encryption, availability, classifications,
+  // hybrid), in the Exchange Online session with no parameters.
+  // engine/collect/workloads/exchangeOrgConfig.mjs holds the fields and identities.
+  ...[
+    ['exchange-org-config.admin-audit-log', 'Audit log settings', 'Get-AdminAuditLogConfig'],
+    ['exchange-org-config.irm', 'Information Rights Management settings', 'Get-IRMConfiguration'],
+    ['exchange-org-config.message-encryption', 'Message encryption branding and options', 'Get-OMEConfiguration'],
+    ['exchange-org-config.perimeter', 'Perimeter (gateway IP) settings', 'Get-PerimeterConfig'],
+    ['exchange-org-config.availability', 'Free/busy access settings', 'Get-AvailabilityConfig'],
+    ['exchange-org-config.availability-address-spaces', 'Free/busy address spaces', 'Get-AvailabilityAddressSpace'],
+    ['exchange-org-config.message-classifications', 'Message classifications', 'Get-MessageClassification'],
+    ['exchange-org-config.policy-tips', 'Custom policy tips', 'Get-PolicyTipConfig'],
+    ['exchange-org-config.resource-config', 'Room and equipment properties', 'Get-ResourceConfig'],
+    ['exchange-org-config.partner-applications', 'Partner applications', 'Get-PartnerApplication'],
+    ['exchange-org-config.on-premises-organizations', 'On-premises organization (hybrid)', 'Get-OnPremisesOrganization'],
+  ].map(([id, resource, name]) => ({
+    id, workload: 'exchange-org-config', resource,
     operation: cmdlet(name, 'ExchangeOnlineManagement'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
@@ -427,6 +508,22 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   ].map(([key, resource, name, options]) => ({
     id: `sharepoint-structure.${key}`, workload: 'sharepoint-structure', resource,
     operation: cmdlet(name, 'PnP.PowerShell', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
+    source: Object.freeze({ url: `https://pnp.github.io/powershell/cmdlets/${name}.html`, retrievedAt: null }),
+  })),
+  // SharePoint and OneDrive tenant settings through PnP, on the admin site, no parameters.
+  // engine/collect/workloads/sharepointTenant.mjs holds the fields.
+  ...[
+    ['tenant', 'SharePoint and OneDrive tenant settings: sharing, access, OneDrive, sites, Loop and versions', 'Get-PnPTenant'],
+    ['sync-client-restriction', 'OneDrive sync limits: domain-joined PCs, Mac sync and blocked file types', 'Get-PnPTenantSyncClientRestriction'],
+    ['idle-sign-out', 'SharePoint and OneDrive idle sign-out', 'Get-PnPBrowserIdleSignout'],
+    ['restricted-search-mode', 'Restricted SharePoint Search on or off', 'Get-PnPTenantRestrictedSearchMode'],
+    ['restricted-search-allowed-sites', 'Sites allowed in Restricted SharePoint Search', 'Get-PnPTenantRestrictedSearchAllowedList'],
+  ].map(([key, resource, name]) => ({
+    id: `sharepoint-tenant.${key}`, workload: 'sharepoint-tenant', resource,
+    operation: cmdlet(name, 'PnP.PowerShell'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
@@ -538,6 +635,23 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
+  // The Purview pieces DLP depends on (custom sensitive information types, their rule
+  // packages, keyword dictionaries), and audit log retention policies, in the
+  // Security & Compliance session with no parameters. engine/collect/workloads/
+  // purviewDlpSupport.mjs holds the fields, identities and the audit licence.
+  ...[
+    ['purview.sensitive-info-types', 'purview-classifiers', 'Custom sensitive information types', 'Get-DlpSensitiveInformationType'],
+    ['purview.sit-rule-packages', 'purview-classifiers', 'Sensitive information type rule packages', 'Get-DlpSensitiveInformationTypeRulePackage'],
+    ['purview.keyword-dictionaries', 'purview-classifiers', 'Keyword dictionaries', 'Get-DlpKeywordDictionary'],
+    ['purview.audit-retention-policies', 'purview-audit-retention', 'Audit log retention policies', 'Get-UnifiedAuditLogRetentionPolicy'],
+  ].map(([id, workload, resource, name]) => ({
+    id, workload, resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
   // READ-PP: Power Platform environments, DLP policies and connectors, and Power BI
   // (Fabric) tenant settings, from the admin REST APIs. Neither route needs an admin
   // role: app-only Power Platform reads need the app registered as a Power Platform
@@ -631,7 +745,7 @@ export function scopeProblems(operation, { identity = null } = {}) {
   } else if (operation?.kind === 'cmdlet') {
     const [verb, noun = ''] = String(operation.cmdlet ?? '').split('-');
     if (verb !== 'Get') problems.push(`${operation.cmdlet} is not a read cmdlet`);
-    if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun) && !contentReader) problems.push(`${operation.cmdlet} reads content, not configuration`);
+    if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun) && !CONFIGURATION_CMDLETS.has(operation.cmdlet) && !contentReader) problems.push(`${operation.cmdlet} reads content, not configuration`);
   } else {
     problems.push('operation must be a Graph endpoint, an admin REST endpoint or a cmdlet');
   }

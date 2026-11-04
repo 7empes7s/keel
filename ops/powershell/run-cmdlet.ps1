@@ -22,7 +22,9 @@
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
   engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/exchange-recipients.test.mjs,
   engine/roadmap/teams-voice-network.test.mjs,
-  engine/roadmap/exchange-org-policies.test.mjs,
+  engine/roadmap/exchange-org-policies.test.mjs, engine/roadmap/purview-dlp-support.test.mjs,
+  engine/roadmap/exchange-org-config.test.mjs, engine/roadmap/sharepoint-tenant.test.mjs,
+  engine/roadmap/defender-email-protection.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -125,6 +127,24 @@ $AllowedExchangeExtended = @{
     'Get-AtpPolicyForO365'               = @()
 }
 
+# Defender email protection (engine/collect/workloads/defenderEmail.mjs), in the
+# Exchange Online session. Reads only. The Node side fixes each value: ListType is one of
+# Sender, Url, FileHash, IP, and ListSubType only AdvancedDelivery.
+$AllowedDefenderEmail = @{
+    'Get-TenantAllowBlockListItems'      = @('ListType', 'ListSubType')
+    'Get-TenantAllowBlockListSpoofItems' = @()
+    'Get-PhishSimOverridePolicy'         = @()
+    'Get-ExoPhishSimOverrideRule'        = @()
+    'Get-SecOpsOverridePolicy'           = @()
+    'Get-ExoSecOpsOverrideRule'          = @()
+    'Get-ATPBuiltInProtectionRule'       = @()
+    'Get-TeamsProtectionPolicy'          = @()
+    'Get-TeamsProtectionPolicyRule'      = @()
+    'Get-ReportSubmissionPolicy'         = @()
+    'Get-ReportSubmissionRule'           = @()
+    'Get-ArcConfig'                      = @()
+}
+
 # Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs), in the
 # Exchange Online session. One read, no parameters.
 $AllowedExchangeRoleGroups = @{
@@ -178,6 +198,23 @@ $AllowedExchangeRoleWrites = @{
     'New-ManagementRole'         = @('Name', 'Parent', 'Description', 'EnabledCmdlets')
     'Set-ManagementRoleEntry'    = @('Identity', 'Parameters', 'RemoveParameter')
     'Remove-ManagementRoleEntry' = @('Identity', 'Confirm')
+}
+
+# Exchange audit, encryption and organization settings
+# (engine/collect/workloads/exchangeOrgConfig.mjs), in the Exchange Online session.
+# Reads only, none with parameters.
+$AllowedExchangeOrgConfig = @{
+    'Get-AdminAuditLogConfig'      = @()
+    'Get-IRMConfiguration'         = @()
+    'Get-OMEConfiguration'         = @()
+    'Get-PerimeterConfig'          = @()
+    'Get-AvailabilityConfig'       = @()
+    'Get-AvailabilityAddressSpace' = @()
+    'Get-MessageClassification'    = @()
+    'Get-PolicyTipConfig'          = @()
+    'Get-ResourceConfig'           = @()
+    'Get-PartnerApplication'       = @()
+    'Get-OnPremisesOrganization'   = @()
 }
 
 # Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies and policy
@@ -255,6 +292,19 @@ $AllowedPurviewExtended = @{
     'Get-ComplianceCase'             = @('CaseType')
     'Get-CaseHoldPolicy'             = @('Case')
     'Get-CaseHoldRule'               = @('Policy')
+}
+
+# The Purview pieces DLP depends on, and audit log retention policies
+# (engine/collect/workloads/purviewDlpSupport.mjs), in the Security & Compliance
+# session with no parameters. Reads only: nothing that reads matches, raised alerts or
+# audit records.
+$AllowedPurviewClassifiers = @{
+    'Get-DlpSensitiveInformationType'            = @()
+    'Get-DlpSensitiveInformationTypeRulePackage' = @()
+    'Get-DlpKeywordDictionary'                   = @()
+}
+$AllowedPurviewAuditRetention = @{
+    'Get-UnifiedAuditLogRetentionPolicy' = @()
 }
 
 # Wave 2 WKLD: workload configuration writes, one Set- (or New- for a named Teams
@@ -364,6 +414,16 @@ $AllowedPnPStructure = @{
     'Get-PnPSiteScript'   = @('Identity')
     'Get-PnPSiteTemplate' = @('Url')
 }
+# SharePoint and OneDrive tenant settings (engine/collect/workloads/sharepointTenant.mjs),
+# read on the admin site. Reads only, no parameters.
+$AllowedPnPTenant = @{
+    'Get-PnPTenant'                            = @()
+    'Get-PnPTenantSyncClientRestriction'       = @()
+    'Get-PnPBrowserIdleSignout'                = @()
+    'Get-PnPTenantRestrictedSearchMode'        = @()
+    'Get-PnPTenantRestrictedSearchAllowedList' = @()
+}
+
 $SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteHeader, SiteFooter, CustomActions'
 
 # SharePoint structure restore (engine/restore/workloads/sharepointStructure.mjs and
@@ -455,14 +515,17 @@ elseif ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement')
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
 elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
+elseif ($AllowedDefenderEmail.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedDefenderEmail[$name] }
 elseif ($AllowedExchangeRecipients.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRecipients[$name] }
 elseif ($AllowedExchangeOrgPolicies.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgPolicies[$name] }
+elseif ($AllowedExchangeOrgConfig.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgConfig[$name] }
 elseif ($AllowedExchangeRoleReads.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleReads[$name] }
 elseif ($AllowedExchangeRoleWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleWrites[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 elseif ($AllowedPnPStructure.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructure[$name] }
+elseif ($AllowedPnPTenant.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPTenant[$name] }
 elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructureWrites[$name] }
 elseif ($AllowedOneDriveWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedOneDriveWrites[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
@@ -470,6 +533,8 @@ elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeam
 elseif ($AllowedTeamsVoiceNetwork.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsVoiceNetwork[$name] }
 elseif ($AllowedTeamsCollaboration.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsCollaboration[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
+elseif ($AllowedPurviewClassifiers.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewClassifiers[$name] }
+elseif ($AllowedPurviewAuditRetention.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewAuditRetention[$name] }
 elseif ($AllowedExchangeWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeWrites[$name] }
 elseif ($AllowedPurviewWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewWrites[$name] }
 elseif ($AllowedTeamsWrites.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsWrites[$name] }
@@ -590,6 +655,21 @@ try {
     # Warnings from the module's own functions ignore this script's $WarningPreference and
     # would land on stdout ahead of the envelope (Get-LabelPolicy: "Force Validate not set").
     $output = & $name @params -ErrorAction Stop 3>$null
+    # Microsoft's built-in rule package is megabytes of XML that Keel never stores
+    # (engine/collect/workloads/purviewDlpSupport.mjs): drop it here so it is not sent.
+    # Its Name is empty; RuleCollectionName carries the name.
+    if ($name -eq 'Get-DlpSensitiveInformationTypeRulePackage') { $output = @($output | Where-Object { $_.RuleCollectionName -ne 'Microsoft Rule Package' -and $_.Name -ne 'Microsoft Rule Package' }) }
+    # A sensitive information type holds dictionaries with non-string keys, which
+    # ConvertTo-Json refuses (NonStringKeyInDictionary): send only the fields Keel keeps,
+    # and only those the object has, so a missing one is still reported as not read.
+    if ($name -eq 'Get-DlpSensitiveInformationType') {
+        $keep = @('Name', 'Id', 'Description', 'Publisher', 'RecommendedConfidence', 'RulePackId')
+        $output = @($output | ForEach-Object {
+            $item = $_; $kept = [ordered]@{}
+            foreach ($field in $keep) { if ($item.PSObject.Properties.Name -contains $field) { $kept[$field] = $item.$field } }
+            [pscustomobject]$kept
+        })
+    }
     Out-Envelope -Envelope @{ ok = $true; output = @($output) } -Code 0
 } catch {
     $record = $_

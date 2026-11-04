@@ -38,9 +38,11 @@ const OPERATION_CHANGE = Object.freeze({ create: 'added', update: 'modified', de
 // Which audit log a fact came from, by the prefix its event id carries (auditSources.mjs).
 const AUDIT_SERVICE = Object.freeze({ entra: 'Entra', intune: 'Intune' });
 
-// The fields a service read names a resource by, best first; keys that hold one
+// The fields a service read names a resource by, best first (a Defender allow or block
+// entry has no name: its sender, URL or hash is `Value`; a spoofed sender pair is named
+// by the spoofed user); keys that hold one
 // tenant-wide group of settings rather than a named resource.
-const SERVICE_NAME_FIELDS = Object.freeze(['displayName', 'DisplayName', 'name', 'Name', 'title', 'Title', 'webUrl', 'url', 'identity']);
+const SERVICE_NAME_FIELDS = Object.freeze(['displayName', 'DisplayName', 'name', 'Name', 'title', 'Title', 'webUrl', 'url', 'Value', 'SpoofedUser', 'identity']);
 const SERVICE_TENANT_KEYS = Object.freeze({ tenant: 'Sharing settings', organization: 'Organization settings' });
 
 const iso = (value) => (value instanceof Date ? value : new Date(String(value))).toISOString();

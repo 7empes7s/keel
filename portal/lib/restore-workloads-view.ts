@@ -65,12 +65,12 @@ export function hasBackupData(workload: Pick<RestoreWorkload, "backup" | "lastRu
 // then roles, then policies and settings (engine WORKLOADS; a test keeps every one here).
 export const WORKLOAD_ORDER: readonly string[] = [
   "exchange-mailbox-settings", "exchange-recipients", "exchange-distribution-groups", "exchange-role-groups",
-  "exchange-mail-flow", "exchange-org-access", "exchange-extended", "exchange-org-defaults",
-  "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings",
+  "exchange-mail-flow", "exchange-org-access", "exchange-extended", "exchange-org-defaults", "exchange-org-config",
+  "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings", "sharepoint-tenant",
   "teams-settings", "teams-org-policies", "teams-collaboration-policies", "teams-meeting-settings", "teams-voice-policies", "teams-voice-network", "teams-device-policies",
   "power-platform-settings",
-  "defender-endpoint-indicators",
-  "purview-labels", "purview-governance", "purview-retention-dlp",
+  "defender-email-protection", "defender-endpoint-indicators",
+  "purview-labels", "purview-governance", "purview-retention-dlp", "purview-classifiers", "purview-audit-retention",
 ];
 
 /** Sort key for a kind inside its service; kinds not in the list go last. */

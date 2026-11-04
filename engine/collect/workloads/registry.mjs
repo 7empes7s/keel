@@ -16,8 +16,10 @@
  *   could record one.
  */
 import { DEFENDER_INDICATORS_WORKLOAD, collectDefenderIndicators, defenderIndicatorsTransportFor, recordDefenderIndicatorsRun } from './defenderIndicators.mjs';
+import { collectDefenderEmail, recordDefenderEmailRun } from './defenderEmail.mjs';
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
+import { collectExchangeOrgConfig, recordExchangeOrgConfigRun } from './exchangeOrgConfig.mjs';
 import {
   collectExchangeDistributionGroups, collectExchangeRecipients, recordExchangeDistributionGroupsRun, recordExchangeRecipientsRun,
 } from './exchangeRecipients.mjs';
@@ -29,10 +31,15 @@ import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
 import { POWER_PLATFORM_WORKLOAD, collectPowerPlatform, powerPlatformTransportFor, recordPowerPlatformRun } from './powerPlatform.mjs';
 import { collectPurview, recordPurviewRun } from './purview.mjs';
+import {
+  PURVIEW_AUDIT_RETENTION_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD, collectPurviewAuditRetention, collectPurviewClassifiers,
+  recordPurviewAuditRetentionRun, recordPurviewClassifiersRun,
+} from './purviewDlpSupport.mjs';
 import { collectPurviewExtended, recordPurviewExtendedRun } from './purviewExtended.mjs';
 import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDlp.mjs';
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, collectSharePointStructure, recordSharePointStructureRun } from './sharepointStructure.mjs';
+import { SHAREPOINT_TENANT_WORKLOAD, collectSharePointTenant, recordSharePointTenantRun } from './sharepointTenant.mjs';
 import { collectTeams, recordTeamsRun } from './teams.mjs';
 import {
   collectTeamsCollaboration, collectTeamsMeetingSettings, recordTeamsCollaborationRun, recordTeamsMeetingSettingsRun,
@@ -47,6 +54,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // defenderIndicators.mjs: its own Defender for Endpoint API transport, not the Graph one.
   { workload: DEFENDER_INDICATORS_WORKLOAD, powershellFamily: null, record: recordDefenderIndicatorsRun,
     collect: (client, { base, config, sleep }) => collectDefenderIndicators(client, { ...base, sleep, transport: defenderIndicatorsTransportFor(config) }) },
+  // defenderEmail.mjs
+  { workload: 'defender-email-protection', powershellFamily: 'exchange', record: recordDefenderEmailRun,
+    collect: (client, { base, powershell }) => collectDefenderEmail(client, { ...base, powershell }) },
   // exchange.mjs
   { workload: 'exchange-mailbox-settings', powershellFamily: 'exchange', record: recordExchangeRun,
     collect: (client, { base, transport, powershell, scope, sleep }) => collectExchange(client, {
@@ -54,6 +64,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // exchangeExtended.mjs
   { workload: 'exchange-extended', powershellFamily: 'exchange', record: recordExchangeExtendedRun,
     collect: (client, { base, powershell }) => collectExchangeExtended(client, { ...base, powershell }) },
+  // exchangeOrgConfig.mjs
+  { workload: 'exchange-org-config', powershellFamily: 'exchange', record: recordExchangeOrgConfigRun,
+    collect: (client, { base, powershell }) => collectExchangeOrgConfig(client, { ...base, powershell }) },
   // exchangeRecipients.mjs: distribution lists, then mailboxes and the rights on them.
   { workload: 'exchange-distribution-groups', powershellFamily: 'exchange', record: recordExchangeDistributionGroupsRun,
     collect: (client, { base, powershell }) => collectExchangeDistributionGroups(client, { ...base, powershell }) },
@@ -80,6 +93,11 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // purview.mjs
   { workload: 'purview-labels', powershellFamily: 'purview', record: recordPurviewRun,
     collect: (client, { base, powershell }) => collectPurview(client, { ...base, powershell }) },
+  // purviewDlpSupport.mjs
+  { workload: PURVIEW_CLASSIFIERS_WORKLOAD, powershellFamily: 'purview', record: recordPurviewClassifiersRun,
+    collect: (client, { base, powershell }) => collectPurviewClassifiers(client, { ...base, powershell }) },
+  { workload: PURVIEW_AUDIT_RETENTION_WORKLOAD, powershellFamily: 'purview', record: recordPurviewAuditRetentionRun,
+    collect: (client, { base, powershell }) => collectPurviewAuditRetention(client, { ...base, powershell }) },
   // purviewExtended.mjs
   { workload: 'purview-governance', powershellFamily: 'purview', record: recordPurviewExtendedRun,
     collect: (client, { base, powershell }) => collectPurviewExtended(client, { ...base, powershell }) },
@@ -97,6 +115,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: SHAREPOINT_STRUCTURE_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointStructureRun,
     collect: (client, { base, powershell, scope }) => collectSharePointStructure(client, {
       ...base, powershell, sites: scope.sharepointStructureSites ?? [], tenantHost: scope.sharepointHost ?? null }) },
+  // sharepointTenant.mjs: tenant-wide settings on the admin site.
+  { workload: SHAREPOINT_TENANT_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointTenantRun,
+    collect: (client, { base, powershell }) => collectSharePointTenant(client, { ...base, powershell }) },
   // teams.mjs
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {

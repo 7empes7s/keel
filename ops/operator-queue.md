@@ -13073,7 +13073,8 @@ item that needs it stays untouched.
     policy, sensitivity label, custom script, restricted access, storage quota and guest expiry per site, from the same
     `Get-PnPTenantSite` call the sharing field already uses. It counts as read only if at least one site carries one of them.
   The declared fields come from documentation, not a live answer; this item tells us which to drop.
-- Needs: /opt/keel-live at the #797 merge or later (`test -f /opt/keel-live/engine/collect/workloads/sharepointTenant.mjs`).
+- Needs: PR #797 was closed unmerged (2026-11-04), superseded by #938. Wait for #938 to merge and deploy, and follow #938's
+  notes where they differ from this item (`test -f /opt/keel-live/engine/collect/workloads/sharepointTenant.mjs`).
   `run-cmdlet.ps1` has a new table (`$AllowedPnPTenant`); as in Q266 the scripts are mounted from the checkout, so no image
   rebuild is expected.
 - Status: todo

@@ -46,7 +46,8 @@ import { Icon } from "@/components/shell/icons";
 import { PeoplePage } from "@/components/people/people-page";
 import { PoliciesPage } from "@/components/policies/policies-page";
 import { PolicyPage } from "@/components/policies/policy-page";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { evidenceTarget, OLD_ROUTE_TARGETS } from "@/lib/old-routes";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
 import { lastRestoreTile, pastRestoresVerdict } from "@/lib/restore-view";
@@ -61,6 +62,8 @@ import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, 
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { IntuneBaselinesPage } from "@/components/compliance/intune-baselines-page";
+import { OwnerReviewPage } from "@/components/owner-review-page";
+import { itemsInOrder, ownerReviewStatus, shapeOwnerReview, type EngineOwnerReview, type OwnerRead, type OwnerReviewData, type OwnerReviewItem } from "@/lib/owner-review-view";
 import { baselinesStatus, shapeBaselines, type EngineBaselineResults } from "@/lib/intune-baselines-view";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
@@ -892,6 +895,7 @@ const RULE_DELETE_FIELDS = [
   { field: "blastRadius", before: "tenant-lockout", after: null }, { field: "maxBlastRadius", before: "cosmetic", after: null },
   { field: "maxActionsPerWindow", before: null, after: null }, { field: "windowSeconds", before: null, after: null },
 ];
+const UNNAMED_SCRIPT_KEY = "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1";
 const EVIDENCE = [
   { seq: "18205", occurred_at: "2026-10-02T09:39:02Z", kind: "approval-decision", actor: "amara.okafor@contoso.example", subject: { requestId: "a9e10000-0000-4000-8000-000000000100", action: "restore", decision: "approved", executor: "worker", jobId: "a3" } },
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
@@ -899,7 +903,8 @@ const EVIDENCE = [
   { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
   { seq: "18201", occurred_at: "2026-10-02T09:05:10Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: false } },
   { seq: "18200", occurred_at: "2026-10-02T08:52:30Z", kind: "action-attempt", actor: "sam.ortiz@contoso.example", subject: { action: "restore", decision: "denied", reason: "capability" } },
-  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: true } },
+  // A setting no backup names: its key is only an id, so the page names its kind.
+  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: UNNAMED_SCRIPT_KEY, matched: true } },
   { seq: "18180", occurred_at: "2026-09-29T11:20:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "deleted", policyId: "5a000000-0000-4000-8000-000000000002", name: "KEEL-RT Alert on lockout risk", action: "alert", fields: RULE_DELETE_FIELDS } },
   { seq: "18179", occurred_at: "2026-09-29T11:10:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "edited", policyId: "5a000000-0000-4000-8000-000000000001", name: "KEEL-RT Undo low-risk group changes", action: "auto_remediate", fields: RULE_EDIT_FIELDS } },
   { seq: "18171", occurred_at: "2026-09-28T06:10:00Z", kind: "recovery-drill", actor: "scheduler", subject: { mode: "live", outcome: "passed", cleanup: { status: "complete" } } },
@@ -959,7 +964,9 @@ const activityJobs = (jobs: Job[]): Job[] => [
   job("y1", "restore", "failed", { requestedBy: "amara.okafor@contoso.example", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: Exchange Online would not accept 2 of the mailbox rules", createdAt: "2026-10-01T16:50:00Z", startedAt: "2026-10-01T16:50:30Z", finishedAt: "2026-10-01T16:52:00Z", references: refs("amara.okafor@contoso.example", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010", resources: 2, snapshotAt: "2026-10-01T09:12:00Z" } }) }),
   job("y2", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier2" }, createdAt: "2026-10-01T02:00:00Z", startedAt: "2026-10-01T02:00:10Z", finishedAt: "2026-10-01T02:09:00Z" }),
   job("y3", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier1" }, createdAt: "2026-09-30T02:00:00Z", startedAt: "2026-09-30T02:00:10Z", finishedAt: "2026-09-30T02:03:00Z" }),
-  job("y4", "collect", "succeeded", { requestedBy: "scheduler", params: {}, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z" }),
+  // An automatic roll back of a change to a setting no backup names.
+  job("y4", "remediate", "succeeded", { requestedBy: "policy-automation", params: { driftIds: ["d6e00000-0000-4000-8000-0000000000e1"] }, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z",
+    references: refs("policy-automation", { changes: [{ kind: "change", id: "d6e00000-0000-4000-8000-0000000000e1", name: null, readable: true, naturalKey: UNNAMED_SCRIPT_KEY, resourceType: "deviceManagementScript", changeType: "modified" }] }) }),
 ];
 const CAPTURED = (capturedAt: string, sourceSnapshotId: string | null, basis: BaselineCapture["basis"] = "source-snapshot"): BaselineCapture => ({
   basis, capturedAt, ageMs: Date.parse(now) - Date.parse(capturedAt), sourceSnapshotId,
@@ -1270,6 +1277,63 @@ const INTUNE_BASELINES = shapeBaselines({
   ],
 }, now);
 const INTUNE_BASELINES_NEVER = shapeBaselines({ templates: null, lastFailure: null, policies: null, baselines: [] }, now);
+
+// Owner review (issue #964): problems in every kind, a healthy tenant, and a tenant whose
+// app owner reads were refused (Application.Read.All missing): "could not be read", never
+// "no owner".
+const orId = (n: number) => `0e000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const orCounts = (over: Partial<OwnerReviewItem["counts"]> = {}) => ({ total: 0, working: 0, disabled: 0, guests: 0, gone: 0, unknown: 0, ...over });
+const orRead = (family: string, permission: string, over: Partial<OwnerRead> = {}): OwnerRead => ({ family, permission, snapshotId: "5a000000-0000-4000-8000-0000000000a1", readAt: "2026-10-02T01:10:00.000Z", failed: 0, refused: 0, notRead: 0, ...over });
+type EngineItem = EngineOwnerReview["items"][number];
+const orItem = (n: number, kind: EngineItem["kind"], name: string, problem: OwnerReviewItem["problem"], over: Partial<EngineItem> = {}): EngineItem => ({
+  kind, id: orId(n), appId: kind === "application" || kind === "servicePrincipal" ? orId(n + 500) : null, naturalKey: `${kind}:${name}`, name, problem,
+  owners: [], counts: orCounts(), readFailure: null, readAt: "2026-10-02T01:10:00.000Z", ...over,
+});
+const OR_DAN = { id: orId(901), name: "Dan Okafor", state: "disabled" as const };
+const OR_GAIL = { id: orId(902), name: "Gail Martins (Fabrikam)", state: "guest" as const };
+const OR_ANA = { id: orId(903), name: "Ana Silva", state: "working" as const };
+const orEngine = (items: EngineItem[], reads: Partial<EngineOwnerReview["reads"]> = {}): EngineOwnerReview => ({
+  generatedAt: now,
+  directory: { snapshotId: "5a000000-0000-4000-8000-0000000000b2", readAt: "2026-10-02T01:00:00.000Z", complete: true, users: 412 },
+  reads: { group: orRead("owner", "Group.Read.All"), application: orRead("appOwner", "Application.Read.All"), servicePrincipal: orRead("servicePrincipalOwner", "Application.Read.All"), ...reads },
+  skipped: { microsoft: 214, unknownPublisher: 6, otherType: 3 },
+  completeness: "partial",
+  items,
+});
+const OR_HEALTHY = Array.from({ length: 6 }, (_, index) => orItem(100 + index, index % 2 ? "team" : "group", `Department ${index + 1}`, "fine", { owners: [OR_ANA], counts: orCounts({ total: 1, working: 1 }) }));
+const orSite = (n: number, name: string, problem: OwnerReviewItem["problem"], owners: OwnerReviewItem["owners"]): OwnerReviewItem => ({
+  kind: "site", id: `contoso.sharepoint.com,5e170000-0000-4000-8000-0000000000${n},5e170000-0000-4000-8000-0000000000${n + 1}`, appId: null,
+  naturalKey: `https://contoso.sharepoint.com/sites/${name.toLowerCase().replace(/\s+/g, "-")}`, name, problem, owners,
+  counts: orCounts({ total: owners.length, disabled: owners.filter((owner) => owner.state === "disabled").length, guests: owners.filter((owner) => owner.state === "guest").length, working: owners.filter((owner) => owner.state === "working").length }),
+  readFailure: null, readAt: "2026-10-02T01:06:00.000Z",
+});
+const withSites = (data: OwnerReviewData, sites: OwnerReviewItem[], unread = 0): OwnerReviewData => ({
+  ...data, items: itemsInOrder([...data.items, ...sites]), sites: { readAt: "2026-10-02T01:06:00.000Z", checked: sites.length, unread },
+});
+const OWNER_REVIEW = withSites(shapeOwnerReview(orEngine([
+  orItem(1, "group", "Finance leadership", "no-owner"),
+  orItem(2, "team", "Project Atlas launch team with a long name that wraps on a phone", "only-disabled", { owners: [OR_DAN], counts: orCounts({ total: 1, disabled: 1 }) }),
+  orItem(3, "group", "Former contractors", "no-owner", { owners: [{ id: orId(904), name: null, state: "gone" }], counts: orCounts({ total: 1, gone: 1 }) }),
+  orItem(4, "application", "Payroll connector", "guest-owner", { owners: [OR_GAIL], counts: orCounts({ total: 1, guests: 1 }) }),
+  orItem(5, "servicePrincipal", "Expense reports", "no-owner"),
+  orItem(6, "application", "HR sync", "guest-owner", { owners: [OR_ANA, OR_GAIL], counts: orCounts({ total: 2, working: 1, guests: 1 }) }),
+  orItem(7, "group", "Board papers", "read-failed", { readFailure: { outcome: "failed", httpStatus: 504, graphCode: null, error: "Gateway Timeout" } }),
+  ...OR_HEALTHY,
+], { group: orRead("owner", "Group.Read.All", { failed: 1 }) }), null), [
+  orSite(10, "Records archive", "only-disabled", [OR_DAN]),
+  orSite(20, "Partner portal", "guest-owner", [OR_GAIL, OR_ANA]),
+  orSite(30, "Intranet", "fine", [OR_ANA]),
+], 2);
+const OWNER_REVIEW_NONE = withSites(shapeOwnerReview(orEngine(OR_HEALTHY), null), [orSite(30, "Intranet", "fine", [OR_ANA])]);
+const OWNER_REVIEW_READ_FAILED = withSites(shapeOwnerReview(orEngine([
+  ...OR_HEALTHY,
+  orItem(40, "application", "Payroll connector", "read-failed", { readFailure: { outcome: "failed", httpStatus: 403, graphCode: "Authorization_RequestDenied", error: "Insufficient privileges to complete the operation." } }),
+  orItem(41, "application", "HR sync", "read-failed", { readFailure: { outcome: "failed", httpStatus: 403, graphCode: "Authorization_RequestDenied", error: "Insufficient privileges to complete the operation." } }),
+  orItem(42, "servicePrincipal", "Expense reports", "read-failed", { readFailure: { outcome: "failed", httpStatus: 403, graphCode: "Authorization_RequestDenied", error: "Insufficient privileges to complete the operation." } }),
+], {
+  application: orRead("appOwner", "Application.Read.All", { refused: 2 }),
+  servicePrincipal: orRead("servicePrincipalOwner", "Application.Read.All", { refused: 1 }),
+}), null), []);
 
 const LIVE_COMPLIANCE = liveCompliance(legacyLines("Block legacy sign-in (report-only pilot)", "KEEL-RT-20260908 Block Legacy Authentication"));
 // Two sign-in rules with the same name (#588): each keeps its own lines, numbered.
@@ -2534,6 +2598,7 @@ const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e17000
 const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
 const SITE_TEAM = `${SITE_HOST},5e170000-0000-4000-8000-000000000007,5e170000-0000-4000-8000-000000000008`;
 const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
+  exposure: { everyone: [], links: { anyone: { view: 0, edit: 0 }, organisation: { view: 0, edit: 0 }, specificPeople: { view: 0, edit: 0 }, unknown: 0 } },
   inherits: false, owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-02T01:10:00Z",
   groups: [
     { name: "Owners", members: 1, roles: ["Full Control"] },
@@ -2545,6 +2610,10 @@ const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
 // Each site's own sharing setting (one PnP read), compared with the tenant default below.
 const SITE_SHARING_READ = { status: "observed", operation: "sharepoint.site-sharing" };
 const SITES_READ: SitePermissionsData = {
+  oneDrives: [
+    { name: "Amara’s OneDrive", exposure: { everyone: [], links: { anyone: { view: 1, edit: 0 }, organisation: { view: 2, edit: 0 }, specificPeople: { view: 0, edit: 1 }, unknown: 0 } } },
+    { name: "Dev’s OneDrive", exposure: null },
+  ],
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
@@ -2559,7 +2628,7 @@ const SITES_READ: SitePermissionsData = {
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
     ] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
-    people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
+    people: SITE_PEOPLE({ exposure: { everyone: [{ audience: "everyone-except-external", roles: ["Edit"] }], links: { anyone: { view: 2, edit: 1 }, organisation: { view: 1, edit: 0 }, specificPeople: { view: 0, edit: 1 }, unknown: 0 } }, owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
     { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, sharingCapability: "Disabled", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
     { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, sharingCapability: "ExternalUserSharingOnly", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
@@ -2614,11 +2683,11 @@ const SERVICE_CHANGES: DriftRecord[] = [
   }, "a1e70000-0000-4000-8000-0000000000a9"),
 ];
 
-function sitesPage() {
-  const verdict = sitesVerdict(SITES);
+function sitesPage(data: SitePermissionsData = SITES) {
+  const verdict = sitesVerdict(data);
   return <>{header("Backup", "Sites", "Every SharePoint site: is it backed up, who owns it, and which apps and guests can reach it. Problems first.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><SiteList data={SITES} /></div></>;
+    <div data-layer="explanation"><SiteList data={data} /></div></>;
 }
 
 function sitePage(path: string) {
@@ -2887,6 +2956,18 @@ function IncidentsRoute({ viewer }: { viewer: boolean }) {
   </>;
 }
 
+// An old address the portal redirects on the server: the harness replaces the address
+// the same way, so the checks run on the page a person lands on.
+function Redirect({ to }: { to: string }) {
+  const router = useRouter();
+  useEffect(() => { router.replace(to); }, [router, to]);
+  return null;
+}
+
+function OldEvidence() {
+  return <Redirect to={evidenceTarget(Object.fromEntries(useSearchParams()))} />;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
@@ -2911,6 +2992,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <JobRefresher active={active} />
       </>;
     }
+    case "/backups": case "/coverage": case "/jobs": return <Redirect to={OLD_ROUTE_TARGETS[path]} />;
+    case "/evidence": return <OldEvidence />;
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
       return <>
@@ -2948,6 +3031,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/reports/many": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_MANY} />;
     case "/reports/capped": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT_CAPPED} />;
     case "/sites": return sitesPage();
+    case "/sites/old-backup": return sitesPage({ ...SITES, oneDrives: [{ name: "Amara’s OneDrive", exposure: null }], sites: SITES.sites.map((site) => ({ ...site, people: site.people ? { ...site.people, exposure: null } : null })) });
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);
@@ -3087,6 +3171,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
       {ANONYMOUS_NOTE}
       <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
+    case "/owner-review": case "/owner-review/none": case "/owner-review/read-failed": {
+      const data = path.endsWith("/none") ? OWNER_REVIEW_NONE : path.endsWith("/read-failed") ? OWNER_REVIEW_READ_FAILED : OWNER_REVIEW;
+      return <>{header("Baselines", "Owner review", "Microsoft 365 groups, teams, apps and sites with no working owner: nobody, only disabled accounts, or guests.", undefined, ownerReviewStatus(data))}
+      <OwnerReviewPage data={data} /></>;
     }
     case "/intune-baselines": case "/intune-baselines/never": {
       const data = path.endsWith("/never") ? INTUNE_BASELINES_NEVER : INTUNE_BASELINES;

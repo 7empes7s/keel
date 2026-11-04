@@ -365,6 +365,13 @@ for (const path of ["/insights", "/insights?days=90"]) {
   });
 }
 
+// The Owner review page (issue #964) goes through the same sign-in check as every page.
+test("GET /owner-review rejects an unauthenticated request with 401", async () => {
+  const response = await middleware(request("/owner-review"));
+
+  assert.equal(response.status, 401);
+});
+
 // The Restore section's sub-pages sit behind the same sign-in check as every page.
 for (const path of ["/restore/follow-up-steps", "/restore/past-restores", "/restore/past-restores?jobs=failed"]) {
   test(`GET ${path} rejects an unauthenticated request with 401`, async () => {

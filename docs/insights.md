@@ -26,6 +26,7 @@ two different things.
 |---|---|
 | Approved setup (drift) | The before and after values of the JSON paths in `FLAG_PATHS`, selected in SQL (never the whole saved copy). For added links, the same backup also gives the role's name, whether the group can hold admin roles, and the app permission's name. |
 | Service read | The changed fields the read recorded (`workload_drift.fields`), filtered in SQL to `SERVICE_FLAG_PATHS`. |
+| Content backup | One change in who can reach a site or OneDrive, as `context.exposure` (see "Site and OneDrive access" below). |
 | Audit log | The activity, the operation, the target's type and the changed field names. **Never values.** |
 
 ## Rules
@@ -56,6 +57,10 @@ two different things.
 | 8 | `guest-invites-opened` | high | Approved setup | `allowInvitesFrom` moves wider (nobody → admins and guest inviters → all members → everyone), or email-verified self sign-up is turned on | Narrower |
 | 9 | `sharing-widened` | high | Service read | SharePoint or OneDrive tenant sharing moves toward anyone links (`Disabled` → existing guests → new and existing guests → anyone) | Narrower |
 | 9 | `anyone-link-expiry-longer` | high | Service read | The anyone-link expiry (`RequireAnonymousLinksExpireInDays`) is removed or made longer | Made shorter, or added |
+| 9 | `shared-wider` | high | Service read | "Shared wider than before": the default link type moves toward anyone links (specific people → organization → anyone), an anyone link to files or folders can now view or edit when it could not, or a OneDrive's own sharing level, default link type or anyone-link expiry opens up | Narrower; `None` (use the tenant's default) |
+| 10 | `opened-to-everyone-edit` | critical | Content backup | "Opened to everyone in the company": Everyone or everyone-except-external gains edit (or full control) on a site or OneDrive | The grant removed, or lowered to view |
+| 10 | `opened-to-everyone` | high | Content backup | The same, with view only | The grant removed |
+| 10 | `anyone-links-added` | high | Content backup | "Anyone links added": a site's anyone-link count went up, or a OneDrive's files hold anyone links they did not before | Fewer links; organisation or specific-people links |
 
 ## What the rules cannot see
 
@@ -79,6 +84,40 @@ two different things.
   backup to name the group or the permission. Without it, the flag still shows, with a general
   sentence.
 
+## Site and OneDrive access (content backups)
+
+`engine/insights/sharingExposure.mjs` compares who can reach a site between two content backups,
+from the plain summary saved beside each site's `site/permissions` item (#963). Each change is
+its own row in Changes › Every change, with the source "Content backup", the service SharePoint or
+OneDrive, and the site's name as the object:
+
+- an Everyone or everyone-except-external grant added or removed, with its level (view, edit,
+  full control);
+- anyone links added (the count went up);
+- new guests (the guest count went up);
+- the last owner removed.
+
+What it cannot see:
+
+- **A backup saved before the counts existed** (summary version 1, or a OneDrive record without
+  `exposure`) compares as unknown, never as zero. It produces no row, so the upgrade never reads as
+  "removed".
+- **A site that inherits its roles** saves no Everyone list. Its Everyone grants are not compared.
+- **A site's first backup** has nothing to compare with.
+- **OneDrive** is compared file by file, from each file's record before and after. Only additions
+  are listed: a grant or link gone from one file can still reach the drive through another. A new
+  file shared with an anyone link has no record before, so it is not counted. Guests and owners
+  are not read for OneDrive.
+
+## Sharing settings: wider or narrower
+
+`engine/govern/sharingDirection.mjs` says which way a sharing setting moved: the sharing level
+(`sharingCapability`, tenant and site; `OneDriveSharingCapability`), the default link type, the
+anyone-link type for files and folders, and the anyone-link expiry. Workload drift rates a change
+that only narrows sharing as low priority (`cosmetic`, a notice). A widening, or a change that also
+touches any setting without a direction, stays access-affecting. The flags above flag the
+widenings.
+
 ## Insights page (A7 and A8)
 
 `/insights` (Dashboards › Insights) answers "what changed this week, and where do I start?" from one
@@ -97,4 +136,3 @@ change feed read (`portal/lib/insights-view.ts`, `portal/components/insights/ins
 - **Overview:** one "Needs attention" row, "3 flagged changes this week", for flagged changes of the
   last 7 days that no open alert shows. An alert counts when it is open, reopened or acknowledged
   and its `resource_key` is the flagged row's object key (the key A10 is expected to use).
-

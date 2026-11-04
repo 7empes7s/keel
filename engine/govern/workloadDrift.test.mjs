@@ -254,3 +254,51 @@ test('workloads not tracked for drift raise nothing', async (t) => {
   assert.equal(result.status, 'not-tracked');
   assert.deepEqual([(await driftRows(client, tenantRef)).length, (await alerts(client, tenantRef)).length], [0, 0]);
 });
+
+// Sharing settings have a direction (#968): a widening affects access, a narrowing is low
+// priority. Revert check: without the direction rule the narrowed rows are access-affecting.
+test('sharing opened wider affects access; sharing narrowed is low priority', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = `sha256:wd-${crypto.randomUUID()}`;
+  const tenant = (over) => ({
+    SharingCapability: 'ExternalUserSharingOnly', DefaultSharingLinkType: 'Internal', FileAnonymousLinkType: 'View',
+    RequireAnonymousLinksExpireInDays: 30, ExternalUserExpireInDays: 60, ...over,
+  });
+  await storedRun(client, tenantRef, 'sharepoint-tenant', '2026-10-12T02:00:00Z', {
+    'tenant-settings:a': tenant({}), 'tenant-settings:b': tenant({}), 'tenant-settings:c': tenant({}), 'tenant-settings:d': tenant({}), 'tenant-settings:e': tenant({}),
+  });
+  const second = await storedRun(client, tenantRef, 'sharepoint-tenant', '2026-10-13T02:00:00Z', {
+    // Wider: anyone links allowed, and anyone links last longer.
+    'tenant-settings:a': tenant({ SharingCapability: 'ExternalUserAndGuestSharing' }),
+    'tenant-settings:b': tenant({ RequireAnonymousLinksExpireInDays: 0 }),
+    // Narrower on every field that changed: guests only, links for specific people by
+    // default, view-only anyone links made shorter.
+    'tenant-settings:c': tenant({ SharingCapability: 'ExistingExternalUserSharingOnly', DefaultSharingLinkType: 'Direct' }),
+    'tenant-settings:d': tenant({ FileAnonymousLinkType: 'None', RequireAnonymousLinksExpireInDays: 7 }),
+    // Narrower sharing alongside a field with no direction: still affects access.
+    'tenant-settings:e': tenant({ SharingCapability: 'Disabled', ExternalUserExpireInDays: 365 }),
+  });
+  await detectWorkloadDrift(client, { collectionId: second });
+  const rows = await driftRows(client, tenantRef);
+  assert.deepEqual(Object.fromEntries(rows.map((row) => [row.resource_key, row.blast_radius])), {
+    'tenant-settings:a': 'access-affecting',
+    'tenant-settings:b': 'access-affecting',
+    'tenant-settings:c': 'cosmetic',
+    'tenant-settings:d': 'cosmetic',
+    'tenant-settings:e': 'access-affecting',
+  });
+  const severity = Object.fromEntries((await alerts(client, tenantRef)).map((alert) => [alert.resource_key, alert.severity]));
+  assert.equal(severity['sharepoint-tenant:tenant-settings:c'], 'notice');
+  assert.equal(severity['sharepoint-tenant:tenant-settings:a'], 'warning');
+});
+
+test('a site narrowed to existing guests is low priority; a site opened to anyone affects access', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = `sha256:wd-${crypto.randomUUID()}`;
+  const site = (sharingCapability) => ({ displayName: 'KEEL-RT-Finance', sharingCapability });
+  await storedRun(client, tenantRef, SHAREPOINT_WORKLOAD, '2026-10-12T02:00:00Z', { 'site:a': site('externalUserSharingOnly'), 'site:b': site('externalUserSharingOnly') });
+  const second = await storedRun(client, tenantRef, SHAREPOINT_WORKLOAD, '2026-10-13T02:00:00Z', { 'site:a': site('existingExternalUserSharingOnly'), 'site:b': site('externalUserAndGuestSharing') });
+  await detectWorkloadDrift(client, { collectionId: second });
+  const rows = await driftRows(client, tenantRef);
+  assert.deepEqual(Object.fromEntries(rows.map((row) => [row.resource_key, row.blast_radius])), { 'site:a': 'cosmetic', 'site:b': 'access-affecting' });
+});

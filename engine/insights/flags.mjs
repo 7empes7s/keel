@@ -13,6 +13,8 @@
  *    paths in FLAG_PATHS only, never the whole saved copy (the feed reads up to 500 rows);
  *  - service rows (a service read against the one before): the changed fields the read
  *    recorded, filtered to SERVICE_FLAG_PATHS;
+ *  - backup rows (who can reach a site or OneDrive, compared between two content backups,
+ *    sharingExposure.mjs): the one change the row is about, as `context.exposure`;
  *  - audit rows (the Microsoft audit log): the activity, the operation, the target's type
  *    and the changed field names. Never values, so an audit rule cannot tell a policy turned
  *    off from one renamed; it flags only what the activity itself says (a policy deleted,
@@ -22,6 +24,8 @@
  * call it on full payloads through flagValues(). docs/insights.md lists every rule.
  */
 import { PRIVILEGED_DRIFT_TYPES, PRIVILEGED_SERVICE_WORKLOADS } from '../govern/dispositionReview.mjs';
+import { SHARING_DIRECTION_PATHS, SHARING_ORDER, expiryDays, scaleValue, sharingDirection } from '../govern/sharingDirection.mjs';
+import { EXPOSURE_KINDS, canEdit } from './sharingExposure.mjs';
 
 export const FLAG_SEVERITIES = Object.freeze(['critical', 'high']);
 
@@ -69,9 +73,18 @@ export const FLAG_PATHS = Object.freeze({
 const SHARING_WORKLOADS = Object.freeze(['sharepoint-site-settings', 'sharepoint-tenant']);
 const SHARING_PATHS = Object.freeze({ sharingCapability: 'SharePoint', SharingCapability: 'SharePoint', OneDriveSharingCapability: 'OneDrive' });
 const EXPIRY_PATHS = Object.freeze({ RequireAnonymousLinksExpireInDays: 'Anyone links' });
+// "Shared wider than before": every other sharing setting with a direction, and every
+// one a OneDrive's own settings carry. Rule 9 above already speaks for the tenant and site
+// sharing levels and the tenant anyone-link expiry.
+const ONEDRIVE_WORKLOAD = 'onedrive-site-settings';
+const WIDER_PATHS = Object.freeze({
+  ...Object.fromEntries(SHARING_WORKLOADS.map((workload) => [workload, Object.freeze(Object.keys(SHARING_DIRECTION_PATHS).filter((path) => !SHARING_PATHS[path] && !EXPIRY_PATHS[path]))])),
+  [ONEDRIVE_WORKLOAD]: Object.freeze(['SharingCapability', 'DefaultSharingLinkType', 'AnonymousLinkExpirationInDays']),
+});
 /** The changed fields a service row's rules read, by workload. */
 export const SERVICE_FLAG_PATHS = Object.freeze({
-  ...Object.fromEntries(SHARING_WORKLOADS.map((workload) => [workload, Object.freeze([...Object.keys(SHARING_PATHS), ...Object.keys(EXPIRY_PATHS)])])),
+  ...Object.fromEntries(SHARING_WORKLOADS.map((workload) => [workload, Object.freeze([...Object.keys(SHARING_PATHS), ...Object.keys(EXPIRY_PATHS), ...WIDER_PATHS[workload]])])),
+  [ONEDRIVE_WORKLOAD]: WIDER_PATHS[ONEDRIVE_WORKLOAD],
   ...Object.fromEntries(PRIVILEGED_SERVICE_WORKLOADS.map((workload) => [workload, Object.freeze(['Members'])])),
 });
 
@@ -145,8 +158,7 @@ const methodStates = (values) => {
   return new Map(ids.map((id, index) => [lower(id), lower(states[index])]));
 };
 
-// Wider is later. SharePoint's sharing levels, and who may invite guests.
-const SHARING_ORDER = Object.freeze(['Disabled', 'ExistingExternalUserSharingOnly', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing']);
+// Wider is later. SharePoint's sharing levels (sharingDirection.mjs), and who may invite guests.
 const SHARING_WORDS = Object.freeze({
   Disabled: 'only people in the organization',
   ExistingExternalUserSharingOnly: 'existing guests',
@@ -161,10 +173,28 @@ const rank = (order, value) => order.findIndex((entry) => lower(entry) === lower
 const opened = (order, before, after) => rank(order, before) !== -1 && rank(order, after) > rank(order, before);
 const canonical = (order, value) => order[rank(order, value)] ?? value;
 
-// An expiry in days: 0, a negative number or nothing means links never expire.
-const expiryDays = (value) => {
-  const number = Number(value);
-  return value === null || value === undefined || value === '' || !Number.isFinite(number) || number <= 0 ? null : number;
+// What each wider sharing setting now allows, in words.
+const LINK_TYPE_WORDS = Object.freeze({ Direct: 'specific people', Internal: 'people in the organization', AnonymousAccess: 'anyone with the link' });
+const ANONYMOUS_LINK_WORDS = Object.freeze({ View: 'view', Edit: 'edit' });
+function widerWords(path, before, after) {
+  if (path === 'DefaultSharingLinkType') return `new links are for ${LINK_TYPE_WORDS[scaleValue('linkType', after)]} by default`;
+  if (path === 'FileAnonymousLinkType' || path === 'FolderAnonymousLinkType') {
+    return `anyone links to ${path === 'FileAnonymousLinkType' ? 'files' : 'folders'} can now ${ANONYMOUS_LINK_WORDS[scaleValue('anonymousLink', after)]}`;
+  }
+  if (SHARING_DIRECTION_PATHS[path] === 'expiry') {
+    const now = expiryDays(after);
+    return now === null ? 'anyone links no longer expire' : `anyone links last ${now} days instead of ${expiryDays(before)}`;
+  }
+  return `files can be shared with ${SHARING_WORDS[scaleValue('sharing', after)]}`;
+}
+const widened = ({ type, before, after }) => (WIDER_PATHS[type] ?? []).filter((path) => sharingDirection(path, before?.[path], after?.[path]) === 'wider');
+
+// Who an Everyone grant reaches, as a backup row's flag sentence says it.
+const EVERYONE_WORDS = Object.freeze({ everyone: 'everyone in the company, guests included', 'everyone-except-external': 'everyone in the company' });
+const exposureOf = (input) => input.context?.exposure ?? null;
+const everyoneAdded = (input) => {
+  const exposure = exposureOf(input);
+  return exposure?.what === 'everyone' && exposure.change === 'added' && input.change === 'added';
 };
 
 // "Directory.ReadWrite.All": tenant-wide write permissions, the critical ones.
@@ -383,11 +413,38 @@ export const FLAG_RULES = Object.freeze([
       return now === null ? `Anyone links no longer expire (they expired after ${was} days).` : `Anyone links last longer: ${now} days instead of ${was}.`;
     },
   },
+  {
+    key: 'shared-wider', severity: 'high', sources: ['service'], kinds: Object.keys(WIDER_PATHS),
+    test: (input) => input.change === 'modified' && widened(input).length > 0,
+    sentence: (input) => {
+      const parts = widened(input).map((path) => widerWords(path, input.before?.[path], input.after?.[path]));
+      return `Shared wider than before: ${words(parts)} (${named(input, 'sharing settings')}).`;
+    },
+  },
+  // 10. A site or OneDrive opened up, compared between two content backups (#968).
+  {
+    key: 'opened-to-everyone-edit', severity: 'critical', sources: ['backup'], kinds: EXPOSURE_KINDS,
+    test: (input) => everyoneAdded(input) && canEdit(exposureOf(input).level),
+    sentence: (input) => `Opened to everyone in the company: ${EVERYONE_WORDS[exposureOf(input).audience]} can now edit ${named(input, 'a site')}.`,
+  },
+  {
+    key: 'opened-to-everyone', severity: 'high', sources: ['backup'], kinds: EXPOSURE_KINDS,
+    test: (input) => everyoneAdded(input) && !canEdit(exposureOf(input).level),
+    sentence: (input) => `Opened to everyone in the company: ${EVERYONE_WORDS[exposureOf(input).audience]} can now view ${named(input, 'a site')}.`,
+  },
+  {
+    key: 'anyone-links-added', severity: 'high', sources: ['backup'], kinds: EXPOSURE_KINDS,
+    test: (input) => input.change === 'added' && exposureOf(input)?.what === 'anyone-links' && exposureOf(input).count > 0,
+    sentence: (input) => {
+      const { count } = exposureOf(input);
+      return `Anyone links added: ${count} new ${count === 1 ? 'link' : 'links'} that need no sign-in on ${named(input, 'a site')}.`;
+    },
+  },
 ]);
 
 /**
  * The flags one change raises, most severe first. Pure.
- * @param {{ source: 'drift' | 'service' | 'audit', type: string, change: 'added' | 'modified' | 'removed',
+ * @param {{ source: 'drift' | 'service' | 'backup' | 'audit', type: string, change: 'added' | 'modified' | 'removed',
  *   name?: string | null, key?: string | null, before?: Record<string, unknown> | null, after?: Record<string, unknown> | null,
  *   context?: Record<string, unknown> | null, activity?: string | null, operation?: string | null,
  *   targetType?: string | null, fields?: string[] }} input

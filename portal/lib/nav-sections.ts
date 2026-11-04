@@ -81,6 +81,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/approved-setups", label: "Approved setups", gate: null, aliases: "baselines approved setup" },
     { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare backups tenants differences side by side" },
     { href: "/compliance", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
+    { href: "/owner-review", label: "Owner review", gate: "canRead", aliases: "owners ownerless groups teams apps enterprise apps app registrations disabled guest owner access review" },
     { href: "/intune-baselines", label: "Intune baselines", gate: null, aliases: "intune security baselines microsoft recommended settings catalog windows defender edge" },
   ],
   Reports: [

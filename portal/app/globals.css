@@ -12270,3 +12270,22 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 @media (prefers-reduced-motion: reduce) {
   .pick-details > summary .icon { transition: none; }
 }
+
+/* Owner review (issue #964): one section per kind, one row per group, app or site. */
+.or-kind { display: grid; gap: var(--space-xs); min-width: 0; }
+.or-kind-heading { display: flex; align-items: center; gap: var(--space-xs); margin: 0; font-size: 1rem; font-weight: 650; }
+.or-kind-heading .icon { width: 1rem; height: 1rem; flex: none; color: var(--text-soft); }
+.or-list { display: grid; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); min-width: 0; }
+.or-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); min-width: 0; }
+.or-row + .or-row { border-top: 1px solid var(--line); }
+.or-row-main { display: grid; gap: 0.125rem; min-width: 0; line-height: 1.35; }
+.or-row-main b { overflow-wrap: anywhere; }
+.or-row-main small { color: var(--text-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.or-row-side { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-xs); min-width: 0; }
+.or-link { border-radius: 2px; color: var(--text); font-size: 0.875rem; font-weight: 600; text-decoration: underline; text-underline-offset: 0.2em; overflow-wrap: anywhere; }
+.or-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.or-row-tech { min-width: 0; }
+@media (max-width: 46rem) {
+  .or-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; padding: var(--space-sm); }
+  .or-row-side, .or-row-tech { grid-column: 2; justify-content: flex-start; }
+}

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "7cb46d1ad2302fbf7b8922d0352197ec68860552",
+  "build": "224e353feca37407ac24b179776e0783d6e8ca61",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-04T01:38:44.723Z",
+  "observedAt": "2026-11-04T05:10:58.708Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,10 +25,10 @@
         "family": "site-sharing",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:44.723Z",
+        "capturedAt": "2026-11-04T05:10:58.708Z",
         "ok": true,
         "status": "read",
-        "objects": 21,
+        "objects": 22,
         "error": null
       },
       {
@@ -36,10 +36,10 @@
         "family": "site-settings",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:44.723Z",
+        "capturedAt": "2026-11-04T05:10:58.708Z",
         "ok": false,
         "status": "partial",
-        "objects": 21,
+        "objects": 22,
         "error": "NOT_RETURNED"
       }
     ]
@@ -47,7 +47,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "8f3e145d354707658ce77b79734baccceefe4f15e47e2ae3b2c0a9eca683287c"
+      "signature": "b631bb24690fb6d6ee2e56f782d6e58eac5d2b38e32c7c3be1f6927f5ce43713"
     }
   }
 }

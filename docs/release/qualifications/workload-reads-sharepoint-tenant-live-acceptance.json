@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "7cb46d1ad2302fbf7b8922d0352197ec68860552",
+  "build": "224e353feca37407ac24b179776e0783d6e8ca61",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-04T01:38:40.050Z",
+  "observedAt": "2026-11-04T05:10:56.475Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "tenantSettings",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:40.050Z",
+        "capturedAt": "2026-11-04T05:10:56.475Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -36,7 +36,7 @@
         "family": "syncClientRestriction",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:40.050Z",
+        "capturedAt": "2026-11-04T05:10:56.475Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -47,7 +47,7 @@
         "family": "browserIdleSignout",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:40.050Z",
+        "capturedAt": "2026-11-04T05:10:56.475Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -58,7 +58,7 @@
         "family": "restrictedSearchMode",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:40.050Z",
+        "capturedAt": "2026-11-04T05:10:56.475Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,9 +69,9 @@
         "family": "restrictedSearchAllowedSites",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-04T01:38:40.050Z",
+        "capturedAt": "2026-11-04T05:10:56.475Z",
         "ok": false,
-        "status": "failed",
+        "status": "not-licensed",
         "objects": 0,
         "error": "CMDLET_ERROR:PnP.PowerShell.Commands.GetTenantRestrictedSearchAllowedList"
       }
@@ -80,7 +80,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "8cbef4120d9e56c12f655b785d2d74d2a8929bf54cac7dda40cae09fa7565274"
+      "signature": "eaa8452f6a5b1eb0b4f5249973e7b83bf544a75569f202ffad2f9ec3378ec144"
     }
   }
 }

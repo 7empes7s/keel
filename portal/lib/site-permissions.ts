@@ -1,12 +1,13 @@
 // Gap 2 of the site permissions audit: the Sites pages' loader. Read-only: it reads the
 // stored SharePoint workload reads and never calls Microsoft. Callers check `read` first.
+import { classifyNamedOwners, loadOwnerDirectory } from "../../engine/govern/ownerReview.mjs";
 import { connect } from "@/lib/db";
 
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { idNames } from "@/lib/saved-names";
 import {
   SITES_WORKLOAD, sitePermissionsFrom, siteName,
-  type PeopleSummary, type SiteBackup, type SitePermissionsData, type SitesContentRun, type SitesRun,
+  type OwnerCheck, type PeopleSummary, type SiteBackup, type SitePermissionsData, type SitesContentRun, type SitesRun,
 } from "@/lib/site-permissions-view";
 
 // The nightly content backup of sites (engine/content/sharepointSites.mjs).
@@ -161,10 +162,35 @@ export async function loadSiteBackups(client: KeelClient, tenant: string, siteId
 export async function getSitePermissions(siteId: string | null = null, now: Date = new Date()): Promise<SitePermissionsData> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
-    return await withAppNames(client, tenantRef(), await loadSitePermissions(client, { tenantRef: tenantRef(), siteId, now }));
+    const data = await withAppNames(client, tenantRef(), await loadSitePermissions(client, { tenantRef: tenantRef(), siteId, now }));
+    return withOwnerChecks(data, await loadOwnerDirectory(client, { tenantRef: tenantRef() }) as OwnerDirectory);
   } finally {
     await client.end();
   }
+}
+
+/** engine/govern/ownerReview.mjs loadOwnerDirectory(). */
+export interface OwnerDirectory {
+  snapshotId: string | null;
+  complete: boolean;
+  users: Map<string, { name: string | null; disabled: boolean; guest: boolean }>;
+}
+
+/**
+ * Each site's owners checked against the users in the newest backup: owners whose
+ * account is turned off, and guests. Owners are known to a site only by name, so a
+ * name counts only when exactly one user has it. Nothing changes without users.
+ */
+export function withOwnerChecks(data: SitePermissionsData, directory: OwnerDirectory): SitePermissionsData {
+  if (!directory.users.size) return data;
+  return {
+    ...data,
+    sites: data.sites.map((site) => {
+      if (!site.people?.ownerCount) return site;
+      const check = classifyNamedOwners({ names: site.people.owners, count: site.people.ownerCount }, directory) as OwnerCheck & { matched: number };
+      return { ...site, people: { ...site.people, ownerCheck: { problem: check.problem, disabled: check.disabled, guests: check.guests } } };
+    }),
+  };
 }
 
 /**

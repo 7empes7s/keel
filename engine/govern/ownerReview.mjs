@@ -24,6 +24,7 @@
  *    counted as `unknownPublisher`, never reviewed as ownerless.
  */
 import { RELATIONSHIP_FAMILIES } from '../collect/relationships.mjs';
+import { objectName, objectNameSql } from '../cir/objectName.mjs';
 import { MICROSOFT_OWNER_TENANTS } from '../restore/identityObjectOperations.mjs';
 
 export const OWNER_REVIEW_CONTRACT_VERSION = 1;
@@ -46,10 +47,16 @@ const lower = (value) => (typeof value === 'string' ? value.toLowerCase() : null
 const iso = (value) => (value ? new Date(value).toISOString() : null);
 
 /**
+ * @typedef {{ id: string, name: string | null, upn: string | null, disabled: boolean, guest: boolean }} DirectoryUser
+ * @typedef {{ snapshotId: string | null, readAt: string | null, complete: boolean, users: Map<string, DirectoryUser> }} OwnerDirectory
+ */
+
+/**
  * The newest complete backup whose user read finished in full, else the newest
  * complete backup holding any users (then `complete` is false and a missing
  * owner is "unknown", not "no longer exists"). Users are keyed by lower-case id.
  */
+/** @returns {Promise<OwnerDirectory>} */
 export async function loadOwnerDirectory(client, { tenantRef }) {
   const pick = async (fullOnly) => (await client.query(
     `SELECT s.id, s.completed_at FROM snapshot s
@@ -61,10 +68,11 @@ export async function loadOwnerDirectory(client, { tenantRef }) {
   )).rows[0];
   const full = await pick(true);
   const row = full ?? await pick(false);
+  /** @type {Map<string, DirectoryUser>} */
   const users = new Map();
   if (!row) return { snapshotId: null, readAt: null, complete: false, users };
   const { rows } = await client.query(
-    `SELECT payload->>'id' AS id, payload->>'displayName' AS name, payload->>'userPrincipalName' AS upn,
+    `SELECT payload->>'id' AS id, ${objectNameSql('payload', 'resource_type')} AS name, payload->>'userPrincipalName' AS upn,
             payload->'accountEnabled' AS enabled, payload->>'userType' AS user_type
        FROM resource_version WHERE snapshot_id = $1 AND resource_type = 'user'`,
     [row.id],
@@ -74,7 +82,7 @@ export async function loadOwnerDirectory(client, { tenantRef }) {
     if (!id) continue;
     users.set(id, {
       id,
-      name: user.name ?? user.upn ?? null,
+      name: user.name ?? null,
       upn: user.upn ?? null,
       // Only an explicit false is disabled: a user read without the field is not.
       disabled: user.enabled === false,
@@ -184,13 +192,22 @@ export function enterpriseAppScope(payload, ownAppIds) {
 /**
  * The whole review for one tenant. `items` holds every reviewed group, team and
  * app with its problem (including `fine`), so the page can count and filter.
+ * Owner lists are returned with names only for users and apps the backup holds.
  */
-export async function ownerReview(client, { tenantRef, now = new Date() }) {
-  const directory = await loadOwnerDirectory(client, { tenantRef });
+/**
+ * @param {{ query: Function }} client
+ * @param {{ tenantRef: string, now?: Date, directory?: OwnerDirectory | null }} options
+ */
+export async function ownerReview(client, { tenantRef, now = new Date(), directory: given = null }) {
+  // A caller that also checks site owners passes the directory it already loaded.
+  const directory = given ?? await loadOwnerDirectory(client, { tenantRef });
   const teamIds = await loadTeamIds(client, tenantRef);
+  /** @type {any[]} */
   const items = [];
-  const reads = {};
+  /** @type {Record<'group' | 'application' | 'servicePrincipal', any>} */
+  const reads = /** @type {any} */ ({});
   const skipped = { microsoft: 0, unknownPublisher: 0, otherType: 0 };
+  /** @type {Record<string, any[]>} */
   const parentsByType = {};
 
   for (const [kind, { family, parentType }] of Object.entries(OWNER_KINDS)) {
@@ -202,7 +219,7 @@ export async function ownerReview(client, { tenantRef, now = new Date() }) {
   }
 
   // Names for app owners (a service principal can own a group or an app).
-  const apps = new Map(parentsByType.servicePrincipal.map((row) => [lower(row.payload.id), row.payload.displayName ?? null]));
+  const apps = new Map(parentsByType.servicePrincipal.map((row) => [lower(row.payload.id), objectName(row.payload, 'servicePrincipal')]));
   const ownAppIds = new Set(parentsByType.application.map((row) => lower(row.payload.appId)).filter(Boolean));
 
   for (const [kind, { parentType }] of Object.entries(OWNER_KINDS)) {
@@ -238,7 +255,7 @@ export async function ownerReview(client, { tenantRef, now = new Date() }) {
         id,
         appId: payload.appId ?? null,
         naturalKey: row.natural_key,
-        name: payload.displayName ?? null,
+        name: objectName(payload, parentType),
         problem,
         owners,
         counts: {
@@ -274,14 +291,21 @@ export async function ownerReview(client, { tenantRef, now = new Date() }) {
  * name, and the stored list is capped), so "only disabled" needs every owner
  * matched to a disabled user.
  */
+/**
+ * @param {{ names?: string[], count?: number }} owners
+ * @param {{ users: Map<string, { name: string | null, disabled: boolean, guest: boolean }> }} directory
+ */
 export function classifyNamedOwners({ names = [], count = names.length } = {}, directory) {
+  /** @type {Map<string, { name: string | null, disabled: boolean, guest: boolean } | null>} */
   const byName = new Map();
   for (const user of directory.users.values()) {
     const key = lower(user.name);
     if (!key) continue;
     byName.set(key, byName.has(key) ? null : user);
   }
+  /** @type {string[]} */
   const disabled = [];
+  /** @type {string[]} */
   const guests = [];
   let matched = 0;
   for (const name of names) {

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "defenderRoleAssignment",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "224e353feca37407ac24b179776e0783d6e8ca61",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-04T04:36:12.424Z",
+  "restoreRef": "c0d7f6cb-062a-8296-8013-025bf72a4f8d",
+  "naturalKey": "defenderRoleAssignment:3b21454e-4af8-8e26-be08-7af0f065cc7d",
+  "fixtureKind": "named-object",
+  "captureSha256": "6721c419eced29f1c508c3584e62fb9f362c42e8dc177f5040c742f0263e2d9d",
+  "proofRef": "docs/release/qualifications/entra-live/defenderRoleAssignment.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "ca3b2d6df8a82bc4ec52fe25beb82c16a62952a961761afc1eeee9cae29b1007"
+    }
+  }
+}

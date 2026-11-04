@@ -29,9 +29,13 @@ test('no type is left unknown: every catalogue type has one of the four coverage
 });
 
 // Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs),
-// issue #992 one for access packages (accessPackageOperations.mjs) and
-// issue #991 one for roleAssignmentSchedule (adminRoleOperations.mjs).
-const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage', 'roleAssignmentSchedule']);
+// issue #992 one for access packages (accessPackageOperations.mjs), issue #991 one for
+// roleAssignmentSchedule (adminRoleOperations.mjs), and issue #994 authentication
+// contexts and staged rollout (signInSettingsOperations.mjs).
+const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage', 'roleAssignmentSchedule',
+  'authenticationContextClassReference', 'featureRolloutPolicy']);
+// Issue #994: certificate authorities are manual by design, not waiting for a writer.
+const MANUAL_BY_DESIGN = new Set(['certificateBasedAuthConfiguration']);
 
 test('the 14 formerly unclassified Entra types are incomplete configurations, recreated by hand until a writer exists', () => {
   for (const type of FORMERLY_UNCLASSIFIED) {
@@ -44,7 +48,7 @@ test('the 14 formerly unclassified Entra types are incomplete configurations, re
     }
     const qualification = qualificationFor(type);
     assert.equal(qualification.decision, 'manual', type);
-    assert.match(qualification.reason, /^incomplete configuration/, type);
+    assert.match(qualification.reason, MANUAL_BY_DESIGN.has(type) ? /^manual by design/ : /^incomplete configuration/, type);
     assert.equal(qualification.completeness.state, 'incomplete', type);
     assert.equal(qualification.completeness.recreate, 'by-hand', type);
     assert.equal(qualification.completeness.missing[0].part, 'The whole setting', type);

@@ -26,7 +26,8 @@ export type ContentEffectName =
   | "weakens-protection"
   | "acts-on-accounts"
   | "blocks-sign-in"
-  | "access-changing";
+  | "access-changing"
+  | "changes-sign-in";
 
 export interface ContentEffect {
   naturalKey: string;
@@ -52,6 +53,7 @@ const EFFECT_LABELS: Record<ContentEffectName, string> = {
   "acts-on-accounts": "Acts on accounts",
   "blocks-sign-in": "Blocks sign-in",
   "access-changing": "Changes admin access",
+  "changes-sign-in": "Changes sign-in",
 };
 
 export function contentEffectLabel(effect: ContentEffectName): string {
@@ -68,6 +70,7 @@ const EFFECT_ICONS: Record<ContentEffectName, IconName> = {
   "acts-on-accounts": "person",
   "blocks-sign-in": "pause",
   "access-changing": "person",
+  "changes-sign-in": "service-entra",
 };
 
 const show = (value: unknown) => (value === null || value === undefined ? "—" : typeof value === "string" ? value : JSON.stringify(value));

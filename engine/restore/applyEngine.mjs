@@ -23,12 +23,13 @@ import { recordPriorState, recordWriteOutcome, classifyWriteOutcome, listJournal
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, recordSignInPath } from '../safety/signInPathGate.mjs';
 import { lockoutDeleteRefusal } from '../safety/lockoutDeleteGate.mjs';
+import { certificateAuthorityRefusal } from './signInSettingsOperations.mjs';
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
   changedFields as changedTenantPolicyFields, isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
-  crossTenantTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
+  tenantPolicyTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
 import {
   assignLicenseBody, changedUserFields, groupLicenceReadPath, isSyncedUser, isUserGoverned, licencePlan, manualUserFields,
@@ -574,6 +575,14 @@ export async function applyWave(writer, governor, wave, {
       return;
     }
 
+    // Issue #994: the trusted certificate authorities are never written. Any
+    // restore of them is a step for a person that lists each backed-up one.
+    const certificateRefusal = certificateAuthorityRefusal(resource, effectiveVerb);
+    if (certificateRefusal) {
+      skipped.push({ naturalKey: resource.naturalKey, reason: certificateRefusal.reason, completion: certificateRefusal.completion });
+      return;
+    }
+
     const capabilityGate = verbCapability(resource.resourceType, effectiveVerb);
     if (!capabilityGate.supported) {
       failed.push({
@@ -710,7 +719,7 @@ export async function applyWave(writer, governor, wave, {
       if (resumedGoverned()) return;
       const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
         mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
-        now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure,
+        now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure, lockoutGate,
         tenantRef: typeof targetTenant === 'string' && targetTenant ? tenantRefFor(targetTenant) : null,
         allowTenantWide: allowTenantWide === true,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
@@ -1480,9 +1489,10 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     return { failed: { naturalKey, error: err.message } };
   }
   const targetId = resource.targetId ?? resource.live?.targetId ?? null;
-  // Cross-tenant trust is never written; a difference is reported as a follow-up step.
-  const crossTenantTrust = crossTenantTrustCompletion(resource, verb);
-  const followUp = crossTenantTrust ? { completion: crossTenantTrust } : {};
+  // Trust settings (cross-tenant trust, certificate sign-in settings) are never
+  // written; a difference is reported as a follow-up step.
+  const trust = tenantPolicyTrustCompletion(resource, verb);
+  const followUp = trust ? { completion: trust } : {};
   const writes = [...methods, ...(root ? [root] : [])];
   // Issue #720: the plan names each field that changes. A PUT sends every
   // writable field, but only the ones that differ from live are listed.

@@ -124,7 +124,12 @@ test('scopes are derived from registered operations only; no new family is fully
   assert.equal(active.completeness.state, 'incomplete');
   assert.deepEqual({ status: active.expansion.status, restoreScope: active.expansion.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });
   assert.equal(restoreScopeFor('certificateBasedAuthConfiguration'), 'none');
-  const unit = qualificationFor('certificateBasedAuthConfiguration');
+  // Issue #994: certificate authorities are manual by design, never written.
+  const certificates = qualificationFor('certificateBasedAuthConfiguration');
+  assert.equal(certificates.decision, 'manual');
+  assert.deepEqual({ status: certificates.expansion.status, restoreScope: certificates.expansion.restoreScope }, { status: 'manual', restoreScope: 'none' });
+  assert.equal(restoreScopeFor('connectedOrganization'), 'none');
+  const unit = qualificationFor('connectedOrganization');
   // Coverage plan v3: no longer 'unknown'; restored by hand until a writer exists.
   assert.equal(unit.decision, 'manual');
   assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });

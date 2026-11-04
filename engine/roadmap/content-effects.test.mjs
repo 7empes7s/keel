@@ -25,7 +25,7 @@ import {
 import { resolveDryRuns } from '../govern/references.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
-import { fakeGraph } from '../../tools/qualification/operations.mjs';
+import { FIXTURE_PAYLOADS, fakeGraph } from '../../tools/qualification/operations.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
@@ -192,6 +192,22 @@ test('issue #700: making an access package catalog externally visible, on create
     { naturalKey: 'accessPackageCatalog:updated', field: 'isExternallyVisible', effect: 'externally-sharing', before: false, after: true },
   ]);
   assert.equal(effects[0].disclosure, disclosureFor('externally-sharing'));
+});
+
+// The live Q228 plan (artifact 1200a6a0): the backed-up credential policy and
+// catalog, deleted from the tenant, recreated together. Uses the live gate's own
+// fixtures plus the read-only fields a backup carries, so the guard is judged on
+// what the operator restores, not on a trimmed copy.
+test('issue #700: the Q228 plan, a credential policy and a catalog created together from a backup, passes the guard', () => {
+  const backedUp = { id: 'src-cat', createdDateTime: '2026-10-29T21:00:00Z', modifiedDateTime: '2026-10-29T21:00:00Z' };
+  const catalogBackup = { ...FIXTURE_PAYLOADS.accessPackageCatalog, ...backedUp };
+  assert.equal(catalogBackup.isExternallyVisible, false, 'the live fixture is not externally visible');
+  const { effects, refusals } = classifyContentEffects([
+    create('appManagementPolicy', { ...FIXTURE_PAYLOADS.appManagementPolicy, id: 'src-policy' }, 'appManagementPolicy:fixture'),
+    create('accessPackageCatalog', catalogBackup, 'accessPackageCatalog:fixture'),
+  ]);
+  assert.deepEqual(refusals, [], 'neither create is an unclassified content effect');
+  assert.deepEqual(effects, [], 'restoring a catalog that is not externally visible exposes nothing');
 });
 
 // ------------------------------------- iOS and Android app protection (issue #705)

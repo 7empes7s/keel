@@ -12,7 +12,7 @@
 // promoting stale parameters.
 import { createHash } from 'node:crypto';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
-import { scopeReferencePrefix } from '../cir/canonicalize.mjs';
+import { isReferenceCandidate, scopeReferencePrefix } from '../cir/canonicalize.mjs';
 import { withExplicitReferences } from '../coverage/qualification.mjs';
 
 const TERMINAL_STATUSES = Object.freeze(['completed', 'refused', 'failed']);
@@ -47,6 +47,11 @@ export function canonicalDigest(value) {
   return sha256(canonicalStringify(value));
 }
 
+function storedValueAt(payload, path) {
+  return String(path).split(/\.|\[(\d+)\]/).filter(Boolean)
+    .reduce((value, segment) => value?.[segment], payload);
+}
+
 /** The restore candidate set of one snapshot, in the wave-planner resource shape: every
  * resource version except users (never written), each with its snapshot references plus
  * the explicit ones (roadmap task-107). cli/keel-restore.mjs plans dry runs from this set
@@ -61,6 +66,10 @@ export function restoreCandidates(versions, references) {
     // scope) travels with the reference. Snapshots stored before the prefix
     // column existed get it back from the stored payload, as collection set it.
     const owner = versionById.get(r.from_version);
+    // Issue #704: snapshots stored before the collector rule existed can hold a
+    // reference on a typed value (an app configuration value "1" read as scope
+    // tag 1). Restoring it would fail, or rewrite the value to the new tag's id.
+    if (owner && !isReferenceCandidate(r.field_path, storedValueAt(owner.payload, r.field_path))) continue;
     const prefix = r.prefix ?? (owner ? scopeReferencePrefix(owner.resource_type, r.field_path, owner.payload) : null);
     refsByVersion.get(r.from_version).push({
       field: r.field_path, symbol: r.to_symbol, required: r.required, ...(prefix ? { prefix } : {}),
@@ -149,17 +158,31 @@ export function computePlanDigest({
 // read, not of the last change, so two reads of an unchanged object differ. Left in,
 // the fingerprint never matches and every update is refused. Only kinds observed live
 // to do this are listed; for the rest the field stays in, as a real change signal.
+// A field inside each item of a list is named 'list[].field' (issue #746: a
+// notification template's localized messages are stamped with the read time).
 export const READ_TIME_FIELDS = Object.freeze({
   mobileAppCategory: Object.freeze(['lastModifiedDateTime']),
   managedEBookCategory: Object.freeze(['lastModifiedDateTime']),
+  notificationMessageTemplate: Object.freeze(['lastModifiedDateTime', 'localizedNotificationMessages[].lastModifiedDateTime']),
 });
+
+function withoutField(value, path) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const [head, ...rest] = path;
+  if (rest.length === 0) {
+    const { [head]: _dropped, ...kept } = value;
+    return kept;
+  }
+  if (!head.endsWith('[]')) return value;
+  const list = head.slice(0, -2);
+  if (!Array.isArray(value[list])) return value;
+  return { ...value, [list]: value[list].map((item) => withoutField(item, rest)) };
+}
 
 function withoutReadTimeFields(payload, resourceType) {
   const fields = READ_TIME_FIELDS[resourceType];
   if (!fields || !payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
-  const rest = { ...payload };
-  for (const field of fields) delete rest[field];
-  return rest;
+  return fields.reduce((rest, field) => withoutField(rest, field.split('.')), payload);
 }
 
 /** What the target looks like right now, restricted to the resources this restore

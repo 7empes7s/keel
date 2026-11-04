@@ -76,7 +76,7 @@ function graphNativeAdapter(type) {
     }
     // Q271: a related object no route per object returns (an Intune role
     // assignment's role) is read from the side that lists it.
-    if (entry.linkedFrom && !result?.error && !result?.capped && Array.isArray(result?.items)) {
+    if (entry.linkedFrom && !result?.error && !result?.capped && Array.isArray(result?.items) && result.items.length > 0) {
       const linked = await withLinkedFrom(reader, entry, result.items);
       if (linked.error) return { entry, path: linked.path ?? path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: linked.error.status ?? null, capped: false, error: linked.error };
       result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + linked.pages;
@@ -320,6 +320,7 @@ async function withItemReads(reader, entry, items, { dropWhenNotFound = false } 
  * each one's children (its assignments), and each object listed under one parent
  * gets that parent's `fields` as `as`. An object under no parent is left without
  * it (a restore then reports it cannot tell the role); under two, the kind fails.
+ * With no objects, nothing more is read.
  * A parent that went between the two reads is skipped. Any other failed read
  * fails the kind, so a backup never holds an assignment with a role guessed.
  */

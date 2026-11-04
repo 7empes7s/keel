@@ -14466,13 +14466,13 @@ item that needs it stays untouched.
 - **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, the two
   index sizes, and any `[keel-portal] slow query` line that starts with `WITH wanted AS` or `WITH latest AS`.
 
-### Q308: After PR #904 deploys, time the Changes list (getDriftData) again (read-only, no tenant), about 5 minutes
+### Q308: After PR #949 deploys, time the Changes list (getDriftData) again (read-only, no tenant), about 5 minutes
 - Drafted by the "Fix the slow reads on Baselines" thread (2026-11-01, backlog 41). In Q305 `baselines getDriftData` took
-  **6–8 s with 1,850 queries**, and its `WITH seen AS ...` name lookup **3–4 s**. PR #904 reads owners, approval routes and audit
-  records once per page instead of once per change, rewrites that lookup, and adds indexes (schema fragment 93). This item gets
+  **6–8 s with 1,850 queries**, and its `WITH seen AS ...` name lookup **3–4 s**. PR #904 (closed; its change landed unchanged in PR #949) reads owners, approval routes and audit
+  records once per page instead of once per change, rewrites that lookup, and adds indexes (schema fragment 93, `93-resource-version-ids-by-backup.sql` in #949). This item gets
   the after-numbers. **Same read-only rules as Q303 and Q305:** every connection opened with `default_transaction_read_only=on`;
   no tenant calls, no restarts, no config changes, nothing installed; never print a database URL, password, token, tenant id or address.
-- Needs: the deployed build at or after PR #904's merge, and its schema applied
+- Needs: the deployed build at or after PR #949's merge, and its schema applied
   (`SELECT indexname FROM pg_indexes WHERE indexname = 'resource_version_role_template_id_snapshot_idx'` returns a row; if not, report `blocked`).
 - Status: todo
 - Do, on Mulinux: exactly Q303 steps 1–4 (same `profile-reads.mts` script from Q303, same principal pick), at the deployed

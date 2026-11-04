@@ -45,7 +45,10 @@ export async function loadSitePermissions(
       ORDER BY created_at DESC, observed_to DESC LIMIT 1`,
     [tenant, SITES_WORKLOAD, outcomes],
   )).rows[0];
-  const [storedRow, newestRow] = await Promise.all([runs(STORED), runs(null)]);
+  // One after another: both share one connection, and pg warns (pg 9 will refuse)
+  // when a second query is sent before the first has answered.
+  const storedRow = await runs(STORED);
+  const newestRow = await runs(null);
   const run = runFrom(storedRow);
   const newest = runFrom(newestRow);
   const latest = newest && newest.id !== run?.id ? newest : null;
@@ -129,23 +132,22 @@ export async function loadSiteBackups(client: KeelClient, tenant: string, siteId
   }
   if (!tables?.items) return { held, people, run };
   const container = siteId === null ? null : `site:${siteId}`;
-  const [totals, summaries] = await Promise.all([
-    client.query(
-      `SELECT container, count(DISTINCT item_key) AS items, sum(bytes) AS bytes, max(created_at) AS last_stored
-         FROM content_item
-        WHERE tenant_ref = $1 AND workload = $2 AND ($3::text IS NULL AND container LIKE 'site:%' OR container = $3::text)
-        GROUP BY container`,
-      [tenant, CONTENT_WORKLOAD, container],
-    ),
-    client.query(
-      `SELECT DISTINCT ON (container) container, metadata->'summary' AS summary, created_at
-         FROM content_item
-        WHERE tenant_ref = $1 AND workload = $2 AND item_key = 'site/permissions'
-          AND ($3::text IS NULL AND container LIKE 'site:%' OR container = $3::text)
-        ORDER BY container, created_at DESC`,
-      [tenant, CONTENT_WORKLOAD, container],
-    ),
-  ]);
+  // One after another, on the one connection (see loadSitePermissions).
+  const totals = await client.query(
+    `SELECT container, count(DISTINCT item_key) AS items, sum(bytes) AS bytes, max(created_at) AS last_stored
+       FROM content_item
+      WHERE tenant_ref = $1 AND workload = $2 AND ($3::text IS NULL AND container LIKE 'site:%' OR container = $3::text)
+      GROUP BY container`,
+    [tenant, CONTENT_WORKLOAD, container],
+  );
+  const summaries = await client.query(
+    `SELECT DISTINCT ON (container) container, metadata->'summary' AS summary, created_at
+       FROM content_item
+      WHERE tenant_ref = $1 AND workload = $2 AND item_key = 'site/permissions'
+        AND ($3::text IS NULL AND container LIKE 'site:%' OR container = $3::text)
+      ORDER BY container, created_at DESC`,
+    [tenant, CONTENT_WORKLOAD, container],
+  );
   for (const row of totals.rows) {
     held.set(String(row.container).replace(/^site:/, ""), { items: num(row.items), bytes: num(row.bytes), lastStoredAt: iso(row.last_stored) });
   }

@@ -112,7 +112,19 @@ test("the loader joins each site's nightly backup: items, size, last stored, own
       [TENANT, JSON.stringify(["Finance: 1 part(s) not fully read, first permissions: denied (403)"])],
     );
 
-    const data = await loadSitePermissions(client, { tenantRef: TENANT, now });
+    // One connection runs one query at a time: pg warns (and pg 9 will refuse) when a
+    // second query is sent before the first has answered.
+    let running = 0;
+    let mostAtOnce = 0;
+    const reader = {
+      async query(...args: Parameters<typeof client.query>) {
+        running += 1;
+        mostAtOnce = Math.max(mostAtOnce, running);
+        return client.query(...args).finally(() => { running -= 1; });
+      },
+    } as unknown as typeof client;
+    const data = await loadSitePermissions(reader, { tenantRef: TENANT, now });
+    assert.equal(mostAtOnce, 1, "queries overlapped on one connection");
     assert.equal(data.tenantSharing, "ExternalUserSharingOnly");
     assert.deepEqual(data.contentRun, { outcome: "partial", completedAt: "2026-10-15T01:30:00.000Z", namePrefix: "Fin", reasons: ["Finance: 1 part(s) not fully read, first permissions: denied (403)"] });
     const [archive, finance] = data.sites;

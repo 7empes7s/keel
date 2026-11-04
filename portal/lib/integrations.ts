@@ -81,11 +81,14 @@ export function guardedIntegrationList(deps: GuardDeps = {}) {
     async ({ client, tenantRef, principalId }) => {
       const all = (await listDestinations(client, { tenantRef, principalId })) as Destination[];
       const destinations = all.filter((destination) => GENERIC_SIEM_KINDS.includes(destination.kind));
-      const statuses = (await Promise.all(
-        destinations.map((destination) => outboxStatus(client, {
+      // One destination after another: they share one connection, and pg warns (pg 9
+      // will refuse) when a second query is sent before the first has answered.
+      const statuses: DestinationStatus[] = [];
+      for (const destination of destinations) {
+        statuses.push((await outboxStatus(client, {
           tenantRef, destinationId: destination.id, principalId,
-        })),
-      )) as DestinationStatus[];
+        })) as DestinationStatus);
+      }
       return Response.json(
         { destinations, statuses, generatedAt: new Date().toISOString() },
         { headers: NO_STORE },

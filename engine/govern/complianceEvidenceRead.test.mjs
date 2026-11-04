@@ -68,14 +68,21 @@ test('findings link to the backup that read the window, reading only the evaluat
   await backup(client, 'sha256:0000000000000000', new Date(row.completed_at), row.coverage_digest);
 
   const seen = [];
+  // One connection runs one query at a time: pg warns (and pg 9 will refuse) when a
+  // second query is sent before the first has answered (operator queue Q308).
+  let running = 0;
+  let mostAtOnce = 0;
   const reader = {
     async query(...args) {
-      const answer = await client.query(...args);
+      running += 1;
+      mostAtOnce = Math.max(mostAtOnce, running);
+      const answer = await client.query(...args).finally(() => { running -= 1; });
       if (/FROM snapshot WHERE tenant_ref = \$1 AND completed_at IS NOT NULL/.test(String(args[0]))) seen.push(answer.rows);
       return answer;
     },
   };
   const { findings } = await complianceFindings(reader, { tenantRef, now });
+  assert.equal(mostAtOnce, 1, 'queries overlapped on one connection');
   assert.equal(findings.length, 1);
   assert.equal(findings[0].links.backup.state, 'linked');
   assert.deepEqual(findings[0].links.backup.linked.map((entry) => entry.snapshotId), [evidenceId]);

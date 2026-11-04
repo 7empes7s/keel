@@ -466,52 +466,52 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
   // them is not read at all. Reading every kind of every backup ever taken grew with
   // each hourly backup and was most of this read's time.
   const snapshotTypes = windowTypes.filter((type) => !WORKLOAD_FACT_TYPES.has(type));
-  const [{ rows: exceptions }, { rows: snapshotRows }, { rows: driftRows }, { rows: planRows }, { rows: collections }] = await Promise.all([
-    client.query(
-      `SELECT * FROM benchmark_exception
-       WHERE tenant_ref = $1 AND evaluation_id = ANY($2::uuid[])
-       ORDER BY granted_at DESC, id DESC`,
-      [tenantRef, evaluations.map((evaluation) => evaluation.id)],
-    ),
-    snapshotTypes.length
-      ? client.query(
-        `SELECT id, tenant_ref, started_at, completed_at,
-                CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN
-                  (SELECT jsonb_object_agg(entry.key, entry.value) FROM jsonb_each(coverage_digest) AS entry
-                    WHERE entry.key = ANY($2::text[]))
-                END AS coverage_digest
-         FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL AND coverage_digest ?| $2::text[]`,
-        [tenantRef, snapshotTypes],
-      )
-      : { rows: [] },
-    client.query(
-      // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
-      `WITH latest AS (
-         SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift
-          WHERE tenant_ref = $1
-          ORDER BY baseline_id, natural_key, detected_at DESC, id DESC
-       )
-       SELECT d.id, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
-              d.observed_snapshot, d.detected_at
-       FROM drift d JOIN latest ON latest.id = d.id
-       WHERE ${OPEN_DRIFT_PREDICATE}`,
-      [tenantRef],
-    ),
-    client.query(
-      `SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at
-       FROM approval_request a
-       JOIN restore_dry_run r ON r.id::text = a.params->>'artifactId' AND r.tenant_ref = $1
-       WHERE a.action = 'restore' AND a.status = 'pending' AND a.expires_at > $2`,
-      [tenantRef, now],
-    ),
-    workloads.length
-      ? client.query(
-        `SELECT id, workload, observed_from, observed_to FROM workload_collection
-          WHERE tenant_ref = $1 AND workload = ANY($2::text[])`,
-        [tenantRef, workloads],
-      )
-      : { rows: [] },
-  ]);
+  // One after another: these share one connection, and pg runs a connection's queries
+  // one at a time anyway. Sent together, pg warns (and pg 9 will refuse; operator queue Q308).
+  const { rows: exceptions } = await client.query(
+    `SELECT * FROM benchmark_exception
+     WHERE tenant_ref = $1 AND evaluation_id = ANY($2::uuid[])
+     ORDER BY granted_at DESC, id DESC`,
+    [tenantRef, evaluations.map((evaluation) => evaluation.id)],
+  );
+  const { rows: snapshotRows } = await (snapshotTypes.length
+    ? client.query(
+      `SELECT id, tenant_ref, started_at, completed_at,
+              CASE WHEN jsonb_typeof(coverage_digest) = 'object' THEN
+                (SELECT jsonb_object_agg(entry.key, entry.value) FROM jsonb_each(coverage_digest) AS entry
+                  WHERE entry.key = ANY($2::text[]))
+              END AS coverage_digest
+       FROM snapshot WHERE tenant_ref = $1 AND completed_at IS NOT NULL AND coverage_digest ?| $2::text[]`,
+      [tenantRef, snapshotTypes],
+    )
+    : { rows: [] });
+  const { rows: driftRows } = await client.query(
+    // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
+    `WITH latest AS (
+       SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift
+        WHERE tenant_ref = $1
+        ORDER BY baseline_id, natural_key, detected_at DESC, id DESC
+     )
+     SELECT d.id, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
+            d.observed_snapshot, d.detected_at
+     FROM drift d JOIN latest ON latest.id = d.id
+     WHERE ${OPEN_DRIFT_PREDICATE}`,
+    [tenantRef],
+  );
+  const { rows: planRows } = await client.query(
+    `SELECT a.id AS request_id, a.expires_at, r.id AS dry_run_id, r.snapshot_id, r.closure_keys, r.created_at
+     FROM approval_request a
+     JOIN restore_dry_run r ON r.id::text = a.params->>'artifactId' AND r.tenant_ref = $1
+     WHERE a.action = 'restore' AND a.status = 'pending' AND a.expires_at > $2`,
+    [tenantRef, now],
+  );
+  const { rows: collections } = await (workloads.length
+    ? client.query(
+      `SELECT id, workload, observed_from, observed_to FROM workload_collection
+        WHERE tenant_ref = $1 AND workload = ANY($2::text[])`,
+      [tenantRef, workloads],
+    )
+    : { rows: [] });
 
   const snapshots = snapshotRows.map((snapshot) => ({
     id: String(snapshot.id),

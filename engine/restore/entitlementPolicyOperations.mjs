@@ -166,32 +166,37 @@ export function targetConnectedOrganization(resource, verb, ctx = {}) {
 
 const orgPath = (id) => `${CONNECTED_ORGANIZATIONS}/${encodeURIComponent(id)}`;
 
-/** The steps a write leaves for a person: a federated domain, missing sponsors. */
+const liveHoldsFederation = (resource) => list(resource.live?.payload?.identitySources).some(isFederation);
+
 /**
  * An update whose live organization holds a federated domain: Graph replaces the
- * identity sources whole, and a restore never sends the federated one (its issuer
- * is a trust field), so the other sources are not written either
- * (changedRecordFields leaves the field out). When they differ, that is a step for
- * a person, never a silent no-op. Returns null when nothing is held.
+ * identity sources whole, and a restore never sends a federated one (its issuer
+ * is a trust field), so no source is written (changedRecordFields leaves the
+ * field out). Every source that differs from the backup, federated or not, is a
+ * step for a person to add or remove, never a silent no-op. Without a federated
+ * domain live, the other sources are written and only the backup's federated
+ * ones are a step (federationStep). Returns null when nothing is left.
  */
-function heldSourcesStep(resource) {
-  const live = resource.live?.payload;
-  if (!live || !list(live.identitySources).some(isFederation)) return null;
+function identitySourcesStep(resource) {
+  if (!liveHoldsFederation(resource)) return federationStep(resource);
+  const liveSources = list(resource.live.payload.identitySources);
   const desired = resource.payload?.identitySources;
-  if (!Array.isArray(desired) || sameSources(desired, live.identitySources)) return null;
-  const liveKeys = new Set(list(live.identitySources).map(sourceKey));
+  if (!Array.isArray(desired)) return null;
+  const liveKeys = new Set(liveSources.map(sourceKey));
   const desiredKeys = new Set(desired.map(sourceKey));
-  const add = desired.filter((source) => !isFederation(source) && !liveKeys.has(sourceKey(source))).map(identitySourceText);
-  const remove = list(live.identitySources).filter((source) => !isFederation(source) && !desiredKeys.has(sourceKey(source))).map(identitySourceText);
+  const add = desired.filter((source) => !liveKeys.has(sourceKey(source))).map(identitySourceText);
+  const remove = liveSources.filter((source) => !desiredKeys.has(sourceKey(source))).map(identitySourceText);
+  if (add.length === 0 && remove.length === 0) return null;
   const parts = [];
   if (add.length) parts.push(`add ${add.join(' and ')}`);
   if (remove.length) parts.push(`remove ${remove.join(' and ')}`);
   const description = `The live connected organization has a federated domain, whose sign-in settings a restore never writes, and Graph replaces the identity sources together, so they were not restored. `
-    + `To match the backup, ${parts.join(', and ')} by hand in ${PORTAL}, under Connected organizations, Directory + domain.`;
+    + `To match the backup, ${parts.join(', and ')} by hand in ${PORTAL}, under Connected organizations, Directory + domain, after checking any federated domain's identity provider with that organization.`;
   return Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(['identitySources']), description });
 }
 
-const connectedOrganizationSteps = (resource) => [federationStep(resource), heldSourcesStep(resource), missingSponsorStep(resource.missingSponsors ?? [])].filter(Boolean);
+/** The steps a write leaves for a person: identity sources it cannot write, missing sponsors. */
+const connectedOrganizationSteps = (resource) => [identitySourcesStep(resource), missingSponsorStep(resource.missingSponsors ?? [])].filter(Boolean);
 
 /** The sponsors a write would add: { field: [ids] } of those not on the live organization, or { error }. */
 async function sponsorsToAdd(io, resource, targetId) {
@@ -212,8 +217,8 @@ async function sponsorsToAdd(io, resource, targetId) {
 }
 
 async function connectedOrganizationPlan(io, { resource, targetId, payload }) {
-  // Sources held for a person (heldSourcesStep) are a step, not a planned change.
-  const sources = heldSourcesStep(resource) ? [] : list(payload.identitySources).filter((source) => !isFederation(source)).map(identitySourceText);
+  // With a federated domain live, no source is written (identitySourcesStep): never a planned change.
+  const sources = liveHoldsFederation(resource) ? [] : list(payload.identitySources).filter((source) => !isFederation(source)).map(identitySourceText);
   const planned = await sponsorsToAdd(io, resource, targetId);
   const sponsorsAdded = planned.error ? null : Object.values(planned.add).reduce((sum, ids) => sum + ids.length, 0);
   return { ...(sources.length ? { identitySources: sources } : {}), ...(sponsorsAdded ? { sponsorsAdded } : {}) };

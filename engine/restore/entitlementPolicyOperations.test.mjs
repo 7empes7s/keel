@@ -283,6 +283,49 @@ test('an update whose live organization holds a federated domain lists the other
   assert.deepEqual(graph.state.orgs.get(TARGET_ORG).identitySources, [domainSource, federationSource], 'the live sources are left as they are');
 });
 
+const liveFederationUpdate = (liveSources, backupSources) => {
+  const live = { id: TARGET_ORG, displayName: 'KEEL-RT-Fabrikam', description: 'Partner', state: 'configured', identitySources: liveSources };
+  const graph = entitlementGraph({ orgs: [live] });
+  const resource = orgResource({
+    payload: { ...orgResource().payload, identitySources: backupSources, internalSponsors: [] },
+    references: [], live: { state: 'present', targetId: TARGET_ORG, payload: live },
+  });
+  return { graph, resource, ctx: withRefs(context()) };
+};
+
+test('a federated domain on the live organization that the backup lacks is a step to remove it, never applied with no change', async () => {
+  const { graph, resource, ctx } = liveFederationUpdate([domainSource, federationSource], [domainSource]);
+  const planned = await applyIdentityObjectWrite(graph, resource, 'update', { ...ctx, mode: 'dry-run' });
+  assert.equal(planned.failed, undefined, planned.failed?.error);
+  assert.equal(planned.applied.changes.identitySources, undefined, 'not listed as a change the restore makes');
+  assert.match(planned.applied.completion.find((step) => step.requirement === 'trustFields').description, /remove the federated domain tailspin.example \("Tailspin"\)/);
+
+  const written = await applyIdentityObjectWrite(graph, resource, 'update', { ...ctx, approvedContentEffects: approved(resource, 'update') });
+  assert.equal(written.failed, undefined, written.failed?.error);
+  for (const { body } of writes(graph)) assert.equal('identitySources' in (body ?? {}), false, 'identity sources are never sent here');
+  const step = (written.applied ?? written.skipped)?.completion?.find((entry) => entry.requirement === 'trustFields');
+  assert.ok(step, JSON.stringify(written));
+  assert.deepEqual(step.fields, ['identitySources']);
+  assert.match(step.description, /remove the federated domain tailspin.example \("Tailspin"\)/);
+  assert.doesNotMatch(step.description, /add /);
+  assert.deepEqual(graph.state.orgs.get(TARGET_ORG).identitySources, [domainSource, federationSource], 'the live sources are left as they are');
+});
+
+test('a different federated domain on each side is a step to add the backup\'s and remove the live one', async () => {
+  const woodgrove = { '@odata.type': '#microsoft.graph.externalDomainFederation', domainName: 'woodgrove.example', displayName: 'Woodgrove', issuerUri: 'https://sts.woodgrove.example/adfs' };
+  const { graph, resource, ctx } = liveFederationUpdate([domainSource, woodgrove], [domainSource, federationSource]);
+  const planned = await applyIdentityObjectWrite(graph, resource, 'update', { ...ctx, mode: 'dry-run' });
+  assert.equal(planned.applied.changes.identitySources, undefined, 'not listed as a change the restore makes');
+
+  const written = await applyIdentityObjectWrite(graph, resource, 'update', { ...ctx, approvedContentEffects: approved(resource, 'update') });
+  assert.equal(written.failed, undefined, written.failed?.error);
+  for (const { body } of writes(graph)) assert.equal('identitySources' in (body ?? {}), false, 'identity sources are never sent here');
+  const steps = (written.applied ?? written.skipped)?.completion?.filter((entry) => entry.requirement === 'trustFields') ?? [];
+  assert.equal(steps.length, 1, JSON.stringify(written));
+  assert.match(steps[0].description, /add the federated domain tailspin.example \("Tailspin"\), and remove the federated domain woodgrove.example \("Woodgrove"\)/);
+  assert.deepEqual(graph.state.orgs.get(TARGET_ORG).identitySources, [domainSource, woodgrove], 'the live sources are left as they are');
+});
+
 test('a policy re-run does not take a policy with the same name on another access package for its own', async () => {
   const other = { ...policyPayload(), id: 'other-policy', accessPackage: { id: 'another-package' } };
   const graph = entitlementGraph({ policies: [other] });

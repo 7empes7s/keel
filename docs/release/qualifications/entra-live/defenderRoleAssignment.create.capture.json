@@ -1,0 +1,41 @@
+{
+  "restoreRef": "c0d7f6cb-062a-8296-8013-025bf72a4f8d",
+  "entry": {
+    "naturalKey": "defenderRoleAssignment:3b21454e-4af8-8e26-be08-7af0f065cc7d",
+    "resourceType": "defenderRoleAssignment",
+    "operation": "create",
+    "targetId": "70b884dd-117b-8e7d-85a4-17d09525ee5a",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-04T04:36:12.424Z",
+    "priorState": null,
+    "intendedState": {
+      "appScopeIds": [
+        "/"
+      ],
+      "displayName": "KEEL-RT-271-defender-assignment",
+      "principalIds": [
+        "2a9abce0-750b-817c-8a95-c260b7d68e0e"
+      ],
+      "roleDefinitionId": "d9a63887-3abd-80d7-aa47-e745c939bf36",
+      "directoryScopeIds": [
+        "/"
+      ]
+    },
+    "postState": {
+      "id": "70b884dd-117b-8e7d-85a4-17d09525ee5a",
+      "appScopeIds": [
+        "/"
+      ],
+      "displayName": "KEEL-RT-271-defender-assignment",
+      "principalIds": [
+        "2a9abce0-750b-817c-8a95-c260b7d68e0e"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleAssignments/$entity",
+      "roleDefinitionId": "d9a63887-3abd-80d7-aa47-e745c939bf36",
+      "directoryScopeIds": [
+        "/"
+      ]
+    }
+  }
+}

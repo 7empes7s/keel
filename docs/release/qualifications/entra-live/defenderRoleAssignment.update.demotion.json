@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "defenderRoleAssignment",
+  "operation": "update",
+  "reason": "Graph 400 on PATCH with only principalIds: \"AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided\". The Defender assignment PATCH needs the full body (displayName, roleDefinitionId, principalIds, directoryScopeIds, appScopeIds).",
+  "restoreRef": "e45f577a-16b3-8622-9c5f-fc9aa3bd9b9e",
+  "decidedAt": "2026-11-04T04:42:21.020Z",
+  "builderSteps": [
+    "remove the update registration for defenderRoleAssignment in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: update failed live: <reason>\" to TYPE_DECISIONS.defenderRoleAssignment.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.defenderRoleAssignment.liveFailures['update'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

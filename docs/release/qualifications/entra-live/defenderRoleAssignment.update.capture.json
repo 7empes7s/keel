@@ -1,0 +1,41 @@
+{
+  "restoreRef": "e45f577a-16b3-8622-9c5f-fc9aa3bd9b9e",
+  "entry": {
+    "naturalKey": "defenderRoleAssignment:3b21454e-4af8-8e26-be08-7af0f065cc7d",
+    "resourceType": "defenderRoleAssignment",
+    "operation": "update",
+    "targetId": "70b884dd-117b-8e7d-85a4-17d09525ee5a",
+    "outcome": "failed",
+    "outcomeDetail": "status 400",
+    "recordedAt": "2026-11-04T04:42:04.639Z",
+    "priorState": {
+      "id": "70b884dd-117b-8e7d-85a4-17d09525ee5a",
+      "appScopeIds": [
+        "/"
+      ],
+      "displayName": "KEEL-RT-271-defender-assignment",
+      "principalIds": [
+        "2a9abce0-750b-817c-8a95-c260b7d68e0e",
+        "2aade09b-887c-81d5-86c1-356b278bf302"
+      ],
+      "roleDefinitionId": "d9a63887-3abd-80d7-aa47-e745c939bf36",
+      "directoryScopeIds": [
+        "/"
+      ]
+    },
+    "intendedState": {
+      "appScopeIds": [
+        "/"
+      ],
+      "displayName": "KEEL-RT-271-defender-assignment",
+      "principalIds": [
+        "2a9abce0-750b-817c-8a95-c260b7d68e0e"
+      ],
+      "roleDefinitionId": "d9a63887-3abd-80d7-aa47-e745c939bf36",
+      "directoryScopeIds": [
+        "/"
+      ]
+    },
+    "postState": null
+  }
+}

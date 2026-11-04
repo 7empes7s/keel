@@ -97,11 +97,14 @@ const readKindSql = (type) => `(CASE WHEN s2.coverage_digest->${type}->>'outcome
 
 // When a key went: the start of the first complete backup after its last sighting
 // that read its kind but no longer held the key. Times stay in SQL, so microseconds
-// are never lost on the way through JavaScript (lesson 2026-10-15).
-const goneSinceSql = (key, type, lastSeen) => `(SELECT min(s2.started_at) FROM snapshot s2
+// are never lost on the way through JavaScript (lesson 2026-10-15). The first such
+// backup by ORDER BY ... LIMIT 1, not min(): min() checked every later backup's coverage
+// for every key, about half of the Alerts page's 3 s object lookup (operator queue Q307).
+const goneSinceSql = (key, type, lastSeen) => `(SELECT s2.started_at FROM snapshot s2
    WHERE s2.tenant_ref = $1 AND s2.status = 'complete' AND s2.started_at > ${lastSeen}
      AND ${readKindSql(type)}
-     AND NOT EXISTS (SELECT 1 FROM resource_version r3 WHERE r3.snapshot_id = s2.id AND r3.natural_key = ${key}))`;
+     AND NOT EXISTS (SELECT 1 FROM resource_version r3 WHERE r3.snapshot_id = s2.id AND r3.natural_key = ${key})
+   ORDER BY s2.started_at LIMIT 1)`;
 
 // Whether backup `s` holds a version of the wanted id `w`: by backup key, or (a bare
 // object id only, $3 in lower case) by the version's id or app id. Each test is one

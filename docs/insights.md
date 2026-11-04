@@ -153,3 +153,22 @@ anyone-link type for files and folders, and the anyone-link expiry. Workload dri
 that only narrows sharing as low priority (`cosmetic`, a notice). A widening, or a change that also
 touches any setting without a direction, stays access-affecting. The flags above flag the
 widenings.
+
+## Insights page (A7 and A8)
+
+`/insights` (Dashboards › Insights) answers "what changed this week, and where do I start?" from one
+change feed read (`portal/lib/insights-view.ts`, `portal/components/insights/insights-body.tsx`).
+
+- **Verdict:** "143 changes in the last 7 days; 4 need a look." or "…; none flagged." When the feed hit
+  its limit the count reads "At least …" and the page says "Showing the newest 500 changes."
+- **Period:** 7 (default), 30 or 90 days, kept in the address as `days`.
+- **Where to start:** flagged changes, most severe then newest; then unflagged changes to critical or
+  high priority settings. Each is a sentence (who, what, when) that opens the change in Every change.
+- **Shape of the period:** changes per day, by service, the people or apps with the most changes
+  (code names when names are hidden) and the services with none.
+- **Record layer:** the window read, the count from each source and whether the limit was hit.
+- **Access:** the same as Every change: tenant-wide readers. An entity-scoped reader gets one sentence
+  and no feed read.
+- **Overview:** one "Needs attention" row, "3 flagged changes this week", for flagged changes of the
+  last 7 days that no open alert shows. An alert counts when it is open, reopened or acknowledged
+  and its `resource_key` is the flagged row's object key (the key A10 is expected to use).

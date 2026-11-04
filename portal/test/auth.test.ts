@@ -357,6 +357,15 @@ test("non-GET requests to /api/health do not bypass authentication", async () =>
   assert.equal(response.status, 401);
 });
 
+// Insights sits behind the same sign-in check as every page.
+for (const path of ["/insights", "/insights?days=90"]) {
+  test(`GET ${path} rejects an unauthenticated request with 401`, async () => {
+    const response = await middleware(request(path));
+
+    assert.equal(response.status, 401);
+  });
+}
+
 // The Owner review page (issue #964) goes through the same sign-in check as every page.
 test("GET /owner-review rejects an unauthenticated request with 401", async () => {
   const response = await middleware(request("/owner-review"));

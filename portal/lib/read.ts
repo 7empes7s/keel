@@ -106,6 +106,14 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "page.tsx",
   },
+  // Insights: what changed in a period and where to start, from the change feed. Entity
+  // scoped so an entity reader gets a plain sentence instead of a refusal; the page reads
+  // the feed for central readers only.
+  insightsPage: {
+    capability: "read",
+    source: "insights/page.tsx",
+    entityScoped: true,
+  },
   coveragePage: {
     capability: "read",
     source: "coverage/page.tsx",

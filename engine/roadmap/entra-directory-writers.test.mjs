@@ -138,7 +138,8 @@ test('each writer type is a fixture-tested create and update, delete is unsuppor
 });
 
 test('the formerly unknown Entra types without a writer stay manual and are restored by hand', () => {
-  const stillManual = ['certificateBasedAuthConfiguration', 'roleAssignmentSchedule', 'authenticationContextClassReference',
+  // Issue #991 registered roleAssignmentSchedule, #992 accessPackage and #993 connectedOrganization.
+  const stillManual = ['certificateBasedAuthConfiguration', 'authenticationContextClassReference',
     'activityBasedTimeoutPolicy', 'featureRolloutPolicy', 'accessReviewScheduleDefinition'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);

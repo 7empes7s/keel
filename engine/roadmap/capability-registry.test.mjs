@@ -63,6 +63,8 @@ const REGISTERED = Object.freeze({
   // Roadmap task-151: custom roles, PIM eligibility create and PIM role settings.
   roleDefinition: ['create', 'update'],
   roleEligibilitySchedule: ['create'],
+  // Issue #991: an admin-made active time-bound assignment, create only.
+  roleAssignmentSchedule: ['create'],
   unifiedRoleManagementPolicy: ['update'],
   // Issue #155: Intune compliance, device configuration and settings catalog.
   // Wave 2 IDO adds an unassigned policy's delete.

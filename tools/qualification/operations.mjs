@@ -171,6 +171,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     principalId: 'fixture-principal', roleDefinitionId: 'fixture-role', directoryScopeId: '/', memberType: 'Direct', status: 'Provisioned',
     scheduleInfo: { startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2099-01-01T00:00:00Z' } },
   },
+  // Issue #991: an active time-bound assignment an admin made.
+  roleAssignmentSchedule: {
+    principalId: 'fixture-principal', roleDefinitionId: 'fixture-role', directoryScopeId: '/', memberType: 'Direct', assignmentType: 'Assigned', status: 'Provisioned',
+    scheduleInfo: { startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2099-01-01T00:00:00Z' } },
+  },
   unifiedRoleManagementPolicy: {
     displayName: 'DirectoryRole', scopeId: '/', scopeType: 'DirectoryRole', isOrganizationDefault: false,
     rules: [
@@ -712,6 +717,20 @@ export function fakeGraph() {
         });
         return { ok: true, status: 201, body: { ...body, id: `fixture-request-${next}`, status: 'Provisioned', targetScheduleId: scheduleId } };
       }
+      // Issue #991: an active assignment request creates its schedule the same way.
+      if (method === 'POST' && path === '/roleManagement/directory/roleAssignmentScheduleRequests') {
+        const end = Date.parse(body?.scheduleInfo?.expiration?.endDateTime ?? '');
+        if (body?.action !== 'adminAssign' || !body.justification || !body.scheduleInfo || (!Number.isNaN(end) && end <= Date.now())) {
+          return { ok: false, status: 400, body: { error: { code: 'RoleAssignmentRequestPolicyValidationFailed' } } };
+        }
+        next += 1;
+        const scheduleId = `fixture-active-${next}`;
+        objects.set(`/roleManagement/directory/roleAssignmentSchedules/${scheduleId}`, {
+          id: scheduleId, principalId: body.principalId, roleDefinitionId: body.roleDefinitionId, directoryScopeId: body.directoryScopeId,
+          memberType: 'Direct', assignmentType: 'Assigned', status: 'Provisioned', scheduleInfo: body.scheduleInfo,
+        });
+        return { ok: true, status: 201, body: { ...body, id: `fixture-request-${next}`, status: 'Provisioned', targetScheduleId: scheduleId } };
+      }
       const pimRule = /^\/policies\/roleManagementPolicies\/([^/]+)\/rules\/([^/]+)$/.exec(path);
       if (pimRule && method === 'PATCH') {
         const policyPath = `/policies/roleManagementPolicies/${decodeURIComponent(pimRule[1])}`;
@@ -846,7 +865,7 @@ export function fakeGraph() {
       }
       // Roadmap task-151: the eligibility collection answers a filter of
       // `field eq 'value'` terms joined by `and`.
-      if (path === '/roleManagement/directory/roleEligibilitySchedules') {
+      if (path === '/roleManagement/directory/roleEligibilitySchedules' || path === '/roleManagement/directory/roleAssignmentSchedules') {
         const filter = /\$filter=([^&]*)/.exec(requested)?.[1] ?? '';
         const terms = [...decodeURIComponent(filter).matchAll(/(\w+) eq '((?:[^']|'')*)'/g)].map(([, field, value]) => [field, value.replace(/''/g, "'")]);
         const value = [...objects.entries()]

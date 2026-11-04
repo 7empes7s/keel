@@ -957,6 +957,13 @@ test('every record operation is in the ledger, and best-effort types have no rec
     assert.ok(ledger.some((row) => row.resourceType === resourceType && row.operation === operation), `${resourceType} ${operation}`);
   }
   for (const type of Object.keys(IDENTITY_BEST_EFFORT)) assert.equal(IDENTITY_RECORDS[type], undefined, type);
+  // Issue #993: access package policies and connected organizations have records
+  // now; assignments are still granted through a request, never copied.
+  for (const type of ['accessPackageAssignmentPolicy', 'connectedOrganization']) {
+    assert.equal(IDENTITY_BEST_EFFORT[type], undefined, type);
+    assert.deepEqual(IDENTITY_RECORDS[type].operations, ['create', 'update'], type);
+  }
+  assert.ok(IDENTITY_BEST_EFFORT.accessPackageAssignment);
 });
 
 // ------------------------------------------- restore gaps, batch 17

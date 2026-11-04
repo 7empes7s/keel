@@ -145,11 +145,12 @@ export const TYPE_GUIDE = Object.freeze({
     'Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.'),
   accessPackage: auto('Access packages', {
     keeps: 'Recreates access packages in their catalog and puts their name, description and visibility back. A package is created only once its catalog is there.',
-    todo: 'Its request policies and who holds it are not restored yet, so set them up again in Entra ID Governance using the backup.',
+    todo: 'Its request policies are restored separately. Who holds it is not restored: people request it again.',
   }),
-  connectedOrganization: manual('Connected organizations', NOT_BUILT,
-    'These point to other organizations\' tenants, which KEEL cannot check from yours.',
-    'Recreate them by hand in Entra ID Governance using the backup.'),
+  connectedOrganization: auto('Connected organizations', {
+    keeps: 'Recreates connected organizations and puts back their name, description, state and the other tenants or domains they let in, and adds back sponsors who exist in your tenant.',
+    todo: 'A connected organization lets another organization\'s users request access, and KEEL cannot check that organization from yours, so a restore writes it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A federated domain, and sponsors who no longer exist, are added by hand.',
+  }),
   lifecycleWorkflow: auto('Lifecycle workflows', {
     keeps: 'Recreates workflows with their tasks and puts their settings back. A recreated workflow is always off.',
     todo: 'Turning a workflow on runs its tasks on people\'s accounts, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Check who it applies to before approving.',
@@ -176,9 +177,10 @@ export const TYPE_GUIDE = Object.freeze({
   accessPackageCatalogResource: manual('Groups, apps and sites in access package catalogs', NOT_BUILT,
     'A restore adds a group or app back to its catalog only when an access package grants one of its roles. A site, or anything no package uses, is not added back yet.',
     'Add the missing groups, apps and sites to the catalog in Entra ID Governance using the backup.'),
-  accessPackageAssignmentPolicy: manual('Access package policies', NOT_BUILT,
-    'A policy belongs to an access package, and access packages are not restored yet.',
-    'Recreate the access package first, then its policies, using the backup.'),
+  accessPackageAssignmentPolicy: auto('Access package policies', {
+    keeps: 'Recreates access package request policies and puts back who may request, who approves and who reviews, matched to the people, groups and connected organizations in your tenant.',
+    todo: 'A policy decides who can get access, so a restore writes it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A policy naming someone who no longer exists is not restored, because it would be weaker; custom extensions (Logic Apps) are added by hand.',
+  }),
   accessPackageAssignment: manual('Access package assignments', NOT_BUILT,
     'Access is granted through a request against a policy, never copied, and access packages are not restored yet.',
     'Use the backup to see who held which access package, then assign it again in Entra ID Governance.'),

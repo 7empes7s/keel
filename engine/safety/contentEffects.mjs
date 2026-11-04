@@ -265,6 +265,16 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // Issue #992: the group, app or site role an access package grants. Adding it
   // lets everyone who can request the package get that access.
   accessPackageResourceRoleScope: Object.freeze(['role', 'scope']),
+  // Issue #993: a connected organization lets the users of another tenant or
+  // domain request access packages (its identity sources, and whether it is
+  // configured), and its sponsors approve their requests.
+  connectedOrganization: Object.freeze(['identitySources', 'state', 'internalSponsors', 'externalSponsors']),
+  // Issue #993: who may request an access package through a policy, who approves
+  // and reviews it, whether it is assigned automatically, and how long access
+  // lasts before it expires. A new policy lets
+  // people request a package nobody could request before, and a change can loosen
+  // who may request or remove an approval step, so every change is held.
+  accessPackageAssignmentPolicy: Object.freeze(['allowedTargetScope', 'specificAllowedTargets', 'requestorSettings', 'requestApprovalSettings', 'reviewSettings', 'automaticRequestSettings', 'expiration']),
 });
 // Nested fields Microsoft sets on its own, at any depth: a restore never sends
 // them, and they are no change. Graph sets a default app credential rules
@@ -284,7 +294,7 @@ export function withoutMicrosoftSet(resourceType, value) {
   return strip(value);
 }
 // The batch 2 kinds: their access values name principals and roles.
-const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope']);
+const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope', 'accessPackageAssignmentPolicy', 'connectedOrganization']);
 // Compared in a canonical form with nulls dropped, so a value that reads back with
 // its keys in another order, or with empty fields Graph adds, is no change.
 const withoutNulls = (value) => {
@@ -353,8 +363,51 @@ const writableActiveAssignment = (payload) => payload?.assignmentType === 'Assig
   && (payload.activatedUsing === undefined || payload.activatedUsing === null)
   && (!payload.memberType || payload.memberType === 'Direct')
   && payload.scheduleInfo?.expiration?.type !== 'noExpiration';
+
+// Issue #993: a connected organization's identity sources, in plain English, so
+// the reviewer sees which other tenant or domain is let in (KEEL cannot check it
+// from this tenant). A tenant has no other name Graph keeps, so its id is shown.
+const IDENTITY_SOURCE_KINDS = Object.freeze({
+  azureActiveDirectoryTenant: 'the Microsoft Entra organization',
+  crossCloudAzureActiveDirectoryTenant: 'the Microsoft Entra organization in another cloud',
+  domainIdentitySource: 'the domain',
+  externalDomainFederation: 'the federated domain',
+});
+/** One identity source of a connected organization, as a reviewer reads it. */
+export function identitySourceText(source) {
+  const kind = String(source?.['@odata.type'] ?? '').replace(/^#?microsoft\.graph\./, '');
+  const label = IDENTITY_SOURCE_KINDS[kind];
+  const name = typeof source?.displayName === 'string' && source.displayName ? source.displayName : null;
+  if (!label) return `an identity source of a kind KEEL does not know (${kind || 'unnamed'})`;
+  if (source?.tenantId) {
+    const cloud = source.cloudInstance ? `, cloud ${source.cloudInstance}` : '';
+    return `${label}${name ? ` "${name}"` : ''} (tenant ID ${source.tenantId}${cloud})`;
+  }
+  const domain = source?.domainName ?? null;
+  if (domain) return `${label} ${domain}${name && name.toLowerCase() !== String(domain).toLowerCase() ? ` ("${name}")` : ''}`;
+  return `${label}${name ? ` "${name}"` : ''}, which the backup does not name a tenant or domain for`;
+}
+const identitySourceValue = (payload) => {
+  const sources = payload?.identitySources;
+  if (!Array.isArray(sources)) return accessValue('identitySources', 'connectedOrganization')(payload);
+  return sources.length ? sources.map(identitySourceText).sort() : null;
+};
+// A sponsor by its reference's name (`user:ann@contoso.com`), else the name the
+// backup holds. A live read does not hold sponsors (they are their own list).
+const sponsorValue = (field) => (payload, resource) => {
+  const sponsors = payload?.[field];
+  if (!Array.isArray(sponsors)) return namedAccessValue(field)(payload, resource);
+  if (sponsors.length === 0) return null;
+  const names = referenceNames(resource, field);
+  return sponsors.map((sponsor) => names.get(String(sponsor?.id ?? '').toLowerCase())
+    ?? sponsor?.userPrincipalName ?? sponsor?.displayName ?? 'a sponsor the backup does not name').sort();
+};
+const OWN_ACCESS_READERS = Object.freeze({
+  connectedOrganization: Object.freeze({ identitySources: identitySourceValue, internalSponsors: sponsorValue('internalSponsors'), externalSponsors: sponsorValue('externalSponsors') }),
+});
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
-  .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field, resourceType)));
+  .map((field) => rule(field, 'access-changing', accessChanges, OWN_ACCESS_READERS[resourceType]?.[field]
+    ?? (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field, resourceType)));
 
 // Issue #995: a user flow's parts, shown the same way in the backup and live, with
 // nothing but names: an identity provider by id (a set), an attribute by its name

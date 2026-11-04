@@ -145,7 +145,8 @@ export const TYPE_DECISIONS = Object.freeze({
   accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
   // Issue #992: entitlement management, part 1.
   accessPackage: automated('accesspackage', 'create and update of the name, description and whether it is hidden, in its catalog (the restored or live catalog, matched by natural key); a create waits for its catalog and is refused when the catalog is in neither; delete is not registered; its policies and assignments are their own types'),
-  connectedOrganization: incomplete('its sponsors are separate collections, and its identity sources point at tenants that cannot be checked from this one'),
+  // Issue #993: entitlement management, part 2.
+  connectedOrganization: automated('connectedorganization', 'issue #993: create and update of the name, description, state and identity sources, behind the restore approval (each identity source names another tenant or domain KEEL cannot check, and the dry run shows it in plain English; Graph refuses a tenant that does not exist, which is reported, not retried); a federated domain source is a manual step (its issuer is a trust field); sponsors are added for users and groups matched in the target by natural key, a missing one is a manual step, none is removed; delete is not registered'),
   // Wave 1 CAT-ENTRA: Entra governance types, backed up in full with no writer yet.
   lifecycleWorkflow: automated('identitygovernance-workflow', 'Wave 2: created switched off with its tasks, updated in place or as a new version; a restore turns a workflow on only once that is approved (restore approvals)'),
   lifecycleWorkflowCustomTaskExtension: automated('identitygovernance-customtaskextension', 'Wave 2: update in place; which Logic App it calls and how it signs in are steps for a person, and a missing extension is recreated by hand'),
@@ -154,7 +155,7 @@ export const TYPE_DECISIONS = Object.freeze({
   customSecurityAttributeDefinition: automated('customsecurityattributedefinition', 'Wave 2: update, and allowed values added or switched off; a definition can never be deleted once created, so a create needs a review step'),
   accessPackageCatalog: automated('accesspackagecatalog', 'Wave 2: create and update; the resources a catalog holds are their own type (accessPackageCatalogResource)'),
   accessPackageCatalogResource: incomplete('a group or app is added to a catalog again (adminAdd) by the resource role restore when a package grants one of its roles and it exists in the target; a site, or a resource no package uses, is added by hand'),
-  accessPackageAssignmentPolicy: incomplete('a policy belongs to an access package, which has no writer yet'),
+  accessPackageAssignmentPolicy: automated('accesspackageassignmentpolicy', 'issue #993: create and update (a whole replace) on the restored or live access package; every user, group and connected organization it names as requestor, approver or reviewer is matched in the target by natural key, and one that cannot be is a manual step that holds the whole policy; every change to who may request, approve or review, or how long access lasts, is behind the restore approval, and the step names a loosening; custom extensions are never written (a manual step, and an update of a live policy that has them is held); delete is not registered'),
   accessPackageAssignment: incomplete('an assignment is granted through a request against its policy, never copied'),
   entitlementManagementSettings: automated('entitlementmanagementsettings', 'Wave 2: update in place'),
   agreement: incomplete('the agreement documents are files on a separate route, and acceptances cannot be recreated'),
@@ -374,6 +375,12 @@ recordRemappingProof('mobileAppRelationship', 'create', 'engine/restore/intuneAp
 // the live one), and a resource role pointed at the target's package and group.
 recordRemappingProof('accessPackage', 'create', 'engine/restore/accessPackageOperations.test.mjs');
 recordRemappingProof('accessPackageResourceRoleScope', 'create', 'engine/restore/accessPackageOperations.test.mjs');
+// Issue #993: a policy pointed at the target's package and the people it names,
+// and a connected organization's sponsors matched in the target.
+for (const operation of ['create', 'update']) {
+  recordRemappingProof('accessPackageAssignmentPolicy', operation, 'engine/restore/entitlementPolicyOperations.test.mjs');
+  recordRemappingProof('connectedOrganization', operation, 'engine/restore/entitlementPolicyOperations.test.mjs');
+}
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -940,8 +947,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'review history and decisions cannot be recreated; only the definition could be'),
   accessPackage: subset('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',
     'create in its catalog and update of the name, description and whether it is hidden are fixture-tested; a missing catalog refuses the create; policies and assignments are their own types'),
-  connectedOrganization: research('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations', 'EntitlementManagement.ReadWrite.All',
-    'identity sources reference external tenants that cannot be verified from this tenant'),
+  connectedOrganization: subset('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations; PATCH .../{id}; POST .../{id}/internalSponsors|externalSponsors/$ref', 'EntitlementManagement.ReadWrite.All',
+    'create and update are fixture-tested behind the restore approval, with the identity sources shown in plain English; a federated domain source and a sponsor missing from the target are manual steps'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.
   lifecycleWorkflow: subset('identity-application', 'POST /identityGovernance/lifecycleWorkflows/workflows; PATCH .../{id}; POST .../{id}/createNewVersion', 'LifecycleWorkflows.ReadWrite.All',
     'create (switched off) and update are fixture-tested; switching a workflow on is always left to a person'),
@@ -957,8 +964,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'create and update are fixture-tested; the resources a catalog holds are backed up as their own type'),
   accessPackageCatalogResource: research('identity-application', 'POST /identityGovernance/entitlementManagement/resourceRequests (adminAdd)', 'EntitlementManagement.ReadWrite.All',
     'added to a catalog only by the resource role restore, for a group or app a package grants that exists in the target; a site, or a resource no package uses, is added by hand'),
-  accessPackageAssignmentPolicy: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentPolicies', 'EntitlementManagement.ReadWrite.All',
-    'a policy belongs to an access package, which is not restored yet'),
+  accessPackageAssignmentPolicy: subset('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentPolicies; PUT .../{id}', 'EntitlementManagement.ReadWrite.All',
+    'create and update are fixture-tested behind the restore approval; the package and every user, group and connected organization named are matched by natural key, and one missing holds the policy; custom extensions are a manual step'),
   accessPackageAssignment: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentRequests', 'EntitlementManagement.ReadWrite.All',
     'an assignment is granted through a request against its policy, never copied, and access packages are not restored yet'),
   entitlementManagementSettings: subset('identity-application', 'PATCH /identityGovernance/entitlementManagement/settings', 'EntitlementManagement.ReadWrite.All',

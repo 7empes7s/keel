@@ -81,6 +81,9 @@ const REGISTERED = Object.freeze({
   // Issue #992: access packages and the resource roles they grant.
   accessPackage: ['create', 'update'],
   accessPackageResourceRoleScope: ['create'],
+  // Issue #993: connected organizations and access package policies.
+  connectedOrganization: ['create', 'update'],
+  accessPackageAssignmentPolicy: ['create', 'update'],
   entitlementManagementSettings: ['update'],
   appManagementPolicy: ['create', 'update'],
   multiTenantOrganization: ['update'],

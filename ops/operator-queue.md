@@ -14761,3 +14761,19 @@ item that needs it stays untouched.
   first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
 - **Report:** B and S; Step 1 result (read outcome, the fixture's `roleDefinition`); per A operation promoted / refused (exact
   message) / skipped; dry run, approval and request ids; B read result; evidence branch, commit and PR; anything left in the tenant.
+
+### Q313: After PR #957 deploys, time the Alerts page again (read-only, no tenant), about 5 minutes
+- Drafted by the "Speed up the Alerts page" thread (2026-11-04), from the Q307 Result: `/api/alerts` took **12.8–13.4 s**,
+  led by `SELECT DISTINCT ON (rv.natural_key) …` at **~9.2 s** and `WITH wanted AS …` at **2.8–3.2 s** (1193 names).
+  PR #957 rewrites the first (`savedNames`) to read each setting's newest backup only, and makes the second stop at the first
+  backup that dates a deletion. No schema change. **Same read-only rules as Q303, Q305 and Q307:** every connection opened with
+  `default_transaction_read_only=on`; no tenant calls, no restarts, no config changes, nothing installed; never print a
+  database URL, password, token, tenant id or address.
+- Needs: the deployed build at or after PR #957's merge
+  (`grep -q SAVED_NAMES_SQL /opt/keel-live/portal/lib/saved-names.ts`; if not, report `blocked`).
+- Status: todo
+- Do, on Mulinux: exactly Q303 steps 1–4 (same `profile-reads.mts` script from Q303, same principal pick), at the deployed
+  commit, with `ONLY='alerts|changes'` and `timeout 300`. Delete the script and the output file afterwards.
+- **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, and every
+  `[keel-portal] slow query` line. Expected: `/api/alerts` well under 3 s; no `SELECT DISTINCT ON (rv.natural_key)` line and
+  no `WITH wanted AS` line over 1 s; the Changes feed no slower than Q307 (658 / 565 / 541 ms).

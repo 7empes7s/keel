@@ -40,13 +40,17 @@ check_pr() {
   # after the event, later than a label added right after opening the PR. No suite yet means
   # the head is newer than any label. This holds even if automerge-label.yml has not dropped
   # the label yet. Times are whole seconds, so a label in the same second as the push is refused.
-  local labelled arrived
-  labelled=$(gh api --paginate "repos/$repo/issues/$n/events?per_page=100" \
-      -q '.[] | select(.event == "labeled" and .label.name == "automerge") | .created_at' | sort | tail -n 1) \
-    || { echo "#$n: could not read label events"; return 1; }
+  # Suites belong to the commit, not the PR: a force-push back to a commit pushed before the
+  # label would look old. So the PR's latest force-push also counts as the head's arrival.
+  local events labelled arrived forced
+  events=$(gh api --paginate "repos/$repo/issues/$n/events?per_page=100" -q '.[]') \
+    || { echo "#$n: could not read PR events"; return 1; }
+  labelled=$(jq -rs 'map(select(.event == "labeled" and .label.name == "automerge") | .created_at) | max // empty' <<<"$events")
+  forced=$(jq -rs 'map(select(.event == "head_ref_force_pushed") | .created_at) | max // empty' <<<"$events")
   arrived=$(gh api --paginate "repos/$repo/commits/$sha/check-suites?per_page=100" \
       -q '.check_suites[].created_at' | sort | head -n 1) \
     || { echo "#$n: could not read when $sha arrived"; return 1; }
+  if [ -n "$arrived" ] && [[ "$forced" > "$arrived" ]]; then arrived="$forced"; fi
   if [ -z "$labelled" ] || [ -z "$arrived" ] || [[ ! "$labelled" > "$arrived" ]]; then
     echo "#$n: automerge label predates head $sha; add it again after review"; return 1
   fi

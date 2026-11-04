@@ -19,7 +19,7 @@ const review = (user, state, commit_id, submitted_at) => ({ user: { login: user 
 // JSON pages; --paginate prints every page through -q, a plain call prints the first.
 function run({
   labels = ['automerge'], reviews = [], checkPages, requireReview = true, base = 'master',
-  labelledAt = ['2026-01-01T12:00:00Z'], arrivedAt = ['2026-01-01T11:00:00Z', '2026-01-01T12:00:01Z'],
+  labelledAt = ['2026-01-01T12:00:00Z'], arrivedAt = ['2026-01-01T11:00:00Z', '2026-01-01T12:00:01Z'], forcedAt = [],
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'keel-merge-gate-'));
   const log = join(dir, 'gh.log');
@@ -32,6 +32,7 @@ function run({
       { event: 'labeled', label: { name: 'documentation' }, created_at: '2026-01-02T00:00:00Z' },
       ...labelledAt.map((created_at) => ({ event: 'labeled', label: { name: 'automerge' }, created_at })),
       { event: 'unlabeled', label: { name: 'automerge' }, created_at: '2026-01-01T13:00:00Z' },
+      ...forcedAt.map((created_at) => ({ event: 'head_ref_force_pushed', created_at })),
     ]],
     [`commits/${HEAD}/check-suites`]: [{ check_suites: arrivedAt.map((created_at) => ({ created_at })) }],
     [`commits/${HEAD}/check-runs`]: checkPages ?? [{ check_runs: [{ name: 'Portal tests', status: 'completed', conclusion: 'success' }] }],
@@ -189,4 +190,17 @@ test('a PR into a branch other than master is not merged', () => {
   const r = run({ requireReview: false, base: 'claude/other' });
   assert.match(r.out, /#7: not based on master/);
   assert.equal(r.merge, undefined);
+});
+
+// Check suites belong to the commit: a force-push back to a commit pushed before the label
+// still has an old suite, so the PR's force-push time dates the head instead.
+test('a force-push after the label is refused even if the commit is older', () => {
+  const r = run({ requireReview: false, forcedAt: ['2026-01-01T12:30:00Z'] });
+  assert.match(r.out, /#7: automerge label predates head cccc/);
+  assert.equal(r.merge, undefined);
+});
+
+test('a force-push before the label does not block it', () => {
+  const r = run({ requireReview: false, forcedAt: ['2026-01-01T11:30:00Z'] });
+  assert.match(r.out, /#7: merging/);
 });

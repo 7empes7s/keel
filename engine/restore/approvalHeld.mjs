@@ -1,9 +1,10 @@
 /**
  * Kinds that were held back for a privilege review and are now written behind the
  * restore approval: who may join devices, the default rules for app secrets and
- * certificates, custom Intune admin roles, who holds Intune, Exchange and Defender
- * admin roles, and Intune multi admin approval policies (APPROVAL_HELD_FIELDS in
- * safety/contentEffects.mjs).
+ * certificates, custom Intune admin roles, and who holds Intune, Exchange and
+ * Defender admin roles (APPROVAL_HELD_FIELDS in safety/contentEffects.mjs).
+ * Intune multi admin approval policies are not written at all: Intune refuses
+ * app writes to them (Q271 part B).
  *
  * A change to any field that decides access is an 'access-changing' content
  * effect. The dry run lists it, and the promotion checks its approval
@@ -69,8 +70,7 @@ export const withApprovalGate = (own = null) => (resource, verb, ctx) => (own ? 
 
 // ------------------------------------------------ batch 2: who holds admin roles
 //
-// Intune, Exchange and Defender role assignments and Intune multi admin approval
-// policies. Each names users, groups or apps by id. Their records rewrite those
+// Intune, Exchange and Defender role assignments. Each names users, groups or apps by id. Their records rewrite those
 // ids to the target's (`remapsReferences`: a group found by its name, a user by
 // sign-in name, an app by app id, a role this run recreated), and the approval
 // effects name them (contentEffects.mjs namedAccessValue).

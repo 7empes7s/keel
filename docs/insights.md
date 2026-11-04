@@ -138,6 +138,9 @@ What it cannot see:
 - **A backup saved before the counts existed** (summary version 1, or a OneDrive record without
   `exposure`) compares as unknown, never as zero. It produces no row, so the upgrade never reads as
   "removed".
+- **A backup that could not read a group's members** compares its Everyone grants, guests and
+  owners as unknown, since all three come from group members. It produces no row for them, and
+  neither does the next full backup. Anyone links still compare.
 - **A site that inherits its roles** saves no Everyone list. Its Everyone grants are not compared.
 - **A site's first backup** has nothing to compare with.
 - **OneDrive** is compared file by file, from each file's record before and after. Only additions
@@ -167,8 +170,15 @@ change feed read (`portal/lib/insights-view.ts`, `portal/components/insights/ins
 - **Shape of the period:** changes per day, by service, the people or apps with the most changes
   (code names when names are hidden) and the services with none.
 - **Record layer:** the window read, the count from each source and whether the limit was hit.
-- **Access:** the same as Every change: tenant-wide readers. An entity-scoped reader gets one sentence
-  and no feed read.
+- **Access:** the same as Every change. A tenant-wide reader sees every change. A reader scoped to some
+  entities (task 90) sees only approved-setup (drift) rows for settings their entities own, filtered in
+  the feed's SQL with the same entity filter as Open changes, so the two pages count the same changes.
+  Service reads, content backups and the audit log are tenant-wide and left out, and the page says so:
+  "You see changes to settings owned by <entities> only. A central administrator reviews tenant-wide
+  changes (service settings, sites and the audit log)." The verdict, Where to start, the shape of the
+  period, the CSV export and the API (`GET /api/changes/feed`, with `scope` and `scopeNote`) come from
+  those rows only. A person is named only when the reader's entities can see their account, and a flag
+  never names a linked role, group or app. A reader with no read at all is refused.
 - **Overview:** one "Needs attention" row, "3 flagged changes this week need a look", for flagged
   changes of the last 7 days that still need a look (see below). It counts exactly what the verdict
   counts.
@@ -191,7 +201,9 @@ that applies:
 
 **Needs a look** means flagged and not dealt with yet. A change is dealt with when it is decided (or no
 longer waiting), or when an alert whose `resource_key` is the row's object key was acknowledged or
-resolved after the change. An open alert does not count. The rule lives in one place
+resolved after the change. A flag alert raised for that exact row (`change_flag_event.source_id`,
+which an audit row needs because its alert uses the object's natural key) counts the same way, so
+**Mark reviewed** on Alerts takes the row out too. An open alert does not count. The rule lives in one place
 (`needsLook` in `portal/lib/change-feed-view.ts`), and the Insights verdict, "Where to start", Every
 change's Flagged tile and the Overview row all count with it. Flagged rows someone dealt with stay
 listed with their state, below the open ones in "Where to start"; the Flagged tile counts only the open

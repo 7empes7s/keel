@@ -22,7 +22,10 @@
  * (`path`, or `byType[@odata.type]` for a list of mixed kinds, holds `{item}`;
  * the result lands in the object's `as`, sorted by `sortBy` when set, left out when empty with `omitEmpty`; kinds not
  * in `byType` are left as they are; with `single` the path names one related object, kept
- * as an object with only its `fields`). engine/collect/entraAdapter.mjs performs the reads.
+ * as an object with only its `fields`). `linkedFrom` reads one related object that
+ * no route per object returns, from the other side: each object at `parents` lists
+ * its children at `children` (`{parent}` is its id), and an object listed under one
+ * parent gets that parent's `fields` as `as`. engine/collect/entraAdapter.mjs performs the reads.
  *
  * Entries live in catalog.d/, one file per family, so families can change in
  * parallel. CATALOG is the families in the order below; a new family adds one

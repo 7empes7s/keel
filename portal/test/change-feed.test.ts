@@ -17,7 +17,7 @@ import { CAPABILITIES_HEADER, ENTITY_CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } 
 import { tenantRef } from "@/lib/runtime-config";
 
 // Insights A4 (IN-FEED) in the portal: GET /api/changes/feed returns every change, drift
-// and audit event as one row, grouped as asked, to tenant-wide readers only; people are
+// and audit event as one row, grouped as asked (entity-scoped readers: change-feed-scope.test.ts); people are
 // code-named while names are hidden; the page helpers never show an id.
 
 interface TestClient {
@@ -100,11 +100,17 @@ test("the feed API lists every change as one row and groups it as asked", async 
   assert.deepEqual(body.groups.map((group: { label: string; count: number; rowIds: string[] }) => [group.label, group.count, group.rowIds]), [["Ada Admin", 1, ["audit:entra:r1:0"]]]);
 });
 
-test("the feed API refuses an unknown grouping, and readers limited to part of the company", async () => {
+test("the feed API refuses an unknown grouping; a reader limited to part of the company gets only their settings' changes", async () => {
   const bad = await feedRoute(new Request("http://localhost/api/changes/feed?by=colour", { headers: headers(reader, ["read"]) }));
   assert.equal(bad.status, 400);
+  // Issue #981: admitted, but this fixture's only change is an audit row, which is
+  // tenant-wide, so none of it reaches them.
   const scoped = await feedRoute(new Request("http://localhost/api/changes/feed", { headers: headers(reader, [], ["read:CREOS"]) }));
-  assert.equal(scoped.status, 403);
+  assert.equal(scoped.status, 200);
+  const body = await scoped.json();
+  assert.equal(body.total, 0);
+  assert.ok(!JSON.stringify(body).includes("Finance"));
+  assert.match(body.scopeNote, /owned by CREOS only/);
   const nobody = await feedRoute(new Request("http://localhost/api/changes/feed", { headers: headers(reader, []) }));
   assert.equal(nobody.status, 403);
 });

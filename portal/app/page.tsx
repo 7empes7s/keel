@@ -16,9 +16,10 @@ export default async function Home() {
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.dashboardPage);
 
-  // The change feed is tenant-wide, so only a central reader gets the flagged-changes row.
-  // It never holds up the Overview: an error leaves the row out.
-  const flagged: Promise<FlaggedThisWeek | null> = access.scope.central ? getFlaggedThisWeek().catch(() => null) : Promise.resolve(null);
+  // The flagged-changes row counts the reader's own feed rows (the Overview admits central
+  // readers only today, so that is every row). It never holds up the Overview: an error
+  // leaves the row out.
+  const flagged: Promise<FlaggedThisWeek | null> = getFlaggedThisWeek({ scope: access.scope }).catch(() => null);
   let data: DashboardData;
   try {
     data = { ...(await getDashboardData()), flaggedThisWeek: await flagged };

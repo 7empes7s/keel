@@ -1,12 +1,14 @@
 // Server loader for the change feed (insights track, IN-FEED). Read-only: it reads stored
 // drift, service reads and audit facts (engine/insights/feed.mjs) and never calls
-// Microsoft. People are named the way "Hide people's names" says. Tenant-wide, so
-// callers admit central readers only.
+// Microsoft. People are named the way "Hide people's names" says. A reader scoped to some
+// entities gets only drift rows for settings those entities own, filtered in the engine's
+// SQL with the same entity filter as Open changes (issue #981).
 import { readNamer } from "../../engine/insights/anonymity.mjs";
 import { loadChangeFeed } from "../../engine/insights/feed.mjs";
 
 import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
 import { connect } from "@/lib/db";
+import type { EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 
 interface KeelClient {
@@ -14,18 +16,25 @@ interface KeelClient {
   end(): Promise<void>;
 }
 
-export async function getChangeFeed({ days, limit, changeId, now = new Date() }: { days?: number; limit?: number; changeId?: string; now?: Date } = {}): Promise<ChangeFeedData> {
+const CENTRAL: EntityScope = { central: true, entities: [] };
+
+export async function getChangeFeed({ days, limit, changeId, now = new Date(), scope = CENTRAL }: { days?: number; limit?: number; changeId?: string; now?: Date; scope?: EntityScope } = {}): Promise<ChangeFeedData> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
     const namer = await readNamer(client);
     const selected = changeId && changeId.length <= 500 ? /^(drift|service|audit):(.+)$/.exec(changeId) : null;
     const selection = selected ? { source: selected[1], ids: [selected[2]] } : undefined;
-    const feed = (await loadChangeFeed(client, { tenantRef: tenantRef(), now, days, limit, namer, selection })) as Omit<ChangeFeedData, "generatedAt"> & { rows: FeedRow[] };
-    return { generatedAt: now.toISOString(), ...feed, rows: feed.rows.map((row) => {
-      const { evaluation, ...publicRow } = row as FeedRow & { evaluation?: unknown };
-      void evaluation;
-      return publicRow;
-    }) };
+    const feed = (await loadChangeFeed(client, { tenantRef: tenantRef(), now, days, limit, namer, selection, scope })) as Omit<ChangeFeedData, "generatedAt"> & { rows: FeedRow[] };
+    return {
+      generatedAt: now.toISOString(),
+      ...feed,
+      rows: feed.rows.map((row) => {
+        const { evaluation, ...publicRow } = row as FeedRow & { evaluation?: unknown };
+        void evaluation;
+        return publicRow;
+      }),
+      ...(scope.central ? {} : { scope: { central: false as const, entities: [...scope.entities] } }),
+    };
   } finally {
     await client.end();
   }

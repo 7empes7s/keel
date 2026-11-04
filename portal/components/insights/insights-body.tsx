@@ -7,10 +7,11 @@ import { Sparkline } from "@/components/dashboard/sparkline";
 import { NextStep } from "@/components/insights/next-step";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
+import { ScopeNote } from "@/components/scope-note";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { Verdict } from "@/components/verdict";
-import { SOURCE_WORDS, type ChangeFeedData, type FeedPeriod } from "@/lib/change-feed-view";
+import { SOURCE_WORDS, feedScopeNote, type ChangeFeedData, type FeedPeriod } from "@/lib/change-feed-view";
 import {
   DEFAULT_INSIGHTS_PERIOD, INSIGHTS_PERIODS, changesByDay, changesByService, insightsRecord, insightsVerdict, quietServices, topPeople, whereToStart,
   type StartItem,
@@ -69,6 +70,9 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
   const quiet = quietServices(feed.rows);
   const record = insightsRecord(feed);
   const busiest = Math.max(1, ...services.map((service) => service.count));
+  // A reader scoped to some entities gets only drift rows for settings they own; the page
+  // says what is left out and counts nothing else.
+  const scoped = Boolean(feed.scope);
 
   function choosePeriod(next: FeedPeriod) {
     const params = new URLSearchParams(window.location.search);
@@ -86,6 +90,7 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
         text={verdict.text}
         tone={verdict.tone}
       />
+      <ScopeNote text={feedScopeNote(feed.scope)} />
 
       <div className="ins-tools">
         <Segmented label="Period" onChange={choosePeriod} options={INSIGHTS_PERIODS.map((value) => ({ value, label: `${value} days` }))} value={period} />
@@ -190,7 +195,7 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
               <div className="ov-card-head">
                 <div>
                   <h3 className="ins-card-title" id="ins-quiet-heading"><Icon name="check-circle" />No changes</h3>
-                  <p className="ov-sub">Services with no change in this period.</p>
+                  <p className="ov-sub">{scoped ? "Services with no change to your settings in this period." : "Services with no change in this period."}</p>
                 </div>
               </div>
               {quiet.length ? (
@@ -208,9 +213,13 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
         <RecordField label="Window" value={record.window} />
         <RecordField label="Rows shown" value={feed.rows.length} />
         <RecordField label="Changes from backups" usage={SOURCE_WORDS.drift.about} value={record.sources.drift} />
-        <RecordField label="Changes from service reads" usage={SOURCE_WORDS.service.about} value={record.sources.service} />
-        <RecordField label="Changes from content backups" usage={SOURCE_WORDS.backup.about} value={record.sources.backup} />
-        <RecordField label="Changes from the audit log" usage={SOURCE_WORDS.audit.about} value={record.sources.audit} />
+        {scoped ? null : (
+          <>
+            <RecordField label="Changes from service reads" usage={SOURCE_WORDS.service.about} value={record.sources.service} />
+            <RecordField label="Changes from content backups" usage={SOURCE_WORDS.backup.about} value={record.sources.backup} />
+            <RecordField label="Changes from the audit log" usage={SOURCE_WORDS.audit.about} value={record.sources.audit} />
+          </>
+        )}
         <RecordField label="Feed limit reached" value={record.limitNote ?? "No: every change in the period is counted."} />
       </TechnicalDetails>
     </div>

@@ -13,7 +13,6 @@ import { InsightsBody } from "@/components/insights/insights-body";
 import { ChangesViews } from "@/components/baselines/changes-views";
 import { openChangeCount } from "@/lib/changes-view";
 import type { ChangeFeedData, FeedNextStep, FeedPeriod, FeedRow } from "@/lib/change-feed-view";
-import { TENANT_WIDE_ONLY } from "@/lib/insights-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
@@ -1670,6 +1669,9 @@ const CHANGE_FEED_HIDDEN: ChangeFeedData = {
 const INSIGHTS_DESCRIPTION = "What changed in the tenant in a period, which changes to look at first, and where the changes came from.";
 const INSIGHTS_NONE: ChangeFeedData = { ...CHANGE_FEED, rows: CHANGE_FEED.rows.map((row) => ({ ...row, flags: [] })) };
 const INSIGHTS_CAPPED: ChangeFeedData = { ...CHANGE_FEED, since: "2026-07-04T09:40:00Z", truncated: true };
+// Issue #981: a reader scoped to one entity gets only drift rows for settings it owns, and
+// a note on what is left out.
+const CHANGE_FEED_SCOPED: ChangeFeedData = { ...CHANGE_FEED, rows: CHANGE_FEED.rows.filter((row) => row.source === "drift"), scope: { central: false, entities: ["CREOS"] } };
 const insightsPage = (feed: ChangeFeedData, period: FeedPeriod = "7", notice: ReactNode = null) => <>{header("Dashboards", "Insights", INSIGHTS_DESCRIPTION)}
   {notice}
   <InsightsBody feed={feed} period={period} /></>;
@@ -3098,7 +3100,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/insights/anonymous": return insightsPage(CHANGE_FEED_HIDDEN, "7", ANONYMOUS_NOTE);
     case "/insights/capped": return insightsPage(INSIGHTS_CAPPED, "90");
     case "/insights/empty": return insightsPage({ ...CHANGE_FEED, rows: [] });
-    case "/insights/scoped": return <>{header("Dashboards", "Insights", INSIGHTS_DESCRIPTION)}<Verdict text={TENANT_WIDE_ONLY} tone="neutral" /></>;
+    case "/insights/scoped": return insightsPage(CHANGE_FEED_SCOPED);
+    case "/changes/feed-scoped": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED_SCOPED} period="30" /></div></>;
     case "/changes/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;

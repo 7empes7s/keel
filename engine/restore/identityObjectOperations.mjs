@@ -24,7 +24,7 @@
  *    review step (IDENTITY_NEEDS_REVIEW).
  *
  * Types the backup cannot drive in full (a terms of use file, an API
- * connector's password, a user flow's attributes, access package
+ * connector's password, access package
  * assignments, provisioning jobs, catalog resources on their own) have no
  * record here; IDENTITY_BEST_EFFORT names them and why. Access packages and
  * their resource roles are in accessPackageOperations.mjs; connected
@@ -42,6 +42,7 @@ import {
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects, withoutMicrosoftSet } from '../safety/contentEffects.mjs';
 import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
+import { USER_FLOW_RECORDS } from './userFlowOperations.mjs';
 import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from './accessPackageOperations.mjs';
 import { ASSIGNMENT_POLICY_RECORD, CONNECTED_ORGANIZATION_RECORD, entitlementPolicyDispatch } from './entitlementPolicyOperations.mjs';
 import {
@@ -1000,6 +1001,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     refusal: withApprovalGate(appCredentialTrustRefusal),
     permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('tenantappmanagementpolicy-update'),
   }),
+  // Issue #995: guest sign-up user flows (behind the restore approval) and their
+  // custom attributes (restore/userFlowOperations.mjs).
+  ...USER_FLOW_RECORDS,
 });
 
 /**
@@ -1016,7 +1020,6 @@ export const IDENTITY_NEEDS_REVIEW = Object.freeze({
 export const IDENTITY_BEST_EFFORT = Object.freeze({
   agreement: 'the terms of use file (PDF) is never returned by Graph',
   identityApiConnector: 'the connector password or certificate is never returned by Graph',
-  b2xIdentityUserFlow: 'the user flow\'s identity providers and attributes are separate routes that are not backed up',
   accessPackageAssignment: 'an assignment is granted by a request through its policy, never copied',
   synchronizationJob: 'a provisioning job needs its template, schema and the target system\'s credentials',
   accessPackageCatalogResource: 'a group or app is added to a catalog only by the resource role writer, when a package grants it and it exists in the target; a site is added by hand',

@@ -144,6 +144,9 @@ const REGISTERED = Object.freeze({
   deviceManagementRoleAssignment: ['create', 'update', 'delete'],
   exchangeRoleAssignment: ['create', 'delete'],
   defenderRoleAssignment: ['create', 'update', 'delete'],
+  // Issue #995: guest sign-up user flows and their custom attributes.
+  b2xIdentityUserFlow: ['create', 'update'],
+  identityUserFlowAttribute: ['create', 'update'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],

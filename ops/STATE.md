@@ -100,6 +100,10 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   accepted gap.
 - Entra (#148): 197 registered writes; 123 have a record from another build, 72 have none, and 2 are demoted
   (`defenderRoleAssignment.update`, `tenantAppManagementPolicy.update`): fix, then recapture.
+- User flows (#995, fixture-tested only): capture `b2xIdentityUserFlow` create/update and
+  `identityUserFlowAttribute` create/update on a `B2X_1_KEEL-RT-148-flow` flow that asks for one custom
+  attribute `KEEL-RT-148Attr` (`FIXTURE_GUIDANCE` in `tools/qualification/live-gate-plan.mjs`). Check the
+  `$expand=apiConnectorConfiguration/...` read and `setOrder` against the live tenant.
 - `roleAssignmentSchedule.create` (#991, time-limited active admin roles) has no live record yet: capture it with
   a KEEL-RT- fixture (carla, the fixture role, the fixture unit, ending in 2 days), approved as "Changes admin access".
 - Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in

@@ -1,4 +1,4 @@
-import { CATALOG, catalogReadPath, catalogReadPaths } from '../../tools/tenant-probe/catalog.mjs';
+import { CATALOG, catalogReadPath, catalogReadPaths, itemReadsOf } from '../../tools/tenant-probe/catalog.mjs';
 import { isServerError, redactSecrets, supportIds } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
@@ -278,20 +278,24 @@ const byText = (left, right) => {
   return a < b ? -1 : (a > b ? 1 : 0);
 };
 
+// Only the named fields of an object (all of it without a list).
+const onlyFields = (value, fields) => (fields && value && typeof value === 'object' && !Array.isArray(value)
+  ? Object.fromEntries(fields.filter((field) => field in value).map((field) => [field, value[field]]))
+  : value);
+
 async function withItemReads(reader, entry, items, options = {}) {
-  // Issue #993: a kind may need more than one collection per object (a connected
-  // organization's internal and external sponsors): a list of reads, in order.
-  if (Array.isArray(entry.itemReads)) {
-    let pages = 0;
-    for (const itemReads of entry.itemReads) {
-      const result = await withItemReads(reader, { ...entry, itemReads }, items, options);
-      if (result.error) return result;
-      pages += result.pages;
-    }
-    return { pages, error: null };
+  let pages = 0;
+  // Issue #995: an entry may make several reads per object (a user flow's parts), in order.
+  for (const read of itemReadsOf(entry)) {
+    const result = await withItemRead(reader, entry, read, items, options);
+    if (result.error) return result;
+    pages += result.pages;
   }
-  const { dropWhenNotFound = false } = options;
-  const { as, path, byType, sortBy, omitEmpty, single, fields } = entry.itemReads;
+  return { pages, error: null };
+}
+
+async function withItemRead(reader, entry, read, items, { dropWhenNotFound = false } = {}) {
+  const { as, path, byType, sortBy, omitEmpty, single, field, fields } = read;
   let pages = 0;
   for (const item of [...items]) {
     const template = byType ? byType[item?.['@odata.type']] : path;
@@ -314,16 +318,33 @@ async function withItemReads(reader, entry, items, options = {}) {
     // Approval-held kinds, batch 2: `single` reads one related object (an Intune
     // role assignment's role) and keeps only its `fields`. None is left out (a
     // restore then reports it cannot tell the role); more than one fails the kind.
+    // Issue #995: with `field`, only that field of the object is kept (a user
+    // flow's API connector steps), and each object inside it only its `fields`.
     if (single) {
       if (result.items.length > 1) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was more than one object` } };
       const [one] = result.items;
-      if (one) item[as] = fields ? Object.fromEntries(fields.filter((field) => field in one).map((field) => [field, one[field]])) : one;
+      if (!one) continue;
+      if (field) {
+        const held = one[field];
+        if (held && typeof held === 'object' && !Array.isArray(held)) {
+          item[as] = Object.fromEntries(Object.entries(held).filter(([key]) => !key.includes('@odata.'))
+            .map(([key, child]) => [key, onlyFields(child, fields)]));
+        }
+        continue;
+      }
+      item[as] = onlyFields(one, fields);
       continue;
     }
-    item[as] = sortBy ? [...result.items].sort((left, right) => byText(left?.[sortBy], right?.[sortBy]) || byText(left?.id, right?.id)) : result.items;
+    // Issue #995: a list read with `fields` keeps only those fields of each item
+    // (an identity provider's id and name, never its client id or secret).
+    const kept = fields ? result.items.map((child) => onlyFields(child, fields)) : result.items;
+    item[as] = sortBy ? [...kept].sort((left, right) => byText(left?.[sortBy], right?.[sortBy]) || byText(left?.id, right?.id)) : kept;
   }
   return { pages, error: null };
 }
+
+/** The item reads of a kind (catalog.mjs), for a read of the live tenant that makes them too. */
+export const readItemExtras = (reader, entry, items) => withItemReads(reader, entry, items);
 
 /**
  * Q271: Graph has no route for an Intune role assignment's own role

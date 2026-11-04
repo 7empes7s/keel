@@ -25,8 +25,9 @@ export const OWN_NAME_FIELDS = Object.freeze({
   enterpriseCodeSigningCertificate: Object.freeze(['subjectName', 'subject', 'issuerName']),
   // A profile card field is named by the directory field it shows.
   profileCardProperty: Object.freeze(['directoryPropertyName']),
-  // An attribute set's id is its name.
+  // An attribute set's id is its name, and so is a user flow's (B2X_1_<name>).
   attributeSet: Object.freeze(['id']),
+  b2xIdentityUserFlow: Object.freeze(['id']),
 });
 
 /** Kinds named after the two apps they link. */
@@ -105,7 +106,7 @@ const ID_NAMED_KINDS = Object.entries(OWN_NAME_FIELDS).filter(([, fields]) => fi
  * True for every saved version objectNameSql could name, and for few others: the kind is
  * named by its id, or one of the name fields holds a value. Never false when the name is
  * set, so adding it to a query that asks for a name changes no result. It is the
- * condition of the index resource_version_named_key_idx (store/schema.d/94), which must
+ * condition of the index resource_version_named_key_v2_idx (store/schema.d/95), which must
  * hold the same text (engine/insights/names.test.mjs checks the probe uses it), so "has any version of this key a name?"
  * is one index probe instead of a read of every version.
  */

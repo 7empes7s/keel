@@ -45,7 +45,21 @@ export default [
   // is four segments deep, past what discovery walks.
   { type: 'multiTenantOrganization', path: '/tenantRelationships/multiTenantOrganization', version: 'v1.0', singleton: true, criticality: 'tier2', blastRadius: 'access-affecting' },
   // Self-service sign-up user flows for guests, and the API connectors they call.
-  { type: 'b2xIdentityUserFlow', path: '/identity/b2xUserFlows', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // Issue #995: a flow's parts are separate routes, read per flow: the identity
+  // providers guests may sign up with (id, name and kind only, never a client id
+  // or secret), the attributes it asks for in order, its languages, and which API
+  // connector runs at which step (each connector's id and name only). A restore
+  // reads live flows with the same parts (liveItemReads).
+  { type: 'b2xIdentityUserFlow', path: '/identity/b2xUserFlows', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    itemReads: [
+      { as: 'identityProviders', path: '/identity/b2xUserFlows/{item}/identityProviders', fields: ['id', 'name', 'type'] },
+      { as: 'userAttributeAssignments', path: '/identity/b2xUserFlows/{item}/userAttributeAssignments?$expand=userAttribute' },
+      { as: 'languages', path: '/identity/b2xUserFlows/{item}/languages', fields: ['id', 'displayName', 'isEnabled'], sortBy: 'id' },
+      { as: 'apiConnectorConfiguration', single: true, field: 'apiConnectorConfiguration', fields: ['id', 'displayName'],
+        path: '/identity/b2xUserFlows/{item}?$expand=apiConnectorConfiguration/postFederationSignup,apiConnectorConfiguration/postAttributeCollection' },
+    ],
+    liveItemReads: true,
+    note: 'A flow is backed up with its identity providers, attributes (in order), languages and API connector steps. Custom page text and identity provider secrets are not.' },
   { type: 'identityApiConnector', path: '/identity/apiConnectors', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'The connector password or certificate is never returned.' },
 ];

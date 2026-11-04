@@ -99,7 +99,8 @@ are the likely automated ones; access packages and reviews are likely manual.
 - Users: create, delete, manager; licence restore on group create.
 - Admin roles: eligibility update/delete, role delete, PIM for groups, policy-to-role binding, notification and auth-context rules.
 - Tenant policies: `permissionGrantPolicy` custom includes/excludes, partner delete, partner sync settings.
-- Branding: content customization, add/remove a language, the groups a `Selected` expiry policy covers, user flows.
+- Branding: content customization, add/remove a language, the groups a `Selected` expiry policy covers.
+- User flows (#995): guest sign-up flows are restored behind the restore approval, with their identity providers, attributes in order, languages and API connector steps, and so are custom user flow attributes. Still by hand: an identity provider or API connector that is not set up in the target (their secrets are never readable), custom page text, removing a provider, attribute or connector a flow gained, a changed attribute data type, and deleting a flow.
 - Relationships: only direct members and owners; app and service-principal owners, app role grants not restored.
 - Intune: policy delete, Intune role assignments not backed up.
 

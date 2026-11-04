@@ -17,6 +17,14 @@ export interface FeedPerson {
   pseudonym?: boolean;
 }
 
+// What a change does, when a rule knows it (engine/insights/flags.mjs): "Turned off:
+// Require MFA for admins." Names in the sentence are as the page shows them.
+export interface FeedFlag {
+  key: string;
+  severity: "critical" | "high";
+  sentence: string;
+}
+
 export interface FeedRow {
   id: string;
   source: FeedSource;
@@ -37,6 +45,8 @@ export interface FeedRow {
   // The audit log's own words for what happened ("Add member to group"), if any.
   activity: string | null;
   person: FeedPerson | null;
+  // Empty when no rule flags the change; absent on rows read before flags existed.
+  flags?: FeedFlag[];
 }
 
 export interface FeedGroup {
@@ -119,23 +129,38 @@ export function feedGroupLabel(group: Pick<FeedGroup, "key" | "label">, by: Feed
   return by === "day" ? feedDayLabel(group.key, now) : group.label;
 }
 
+/** The row's flags, most severe first (the engine sends them so). */
+export function feedFlags(row: Pick<FeedRow, "flags">): FeedFlag[] {
+  return Array.isArray(row.flags) ? row.flags : [];
+}
+
+export const isFlagged = (row: Pick<FeedRow, "flags">): boolean => feedFlags(row).length > 0;
+
+/** The address value of the Flagged filter: on or off. */
+export function readFlaggedOnly(value: string | null | undefined): boolean {
+  return value === "1";
+}
+
 /** One line per row, names as shown on the page (code names when names are hidden). */
 export function feedCsv(rows: readonly FeedRow[]): string {
-  const header = csvLine(["When (UTC)", "Service", "Type", "Name", "Change", "What happened", "Who", "Priority", "Found by"]);
+  const header = csvLine(["When (UTC)", "Service", "Type", "Name", "Change", "What happened", "What it does", "Who", "Priority", "Found by"]);
   const lines = rows.map((row) => csvLine([
     row.occurredAt, row.service ?? "Other", row.typeName, feedObjectName(row), CHANGE_WORDS[row.change],
-    row.activity ?? "", feedPersonName(row), PRIORITY_WORDS[row.priority], SOURCE_WORDS[row.source].label,
+    row.activity ?? "", feedFlags(row).map((flag) => flag.sentence).join(" "), feedPersonName(row), PRIORITY_WORDS[row.priority], SOURCE_WORDS[row.source].label,
   ]));
   return [header, ...lines].join("\n") + "\n";
 }
 
-/** The plain one-line summary of a feed: how many changes, and how many need a look first. */
+/** The plain one-line summary of a feed: how many changes, how many need a look first,
+ *  and how many a rule flagged for what they do. */
 export function feedSummary(rows: readonly FeedRow[]): { text: string; tone: "urgent" | "soon" | "fine" } {
   if (!rows.length) return { text: "No changes found in this period.", tone: "fine" };
   const critical = rows.filter((row) => row.priority === "critical").length;
   const high = rows.filter((row) => row.priority === "high").length;
+  const flagged = rows.filter(isFlagged).length;
   const total = `${rows.length} ${rows.length === 1 ? "change" : "changes"}`;
-  if (critical) return { text: `${total}, ${critical} critical: look at those first.`, tone: "urgent" };
-  if (high) return { text: `${total}, ${high} high priority.`, tone: "soon" };
+  const flags = flagged ? `, ${flagged} flagged for what ${flagged === 1 ? "it does" : "they do"}` : "";
+  if (critical) return { text: `${total}, ${critical} critical${flags}: look at those first.`, tone: "urgent" };
+  if (high) return { text: `${total}, ${high} high priority${flags}.`, tone: "soon" };
   return { text: `${total}, none critical or high priority.`, tone: "fine" };
 }

@@ -370,7 +370,6 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionComplianceRule' -Block { Get-RetentionComplianceRule }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpComplianceRule' -Block { Get-DlpComplianceRule }
                 # Alert policies (configuration): Get-ProtectionAlert never returns a raised alert.
-                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ProtectionAlert' -Block { Get-ProtectionAlert }
                 # Wave 1 READ-TEAMS-PV: retention labels, adaptive scopes, auto-labeling and
                 # eDiscovery cases and holds (configuration only, never case evidence). The
                 # hold reads run against the first case and hold, if there is one.
@@ -387,6 +386,13 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                     @(Get-ComplianceCase) | Select-Object -First 1 | ForEach-Object { @(Get-CaseHoldPolicy -Case $_.Identity) } |
                         Select-Object -First 1 | ForEach-Object { Get-CaseHoldRule -Policy $_.Guid }
                 }
+                # The Purview pieces DLP depends on, and audit log retention policies
+                # (engine/collect/workloads/purviewDlpSupport.mjs): reads only.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpSensitiveInformationType' -Block { Get-DlpSensitiveInformationType }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpSensitiveInformationTypeRulePackage' -Block { Get-DlpSensitiveInformationTypeRulePackage }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpKeywordDictionary' -Block { Get-DlpKeywordDictionary }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ProtectionAlert' -Block { Get-ProtectionAlert }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-UnifiedAuditLogRetentionPolicy' -Block { Get-UnifiedAuditLogRetentionPolicy }
             }
             if ($Workloads -contains 'defender') {
                 Add-Result -Workload 'defender' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null

@@ -13,6 +13,9 @@ import {
 } from '../../engine/collect/workloads/exchangeOrgPolicies.mjs';
 import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
+import {
+  AUDIT_RETENTION_FAMILIES, CLASSIFIER_FAMILIES, DLP_SUPPORT_MODULE, PURVIEW_AUDIT_RETENTION_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD,
+} from '../../engine/collect/workloads/purviewDlpSupport.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
 import {
@@ -59,6 +62,8 @@ export const READ_FAMILIES = Object.freeze({
   [TEAMS_MEETING_SETTINGS_WORKLOAD]: MEETING_SETTINGS_FAMILIES,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: CLASSIFIER_FAMILIES,
+  [PURVIEW_AUDIT_RETENTION_WORKLOAD]: AUDIT_RETENTION_FAMILIES,
   // Not a written workload: only its per-site sharing read runs through PowerShell.
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
   // Read only; its site templates need the sites a capture names (--site).
@@ -84,6 +89,7 @@ const READ_ONLY_MODULES = Object.freeze({
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
   [TEAMS_VOICE_NETWORK_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE, [TEAMS_DEVICE_POLICIES_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: DLP_SUPPORT_MODULE, [PURVIEW_AUDIT_RETENTION_WORKLOAD]: DLP_SUPPORT_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

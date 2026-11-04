@@ -37,6 +37,7 @@ import { exchangeOrgAccessActivation, exchangeOrgDefaultsActivation } from '../c
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
+import { purviewAuditRetentionActivation, purviewClassifiersActivation } from '../collect/workloads/purviewDlpSupport.mjs';
 import { sharePointStructureActivation } from '../collect/workloads/sharepointStructure.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
@@ -70,13 +71,15 @@ const ACTIVATION = {
   'teams-meeting-settings': teamsMeetingSettingsActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
+  'purview-classifiers': purviewClassifiersActivation,
+  'purview-audit-retention': purviewAuditRetentionActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
   'sharepoint-site-settings': siteSharingActivation,
   'sharepoint-structure': sharePointStructureActivation,
 };
 const TABLES = {
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork', 'AllowedTeamsCollaboration'],
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditRetention'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).

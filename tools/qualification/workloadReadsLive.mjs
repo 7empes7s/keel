@@ -48,6 +48,9 @@ import {
 import {
   TEAMS_COLLABORATION_WORKLOAD, TEAMS_MEETING_SETTINGS_WORKLOAD, readTeamsCollaboration, readTeamsMeetingSettings,
 } from '../../engine/collect/workloads/teamsCollaboration.mjs';
+import {
+  PURVIEW_AUDIT_RETENTION_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD, readPurviewAuditRetention, readPurviewClassifiers,
+} from '../../engine/collect/workloads/purviewDlpSupport.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
@@ -83,6 +86,7 @@ export async function readSharePointSiteSharing({ powershell }) {
 export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: readPurviewClassifiers, [PURVIEW_AUDIT_RETENTION_WORKLOAD]: readPurviewAuditRetention,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
   [TEAMS_VOICE_NETWORK_WORKLOAD]: readTeamsVoiceNetwork, [TEAMS_DEVICE_POLICIES_WORKLOAD]: readTeamsDevicePolicies,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: readExchangeOrgAccess, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: readExchangeOrgDefaults,

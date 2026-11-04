@@ -335,6 +335,11 @@ const namedAccessValue = (field) => (payload, resource) => {
 };
 /** The fields of an active Entra role assignment that decide admin access (issue #991). */
 export const ACTIVE_ASSIGNMENT_ACCESS_FIELDS = Object.freeze(['principalId', 'roleDefinitionId', 'directoryScopeId']);
+// What restore/adminRoleOperations.mjs would send: an admin's direct, time-bound assignment.
+const writableActiveAssignment = (payload) => payload?.assignmentType === 'Assigned'
+  && (payload.activatedUsing === undefined || payload.activatedUsing === null)
+  && (!payload.memberType || payload.memberType === 'Direct')
+  && payload.scheduleInfo?.expiration?.type !== 'noExpiration';
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
   .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field, resourceType)));
 
@@ -605,8 +610,12 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // "changes admin access" effect, shown by name. Its writer (adminRoleOperations.mjs)
   // is not a record, so it is not one of APPROVAL_HELD_FIELDS' kinds; it runs the
   // same gate (approvalHeldRefusal) before any write.
+  // Only a schedule the writer could send carries an effect: an activation, a
+  // group-held copy or a permanent one is skipped before any write, so the
+  // reviewer is never asked to approve it.
   roleAssignmentSchedule: { reviewed: true, judgesCreates: true, rules: ACTIVE_ASSIGNMENT_ACCESS_FIELDS
-    .map((field) => rule(field, 'access-changing', accessChanges, namedAccessValue(field))) },
+    .map((field) => rule(field, 'access-changing', accessChanges,
+      (payload, resource) => (writableActiveAssignment(payload) ? namedAccessValue(field)(payload, resource) : null))) },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to

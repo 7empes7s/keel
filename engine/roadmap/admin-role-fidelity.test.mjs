@@ -667,6 +667,11 @@ test('mutation: an active assignment is held until its "changes admin access" ef
     ['directoryScopeId', 'access-changing'], ['principalId', 'access-changing'], ['roleDefinitionId', 'access-changing'],
   ]);
   assert.equal(effects.find((effect) => effect.field === 'principalId').after, 'user:ada@contoso.example', 'the reviewer sees the name');
+  // A schedule the writer skips (an activation, a group-held or permanent one) asks for no approval.
+  for (const payload of [
+    { ...activeAssignment, assignmentType: 'Activated' }, { ...activeAssignment, memberType: 'Group' },
+    { ...activeAssignment, scheduleInfo: { startDateTime: at(-3), expiration: { type: 'noExpiration' } } },
+  ]) assert.deepEqual(classifyContentEffects([activeCreate(payload)]).effects, []);
   // No approval: held, nothing read or written, and a manual step says what to do.
   let graph = recordingGraph();
   let result = await runActive(graph, [resource]);

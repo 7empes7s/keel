@@ -700,11 +700,30 @@ export function fakeGraph() {
       // A $select narrows nothing here: the fake returns the whole object.
       const path = requested.split('?')[0];
       // Approval-held batch 2: an Intune role assignment's role is the one its create bound.
-      const assignedRole = /^(\/deviceManagement\/roleAssignments\/[^/]+)\/roleDefinition$/.exec(path);
-      if (assignedRole && objects.has(assignedRole[1])) {
-        const object = objects.get(assignedRole[1]);
-        const id = object.roleDefinition?.id ?? decodeURIComponent(String(object['roleDefinition@odata.bind'] ?? '').split('/').pop());
-        return { ok: true, status: 200, body: { id, displayName: object.roleDefinition?.displayName ?? 'Fixture role' } };
+      // Q271: like Graph, there is no route for an assignment's own role; each role
+      // lists its assignments, and the roles are the ones some assignment holds.
+      if (/^\/deviceManagement\/roleAssignments\/[^/]+\/roleDefinition$/.test(path)) {
+        return { ok: false, status: 400, body: { error: { code: 'No method match route template', message: 'No OData route exists that match template ~/singleton/navigation/key/navigation with http verb GET' } } };
+      }
+      const intuneRoles = () => {
+        const roles = new Map();
+        for (const [key, object] of objects.entries()) {
+          if (!key.startsWith('/deviceManagement/roleAssignments/') || key.slice('/deviceManagement/roleAssignments/'.length).includes('/')) continue;
+          const id = object.roleDefinition?.id ?? decodeURIComponent(String(object['roleDefinition@odata.bind'] ?? '').split('/').pop());
+          if (!id) continue;
+          const role = roles.get(id) ?? { id, displayName: object.roleDefinition?.displayName ?? 'Fixture role', assignments: [] };
+          role.assignments.push({ id: object.id });
+          roles.set(id, role);
+        }
+        return roles;
+      };
+      if (path === '/deviceManagement/roleDefinitions') {
+        return { ok: true, status: 200, body: { value: [...intuneRoles().values()].map(({ assignments, ...role }) => role) } };
+      }
+      const roleAssignmentsOf = /^\/deviceManagement\/roleDefinitions\/([^/]+)\/roleAssignments$/.exec(path);
+      if (roleAssignmentsOf) {
+        const role = intuneRoles().get(decodeURIComponent(roleAssignmentsOf[1]));
+        return { ok: true, status: 200, body: { value: role?.assignments ?? [] } };
       }
       // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
       const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);

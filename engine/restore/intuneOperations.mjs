@@ -1203,6 +1203,7 @@ function intuneRoleRefusal(resource, verb) {
 // ------------------------------------------- approval-held kinds, batch 2
 
 const INTUNE_ROLE_ASSIGNMENTS = '/deviceManagement/roleAssignments';
+const INTUNE_ROLES = '/deviceManagement/roleDefinitions';
 const INTUNE_ROLES_PORTAL = 'the Intune admin center, under Tenant administration, Roles';
 const ASSIGNMENT_GROUP_LISTS = ['members', 'scopeMembers', 'resourceScopes', 'roleScopeTagIds'];
 const ASSIGNMENT_ACCESS = [...ASSIGNMENT_GROUP_LISTS, 'scopeType'];
@@ -1233,37 +1234,65 @@ function intuneAssignmentBody(body, { verb, payload }) {
   return { ...rest, 'roleDefinition@odata.bind': roleBind(roleIdOf(payload)) };
 }
 
-// The role link reads back only through the assignment's role.
+const sameRoleId = (left, right) => String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
+
+// Q271: Graph has no route for an assignment's own role (`roleAssignments/{id}/roleDefinition`
+// answers 400 "No OData route exists"); each role lists its assignments instead.
+async function listedOnePage(io, path, what) {
+  const read = await io.retryOperation(() => io.writer.read('beta', path));
+  if (read?.ok !== true) return { error: outcomeDetail(read) };
+  if (read.body?.['@odata.nextLink']) return { error: `${what} has more than one page` };
+  return { value: Array.isArray(read.body?.value) ? read.body.value : [] };
+}
+const roleHolds = async (io, roleId, targetId) => {
+  const listed = await listedOnePage(io, `${INTUNE_ROLES}/${encodeURIComponent(roleId)}/roleAssignments`, 'the role\'s assignment list');
+  return listed.error ? listed : { held: listed.value.some((row) => sameRoleId(row?.id, targetId)) };
+};
+
+/**
+ * The role an Intune assignment in the target holds: { id, name }, { id: null }
+ * when no role lists it, or { error }. The role the backup names is checked first.
+ */
+async function assignedRole(io, targetId, expectedId) {
+  if (expectedId) {
+    const first = await roleHolds(io, expectedId, targetId);
+    if (first.error) return first;
+    if (first.held) return { id: expectedId, name: null };
+  }
+  const roles = await listedOnePage(io, INTUNE_ROLES, 'the Intune role list');
+  if (roles.error) return roles;
+  for (const role of roles.value) {
+    if (typeof role?.id !== 'string' || (expectedId && sameRoleId(role.id, expectedId))) continue;
+    const other = await roleHolds(io, role.id, targetId);
+    if (other.error) return other;
+    if (other.held) return { id: role.id, name: role.displayName ?? null };
+  }
+  return { id: null, name: null };
+}
+
+// The role link reads back only through the role's assignment list.
 async function intuneAssignmentAfterWrite(io, { payload, verb, targetId }) {
   if (verb !== 'create') return null;
-  const read = await io.retryOperation(() => io.writer.read('beta', `${INTUNE_ROLE_ASSIGNMENTS}/${encodeURIComponent(targetId)}/roleDefinition`));
-  if (read?.ok !== true) return { error: `post-state: the assignment's role could not be read back (${outcomeDetail(read)})` };
-  if (String(read.body?.id ?? '').toLowerCase() !== String(roleIdOf(payload)).toLowerCase()) {
-    return { error: 'post-state: the assignment reads back with a different role than the one written' };
-  }
-  return { changes: { roleDefinition: read.body?.displayName ?? read.body.id } };
+  const role = await assignedRole(io, targetId, roleIdOf(payload));
+  if (role.error) return { error: `post-state: the assignment's role could not be read back (${role.error})` };
+  if (!role.id) return { error: 'post-state: no Intune role lists the assignment that was written' };
+  if (!sameRoleId(role.id, roleIdOf(payload))) return { error: 'post-state: the assignment reads back with a different role than the one written' };
+  return { changes: { roleDefinition: payload.roleDefinition?.displayName ?? role.id } };
 }
 
 const sameAssignmentAccess = (fields) => (row, payload) => fields.every((field) => sameIdLists(fields)(field, payload[field], row[field]) !== false);
 
-/** The role an Intune assignment in the target holds: { id } or { error }. */
-async function assignedRole(io, targetId) {
-  const read = await io.retryOperation(() => io.writer.read('beta', `${INTUNE_ROLE_ASSIGNMENTS}/${encodeURIComponent(targetId)}/roleDefinition`));
-  return read?.ok === true ? { id: String(read.body?.id ?? ''), name: read.body?.displayName ?? null } : { error: outcomeDetail(read) };
-}
-const sameRoleId = (left, right) => String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
-
 // An assignment made before holds the backup's access only with the same role too.
 async function sameIntuneAssignment(row, payload, io) {
   if (!sameAssignmentAccess(ASSIGNMENT_ACCESS)(row, payload)) return false;
-  const role = await assignedRole(io, row.id);
+  const role = await assignedRole(io, row.id, roleIdOf(payload));
   return !role.error && sameRoleId(role.id, roleIdOf(payload));
 }
 
 // An update never changes the role (Graph sets it on create): one whose role
 // differs from the backup's is left for a person, and nothing is written.
 async function intuneAssignmentUpdateGuard(io, { payload, targetId }) {
-  const role = await assignedRole(io, targetId);
+  const role = await assignedRole(io, targetId, roleIdOf(payload));
   if (!role.error && sameRoleId(role.id, roleIdOf(payload))) return null;
   const description = role.error
     ? `The assignment's current role could not be read (${role.error}), so nothing was written.`

@@ -21,9 +21,11 @@
 // types (no collector exists) are a coverage gap reported elsewhere, not a failure,
 // and so are types Microsoft refused for a missing licence or tenant feature
 // (outcome "unavailable"). A type whose last read was only partly done (status
-// 'partial') needs attention but is its own count, never a failure.
+// 'partial') needs attention but is its own count, never a failure. Kinds with nothing
+// to restore (Microsoft owns them, restoreProof.mjs nothingToRestore) are left out of the
+// "of N" restore count, so they never read as gaps.
 
-import { canRestore, hasRestoreWriter, restoreProofSummary } from './restoreProof.mjs';
+import { canRestore, hasRestoreWriter, nothingToRestore, restoreProofSummary } from './restoreProof.mjs';
 
 export { hasRestoreWriter };
 
@@ -42,14 +44,15 @@ function plural(count, one, many) {
  *   fidelity?: { declared?: string | null, verifiedBy?: { at?: string | Date, measuredFidelity?: string | null } | null } }>} types
  * @returns {{ state: 'collection' | 'proven' | 'unproven', tone: 'good' | 'attention' | 'critical', headline: string,
  *   sentence: string, action: { label: string, href: string } | null, counts: { backedUp: number, restorable: number,
- *   failing: number, failed: number, partial: number, stale: number, neverCollected: number },
+ *   restoreTotal: number, failing: number, failed: number, partial: number, stale: number, neverCollected: number },
  *   proof: ReturnType<typeof restoreProofSummary>, lastProvenRestoreAt: string | null, failingSince: string | null }}
  */
 export function protectionHeadline(types) {
   const failing = types.filter((entry) => (entry.status === 'failed' && entry.outcome !== 'unavailable')
     || entry.status === 'partial' || entry.status === 'never-collected' || (entry.status === 'covered' && entry.stale === true));
   const backedUp = types.filter((entry) => entry.status === 'covered' && entry.stale !== true);
-  const restorableTypes = backedUp.filter(canRestore);
+  const restoreCandidates = backedUp.filter((entry) => !nothingToRestore(entry));
+  const restorableTypes = restoreCandidates.filter(canRestore);
   // "Restore proven" has one definition (restoreProof.mjs): the Overview tile, What's
   // protected and Setup all read it, and so does "Last proven restore" here.
   const proof = restoreProofSummary(types);
@@ -65,7 +68,7 @@ export function protectionHeadline(types) {
     .filter((at) => at && Number.isFinite(at.getTime()));
   const failingSince = staleTimes.length ? new Date(Math.min(...staleTimes.map((at) => at.getTime()))) : null;
   const counts = {
-    backedUp: backedUp.length, restorable: restorableTypes.length, failing: failing.length,
+    backedUp: backedUp.length, restorable: restorableTypes.length, restoreTotal: restoreCandidates.length, failing: failing.length,
     failed: failed.length, partial: partial.length, stale: stale.length, neverCollected: neverCollected.length,
   };
   const base = { counts, proof, lastProvenRestoreAt: lastProven?.toISOString() ?? null, failingSince: failingSince?.toISOString() ?? null };
@@ -113,7 +116,7 @@ export function protectionHeadline(types) {
       state: 'proven',
       tone: 'good',
       headline: 'Protected',
-      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(backedUp.length, 'configuration type', 'configuration types')} today.${lastProven ? ` Last proven restore: ${formatHeadlineDate(lastProven)}.` : ''}`,
+      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(restoreCandidates.length, 'configuration type', 'configuration types')} today.${lastProven ? ` Last proven restore: ${formatHeadlineDate(lastProven)}.` : ''}`,
       action: null,
     };
   }

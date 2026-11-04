@@ -316,7 +316,7 @@ export const COMPLETENESS = Object.freeze({
   entitlementManagementRoleAssignment: { whole: 'not-written' },
   deviceTemplate: { whole: 'not-written', missing: [part('Its owners and the devices made from it', 'other-route')] },
   securityZone: { whole: 'not-written', missing: [part('The environments in the zone', 'other-route')] },
-  sharedEmailDomain: { whole: 'not-written' },
+  sharedEmailDomain: { managed: true },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
   // Remaining kinds, batch 9: read once the Collector holds the read permission.
   todoSettings: { whole: 'not-written' },

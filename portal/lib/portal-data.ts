@@ -263,6 +263,8 @@ function normalizeQualification(raw: unknown): TypeQualification | null {
     decision: record.decision as QualificationDecision,
     reason: typeof record.reason === "string" ? record.reason : null,
     softRestoreCandidate: record.softRestoreCandidate === true,
+    // Microsoft owns the kind, so there is nothing to restore (engine/coverage/completeness.mjs).
+    nothingToRestore: record.nothingToRestore === true || (record.completeness as UnknownRecord | null | undefined)?.state === "microsoft-managed",
     remapping,
     expansion: normalizeExpansion(record.expansion),
   };

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { backupHealth, backupSentence, matchesHealth, protectProblems, protectVerdict, provenAt, restoreProof, restoreStanding, standingSentence } from "@/lib/protect-view";
+import { backupHealth, backupSentence, matchesHealth, protectCounts, protectProblems, protectVerdict, provenAt, recoveryDecisionSentence, restoreProof, restoreStanding, STANDING_LABEL, standingSentence } from "@/lib/protect-view";
+import { serviceStatus } from "@/lib/setup-services";
+import { normalizeCoverageType } from "@/lib/portal-data";
+import { qualificationFor } from "../../engine/coverage/qualification.mjs";
 import type { CapabilityClaim, CoverageData, CoverageType, WriteOperationCapability } from "@/lib/types";
 
 const NOW = "2026-10-15T18:00:00.000Z";
@@ -102,4 +105,39 @@ test("a type the tenant cannot have is unavailable, not failed", () => {
 test("a refused read that is not a missing prerequisite still counts as failed", () => {
   const failed = readOnlyType({ reportStatus: "failed", protectionState: "failed", outcome: "failed" });
   assert.equal(backupHealth(failed), "failed");
+});
+
+// Kinds Microsoft owns (the tenant itself, licences, built-in roles) hold nothing to
+// restore: never "Cannot be restored", never a manual step, and out of "of N" counts.
+test("a nothing-to-restore kind reads as nothing to restore and stays out of restore counts", () => {
+  const nothing = readOnlyType({
+    type: "organization",
+    qualification: { decision: "manual", reason: null, softRestoreCandidate: false, nothingToRestore: true, remapping: {} },
+    writeCapability: null,
+  });
+  const manual = readOnlyType({ type: "domain", qualification: { decision: "manual", reason: null, softRestoreCandidate: false, remapping: {} }, writeCapability: null });
+  assert.equal(restoreStanding(nothing), "nothing-to-restore");
+  assert.equal(STANDING_LABEL[restoreStanding(nothing)], "Nothing to restore");
+  assert.match(standingSentence(nothing), /^Nothing to restore/);
+  assert.doesNotMatch(recoveryDecisionSentence(nothing) ?? "", /manual step;/);
+  assert.match(recoveryDecisionSentence(manual) ?? "", /manual step/);
+  assert.equal(restoreStanding(manual), "cannot-restore", "a by-hand kind with no writer is still a gap");
+
+  const counts = protectCounts([readOnlyType(), nothing, manual]);
+  assert.equal(counts.restorable, 1);
+  assert.equal(counts.nothingToRestore, 1);
+  const status = serviceStatus("entra", [readOnlyType(), nothing, manual], NOW);
+  assert.match(status.restore.text, /^1 of 2 can be put back/);
+});
+
+test("the portal reads nothing to restore from the engine's Microsoft-managed completeness state", () => {
+  const entry = (type: string) => normalizeCoverageType({
+    type, status: "covered", stale: false, itemCount: 1, lastCollectedAt: NOW, adapter: `graph/${type}`, outcome: "complete",
+    detail: null, fidelity: { declared: "read-only", verifiedBy: null }, criticality: "tier3", blastRadius: null, remappable: null,
+    qualification: qualificationFor(type),
+  });
+  assert.equal(entry("organization").qualification?.nothingToRestore, true);
+  assert.equal(restoreStanding(entry("organization")), "nothing-to-restore");
+  assert.equal(entry("domain").qualification?.nothingToRestore, false);
+  assert.equal(restoreStanding(entry("domain")), "cannot-restore");
 });

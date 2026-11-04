@@ -90,6 +90,9 @@ export interface TypeQualification {
   decision: QualificationDecision;
   reason: string | null;
   softRestoreCandidate: boolean;
+  // Microsoft owns the kind (completeness state "microsoft-managed"): nothing to restore,
+  // never shown or counted as a manual restore.
+  nothingToRestore?: boolean;
   // Per write operation that rewrites references: is remapping to a different id proven?
   remapping: Record<string, boolean>;
   // Roadmap task-107: the expansion batch the type belongs to. Null on legacy reports.
@@ -784,7 +787,8 @@ export interface ProtectionHeadline {
   headline: string;
   sentence: string;
   action: { label: string; href: string } | null;
-  counts: { backedUp: number; restorable: number; failing: number; failed: number; partial: number; stale: number; neverCollected: number };
+  // restoreTotal: backed-up kinds that could need a restore (nothing-to-restore kinds left out).
+  counts: { backedUp: number; restorable: number; restoreTotal?: number; failing: number; failed: number; partial: number; stale: number; neverCollected: number };
   // "Restore proven", counted once for every page (engine/coverage/restoreProof.mjs).
   proof: RestoreProofSummary;
   lastProvenRestoreAt: string | null;

@@ -530,7 +530,7 @@ test('an administrative template is created, then its settings are added with th
     updated: [],
     deletedIds: [],
   });
-  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2 });
+  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2, changed: ['Setting d-1', 'Setting d-2'] });
 });
 
 test('an administrative template update removes changed and extra settings, then adds the backup ones', async () => {
@@ -554,7 +554,37 @@ test('an administrative template update removes changed and extra settings, then
   // d-2 already matches and stays; d-1's value drifted and d-3 is not in the backup.
   assert.deepEqual(updates.map((call) => call.body.deletedIds), [['live-1', 'live-3'], []]);
   assert.deepEqual(updates[1].body.added.map((entry) => entry['definition@odata.bind']), [bind('d-1')]);
-  assert.deepEqual(result.applied.changes.settings, { removed: 2, added: 1 });
+  assert.deepEqual(result.applied.changes.settings, { removed: 2, added: 1, changed: ['Setting d-1', 'Setting d-3'] });
+});
+
+test('issue #720: a dry run of an administrative template lists the settings it would change, and none once live matches', async () => {
+  const path = `${TEMPLATE_PATH}/gp-1`;
+  const live = { id: 'gp-1', displayName: 'KEEL-RT-admx', description: 'Fixture', roleScopeTagIds: ['0'] };
+  // Q236: only a setting value drifted (the Edge home page URL); the template's own fields match.
+  const graph = idoFakeGraph({
+    seed: {
+      ...definitionsSeed('d-1', 'd-2'),
+      [path]: { ...live, definitionValues: [setting('d-1', true, [], 'live-1'), setting('d-2', false, [], 'live-2')] },
+      [`${path}/definitionValues/live-1`]: { id: 'live-1', presentationValues: [textValue('p-1', 'https://example.org')] },
+      [`${path}/definitionValues/live-2`]: { id: 'live-2', presentationValues: [] },
+    },
+  });
+  const resource = resourceOf('groupPolicyConfiguration', template, { live: { state: 'present', targetId: 'gp-1', payload: live } });
+  const planned = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run' });
+  assert.equal(planned.failed, undefined, planned.failed?.error);
+  assert.deepEqual(planned.applied.changes, { fields: [], settings: { removed: 1, added: 1, changed: ['Setting d-1'] } });
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, 'a dry run writes nothing');
+
+  // The enforce reports the same change, and a re-run dry run then finds nothing to write.
+  const written = await applyIntuneExtendedWrite(graph, resource, 'update', FAST);
+  assert.equal(written.failed, undefined, written.failed?.error);
+  assert.deepEqual(written.applied.changes.settings, planned.applied.changes.settings);
+  const again = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(again.applied.changes, { fields: [], settings: 'already as in the backup' });
+
+  // A dry run of a new template lists every setting it adds.
+  const created = await applyIntuneExtendedWrite(idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') }), resourceOf('groupPolicyConfiguration', template), 'create', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(created.applied.changes.settings, { removed: 0, added: 2, changed: ['Setting d-1', 'Setting d-2'] });
 });
 
 test('an administrative template without its setting values, or with a setting the target lacks, is never written', async () => {
@@ -1793,7 +1823,7 @@ test('an administrative template is assigned after its settings are written', as
   const writes = graph.calls.filter((call) => call.method === 'POST').map((call) => call.path.split('/').pop());
   assert.deepEqual(writes, ['groupPolicyConfigurations', 'updateDefinitionValues', 'assign']);
   assert.deepEqual(graph.calls.find((call) => call.path.endsWith('/assign')).body.assignments[0]['@odata.type'], '#microsoft.graph.groupPolicyConfigurationAssignment');
-  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2 });
+  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2, changed: ['Setting d-1', 'Setting d-2'] });
   assert.equal(result.applied.changes.assignments, 'written');
 });
 

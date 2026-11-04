@@ -47,14 +47,15 @@ import { PolicyPage } from "@/components/policies/policy-page";
 import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
-import { lastRestoreTile } from "@/lib/restore-view";
+import { lastRestoreTile, pastRestoresVerdict } from "@/lib/restore-view";
+import { RestoreFollowUps, RestoreFollowUpsAlert } from "@/components/restore-follow-ups";
 import { JobPageBody } from "@/components/job-page-body";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices, ScubaListsView } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OpenFollowUpWork, OwnCheckChoices, ScubaListsView } from "@/lib/types";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
@@ -1900,10 +1901,10 @@ const RESILIENCE: ResilienceData = {
     },
   },
   // More failed restores than the recovery attempts list: the alert takes the engine's count.
-  failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
+  failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: null, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore/past-restores?jobs=failed#restore-jobs-heading" },
   incidents: [{ incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", status: "open", openedAt: "2026-10-01T08:10:00Z" }, recommended: { snapshotId: "5a2be911-0000-4000-8000-000000000002", collectedAt: "2026-09-30T05:55:00Z" }, pins: 1 }],
   storage: { configured: true, provider: "local-disk", region: "on-prem datacenter A", boundary: null, immutability: "unsupported", generatedAt: "2026-10-01T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
-  followUps: { steps: 0, restores: 0, href: "/restore#follow-up" },
+  followUps: { steps: 0, restores: 0, href: "/restore/follow-up-steps" },
 };
 const RESILIENCE_EMPTY: ResilienceData = {
   ...RESILIENCE,
@@ -1923,7 +1924,7 @@ const RESILIENCE_EMPTY: ResilienceData = {
     recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
     readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
   },
-  failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: "/restore?jobs=failed#restore-jobs-heading" },
+  failedRestores: { total: 0, recent: { days: 30, count: 0 }, period: null, newest: null, href: "/restore/past-restores?jobs=failed#restore-jobs-heading" },
   incidents: [],
   storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null },
 };
@@ -2066,7 +2067,7 @@ const VALUE_REPORT: ValueReport = {
     recoveryTime: { state: "measured", samples: 2, medianMs: 14 * 60_000, worstMs: 20 * 60_000, notCounted: 1, drills: 1, restores: 1 },
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
-    failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: { from: "2026-09-01T00:00:00.000Z", to: now, count: 2 }, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore?jobs=failed#restore-jobs-heading" },
+    failedRestores: { total: 47, recent: { days: 30, count: 3 }, period: { from: "2026-09-01T00:00:00.000Z", to: now, count: 2 }, newest: { jobId: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z" }, href: "/restore/past-restores?jobs=failed#restore-jobs-heading" },
   },
   // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
   backups: {
@@ -2707,7 +2708,20 @@ const RESTORE_CHANGES: RestoreChange[] = [
     [{ path: "state", before: "enabled", after: "disabled" }], { names: ["Sam Ortiz"], certain: true }),
 ];
 
-function HarnessRestore({ jobs }: { jobs: Job[] }) {
+// Restore follow-up steps: restore r9 left two, an older restore r10 one.
+// /restore/follow-up-steps/none and /restore/calm have none.
+const RESTORE_FOLLOW_UPS: OpenFollowUpWork = {
+  steps: 3,
+  restores: 2,
+  href: "/restore/follow-up-steps",
+  cards: [
+    { restoreRef: "7f3c0000-0000-4000-8000-000000000011", pending: 2, since: "2026-10-02T09:40:00Z", jobId: "r9", jobStatus: "succeeded", enforced: true, restoredAt: "2026-10-02T09:30:00Z", plan: PLAN_REF },
+    { restoreRef: "7f3c0000-0000-4000-8000-000000000010", pending: 1, since: "2026-09-28T15:00:00Z", jobId: "r10", jobStatus: "failed", enforced: true, restoredAt: "2026-09-28T14:55:00Z", plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010", resources: 3, snapshotAt: "2026-09-28T06:00:00Z" } },
+  ],
+};
+const NO_FOLLOW_UPS: OpenFollowUpWork = { steps: 0, restores: 0, href: "/restore/follow-up-steps", cards: [] };
+
+function HarnessRestore({ jobs, followUps = RESTORE_FOLLOW_UPS }: { jobs: Job[]; followUps?: OpenFollowUpWork }) {
   const params = useSearchParams();
   const chosen = RESTORE_SNAPSHOTS.find((snapshot) => snapshot.id === params.get("snapshot")) ?? RESTORE_SNAPSHOTS[3];
   const isNewest = chosen.id === RESTORE_SNAPSHOTS[0].id;
@@ -2718,10 +2732,30 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   return <>
     <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and nothing changes until it is approved." generatedAt={now} section="Restore"
       status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore settings" />
+    <RestoreFollowUpsAlert work={followUps} />
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} workloads={RESTORE_WORKLOADS} />
-    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} now={now} title="Restores and checks" /></div>
+  </>;
+}
+
+function HarnessRestoreFollowUps({ work }: { work: OpenFollowUpWork }) {
+  const { steps, restores } = work;
+  return <>
+    <PageHeader description="Work a restore leaves for a person, such as a new secret, a consent or a service check. Open a restore to finish its steps." generatedAt={now} section="Restore"
+      status={steps ? { tone: "soon", label: `${steps} open` } : { tone: "fine", label: "All done" }} title="Follow-up steps" />
+    <Verdict text={steps ? `${steps} ${steps === 1 ? "step is" : "steps are"} still open from ${restores === 1 ? "1 restore" : `${restores} restores`}. Open each restore to finish them.` : "Nothing to finish: no restore is waiting on a step by hand."} tone={steps ? "soon" : "fine"} />
+    <div data-layer="explanation"><RestoreFollowUps canRestore now={now} work={work} /></div>
+  </>;
+}
+
+function HarnessPastRestores({ jobs }: { jobs: Job[] }) {
+  const restores = jobs.filter((item) => item.kind.startsWith("restore"));
+  const verdict = pastRestoresVerdict(restores, now);
+  return <>
+    <PageHeader description="Every restore and every check before one, newest first, with who asked and how it ended." generatedAt={now} section="Restore" title="Past restores" />
+    <Verdict action={verdict.href ? { label: "Open it", href: verdict.href } : null} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={restores} now={now} title="Restores and checks" /></div>
   </>;
 }
 
@@ -2784,6 +2818,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <SchedulesPage canEdit={!viewer} canRun={!viewer} deferrals={SCHEDULE_DEFERRALS} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
     }
     case "/restore": return <HarnessRestore jobs={jobs} />;
+    case "/restore/calm": return <HarnessRestore followUps={NO_FOLLOW_UPS} jobs={jobs} />;
+    case "/restore/follow-up-steps": return <HarnessRestoreFollowUps work={RESTORE_FOLLOW_UPS} />;
+    case "/restore/follow-up-steps/none": return <HarnessRestoreFollowUps work={NO_FOLLOW_UPS} />;
+    case "/restore/past-restores": return <HarnessPastRestores jobs={jobs} />;
     case "/incidents": case "/incidents/viewer": return <IncidentsRoute viewer={path === "/incidents/viewer"} />;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);

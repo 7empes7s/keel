@@ -62,10 +62,11 @@ test("no menu page shares its name with its section, so no breadcrumb is dropped
 
 test("each URL is the page's menu name or its section's", () => {
   // Restore settings at /restore and Value report at /reports keep their section's name.
+  // A sub-page (/restore/past-restores) is named by its last part.
   for (const section of NAV_SECTIONS) {
     for (const route of NAV_MAP[section].filter((candidate) => !candidate.hidden && candidate.href !== "/")) {
-      const slug = route.href.slice(1).split("-").join(" ");
-      const words = `${route.label} ${section}`.toLowerCase().replace(/[^a-z ]/g, "");
+      const slug = route.href.split("/").pop()!.split("-").join(" ");
+      const words = `${route.label} ${section}`.toLowerCase().replace(/-/g, " ").replace(/[^a-z ]/g, "");
       assert.ok(words.includes(slug), `${route.href} does not name "${route.label}"`);
     }
   }

@@ -17,6 +17,8 @@ const PAGES = [
   { name: "drift-feed", hash: "/changes/feed" },
   { name: "drift-feed-empty", hash: "/changes/feed-empty" },
   { name: "restore", hash: "/restore" },
+  { name: "restore-follow-ups", hash: "/restore/follow-up-steps" },
+  { name: "past-restores", hash: "/restore/past-restores" },
   { name: "incidents", hash: "/incidents" },
   { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
   { name: "incidents-viewer", hash: "/incidents/viewer" },
@@ -1320,7 +1322,7 @@ test("changes · Shift+click range, select a service, select all, filter by risk
 // keeps every pick in a folded table, never one long paragraph of names.
 test("changes · the accept panel counts the picks and folds them into a table", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/drift");
+  await open(page, "/changes");
   await page.getByRole("button", { name: "Select all 7 changes" }).click();
   await page.locator(".sel-bar").getByRole("button", { name: "Accept 7 changes" }).click();
   const sheet = page.getByRole("dialog", { name: "Accept 7 changes into the approved setup" });
@@ -1353,7 +1355,7 @@ test("changes · the accept panel counts the picks and folds them into a table",
 
 test("compliance · an exception on several controls counts them and lists them in a table", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "/benchmarks?grant=e7a10000-0000-4000-8000-0000000000e1,e7a10000-0000-4000-8000-0000000000e2,e7a10000-0000-4000-8000-0000000000e4");
+  await open(page, "/compliance?grant=e7a10000-0000-4000-8000-0000000000e1,e7a10000-0000-4000-8000-0000000000e2,e7a10000-0000-4000-8000-0000000000e4");
   const sheet = page.getByRole("dialog", { name: "Grant an exception to 3 controls" });
   const summary = sheet.getByRole("region", { name: "What this applies to: 3 controls" });
   await expect(summary.locator(".pick-counts > div", { hasText: "Risk" }).locator(".bl-chip")).toHaveText(["High · 2", "Medium · 1"]);
@@ -1719,7 +1721,7 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   // Failed restores: the engine's one count with its window, linking to the Restore list.
   const failedRestores = page.locator('.ui-alert[data-alert="restore-failed"]');
   await expect(failedRestores).toContainText("47 restores failed · 3 in the last 30 days");
-  await expect(failedRestores.getByRole("link", { name: "See failed restores" })).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
+  await expect(failedRestores.getByRole("link", { name: "See failed restores" })).toHaveAttribute("href", /\/restore\/past-restores\?jobs=failed#restore-jobs-heading$/);
   await expect(page.locator('.ui-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
   // Tiles and the service table.
   await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
@@ -1779,7 +1781,7 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   const failedLine = page.locator('[data-line="failed-restores"]');
   await expect(failedLine).toContainText("2 failed in this period");
   await expect(failedLine).toContainText("47 restores failed · 3 in the last 30 days");
-  await expect(failedLine.getByRole("link")).toHaveAttribute("href", /\/restore\?jobs=failed#restore-jobs-heading$/);
+  await expect(failedLine.getByRole("link")).toHaveAttribute("href", /\/restore\/past-restores\?jobs=failed#restore-jobs-heading$/);
 
   // Every request opens its job; every check shows a title, never a code.
   const links = page.locator(".vr-row-link");
@@ -2478,7 +2480,8 @@ const RECORD_IDS: Record<string, string[]> = {
   policy: ["7a1d0f3e-0000-4000-8000-000000000001", "3f9c2b1e-0000-4000-8000-000000000002"],
   policies: ["7a1d0f3e-0000-4000-8000-000000000001", "7a1d0f3e-0000-4000-8000-000000000003"],
   "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
-  restore: ["a3"],
+  "restore-follow-ups": ["7f3c0000-0000-4000-8000-000000000011", "r9", "7f3c0000-0000-4000-8000-000000000010", "r10"],
+  "past-restores": ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],

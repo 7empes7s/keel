@@ -141,6 +141,9 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "restore/page.tsx",
   },
+  // The Restore section's sub-pages: open follow-up steps and past restores.
+  restoreFollowUpsPage: { capability: "read", source: "restore/follow-up-steps/page.tsx" },
+  pastRestoresPage: { capability: "read", source: "restore/past-restores/page.tsx" },
   incidentsPage: {
     capability: "read",
     source: "incidents/page.tsx",

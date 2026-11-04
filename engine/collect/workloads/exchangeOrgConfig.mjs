@@ -13,7 +13,7 @@
  *    logo bytes, distinguished names). No declared field holds a secret; a
  *    credential-shaped value is still redacted.
  *  - Identity. Objects there can be many of are keyed by their Guid (it survives a
- *    rename). The organization-wide settings exist once per tenant and are keyed
+ *    rename); message encryption, which answers without one, by its Identity. The organization-wide settings exist once per tenant and are keyed
  *    `organization`; a second answer that disagrees is a conflict, never a silent pick.
  *  - Errors are structured. A failed read is `failed` or `denied`, never an empty list.
  *  - Disabled until qualified. Nothing is sent unless the Exchange mailbox workload is
@@ -32,6 +32,15 @@ export const DEFAULT_MAX_OBJECTS = 1000;
 
 const WHEN = 'WhenChangedUTC';
 const byGuid = (body) => guidOf(body.Guid);
+// Message encryption answers without a Guid (live read, Q275), so it is keyed by its
+// Identity, the configuration's name ("OME Configuration"), which Exchange compares
+// without case. Administrator text, bounded, no control characters.
+// eslint-disable-next-line no-control-regex
+const NAME = /^[^\u0000-\u001f\u007f]{1,256}$/;
+const byIdentity = (body) => {
+  const identity = typeof body.Identity === 'string' ? body.Identity.trim().toLowerCase() : '';
+  return NAME.test(identity) ? identity : null;
+};
 // One object per tenant: the identity is the tenant itself.
 const ORGANIZATION = 'organization';
 const once = () => ORGANIZATION;
@@ -43,8 +52,8 @@ const family = (operation, cmdlet, prefix, identity, fields) => Object.freeze({
 /**
  * The families, in the order a list shows them: audit first, then encryption, then
  * sharing free/busy, then labels shown to users, then hybrid. Fields were declared from
- * Microsoft's cmdlet documentation (the matching Set- parameters), not measured live;
- * the live read check confirms them.
+ * Microsoft's cmdlet documentation (the matching Set- parameters) and trimmed by the live
+ * read check (Q275): Get-IRMConfiguration does not return DecryptAttachmentOnDownload.
  */
 export const FAMILIES = Object.freeze({
   adminAuditLog: family('admin-audit-log', 'Get-AdminAuditLogConfig', 'admin-audit-log', once, [
@@ -53,11 +62,11 @@ export const FAMILIES = Object.freeze({
   ]),
   irm: family('irm', 'Get-IRMConfiguration', 'irm', once, [
     'AzureRMSLicensingEnabled', 'InternalLicensingEnabled', 'ExternalLicensingEnabled', 'SimplifiedClientAccessEnabled',
-    'SimplifiedClientAccessEncryptOnlyDisabled', 'SimplifiedClientAccessDoNotForwardDisabled', 'DecryptAttachmentOnDownload',
+    'SimplifiedClientAccessEncryptOnlyDisabled', 'SimplifiedClientAccessDoNotForwardDisabled',
     'EnablePdfEncryption', 'JournalReportDecryptionEnabled', 'ClientAccessServerEnabled', 'SearchEnabled', 'TransportDecryptionSetting',
     'EDiscoverySuperUserEnabled', 'RejectIfRecipientHasNoRights', 'AutomaticServiceUpdateEnabled', 'LicensingLocation', WHEN,
   ]),
-  messageEncryption: family('message-encryption', 'Get-OMEConfiguration', 'ome', byGuid, [
+  messageEncryption: family('message-encryption', 'Get-OMEConfiguration', 'ome', byIdentity, [
     'Identity', 'BackgroundColor', 'DisclaimerText', 'EmailText', 'IntroductionText', 'PortalText', 'ReadButtonText',
     'PrivacyStatementUrl', 'ExternalMailExpiryInterval', 'OTPEnabled', 'SocialIdSignIn',
   ]),

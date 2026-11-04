@@ -324,8 +324,9 @@ async function lineagesFor(client, tenantRef, changes) {
   });
 }
 
-/** Actor names from this tenant's own collected users / service principals. */
-async function actorNames(client, tenantRef, actors, scope, at) {
+/** Actor names from this tenant's own collected users / service principals, for the
+ * actors `scope` may see, keyed `<kind>:<lower-case id>`. Exported for the change feed. */
+export async function visibleActorNames(client, tenantRef, actors, scope, at) {
   if (!actors.length) return new Map();
   const { rows } = await client.query(
     `SELECT l.resource_type, l.source_id, a.natural_key,
@@ -458,7 +459,7 @@ export async function attributeChanges(client, { tenantRef, changes, scope = { c
     for (const actor of verdict.actors) allActors.set(`${actor.kind}:${actor.id}`, actor);
     results.push({ change, identity, source, service, verdict, coverage: { audit: auditCoverage.status, signIn: signInCoverage.status } });
   }
-  const names = await actorNames(client, tenantRef, [...allActors.values()], scope, at);
+  const names = await visibleActorNames(client, tenantRef, [...allActors.values()], scope, at);
   return results.map(({ change, identity, source, service, verdict, coverage }) => ({
     changeId: change.id,
     // Which audit log was asked (null when KEEL reads none for this service) and the service.

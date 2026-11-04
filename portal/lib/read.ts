@@ -106,9 +106,8 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "page.tsx",
   },
-  // Insights: what changed in a period and where to start, from the change feed. Entity
-  // scoped so an entity reader gets a plain sentence instead of a refusal; the page reads
-  // the feed for central readers only.
+  // Insights: what changed in a period and where to start, from the change feed. An
+  // entity-scoped reader gets only drift rows for settings their entities own (issue #981).
   insightsPage: {
     capability: "read",
     source: "insights/page.tsx",
@@ -207,8 +206,10 @@ export const DATA_SURFACES = {
   comparePage: { capability: "read", source: "compare/page.tsx" },
   // The settings one Activity row changed, before and after. Tenant-wide readers only.
   activityChangesApi: { capability: "read", source: "api/activity/changes/route.ts" },
-  // The change feed: every change, drift and audit event as one row. Tenant-wide readers only.
-  changeFeedApi: { capability: "read", source: "api/changes/feed/route.ts" },
+  // The change feed: every change, drift and audit event as one row. An entity-scoped
+  // reader gets only drift rows for settings their entities own, filtered in the SQL
+  // (issue #981).
+  changeFeedApi: { capability: "read", source: "api/changes/feed/route.ts", entityScoped: true },
   // Site permissions audit, gap 2: each SharePoint site's stored permissions. Tenant-wide readers only.
   sitesPage: { capability: "read", source: "sites/page.tsx" },
   sitePage: { capability: "read", source: "sites/[id]/page.tsx" },

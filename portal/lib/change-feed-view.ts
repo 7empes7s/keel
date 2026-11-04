@@ -64,6 +64,16 @@ export interface ChangeFeedData {
   rows: FeedRow[];
   // More rows exist in the window than were read.
   truncated: boolean;
+  // Set when the reader is scoped to some entities: the rows are only drift rows for
+  // settings those entities own (issue #981).
+  scope?: { central: false; entities: string[] } | null;
+}
+
+/** What an entity-scoped reader of the change feed is told is left out, in Open changes'
+ *  words. Never a count of the rows left out. */
+export function feedScopeNote(scope: ChangeFeedData["scope"]): string | null {
+  if (!scope) return null;
+  return `You see changes to settings owned by ${scope.entities.join(" and ")} only. A central administrator reviews tenant-wide changes (service settings, sites and the audit log).`;
 }
 
 // The periods the page offers, in days; 30 is the default.

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { CAPABILITIES_HEADER, ENTITY_CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 
 // Next's server request stores are normally installed by its runtime. This focused
 // server-component harness installs the Node implementation before importing a page
@@ -471,5 +471,27 @@ test("activity, job and schedules pages do not reach their API database loader f
     else process.env.KEEL_DB_URL = originalUrl;
     if (originalPath === undefined) delete process.env.KEEL_DB_ENV_PATH;
     else process.env.KEEL_DB_ENV_PATH = originalPath;
+  }
+});
+
+// Issue #981: Insights and Changes (with Every change) admit a reader whose read is scoped
+// to some entities. A reader holding only some other capability for an entity, or none,
+// is still refused before any loader runs.
+test("Insights and Changes refuse an entity reader who holds no read for any entity", async () => {
+  const [insights, changes, workUnitModule, workModule] = await Promise.all([
+    import("../app/insights/page"),
+    import("../app/changes/page"),
+    import("next/dist/server/app-render/work-unit-async-storage.external.js"),
+    import("next/dist/server/app-render/work-async-storage.external.js"),
+  ]);
+  const { workUnitAsyncStorage } = workUnitModule as { workUnitAsyncStorage: AsyncStore };
+  const { workAsyncStorage } = workModule as { workAsyncStorage: AsyncStore };
+  for (const [route, module] of [["/insights", insights], ["/changes", changes]] as const) {
+    for (const entity of ["restore:CREOS", ""]) {
+      await renderWithoutReadGrant(
+        route, defaultPage(module), workAsyncStorage, workUnitAsyncStorage,
+        new Headers([[PRINCIPAL_ID_HEADER, "entity-reader"], [CAPABILITIES_HEADER, ""], [ENTITY_CAPABILITIES_HEADER, entity]]),
+      );
+    }
   }
 });

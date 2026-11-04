@@ -12799,7 +12799,11 @@ item that needs it stays untouched.
 - Drafted by the "Restore Purview label removal with approval" thread (2026-10-30). PR #775 (stacked on #762 and #764) adds write
   `purview.label-policy.remove-labels` (`Set-LabelPolicy -RemoveLabels`). It ships off until this capture. A restore sends it only
   after a second person approves the `weakens-protection` effect, or when restore approvals are off for Purview.
-- Needs: PRs #762, #764 and #775 merged and deployed (build B). Check: `grep -q RemoveLabels /opt/keel-live/ops/powershell/run-cmdlet.ps1`.
+- **2026-11-04: PR #775 was closed unmerged, superseded by #939.** Run this only once #939 (or whatever replaces it) is merged and
+  deployed *and* the deployed tree has `tools/qualification/purviewUnpublishLive.mjs`. If it does not, set Status `blocked` with
+  that reason and move on.
+- Needs: #939 merged and deployed (build B). Check: `grep -q RemoveLabels /opt/keel-live/ops/powershell/run-cmdlet.ps1` and
+  `test -f /opt/keel-live/tools/qualification/purviewUnpublishLive.mjs`.
   The `keel-powershell` image at B (rebuild it: `run-cmdlet.ps1` changed).
 - Status: todo
 - Result:

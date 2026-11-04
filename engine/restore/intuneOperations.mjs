@@ -1409,6 +1409,48 @@ async function readGroupPolicySettings(io, targetId) {
 const settingSet = (settings) => settings.map(settingShape).sort((left, right) => left.definition.localeCompare(right.definition));
 
 /**
+ * Which live settings a write removes (not in the backup, or different) and
+ * which backup settings it adds, and the names of the settings that change
+ * (the definition's display name, so the approver sees "Configure the home
+ * page URL" rather than a GUID).
+ */
+function groupPolicySettingsDiff(want, have) {
+  const wantBy = new Map(want.map((setting) => [settingShape(setting).definition, settingShape(setting)]));
+  const haveBy = new Map(have.map((setting) => [settingShape(setting).definition, settingShape(setting)]));
+  const removed = have.filter((setting) => !sameValue(wantBy.get(settingShape(setting).definition), settingShape(setting)));
+  const added = want.filter((setting) => !sameValue(haveBy.get(settingShape(setting).definition), settingShape(setting)));
+  const names = new Map();
+  for (const setting of [...added, ...removed]) {
+    const key = settingShape(setting).definition;
+    if (!names.has(key)) names.set(key, setting?.definition?.displayName ?? definitionIdOf(setting));
+  }
+  return { removed, added, names: [...names.values()] };
+}
+
+const settingsChanges = ({ removed, added, names }) => ({ removed: removed.length, added: added.length, changed: names });
+
+/**
+ * Issue #720: in a dry run, the settings the write would remove and add, read
+ * from live the way groupPolicySettingsAfterWrite reads them, so a drifted
+ * setting value (an Edge home page URL) shows in the plan, not only the
+ * template's own fields.
+ */
+async function groupPolicyPlannedChanges(io, { payload, verb, targetId }) {
+  const want = payload?.definitionValues;
+  if (!Array.isArray(want)) return null;
+  let have = [];
+  if (verb !== 'create') {
+    if (!targetId) return null;
+    const read = await readGroupPolicySettings(io, targetId);
+    if (read.error) return { settings: `not read: ${read.error}` };
+    have = read.settings;
+  }
+  const diff = groupPolicySettingsDiff(want, have);
+  if (diff.removed.length === 0 && diff.added.length === 0) return verb === 'create' ? null : { settings: 'already as in the backup' };
+  return { settings: settingsChanges(diff) };
+}
+
+/**
  * Puts a template's settings back: a live setting that is not in the backup,
  * or differs from it, is removed, then each backup setting live lacks is
  * added with its values. Two calls, so a setting is never removed and added
@@ -1422,10 +1464,8 @@ async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
     if (read.error) return { error: `${read.error}, so they were not changed` };
     have = read.settings;
   }
-  const wantBy = new Map(want.map((setting) => [settingShape(setting).definition, settingShape(setting)]));
-  const haveBy = new Map(have.map((setting) => [settingShape(setting).definition, settingShape(setting)]));
-  const removed = have.filter((setting) => !sameValue(wantBy.get(settingShape(setting).definition), settingShape(setting)));
-  const added = want.filter((setting) => !sameValue(haveBy.get(settingShape(setting).definition), settingShape(setting)));
+  const diff = groupPolicySettingsDiff(want, have);
+  const { removed, added } = diff;
   if (removed.length === 0 && added.length === 0) return verb === 'create' ? null : { changes: { settings: 'already as in the backup' } };
   const path = `${groupPolicyPath(targetId)}/updateDefinitionValues`;
   for (const body of [
@@ -1437,7 +1477,7 @@ async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
   }
   const check = await readGroupPolicySettings(io, targetId);
   if (check.error || !sameValue(settingSet(check.settings), settingSet(want))) return { error: 'post-state: the template\'s settings did not read back as written' };
-  return { changes: { settings: { removed: removed.length, added: added.length } } };
+  return { changes: { settings: settingsChanges(diff) } };
 }
 
 /**
@@ -1916,6 +1956,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     resourceType: 'groupPolicyConfiguration', version: 'beta', collection: '/deviceManagement/groupPolicyConfigurations', operations: ['create', 'update'],
     excluded: ['definitionValues', 'assignments', 'policyConfigurationIngestionType'],
     refusal: groupPolicyRefusal, preflight: groupPolicyPreflight, afterWrite: inOrder(groupPolicySettingsAfterWrite, assignmentsAfterWrite),
+    planChanges: groupPolicyPlannedChanges,
     assignmentType: '#microsoft.graph.groupPolicyConfigurationAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // Restore gaps, batch 6. An app category is only a name; Microsoft's

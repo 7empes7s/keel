@@ -12364,7 +12364,7 @@ item that needs it stays untouched.
   no `isBuiltIn`. PR #747 treats a Defender role as custom unless the backup or the live role says `isBuiltIn: true` (the Defender
   role list holds only roles an admin made or imported). Only the Defender part of Q239 is in scope. The app creation policy part
   is Q256; not run here.
-- Needs: PR #747 merged and deployed (build B). Check: `grep -q 'lists only roles an admin made' /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
+- Needs: PR #935 (which carries #747's fix; #747 was closed as superseded) merged and deployed (build B). Check: `grep -q 'lists only roles an admin made' /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
 - Status: todo
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q239 (log every approval

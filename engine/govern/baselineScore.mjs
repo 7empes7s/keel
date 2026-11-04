@@ -6,7 +6,7 @@
  * stored point and the page agree).
  *
  * After each backup's drift detection and each run of service reads, one point is
- * stored (baseline_score_point, schema.d/86): the overall count and one per service.
+ * stored (baseline_score_point, schema.d/92-baseline-score.sql): the overall count and one per service.
  * It reads Keel's own database only, for the whole tenant.
  */
 export { kindMatch, matchPercent, overallCount, scoreByService } from './baselineScoreRules.mjs';
@@ -67,12 +67,16 @@ export async function computeBaselineScore(client, { tenantRef }) {
   assertTenantRef(tenantRef);
   const baseline = await getActiveBaseline(client, { tenantRef });
   if (!baseline) return null;
-  const [{ rows: heldRows }, drift, { rows: latestReads }, totals] = await Promise.all([
+  const [{ rows: heldRows }, { rows: heldServiceRows }, drift, { rows: latestReads }, totals] = await Promise.all([
     client.query(
       `SELECT rv.resource_type, count(*)::int AS count FROM baseline_resource br
          JOIN resource_version rv ON rv.id = br.resource_version_id
         WHERE br.baseline_id = $1
         GROUP BY rv.resource_type`,
+      [baseline.id],
+    ),
+    client.query(
+      'SELECT workload, count(*)::int AS count FROM baseline_workload WHERE baseline_id = $1 GROUP BY workload',
       [baseline.id],
     ),
     listLatestOpenDrift(client, { tenantRef, baselineId: baseline.id }),
@@ -103,12 +107,13 @@ export async function computeBaselineScore(client, { tenantRef }) {
   const captured = baseline.captured_at
     ? (Array.isArray(baseline.observation_scope?.types) ? baseline.observation_scope.types : [])
     : Object.keys(held);
-  const counts = scoreByService({
-    captured,
-    held,
-    changes,
-    reads,
-  });
+  // Service reads the setup holds (baselineWorkloads.mjs), as the page reads them
+  // (baselineCompliance.mjs servicesOf): each one its scope lists, with the settings held.
+  const heldServiceCounts = new Map(heldServiceRows.map((row) => [String(row.workload), Number(row.count ?? 0)]));
+  const heldServices = Object.fromEntries((Array.isArray(baseline.observation_scope?.workloads) ? baseline.observation_scope.workloads : [])
+    .filter((entry) => typeof entry?.workload === 'string')
+    .map((entry) => [entry.workload, heldServiceCounts.get(entry.workload) ?? 0]));
+  const counts = scoreByService({ captured, held, heldServices, changes, reads });
   return { baselineId: String(baseline.id), overall: overallCount(counts), services: Object.fromEntries(counts) };
 }
 

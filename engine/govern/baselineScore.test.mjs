@@ -7,6 +7,7 @@
  *  - a service read with no count, a read that failed, and a kind not covered are left out;
  *  - the stored point counts only open changes (an accepted one counts as matching), the
  *    newest change per setting, and the newest read per service, per service and overall;
+ *  - a service read the setup holds is measured against the settings it holds;
  *  - nothing is stored without an approved setup;
  *  - drift detection after a backup stores one point for that backup.
  *
@@ -73,6 +74,23 @@ test('score by service: unread, uncounted and empty kinds are left out', () => {
   });
   assert.deepEqual(overallCount(counts), { matching: 13, judged: 16 });
   assert.equal(overallCount(new Map()), null);
+});
+
+test('score by service: a service read the setup holds is measured against it, as the page does', () => {
+  const counts = scoreByService({
+    captured: [],
+    heldServices: { 'exchange-mail-flow': 3 },
+    // The page's list of changes may hold only recent ones: the read's full count wins.
+    changes: { 'exchange-mail-flow': { added: 0, modified: 0, removed: 0 } },
+    reads: [{ type: 'exchange-mail-flow', read: true, itemCount: 5, open: { added: 1, modified: 1, removed: 2 } }],
+  });
+  // Held 3: 1 changed and 2 removed stop matching; 1 added is judged but never matches.
+  assert.deepEqual(Object.fromEntries(counts), { Exchange: { matching: 0, judged: 4 } });
+  // A held service read that could not be read is left out, unless one of its changes is listed.
+  assert.deepEqual(Object.fromEntries(scoreByService({
+    heldServices: { 'teams-org-policies': 2 },
+    reads: [{ type: 'teams-org-policies', read: false, itemCount: null, open: null }],
+  })), {});
 });
 
 test('a stored point counts open changes, the newest read per service, and each service', async (t) => {
@@ -185,6 +203,20 @@ test('a stored point counts open changes, the newest read per service, and each 
   const newest = await listBaselineScorePoints(client, { tenantRef, limit: 1 });
   assert.deepEqual(newest.map((point) => point.trigger), ['backup']);
   await assert.rejects(recordBaselineScore(client, { tenantRef, trigger: 'page-view' }), /unknown score trigger/);
+
+  // Once the setup holds the mail flow read (baselineWorkloads.mjs), it is measured against
+  // the 3 rules it holds, with the read's open changes: the added rule is judged, not matching.
+  await client.query(
+    `UPDATE baseline SET captured_at = $2, observation_scope = $3 WHERE id = $1`,
+    [baseline.id, hoursAgo(48), { types: ['user', 'deviceCompliancePolicy'], workloads: [{ workload: 'exchange-mail-flow', collectedAt: hoursAgo(2), outcome: 'complete' }] }],
+  );
+  for (let index = 1; index <= 3; index++) {
+    await client.query(
+      'INSERT INTO baseline_workload (baseline_id, workload, resource_key, collection_id) VALUES ($1, $2, $3, $4)',
+      [baseline.id, 'exchange-mail-flow', `rule:KEEL-RT-${index}`, mailFlow],
+    );
+  }
+  assert.deepEqual((await computeBaselineScore(client, { tenantRef })).services.Exchange, { matching: 3, judged: 4 });
 });
 
 test('drift detection after a backup stores one point for that backup', async (t) => {

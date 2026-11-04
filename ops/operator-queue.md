@@ -14723,3 +14723,33 @@ item that needs it stays untouched.
   first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
 - **Report:** B and S; the dry run, approval and request ids; the enforce result (exact error if it fails, with the PATCH body's
   field names); capture exit code; evidence branch, commit and PR; anything left in the tenant.
+
+### Q312: Rerun Q271 parts A and B (Intune role assignment, multi admin approval policy) after PR #955 deploys (test tenant, KEEL-RT- fixtures made and removed), about 30 minutes
+- Drafted by the "Fix Intune role assignment read" thread (2026-11-04). In Q271 Step 1 the Intune role assignment read failed with
+  400 "No OData route exists … roleAssignments('…')/roleDefinition", so S held 0 Intune role assignments and A could not run.
+  PR #955 reads each assignment's role from the role's own list (`GET /beta/deviceManagement/roleDefinitions/{id}/roleAssignments`)
+  in the backup, and the restore's read-back, "already there" check and update guard read it the same way. The per-assignment
+  `…/roleAssignments/{id}/roleDefinition` route is no longer used anywhere.
+- Needs: PR #955 merged and deployed (build B). Check: `grep -q linkedFrom /opt/keel-live/tools/tenant-probe/catalog.d/intune-extended.mjs`.
+  Run the restore and the capture from the same build B, and pass that build to `--build`.
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
+  account. Read-only roles to **empty** `KEEL-RT-` groups only, so nobody gains access. Effects approvals under the standing
+  test-tenant self-approval; log each approval id. Remove every fixture at the end.
+- **Step 1, backup read:** make empty groups `KEEL-RT-312-group` and `KEEL-RT-312-group2`, and fixture
+  `KEEL-RT-312-intune-assignment` (built-in Read Only Operator; members and scope = `KEEL-RT-312-group`). Take snapshot S.
+  Expect the `deviceManagementRoleAssignment` read **complete** (not partial), and S's copy of the fixture to carry
+  `roleDefinition` with id and name `Read Only Operator`. If it is not complete, quote the error and the failing path verbatim and stop A.
+- **A. Intune role assignment** (`deviceManagementRoleAssignment`): exactly Q271 A steps 1 to 4 with the `KEEL-RT-312-` names
+  (gate check without approval, quote the skip; approve, promote, capture `.create`; update round with group2, capture `.update`;
+  re-run the dry run, expect 0 planned writes or "already there"). Report whether the effects name the group and the role by name.
+- **B. Multi admin approval policy** (`operationApprovalPolicy`): in Q271 Intune refused the fixture create with 400 "Application
+  only authentication is not allowed for non-read operations on MAA access policies", and the KEEL writer is app-only too.
+  Do not retry writes. Only report whether S's `operationApprovalPolicy` read is complete, and how many policies it holds. B's
+  writer is being handled in its own thread.
+- Cleanup: delete the Intune assignment and both groups; check the Restorer has no new roles.
+- Evidence: commit the records on `claude/live-evidence-q312`, branched from `origin/master` (secret scan and `pseudonymize.mjs check`
+  first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
+- **Report:** B and S; Step 1 result (read outcome, the fixture's `roleDefinition`); per A operation promoted / refused (exact
+  message) / skipped; dry run, approval and request ids; B read result; evidence branch, commit and PR; anything left in the tenant.

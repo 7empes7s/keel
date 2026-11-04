@@ -131,3 +131,18 @@ test('Q271: an update finds the assignment\'s current role from the role list, a
   assert.ok(!reads.some((path) => NO_ROUTE.test(path)), 'no per-assignment role read');
   assert.equal(graph.objects.get('/deviceManagement/roleAssignments/live-1').displayName, 'Drifted', 'nothing written');
 });
+
+test('Q271 review: an assignment whose backed-up role is not in the target is named by its current role', async () => {
+  const graph = fakeGraph();
+  const live = { ...resource().payload, id: 'live-2', displayName: 'Drifted', roleDefinition: { id: ROLE_B, displayName: 'KEEL-RT-other role' } };
+  graph.objects.set('/deviceManagement/roleAssignments/live-2', live);
+  const read = graph.read.bind(graph);
+  graph.read = async (version, path) => (path.startsWith(`/deviceManagement/roleDefinitions/${ROLE_A}/`) ? { ok: false, status: 404, body: null } : read(version, path));
+  const update = { ...resource('update'), live: { state: 'present', targetId: 'live-2', payload: { ...live, roleDefinition: undefined } } };
+  const result = await applyWave(graph, governor, [update], {
+    targetTenant: 'fixture-tenant', mode: 'enforce', existingTargetIds: new Map([[update.naturalKey, 'live-2']]),
+    approvedContentEffects: classifyContentEffects([update]).effects,
+  });
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0].reason, /different role \(KEEL-RT-other role\)/);
+});

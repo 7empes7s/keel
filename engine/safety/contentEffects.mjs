@@ -67,7 +67,7 @@ const DISCLOSURES = Object.freeze({
   // them back changes who has admin access, who may join devices, or which secrets
   // and certificates apps may add.
   'access-changing': 'This puts back settings that decide who has admin access, who may join or register devices, '
-    + 'or which secrets and certificates apps may add. If the backup was changed after it was taken, that changed access is granted. '
+    + 'which secrets and certificates apps may add, or how guests sign themselves up (a user flow\'s identity providers, questions and API connectors). If the backup was changed after it was taken, that changed access is granted. '
     + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
 });
 
@@ -252,6 +252,10 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   deviceManagementRoleAssignment: Object.freeze(['roleDefinition', 'members', 'scopeMembers', 'resourceScopes', 'scopeType', 'roleScopeTagIds']),
   exchangeRoleAssignment: Object.freeze(['principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId']),
   defenderRoleAssignment: Object.freeze(['principalIds', 'roleDefinitionId', 'directoryScopeIds', 'appScopeIds']),
+  // Issue #995: a guest sign-up user flow decides who can sign themselves up, with
+  // which identity providers, what they are asked, and which API connector checks
+  // them. Its kind is set on create; its parts are written after the flow.
+  b2xIdentityUserFlow: Object.freeze(['userFlowType', 'identityProviders', 'userAttributeAssignments', 'languages', 'apiConnectorConfiguration']),
 });
 // Nested fields Microsoft sets on its own, at any depth: a restore never sends
 // them, and they are no change. Graph sets a default app credential rules
@@ -335,6 +339,39 @@ const namedAccessValue = (field) => (payload, resource) => {
 };
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
   .map((field) => rule(field, 'access-changing', accessChanges, (NAMED_ACCESS_KINDS.has(resourceType) ? namedAccessValue : accessValue)(field, resourceType)));
+
+// Issue #995: a user flow's parts, shown the same way in the backup and live, with
+// nothing but names: an identity provider by id (a set), an attribute by its name
+// (a custom attribute's id carries the tenant's extension app id, so it is shown
+// without it) with how it is asked, in order; the languages turned on (a set); and
+// the API connector at each step by name. A part in another shape is shown as it is.
+const attributeName = (id) => String(id ?? '').replace(/^extension_[0-9a-f]{32}_/i, '');
+const USER_FLOW_PARTS = Object.freeze({
+  identityProviders: (list) => [...new Set(list.map((provider) => provider?.id).filter(Boolean))].sort(),
+  userAttributeAssignments: (list) => list.map((assignment) => withoutNulls({
+    attribute: attributeName(assignment?.userAttribute?.id ?? assignment?.id),
+    displayName: assignment?.displayName ?? null,
+    isOptional: assignment?.isOptional ?? null,
+    requiresVerification: assignment?.requiresVerification ?? null,
+    userInputType: assignment?.userInputType ?? null,
+    userAttributeValues: Array.isArray(assignment?.userAttributeValues) && assignment.userAttributeValues.length > 0 ? assignment.userAttributeValues : null,
+  })),
+  languages: (list) => list.filter((language) => language?.isEnabled === true).map((language) => language.id).sort(),
+});
+const userFlowValue = (field) => (payload) => {
+  const value = payload?.[field];
+  if (value === null || value === undefined) return null;
+  if (field === 'apiConnectorConfiguration' && typeof value === 'object' && !Array.isArray(value)) {
+    // A connector is shown by its name; a step in another shape as it is.
+    const steps = Object.entries(value).filter(([key]) => !key.includes('@odata.'))
+      .map(([step, connector]) => [step, connector && typeof connector === 'object' && !Array.isArray(connector) ? connector.displayName ?? connector.id ?? null : connector ?? null])
+      .filter(([, name]) => name !== null).sort(([a], [b]) => a.localeCompare(b));
+    return steps.length > 0 ? canonical(Object.fromEntries(steps)) : null;
+  }
+  if (USER_FLOW_PARTS[field] && Array.isArray(value)) return canonical(USER_FLOW_PARTS[field](value));
+  return typeof value === 'object' ? canonical(withoutNulls(value)) : value;
+};
+const userFlowRules = () => APPROVAL_HELD_FIELDS.b2xIdentityUserFlow.map((field) => rule(field, 'access-changing', accessChanges, userFlowValue(field)));
 
 // Restore gaps batch 18: a Win32 app's command lines are plain text; its
 // detection and requirement scripts are base64 inside its rules (each of the
@@ -598,6 +635,9 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // Batch 2: a role assignment or an approval policy is judged on create too:
   // recreating it gives access back (or names who approves admin changes).
   ...Object.fromEntries([...NAMED_ACCESS_KINDS].map((kind) => [kind, { reviewed: true, judgesCreates: true, rules: accessRules(kind) }])),
+  // Issue #995: a guest sign-up user flow is judged on create too: recreating it lets
+  // guests sign themselves up again, with its identity providers and API connectors.
+  b2xIdentityUserFlow: { reviewed: true, judgesCreates: true, rules: userFlowRules() },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to

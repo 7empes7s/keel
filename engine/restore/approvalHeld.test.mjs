@@ -40,9 +40,9 @@ const changed = (resourceType) => {
   };
 };
 
-test('approval-held kinds: the kinds of batches 1 and 2, each in a service the restore approval setting knows', () => {
+test('approval-held kinds: the kinds of batches 1 and 2 and guest sign-up user flows (#995), each in a service the restore approval setting knows', () => {
   assert.deepEqual([...APPROVAL_HELD_KINDS].sort(), [
-    'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
+    'b2xIdentityUserFlow', 'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
     'exchangeRoleAssignment', 'tenantAppManagementPolicy',
   ]);
   assert.ok(CONTENT_EFFECTS.includes('access-changing'));

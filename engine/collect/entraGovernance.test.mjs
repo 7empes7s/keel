@@ -47,8 +47,12 @@ test('the family lists exactly these types', () => {
   }
 });
 
+// Issue #995: a user flow's parts are read per flow (its own test below).
+const PER_OBJECT_READS = new Set(['b2xIdentityUserFlow']);
+
 test('each type collects a KEEL-RT- fixture with one GET and canonicalizes it read-only', async () => {
   for (const [type, endpoint, singleton] of CASES) {
+    if (PER_OBJECT_READS.has(type)) continue;
     const { descriptor, adapter } = get(type);
     assert.equal(descriptor.fidelity, 'read-only', type);
     assert.equal(descriptor.remappable, false, type);
@@ -69,6 +73,35 @@ test('each type collects a KEEL-RT- fixture with one GET and canonicalizes it re
     assert.equal(resource.naturalKey, `${type}:${singleton ? type : object.id}`);
     assert.deepEqual(resource.payload, object);
   }
+});
+
+test('a user flow is collected with its identity providers, attributes in order, languages and API connector steps (#995)', async () => {
+  const { adapter } = get('b2xIdentityUserFlow');
+  const flow = { id: 'B2X_1_KEEL-RT-flow', userFlowType: 'signUpOrSignIn', userFlowTypeVersion: 1 };
+  const base = `${G}/identity/b2xUserFlows/B2X_1_KEEL-RT-flow`;
+  const answers = new Map([
+    [`${G}/identity/b2xUserFlows`, { value: [flow] }],
+    [`${base}/identityProviders`, { value: [{ id: 'Google-OAUTH', name: 'Google', type: 'Google', clientId: 'fixture-id', clientSecret: '******' }] }],
+    [`${base}/userAttributeAssignments?$expand=userAttribute`, { value: [{ id: 'city', displayName: 'City' }, { id: 'extension_1_Size', displayName: 'Size' }] }],
+    [`${base}/languages`, { value: [{ id: 'fr', isEnabled: false, displayName: 'French' }, { id: 'en', isEnabled: true, displayName: 'English' }] }],
+    [`${base}?$expand=apiConnectorConfiguration/postFederationSignup,apiConnectorConfiguration/postAttributeCollection`,
+      { ...flow, apiConnectorConfiguration: { postAttributeCollection: { id: 'conn-1', displayName: 'KEEL-RT-check', targetUrl: 'https://keel-rt.example', authenticationConfiguration: { password: '******' } } } }],
+  ]);
+  const urls = [];
+  const objects = await withFetch(async (url, opts) => {
+    assert.equal(opts.method, 'GET');
+    urls.push(url);
+    assert.ok(answers.has(url), url);
+    return respond(answers.get(url));
+  }, () => adapter.collect(new GraphReader(async () => 'fixture-token')));
+  assert.deepEqual(urls, [...answers.keys()]);
+  assert.deepEqual(objects, [{
+    ...flow,
+    identityProviders: [{ id: 'Google-OAUTH', name: 'Google', type: 'Google' }],
+    userAttributeAssignments: [{ id: 'city', displayName: 'City' }, { id: 'extension_1_Size', displayName: 'Size' }],
+    languages: [{ id: 'en', isEnabled: true, displayName: 'English' }, { id: 'fr', isEnabled: false, displayName: 'French' }],
+    apiConnectorConfiguration: { postAttributeCollection: { id: 'conn-1', displayName: 'KEEL-RT-check' } },
+  }]);
 });
 
 test('a denied or empty read is reported, never a silent success', async () => {

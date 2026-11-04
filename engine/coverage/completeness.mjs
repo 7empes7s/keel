@@ -156,7 +156,10 @@ export const COMPLETENESS = Object.freeze({
   accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
   entitlementManagementSettings: {},
   agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },
-  b2xIdentityUserFlow: { whole: 'not-written', missing: [part('Its languages, sign-up attributes and API connector links', 'other-route')] },
+  b2xIdentityUserFlow: { missing: [
+    part('Custom page text (language overrides)', 'other-route'),
+    part('An identity provider or API connector that is not set up in the target, and the client secret or password each one uses', 'secret'),
+  ] },
   identityApiConnector: { whole: 'not-written', missing: [part('Password or certificate', 'secret', always)] },
   // Read per parent object.
   accessPackageResourceRoleScope: { whole: 'not-written' },
@@ -270,7 +273,7 @@ export const COMPLETENESS = Object.freeze({
   directoryRoleAccessReviewPolicy: {},
   multiTenantOrganizationIdentitySyncPolicyTemplate: {},
   multiTenantOrganizationPartnerConfigurationTemplate: { missing: [part('Its cross-tenant access settings (trust in partner sign-ins, automatic consent, who may cross)', 'not-written')] },
-  identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
+  identityUserFlowAttribute: { missing: [part('Built-in attributes', 'microsoft-managed'), part('A data type that differs from the target\'s, which cannot change after an attribute is made', 'not-written')] },
   authenticationEventListener: { whole: 'not-written' },
   externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.

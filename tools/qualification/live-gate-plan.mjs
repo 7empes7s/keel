@@ -428,6 +428,19 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     breakGlass: 'Never a role group, a person or a privileged role: only a view-only role and the fixture app. An assignment has no name, so check the app is the KEEL-RT- fixture app before the run.',
     note: 'A role held by a role group is a manual step: check one is reported as such.',
   },
+  // Issue #995: a guest sign-up user flow and one custom attribute it asks for.
+  identityUserFlowAttribute: {
+    kind: 'named-object', fixture: `custom user flow attribute ${FIXTURE_PREFIX}Attr (data type string, description "${FIXTURE_PREFIX} fixture")`,
+    select: `${FIXTURE_PREFIX}Attr`, drift: 'change its description; for create, delete it (it has no users yet)',
+    note: 'Check a backup whose data type differs is reported as a manual step and nothing is deleted.',
+  },
+  b2xIdentityUserFlow: {
+    kind: 'named-object', fixture: `self-service sign-up user flow B2X_1_${FIXTURE_PREFIX}-flow with Email one-time passcode, asking for ${FIXTURE_PREFIX}Attr and Display Name, no API connector`,
+    select: `B2X_1_${FIXTURE_PREFIX}-flow`,
+    drift: `delete the flow: the restore recreates it with its identity providers and attributes in order; then take ${FIXTURE_PREFIX}Attr off the flow and turn one language off: the restore puts both back`,
+    breakGlass: 'The fixture flow is not added to any app, so nobody can sign up through it.',
+    note: 'Check the dry run lists the flow under "Changes access" and the enforce run writes only after that is approved; a provider that is not set up in the tenant is reported as a manual step.',
+  },
   defenderRoleAssignment: {
     kind: 'named-object', fixture: `assignment ${FIXTURE_PREFIX}-defender-assignment of the custom role ${FIXTURE_PREFIX}-defender-role to the empty group ${FIXTURE_PREFIX}-group`,
     select: `${FIXTURE_PREFIX}-defender-assignment`, drift: 'delete it: the restore recreates it; then add a second group: the restore takes it away again',

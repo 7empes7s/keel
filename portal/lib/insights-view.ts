@@ -165,7 +165,7 @@ export function quietServices(rows: readonly FeedRow[]): string[] {
 export function insightsRecord(feed: Pick<ChangeFeedData, "rows" | "since" | "until" | "truncated">): {
   window: string; sources: Record<FeedSource, number>; limitNote: string | null;
 } {
-  const sources: Record<FeedSource, number> = { drift: 0, service: 0, audit: 0 };
+  const sources: Record<FeedSource, number> = { drift: 0, service: 0, backup: 0, audit: 0 };
   for (const row of feed.rows) sources[row.source] = (sources[row.source] ?? 0) + 1;
   return {
     window: `${feed.since} to ${feed.until}`,

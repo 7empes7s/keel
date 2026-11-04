@@ -678,6 +678,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Counted by state": fact("By status", "How many ended in each status."),
   "Rows shown": count("Rows shown", "How many rows this report lists."),
   "Changes from backups": count("Changes from backups", "Changes a backup found: settings that differ from the approved setup."),
+  "Changes from content backups": count("Changes from content backups", "Changes a content backup found: who can reach a site or OneDrive differs from the backup before."),
   "Changes from service reads": count("Changes from service reads", "Changes a service settings read found: settings that differ from the read before."),
   "Changes from the audit log": count("Changes from the audit log", "Changes the Microsoft audit log recorded."),
   "Feed limit reached": fact("Limit reached", "Whether there were more changes in the period than Keel reads at once."),

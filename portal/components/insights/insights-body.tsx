@@ -201,6 +201,7 @@ export function InsightsBody({ feed, period }: { feed: ChangeFeedData; period: F
         <RecordField label="Rows shown" value={feed.rows.length} />
         <RecordField label="Changes from backups" usage={SOURCE_WORDS.drift.about} value={record.sources.drift} />
         <RecordField label="Changes from service reads" usage={SOURCE_WORDS.service.about} value={record.sources.service} />
+        <RecordField label="Changes from content backups" usage={SOURCE_WORDS.backup.about} value={record.sources.backup} />
         <RecordField label="Changes from the audit log" usage={SOURCE_WORDS.audit.about} value={record.sources.audit} />
         <RecordField label="Feed limit reached" value={record.limitNote ?? "No: every change in the period is counted."} />
       </TechnicalDetails>

@@ -81,7 +81,7 @@ test("the shape of the period: every day, services busiest first, top people, qu
   assert.deepEqual(changesByService(ROWS, "7").map((bar) => [bar.key, bar.count, bar.flagged]), [["Entra", 5, 3], ["Intune", 1, 0], ["SharePoint", 1, 0]]);
   assert.deepEqual(topPeople(ROWS).map((person) => [person.name, person.count, person.app, person.flagged]), [["Amara Okafor", 3, false, 2], ["Sync app", 2, true, 0]]);
   assert.deepEqual(quietServices(ROWS), ["Exchange", "Teams", "Purview", "Power Platform", "Defender", "Microsoft 365 apps"]);
-  assert.deepEqual(insightsRecord({ rows: ROWS, since: "s", until: "u", truncated: false }).sources, { drift: 2, service: 1, audit: 4 });
+  assert.deepEqual(insightsRecord({ rows: ROWS, since: "s", until: "u", truncated: false }).sources, { drift: 2, service: 1, backup: 0, audit: 4 });
   assert.equal(readInsightsPeriod("90"), "90");
   assert.equal(readInsightsPeriod("14"), "7");
   assert.equal(readInsightsPeriod(undefined), "7");

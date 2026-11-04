@@ -14881,3 +14881,68 @@ item that needs it stays untouched.
   first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
 - **Report:** B and S; the dry run's planned fields and effects; approval and request ids; enforce result (exact text if it fails);
   capture exit code; evidence branch, commit and PR; the policy compared with what was written down.
+
+### Q316: Explain the Alerts page's name reads on live (read-only, no tenant), about 5 minutes
+- Drafted by the "Get the Alerts page under 3 seconds" thread (2026-11-04), from the Q313 Result: `/api/alerts` still takes
+  3.8–4.6 s, led by `WITH wanted AS (SELECT unnest…) latest AS` (1.8 s) and `WITH wanted AS (SELECT DISTINCT unnest…)` (1.2–1.9 s).
+  A local copy does not show which step inside them is slow on live, so this item prints their query plans with times.
+  **Same read-only rules as Q303–Q313:** every connection opened with `default_transaction_read_only=on`; no tenant calls, no
+  restarts, no config changes, nothing installed; never print a database URL, password, token, tenant id or address. The
+  output holds only plan node types, index names, loop and row counts, times and buffer counts (no SQL values).
+- Needs: nothing. **Quick: take it next, between other items.**
+- Status: todo
+- Do, on Mulinux: exactly Q313's steps (Q303 steps 1–4: fresh worktree at the deployed commit, `portal/node_modules` and
+  `engine/node_modules` symlinked, same principal pick, env loaded and not printed), but save the script below as
+  `<checkout>/portal/explain-alert-names.mts` and run
+  `PGOPTIONS="-c default_transaction_read_only=on" timeout 300 node --import tsx explain-alert-names.mts "$P" 2>&1 | grep -v "^    at "`.
+  Delete the script and worktree afterwards.
+- **Report:** the commit and the output verbatim, plus any `read-only transaction` line.
+- Script:
+  ```ts
+  // Read-only: explains the Alerts page's two name reads on live. Run from <checkout>/portal:
+  //   PGOPTIONS="-c default_transaction_read_only=on" node --import tsx explain-alert-names.mts <principalId>
+  // Prints only plan node types, index names, loops, rows, times and buffer counts: no SQL text values, no ids.
+  import pg from "pg";
+
+  const original = pg.Client.prototype.query as (...args: unknown[]) => unknown;
+  type Node = Record<string, unknown> & { Plans?: Node[] };
+  const lines: string[] = [];
+  function walk(node: Node, depth: number) {
+    const name = [node["Node Type"], node["Index Name"] ? `using ${node["Index Name"]}` : "", node["Subplan Name"] ? `(${node["Subplan Name"]})` : ""]
+      .filter(Boolean).join(" ");
+    const loops = Number(node["Actual Loops"] ?? 0);
+    const total = Number(node["Actual Total Time"] ?? 0) * loops;
+    lines.push(`${"  ".repeat(depth)}${name}  loops=${loops} rows/loop=${node["Actual Rows"]} total=${total.toFixed(0)}ms hit=${node["Shared Hit Blocks"] ?? 0} read=${node["Shared Read Blocks"] ?? 0}`);
+    for (const child of node.Plans ?? []) walk(child, depth + 1);
+  }
+  let explaining = false;
+  (pg.Client.prototype as { query: unknown }).query = async function patched(this: pg.Client, ...args: unknown[]) {
+    const text = typeof args[0] === "string" ? args[0] : "";
+    if (!explaining && /^\s*WITH (wanted|latest) AS/.test(text)) {
+      explaining = true;
+      try {
+        const head = text.replace(/\s+/g, " ").trim().slice(0, 60);
+        const values = args[1] as unknown[];
+        const { rows } = await original.call(this, "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + text, values) as { rows: Record<string, unknown>[] };
+        const plan = (rows[0]["QUERY PLAN"] as Record<string, unknown>[])[0];
+        lines.push(`## ${head} (ids: ${Array.isArray(values?.[1]) ? (values[1] as unknown[]).length : "?"}) execution ${Number(plan["Execution Time"]).toFixed(0)} ms`);
+        walk(plan.Plan as Node, 1);
+      } finally {
+        explaining = false;
+      }
+    }
+    return original.apply(this, args);
+  };
+
+  const principal = process.argv[2] ?? "";
+  const headers = new Headers({ "x-keel-principal-id": principal, "x-keel-capabilities": "read configuration" });
+  const alerts = await import("@/app/api/alerts/route");
+  for (let run = 0; run < 2; run++) {
+    lines.length = 0;
+    const start = performance.now();
+    const res = await alerts.GET(new Request("http://localhost/api/alerts", { headers }));
+    console.log(`# run ${run + 1}: /api/alerts ${res.status} in ${(performance.now() - start).toFixed(0)} ms (includes the explains)`);
+  }
+  console.log(lines.join("\n"));
+  process.exit(0);
+  ```

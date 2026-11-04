@@ -85,6 +85,8 @@ const heldUnless = (fields) => (payload) => (fields.every((field) => Array.isArr
 const builtInGrantPolicy = (payload) => (/^microsoft-/i.test(String(payload?.id ?? '')) ? always(payload) : []);
 // Restore gaps batch 21: an object the backup does not mark as custom (isBuiltIn false) is not written.
 const builtInFlag = (payload) => (payload?.isBuiltIn !== false ? always(payload) : []);
+// The Defender role API has no isBuiltIn (#742): only a role marked built in is Microsoft's.
+const markedBuiltIn = (payload) => (payload?.isBuiltIn === true ? always(payload) : []);
 const organizationDefault = (payload) => (payload?.isOrganizationDefault === true ? always(payload) : []);
 // Token lifetime, token issuance, claims mapping and home realm discovery policies.
 const STS_POLICY_MISSING = Object.freeze([
@@ -145,7 +147,7 @@ export const COMPLETENESS = Object.freeze({
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
   // Wave 1 CAT-ENTRA: Entra governance.
   lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only')] },
-  lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route')] },
+  lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route'), part('Which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person', 'not-written')] },
   lifecycleManagementSettings: {},
   attributeSet: { missing: [part('An attribute set that no longer exists, which needs a review before it is created', 'not-written')] },
   customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route'), part('An attribute that no longer exists, which needs a review before it is created', 'not-written')] },
@@ -273,7 +275,7 @@ export const COMPLETENESS = Object.freeze({
   exchangeRoleAssignment: { whole: 'not-written' },
   exchangeCustomAppScope: { missing: [part('The app role assignments that use it', 'other-route')] },
   // Restore gaps batch 21: custom roles written; built-in ones are Microsoft's.
-  defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', builtInFlag)] },
+  defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', markedBuiltIn)] },
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.
@@ -301,7 +303,12 @@ export const COMPLETENESS = Object.freeze({
   itemInsightsSettings: { whole: 'not-written' },
   externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
-  attackSimulation: { whole: 'not-written', missing: [part('The payload, landing page and login page the simulation uses', 'other-route')] },
+  // The payloads, login and landing pages it uses are backed up as their own kinds.
+  attackSimulation: { whole: 'not-written', missing: [part('Its results: who clicked, reported or entered a password', 'read-only')] },
+  attackSimulationPayload: { whole: 'not-written', missing: [part('Built-in payloads from Microsoft', 'microsoft-managed')] },
+  attackSimulationLoginPage: { whole: 'not-written', missing: [part('Built-in login pages from Microsoft', 'microsoft-managed')] },
+  attackSimulationLandingPage: { whole: 'not-written', missing: [part('Built-in landing pages from Microsoft', 'microsoft-managed')] },
+  attackSimulationNotification: { whole: 'not-written', missing: [part('Built-in notifications from Microsoft', 'microsoft-managed')] },
   // Remaining kinds, batch 8.
   sharepointSettings: {},
   hardwareConfiguration: { missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always), part('A deleted configuration', 'not-written')] },

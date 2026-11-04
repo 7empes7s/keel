@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part and 9 hold nothing to restore; the other 73 are restored by hand from the backup.
+KEEL tracks 184 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 130 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part and 9 hold nothing to restore; the other 77 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -43,7 +43,7 @@ KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Connected organizations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflow settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Custom security attribute sets | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Custom security attributes | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -125,9 +125,9 @@ KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it
 - **Lifecycle workflows.** Recreates workflows with their tasks and puts their settings back. A recreated workflow is always off.
   - *Not brought back:* run history and the users each run processed (no tool can write it).
   - *You do:* Turning a workflow on runs its tasks on people's accounts, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Check who it applies to before approving.
-- **Lifecycle workflow extensions.** Recreates extensions and puts their settings back.
-  - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet).
-  - *You do:* Make sure the Logic App each extension calls still exists in its Azure subscription.
+- **Lifecycle workflow extensions.** Puts the settings of existing extensions back, except which Logic App each one calls and how it signs in.
+  - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet); which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person (in the backup, but KEEL does not write it yet).
+  - *You do:* Recreate a missing extension by hand. Check which Logic App each extension calls and how it signs in, and that the Logic App still exists in its Azure subscription.
 - **Lifecycle workflow settings.** Puts the settings back.
 - **Custom security attribute sets.** Puts the description and size limit of an existing set back.
   - *Not brought back:* an attribute set that no longer exists, which needs a review before it is created (in the backup, but KEEL does not write it yet).
@@ -242,6 +242,10 @@ KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it
 | Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation payloads | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation login pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation landing pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation notification emails | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Sign-in identifiers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Default cross-tenant sharing settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -323,8 +327,20 @@ KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* each run of the automation (stored separately and not in the backup yet).
   - *You do:* Recreate the automation in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Automations, from the backup.
 - **Attack simulations** (not built yet). KEEL backs up each simulation's settings and targets but not its results, and does not restore it yet.
-  - *Not brought back:* the payload, landing page and login page the simulation uses (stored separately and not in the backup yet).
+  - *Not brought back:* its results: who clicked, reported or entered a password (no tool can write it).
   - *You do:* Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.
+- **Attack simulation payloads** (not built yet). KEEL backs up the payloads your organisation made (sender, subject, message and technique), not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in payloads from Microsoft (set by Microsoft).
+  - *You do:* Recreate the payload in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Payloads, from the backup.
+- **Attack simulation login pages** (not built yet). KEEL backs up the login pages your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in login pages from Microsoft (set by Microsoft).
+  - *You do:* Recreate the login page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Login pages, from the backup.
+- **Attack simulation landing pages** (not built yet). KEEL backs up the landing pages your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in landing pages from Microsoft (set by Microsoft).
+  - *You do:* Recreate the landing page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Landing pages, from the backup.
+- **Attack simulation notification emails** (not built yet). KEEL backs up the training and reminder emails your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in notifications from Microsoft (set by Microsoft).
+  - *You do:* Recreate the notification in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, End user notifications, from the backup.
 - **Sign-in identifiers** (not built yet). KEEL backs up which identifiers people can sign in with (email, user name, custom user name) and whether each is on, but does not restore them yet.
   - *You do:* Turn the same identifiers on or off in the Entra admin center, under External Identities, from the backup.
 - **Lifecycle policies** (not built yet). KEEL backs up each lifecycle policy's scope, grace period and action (such as disabling accounts that stopped signing in), but not its rules or past versions, and does not restore it yet.
@@ -697,6 +713,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - SharePoint site-level app permission grants
 - SharePoint site properties
 - SharePoint per-site sharing settings
+- SharePoint per-site admin settings
 
 **KEEL can restore:**
 
@@ -972,6 +989,26 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** KEEL does not restore these yet. Transport settings (such as SMTP AUTH), email address policies and mailbox plans are put back by hand in the Exchange admin center or Exchange Online PowerShell using the backup.
 
+### Exchange audit, encryption and organization settings
+
+**Backed up:**
+
+- Audit log settings
+- Information Rights Management settings
+- Message encryption branding and options
+- Perimeter (gateway IP) settings
+- Free/busy access settings
+- Free/busy address spaces
+- Message classifications
+- Custom policy tips
+- Room and equipment properties
+- Partner applications
+- On-premises organization (hybrid)
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. The audit log switch, encryption options, free/busy settings, message classifications, policy tips and room properties are set back by hand in the Exchange admin center or Exchange Online PowerShell using the backup. Partner applications and the hybrid on-premises organization hold sign-in trust, so KEEL never writes them: rerun the Hybrid Configuration Wizard or set them by hand.
+
 ### SharePoint site structure
 
 **Backed up:**
@@ -992,6 +1029,20 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: SharePoint site designs
 
 **You do:** KEEL adds back what a named site is missing (lists, libraries, site columns and content types) and puts its navigation back, but never changes or deletes an existing list, column or content type: those differences are listed for you to apply by hand. A re-added list comes back empty; its files and items come back from the content backup. Permissions, webhooks, custom actions, features and site settings are put back by hand. A site script or design comes back with a new id; who may use a design, and who may join a hub, are granted again by hand. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.
+
+### SharePoint and OneDrive tenant settings
+
+**Backed up:**
+
+- SharePoint and OneDrive tenant settings: sharing, access, OneDrive, sites, Loop and versions
+- OneDrive sync limits: domain-joined PCs, Mac sync and blocked file types
+- SharePoint and OneDrive idle sign-out
+- Restricted SharePoint Search on or off
+- Sites allowed in Restricted SharePoint Search
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Sharing defaults, access control, OneDrive sync limits, idle sign-out and Restricted SharePoint Search are changed back by hand in the SharePoint admin center, or with Set-PnPTenant and the matching Set- cmdlets, using the backup. Restricted SharePoint Search is backed up only when the tenant has Microsoft 365 Copilot.
 
 ### Teams calling, voice and live event policies
 
@@ -1146,3 +1197,50 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Add a deleted file, certificate, IP address, domain or URL indicator back by hand in the Microsoft Defender portal, under Settings, Endpoints, Indicators, with the action, scope and expiry from the backup.
+
+### Purview sensitive information types and keyword dictionaries
+
+**Backed up:**
+
+- Custom sensitive information types
+- Sensitive information type rule packages
+- Keyword dictionaries
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Re-upload a deleted custom type from its saved rule package, and recreate a keyword dictionary from its saved terms, in the Purview portal or with Security & Compliance PowerShell, before restoring a data loss prevention rule that uses them. Microsoft's built-in types are not backed up: they come back with the service.
+
+### Purview audit log retention policies
+
+**Backed up:**
+
+- Audit log retention policies
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Recreate a deleted or changed audit log retention policy by hand in the Purview portal using the backup. They are backed up only when the tenant has Microsoft Purview Audit (Premium).
+
+### Defender email protection: allow and block lists, advanced delivery, Built-in and Teams protection, reported messages and ARC
+
+**Backed up:**
+
+- Tenant Allow/Block List: senders
+- Tenant Allow/Block List: URLs
+- Tenant Allow/Block List: files
+- Tenant Allow/Block List: IP addresses
+- Tenant Allow/Block List: spoofed senders
+- Advanced delivery: phishing simulation policy
+- Advanced delivery: phishing simulation senders
+- Advanced delivery: phishing simulation URLs
+- Advanced delivery: security operations mailbox policy
+- Advanced delivery: security operations mailboxes
+- Built-in protection exceptions
+- Teams protection policy
+- Teams protection exceptions
+- Reported message settings
+- Reported message mailbox
+- Trusted ARC sealers
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted or changed allow or block entry, spoofed sender, advanced delivery override, protection exception, reported message setting or trusted ARC sealer is put back by hand in the Microsoft Defender portal using the backup. Built-in protection and Teams protection are backed up only when the tenant has Defender for Office 365.

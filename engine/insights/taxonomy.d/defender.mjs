@@ -15,9 +15,9 @@ export default Object.freeze({
     // Endpoint security pages and stored as Intune settings catalog policies, but they
     // are Defender for Endpoint settings, so lists file them here (see `subkinds`).
     { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy'], match: /endpointsecurity|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
-    { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule', 'defender-endpoint-indicators'], match: /foroffice|polic|rule|detection|indicator|alert/ },
+    { key: 'threat', name: 'Threat policies and rules', types: ['defender-email-protection', 'defenderDetectionRule', 'defender-endpoint-indicators'], match: /foroffice|emailprotection|allowblock|polic|rule|detection|indicator|alert/ },
     { key: 'sensors', name: 'Sensors and coverage', types: ['defenderIdentitySensor'], match: /sensor|coverage/ },
-    { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
+    { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation', 'attackSimulationPayload', 'attackSimulationLoginPage', 'attackSimulationLandingPage', 'attackSimulationNotification'], match: /simulation|training|payload/ },
     { key: 'exposure', name: 'Exposure management', types: ['securityZone', 'secureScoreControlProfile'], match: /exposure|zone|vulnerab|securescore/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),
@@ -28,6 +28,11 @@ export default Object.freeze({
     // Remaining kinds, batch 7.
     simulationAutomation: { name: 'Attack simulation automation' },
     attackSimulation: { name: 'Attack simulation' },
+    // The tenant's own attack simulation content (gap audit 2026-10-30, section B).
+    attackSimulationPayload: { name: 'Attack simulation payload' },
+    attackSimulationLoginPage: { name: 'Attack simulation login page' },
+    attackSimulationLandingPage: { name: 'Attack simulation landing page' },
+    attackSimulationNotification: { name: 'Attack simulation notification email' },
     // Remaining kinds, batch 8.
     securityZone: { name: 'Exposure management zone' },
     // Remaining kinds, batch 9.
@@ -40,6 +45,12 @@ export default Object.freeze({
       name: 'Defender for Endpoint indicator',
       priority: 'high',
       reason: 'An allow indicator lets a file, site or certificate past Defender; a removed block indicator lets a known threat back in.',
+    },
+    // Read with the Exchange Online Defender cmdlets (a workload, so it sets its own priority).
+    'defender-email-protection': {
+      name: 'Defender email protection setting',
+      priority: 'high',
+      reason: 'An allow entry, a filter bypass or a protection exception lets mail through that would otherwise be blocked.',
     },
   }),
   // Kinds that are a part of a catalogued type of another service, told apart by a field

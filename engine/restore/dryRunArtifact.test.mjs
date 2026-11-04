@@ -160,6 +160,25 @@ assert.equal(
       `${resourceType}: a real change must still change the fingerprint`,
     );
   }
+  // Issue #746: a notification template's localized messages carry the read time too.
+  const template = (at, subject = 'KEEL-RT') => [{
+    naturalKey: 'notificationMessageTemplate:KEEL-RT-notice', resourceType: 'notificationMessageTemplate', sourceId: 'tpl-id',
+    payload: {
+      id: 'tpl-id', displayName: 'KEEL-RT-notice', defaultLocale: 'en-us', lastModifiedDateTime: at,
+      localizedNotificationMessages: [{ id: 'm1', locale: 'en-us', subject, messageTemplate: 'KEEL-RT test', isDefault: true, lastModifiedDateTime: at }],
+    },
+  }];
+  const templateKey = ['notificationMessageTemplate:KEEL-RT-notice'];
+  assert.equal(
+    computeCurrentStateFingerprint(template('2026-10-30T02:30:43Z'), templateKey),
+    computeCurrentStateFingerprint(template('2026-10-30T02:31:04Z'), templateKey),
+    'a read-time lastModifiedDateTime on a template or its messages must not change the fingerprint',
+  );
+  assert.notEqual(
+    computeCurrentStateFingerprint(template('2026-10-30T02:30:43Z'), templateKey),
+    computeCurrentStateFingerprint(template('2026-10-30T02:30:43Z', 'KEEL-RT drifted'), templateKey),
+    'a changed message subject must still change the fingerprint',
+  );
   // Kinds not observed to stamp the read time keep the field as a change signal.
   const other = (at) => [{
     naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id',

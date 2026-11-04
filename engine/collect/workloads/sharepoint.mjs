@@ -7,7 +7,10 @@
  *  - each site's own external sharing setting, through one `Get-PnPTenantSite`
  *    (the task-101 `sharepoint.site-sharing` operation), only once that read is
  *    live-qualified on its own ledger row. Until then the field is `unknown` with a
- *    plain reason, and the rest of the read is unchanged.
+ *    plain reason, and the rest of the read is unchanged;
+ *  - each site's lock state, access policy, sensitivity label, custom script setting,
+ *    restricted access and storage quota, from the same `Get-PnPTenantSite` answer, only
+ *    once the `sharepoint.site-settings` row is live-qualified on its own.
  * Every request goes through the task-101 contract. It never reads files, list items
  * or messages, and never per-file permissions.
  *
@@ -93,19 +96,38 @@ export function sharingCapabilityName(value) {
 export const SITE_SHARING_FIELDS = Object.freeze({
   sharingCapability: (body) => (body.SharingCapability === undefined ? undefined : sharingCapabilityName(body.SharingCapability)),
 });
-// The one family the live read capture proves (tools/qualification/workloadReadsAcceptance.mjs).
+// Each site's other admin settings, from the same `Get-PnPTenantSite` answer, under their
+// own ledger row: proving the sharing field never switches these on. Enums arrive as their
+// numbers and are stored by name.
+export const SITE_SETTINGS_OPERATION = 'sharepoint.site-settings';
+const CONDITIONAL_ACCESS = Object.freeze(['AllowFullAccess', 'AllowLimitedAccess', 'BlockAccess', 'AuthenticationContext']);
+const CUSTOM_SCRIPT = Object.freeze(['Unknown', 'Disabled', 'Enabled']);
+const named = (names) => (value) => {
+  if (Number.isInteger(value)) return names[value] ?? String(value);
+  if (typeof value === 'string' && /^\d+$/.test(value)) return names[Number(value)] ?? value;
+  return value;
+};
+const sortedList = (value) => (Array.isArray(value) ? value.map(String).sort() : value);
+export const SITE_SETTINGS_FIELDS = Object.freeze({
+  lockState: (body) => body.LockState,
+  conditionalAccessPolicy: (body) => (body.ConditionalAccessPolicy === undefined ? undefined : named(CONDITIONAL_ACCESS)(body.ConditionalAccessPolicy)),
+  sensitivityLabel: (body) => body.SensitivityLabel,
+  // "Enabled" means custom script is blocked (DenyAddAndCustomizePages).
+  denyAddAndCustomizePages: (body) => (body.DenyAddAndCustomizePages === undefined ? undefined : named(CUSTOM_SCRIPT)(body.DenyAddAndCustomizePages)),
+  restrictedAccessControl: (body) => body.RestrictedAccessControl,
+  restrictedAccessControlGroups: (body) => (body.RestrictedAccessControlGroups === undefined ? undefined : sortedList(body.RestrictedAccessControlGroups)),
+  storageQuota: (body) => body.StorageQuota,
+  externalUserExpirationInDays: (body) => body.ExternalUserExpirationInDays,
+});
+// The families the live read capture proves (tools/qualification/workloadReadsAcceptance.mjs):
+// both come from the one Get-PnPTenantSite call, each proven on its own.
 export const SITE_SHARING_FAMILIES = Object.freeze({
   'site-sharing': Object.freeze({ operation: SITE_SHARING_OPERATION, cmdlet: SITE_SHARING_CMDLET }),
+  'site-settings': Object.freeze({ operation: SITE_SETTINGS_OPERATION, cmdlet: SITE_SHARING_CMDLET }),
 });
 const SITE_SHARING_OFF = 'not read yet: the per-site sharing read is not live-qualified';
+const SITE_SETTINGS_OFF = 'not read yet: the per-site settings read is not live-qualified';
 const SITE_SHARING_UNCONFIGURED = 'not read: the scope file names no PnP config for SharePoint (powershellConfigs.sharepoint)';
-
-// Site settings KEEL does not read: they need the SharePoint admin interface
-// (Get-PnPTenantSite), which is not qualified for these fields. Always unknown.
-export const UNSUPPORTED_SITE_FIELDS = Object.freeze([
-  'lockState', 'sensitivityLabel', 'conditionalAccessPolicy', 'externalUserExpirationInDays',
-]);
-const UNSUPPORTED_REASON = 'not read: needs the SharePoint admin interface, which is not qualified for this adapter';
 
 // A site URL as both Graph and PnP spell it: lower case, no trailing slash.
 const urlKey = (url) => String(url ?? '').trim().replace(/\/+$/, '').toLowerCase();
@@ -165,6 +187,7 @@ export function siteInScope(site, tenantHost) {
  */
 export async function readSharePointSites({
   transport, tenantHost, maxSites = DEFAULT_MAX_SITES, sleep, now = () => new Date(), siteSharing = null, siteSharingOff = SITE_SHARING_OFF,
+  siteSettings = null, siteSettingsOff = SITE_SETTINGS_OFF,
 }) {
   if (typeof tenantHost !== 'string' || !/^[a-z0-9-]+\.sharepoint\.com$/i.test(tenantHost)) {
     throw new TypeError('tenantHost must be the tenant\'s SharePoint host, such as contoso.sharepoint.com');
@@ -212,13 +235,40 @@ export async function readSharePointSites({
     sites.set(site.id, { siteId: site.id, fields: {}, fieldCoverage: {} });
   }
 
-  // Per-site sharing: one read for every site, only when the caller passes the reader
-  // (collectSharePointSites does once its ledger row is enabled).
+  // Per-site sharing and settings: one Get-PnPTenantSite for every site, only when the
+  // caller passes a reader for either (collectSharePointSites does once its row is enabled).
+  const pnpRead = siteSharing ?? siteSettings;
   let sharing = null;
   let sharingError = null;
-  if (siteSharing && sites.size > 0) {
-    try { sharing = await siteSharing(); } catch (error) { sharingError = error; }
+  if (pnpRead && sites.size > 0) {
+    try { sharing = await pnpRead(); } catch (error) { sharingError = error; }
   }
+  // One PnP-sourced group of fields: off, failed, or picked from the site's PnP answer.
+  const pnpFields = (entry, fields, { on, off, operation }) => {
+    for (const [field, pick] of Object.entries(fields)) {
+      if (!on) {
+        entry.fieldCoverage[field] = { status: 'unknown', operation, reason: off };
+        continue;
+      }
+      if (sharingError) {
+        const failed = sharingFailure(sharingError);
+        entry.fieldCoverage[field] = { status: failed.status, operation, error: failed.message };
+        continue;
+      }
+      const body = sharing.get(urlKey(entry.fields.webUrl));
+      const value = body ? pick(body) : undefined;
+      if (value === undefined || value === null) {
+        entry.fieldCoverage[field] = {
+          status: 'unknown', operation,
+          reason: body ? 'the site answered without this setting'
+            : entry.fields.webUrl ? 'the PnP site read did not list this site' : 'the site\'s address was not read, so its PnP settings could not be matched',
+        };
+        continue;
+      }
+      entry.fields[field] = value;
+      entry.fieldCoverage[field] = { status: 'observed', operation };
+    }
+  };
 
   for (const entry of sites.values()) {
     const substitute = { 'site-id': entry.siteId };
@@ -246,37 +296,17 @@ export async function readSharePointSites({
       entry.fields[field] = value ?? null;
       entry.fieldCoverage[field] = { status: value === undefined ? 'unknown' : 'observed', operation: from };
     }
-    for (const [field, pick] of Object.entries(SITE_SHARING_FIELDS)) {
-      if (!siteSharing) {
-        entry.fieldCoverage[field] = { status: 'unknown', operation: SITE_SHARING_OPERATION, reason: siteSharingOff };
-        continue;
-      }
-      if (sharingError) {
-        const failed = sharingFailure(sharingError);
-        entry.fieldCoverage[field] = { status: failed.status, operation: SITE_SHARING_OPERATION, error: failed.message };
-        continue;
-      }
-      const body = sharing.get(urlKey(entry.fields.webUrl));
-      const value = body ? pick(body) : undefined;
-      if (value === undefined || value === null) {
-        entry.fieldCoverage[field] = {
-          status: 'unknown', operation: SITE_SHARING_OPERATION,
-          reason: body ? 'the site answered without this setting'
-            : entry.fields.webUrl ? 'the sharing read did not list this site' : 'the site\'s address was not read, so its sharing setting could not be matched',
-        };
-        continue;
-      }
-      entry.fields[field] = String(value);
-      entry.fieldCoverage[field] = { status: 'observed', operation: SITE_SHARING_OPERATION };
-    }
-    for (const field of UNSUPPORTED_SITE_FIELDS) entry.fieldCoverage[field] = { status: 'unknown', operation: null, reason: UNSUPPORTED_REASON };
+    pnpFields(entry, SITE_SHARING_FIELDS, { on: Boolean(siteSharing), off: siteSharingOff, operation: SITE_SHARING_OPERATION });
+    // The sharing setting is kept as text, as it always was.
+    if (entry.fieldCoverage.sharingCapability?.status === 'observed') entry.fields.sharingCapability = String(entry.fields.sharingCapability);
+    pnpFields(entry, SITE_SETTINGS_FIELDS, { on: Boolean(siteSettings), off: siteSettingsOff, operation: SITE_SETTINGS_OPERATION });
   }
 
   const supportedStatuses = [
     ...Object.values(tenant.fieldCoverage).map((coverage) => coverage.status),
     ...[...sites.values()].flatMap((entry) => Object.keys(SITE_FIELDS).map((field) => entry.fieldCoverage[field].status)),
-    // A sharing read that ran and failed makes the run partial; one not switched on does not.
-    ...(siteSharing && sharingError ? [sharingFailure(sharingError).status] : []),
+    // A PnP site read that ran and failed makes the run partial; one not switched on does not.
+    ...(pnpRead && sharingError ? [sharingFailure(sharingError).status] : []),
   ];
   const fieldCounts = supportedStatuses.reduce((counts, status) => ({ ...counts, [status]: (counts[status] ?? 0) + 1 }), {});
   let outcome;
@@ -317,6 +347,21 @@ export function siteSharingActivation(ledger) {
   return row?.enabled
     ? { enabled: true, reasons: [] }
     : { enabled: false, reasons: [`${SITE_SHARING_OPERATION} is ${row?.state ?? 'not in the ledger'}`] };
+}
+
+/** Whether the per-site settings read may run: its own row, live-qualified and enabled. */
+export function siteSettingsActivation(ledger) {
+  const row = (ledger?.rows ?? []).find((item) => item.id === SITE_SETTINGS_OPERATION);
+  return row?.enabled
+    ? { enabled: true, reasons: [] }
+    : { enabled: false, reasons: [`${SITE_SETTINGS_OPERATION} is ${row?.state ?? 'not in the ledger'}`] };
+}
+
+/** Both PnP site reads, for the live read capture's activation check: on when either is. */
+export function pnpSiteReadsActivation(ledger) {
+  const sharing = siteSharingActivation(ledger);
+  const settings = siteSettingsActivation(ledger);
+  return { enabled: sharing.enabled || settings.enabled, reasons: [...sharing.reasons, ...settings.reasons] };
 }
 
 /**
@@ -370,9 +415,14 @@ export async function collectSharePointSites(client, { tenantRef, ledger, transp
   }
   // Without its own PnP config the read could only fail to connect, so it is not sent.
   const qualified = siteSharingActivation(ledger).enabled;
-  const siteSharing = qualified && powershell ? () => readSiteSharing(powershell) : null;
+  const settingsQualified = siteSettingsActivation(ledger).enabled;
+  // Both come from one Get-PnPTenantSite call, sent once when either is on.
+  const reader = (qualified || settingsQualified) && powershell ? () => readSiteSharing(powershell) : null;
+  const siteSharing = qualified ? reader : null;
+  const siteSettings = settingsQualified ? reader : null;
   const siteSharingOff = qualified ? SITE_SHARING_UNCONFIGURED : SITE_SHARING_OFF;
-  const result = await readSharePointSites({ transport, tenantHost, maxSites, sleep, now, siteSharing, siteSharingOff });
+  const siteSettingsOff = settingsQualified ? SITE_SHARING_UNCONFIGURED : SITE_SETTINGS_OFF;
+  const result = await readSharePointSites({ transport, tenantHost, maxSites, sleep, now, siteSharing, siteSharingOff, siteSettings, siteSettingsOff });
   const run = await recordSharePointRun(client, { tenantRef, result });
   return { run, result, activation };
 }

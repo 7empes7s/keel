@@ -424,7 +424,7 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     note: 'If Intune refuses it (for example a Windows driver update licence is missing), record that and skip this kind.',
   },
   notificationMessageTemplate: {
-    kind: 'named-object', fixture: `compliance notification template ${FIXTURE_PREFIX}-notice (default locale en-US, one en-US message: subject KEEL-RT, body KEEL-RT test), used by no compliance policy`,
+    kind: 'named-object', fixture: `compliance notification template ${FIXTURE_PREFIX}-notice made in two steps: first the template alone (display name, description, branding includeCompanyLogo; no default locale), then one en-us message (subject KEEL-RT, body KEEL-RT test, default); Graph sets the default locale from it; used by no compliance policy`,
     select: `${FIXTURE_PREFIX}-notice`, drift: 'delete it: the restore recreates it with its message; then change the message subject: the restore puts it back',
     note: 'Never add it to a compliance policy action, so no email is sent.',
   },

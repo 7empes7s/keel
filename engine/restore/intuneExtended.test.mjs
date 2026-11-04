@@ -94,6 +94,55 @@ test('an app protection update patches changed settings and leaves matching apps
   assert.equal(graph.calls.some((call) => call.path.endsWith('/targetApps')), false);
 });
 
+// Graph's typed collection (/iosManagedAppProtections/{id}) answers with no @odata.type.
+const withoutReadType = (graph) => {
+  const read = graph.read.bind(graph);
+  graph.read = async (version, path) => {
+    const result = await read(version, path);
+    if (!result?.body || typeof result.body !== 'object') return result;
+    const { '@odata.type': _type, ...body } = result.body;
+    return { ...result, body: { ...body, '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/iosManagedAppProtections/$entity' } };
+  };
+  return graph;
+};
+
+test('issue #703: an app protection update verifies although its typed read-back has no @odata.type', async () => {
+  const path = '/deviceAppManagement/iosManagedAppProtections/T_live';
+  const live = { ...protection, id: 'T_live', pinRequired: false };
+  const graph = withoutReadType(idoFakeGraph({ seed: { [path]: { ...live, apps: undefined } } }));
+  await graph.write('v1.0', `${path}/targetApps`, { method: 'POST', body: targetAppsBody(protection) });
+  graph.calls.length = 0;
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('managedAppPolicy', protection, {
+    live: { state: 'present', targetId: 'T_live', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { '@odata.type': '#microsoft.graph.iosManagedAppProtection', pinRequired: true });
+});
+
+test('issue #703: an app protection create verifies although its typed read-back has no @odata.type', async () => {
+  const graph = withoutReadType(idoFakeGraph());
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('managedAppPolicy', protection), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(graph.calls.find((call) => call.method === 'POST').path, '/deviceAppManagement/iosManagedAppProtections');
+});
+
+test('issue #703: only a read with no type is taken as the collection type; another type, or a record without typed collections, still fails', () => {
+  const record = INTUNE_EXTENDED_RECORDS.managedAppPolicy;
+  const sent = { '@odata.type': '#microsoft.graph.iosManagedAppProtection', pinRequired: true };
+  assert.equal(recordPostStateRefusal(record, sent, { pinRequired: true }), null);
+  assert.match(recordPostStateRefusal(record, sent, { pinRequired: false }), /pinRequired did not read back/);
+  assert.match(recordPostStateRefusal(record, sent, { '@odata.type': '#microsoft.graph.androidManagedAppProtection', pinRequired: true }),
+    /reads back as androidManagedAppProtection, not iosManagedAppProtection/);
+  const untyped = defineRecord({ resourceType: 'kind', version: 'v1.0', collection: '/x', odataType: 'required', operations: ['update'] });
+  assert.match(recordPostStateRefusal(untyped, { '@odata.type': '#microsoft.graph.kindA' }, {}), /reads back as an unnamed kind, not kindA/);
+  assert.throws(() => defineRecord({ resourceType: 'kind', version: 'v1.0', collection: '/x', collectionNamesType: true, operations: ['update'] }),
+    /picked by subtype/);
+  assert.throws(() => defineRecord({
+    resourceType: 'kind', version: 'v1.0', collectionFor: () => '/x', collectionNamesType: true, operations: ['update'],
+    writeVia: async () => ({ ok: true }), readVia: async () => ({ ok: true, body: {} }),
+  }), /picked by subtype/);
+});
+
 test('protection subtypes without a write route, and targeted configurations listed with them, are manual', async () => {
   for (const odata of ['#microsoft.graph.windowsInformationProtectionPolicy', '#microsoft.graph.targetedManagedAppConfiguration', '#microsoft.graph.defaultManagedAppProtection']) {
     const graph = idoFakeGraph();
@@ -195,6 +244,14 @@ test('a notification template is created, then its localized messages are added 
   assert.deepEqual(created.applied.changes.localizedMessages, ['en-us', 'fr-fr']);
   const templateId = created.applied.targetId;
   const base = `/deviceManagement/notificationMessageTemplates/${templateId}`;
+  // Issue #746: Graph refuses a defaultLocale no message holds yet, so the
+  // template is created without it, its messages follow, and it is set last.
+  const createWrites = graph.calls.filter((call) => call.method !== 'GET');
+  assert.equal('defaultLocale' in createWrites[0].body, false);
+  assert.deepEqual(createWrites.map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`),
+    ['POST notificationMessageTemplates', 'POST localizedNotificationMessages', 'POST localizedNotificationMessages', `PATCH ${templateId}`]);
+  assert.deepEqual(createWrites.at(-1).body, { defaultLocale: 'en-us' });
+  assert.equal(created.applied.changes.defaultLocale, 'en-us');
 
   // The French text changed live; an update puts it back and leaves English alone.
   const live = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
@@ -202,12 +259,59 @@ test('a notification template is created, then its localized messages are added 
   await graph.write('v1.0', `${base}/localizedNotificationMessages/${french.id}`, { method: 'PATCH', body: { subject: 'Changed' } });
   const changed = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
   graph.calls.length = 0;
+  // The dry run lists the message it would put back, not only the template's own fields.
+  const planned = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template, {
+    live: { state: 'present', targetId: templateId, payload: changed },
+  }), 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(planned.applied.changes, { fields: [], localizedMessages: ['fr-fr'] });
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
   const updated = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template, {
     live: { state: 'present', targetId: templateId, payload: changed },
   }), 'update', FAST);
   assert.equal(updated.failed, undefined, updated.failed?.error);
   const writes = graph.calls.filter((call) => call.method !== 'GET');
   assert.deepEqual(writes.map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`), [`PATCH ${french.id}`]);
+
+  // Nothing drifted: the dry run plans nothing and the update writes nothing.
+  const same = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
+  const unchanged = resourceOf('notificationMessageTemplate', template, { live: { state: 'present', targetId: templateId, payload: same } });
+  graph.calls.length = 0;
+  const idle = await applyIntuneExtendedWrite(graph, unchanged, 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(idle.applied.changes, { fields: [] });
+  const idleUpdate = await applyIntuneExtendedWrite(graph, unchanged, 'update', FAST);
+  assert.equal(idleUpdate.failed, undefined, idleUpdate.failed?.error);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+});
+
+test('a notification template is created where Graph refuses a defaultLocale sent before its message exists', async () => {
+  // Issue #746 (Q253): Graph answers 400 to a create that names a defaultLocale.
+  // Like Graph, the fake then sets defaultLocale itself from the default message,
+  // so the writer reads it back equal and sends no PATCH of its own.
+  const graph = idoFakeGraph();
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, options) => {
+    if (path === '/deviceManagement/notificationMessageTemplates' && 'defaultLocale' in (options.body ?? {})) {
+      return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'An error has occurred' } } };
+    }
+    const result = await write(version, path, options);
+    const message = path.match(/^\/deviceManagement\/notificationMessageTemplates\/([^/]+)\/localizedNotificationMessages$/);
+    if (message && result.ok && options.body?.isDefault) {
+      await write(version, `/deviceManagement/notificationMessageTemplates/${message[1]}`, { method: 'PATCH', body: { defaultLocale: options.body.locale } });
+      graph.calls.pop();
+    }
+    return result;
+  };
+  const template = {
+    id: 'src-tpl', displayName: 'KEEL-RT-notice', defaultLocale: 'en-us', brandingOptions: 'includeCompanyLogo', roleScopeTagIds: ['0'],
+    localizedNotificationMessages: [{ id: 'm1', locale: 'en-us', subject: 'KEEL-RT', messageTemplate: 'KEEL-RT test', isDefault: true }],
+  };
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const live = (await graph.read('v1.0', `/deviceManagement/notificationMessageTemplates/${created.applied.targetId}`)).body;
+  assert.equal(live.defaultLocale, 'en-us');
+  assert.equal(created.applied.changes.defaultLocale, undefined);
+  assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`),
+    ['POST notificationMessageTemplates', 'POST localizedNotificationMessages']);
 });
 
 // ------------------------------------------- restore gaps, batch 1
@@ -530,7 +634,7 @@ test('an administrative template is created, then its settings are added with th
     updated: [],
     deletedIds: [],
   });
-  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2 });
+  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2, changed: ['Setting d-1', 'Setting d-2'] });
 });
 
 test('an administrative template update removes changed and extra settings, then adds the backup ones', async () => {
@@ -554,7 +658,37 @@ test('an administrative template update removes changed and extra settings, then
   // d-2 already matches and stays; d-1's value drifted and d-3 is not in the backup.
   assert.deepEqual(updates.map((call) => call.body.deletedIds), [['live-1', 'live-3'], []]);
   assert.deepEqual(updates[1].body.added.map((entry) => entry['definition@odata.bind']), [bind('d-1')]);
-  assert.deepEqual(result.applied.changes.settings, { removed: 2, added: 1 });
+  assert.deepEqual(result.applied.changes.settings, { removed: 2, added: 1, changed: ['Setting d-1', 'Setting d-3'] });
+});
+
+test('issue #720: a dry run of an administrative template lists the settings it would change, and none once live matches', async () => {
+  const path = `${TEMPLATE_PATH}/gp-1`;
+  const live = { id: 'gp-1', displayName: 'KEEL-RT-admx', description: 'Fixture', roleScopeTagIds: ['0'] };
+  // Q236: only a setting value drifted (the Edge home page URL); the template's own fields match.
+  const graph = idoFakeGraph({
+    seed: {
+      ...definitionsSeed('d-1', 'd-2'),
+      [path]: { ...live, definitionValues: [setting('d-1', true, [], 'live-1'), setting('d-2', false, [], 'live-2')] },
+      [`${path}/definitionValues/live-1`]: { id: 'live-1', presentationValues: [textValue('p-1', 'https://example.org')] },
+      [`${path}/definitionValues/live-2`]: { id: 'live-2', presentationValues: [] },
+    },
+  });
+  const resource = resourceOf('groupPolicyConfiguration', template, { live: { state: 'present', targetId: 'gp-1', payload: live } });
+  const planned = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run' });
+  assert.equal(planned.failed, undefined, planned.failed?.error);
+  assert.deepEqual(planned.applied.changes, { fields: [], settings: { removed: 1, added: 1, changed: ['Setting d-1'] } });
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, 'a dry run writes nothing');
+
+  // The enforce reports the same change, and a re-run dry run then finds nothing to write.
+  const written = await applyIntuneExtendedWrite(graph, resource, 'update', FAST);
+  assert.equal(written.failed, undefined, written.failed?.error);
+  assert.deepEqual(written.applied.changes.settings, planned.applied.changes.settings);
+  const again = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(again.applied.changes, { fields: [], settings: 'already as in the backup' });
+
+  // A dry run of a new template lists every setting it adds.
+  const created = await applyIntuneExtendedWrite(idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') }), resourceOf('groupPolicyConfiguration', template), 'create', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(created.applied.changes.settings, { removed: 0, added: 2, changed: ['Setting d-1', 'Setting d-2'] });
 });
 
 test('an administrative template without its setting values, or with a setting the target lacks, is never written', async () => {
@@ -1793,7 +1927,7 @@ test('an administrative template is assigned after its settings are written', as
   const writes = graph.calls.filter((call) => call.method === 'POST').map((call) => call.path.split('/').pop());
   assert.deepEqual(writes, ['groupPolicyConfigurations', 'updateDefinitionValues', 'assign']);
   assert.deepEqual(graph.calls.find((call) => call.path.endsWith('/assign')).body.assignments[0]['@odata.type'], '#microsoft.graph.groupPolicyConfigurationAssignment');
-  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2 });
+  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2, changed: ['Setting d-1', 'Setting d-2'] });
   assert.equal(result.applied.changes.assignments, 'written');
 });
 

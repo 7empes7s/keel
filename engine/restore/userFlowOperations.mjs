@@ -110,13 +110,21 @@ async function tenantParts(io) {
  * else (a custom attribute, whose id carries the tenant's extension app id) a
  * custom attribute with the same name.
  */
+// The name the restore approval shows for an attribute (safety/contentEffects.mjs).
+const nameFromId = (id) => String(id ?? '').replace(/^extension_[0-9a-f]{32}_/i, '');
+
 function liveAttributeFor(assignment, attributes) {
   const id = attributeIdOf(assignment);
   const same = attributes.find((attribute) => lower(attribute?.id) === lower(id));
   if (same) return same;
   if (!isCustomId(id)) return null;
-  const name = assignment?.userAttribute?.displayName ?? String(id).replace(/^extension_[0-9a-f]{32}_/i, '');
-  const named = attributes.filter((attribute) => attribute?.userFlowAttributeType === 'custom' && lower(attribute?.displayName) === lower(name));
+  // Only the name the approval showed is matched: the name in the id, which the
+  // backup's display name and the live attribute's id and name must all agree with.
+  const name = nameFromId(id);
+  const shown = assignment?.userAttribute?.displayName;
+  if (shown && lower(shown) !== lower(name)) return null;
+  const named = attributes.filter((attribute) => attribute?.userFlowAttributeType === 'custom'
+    && lower(attribute?.displayName) === lower(name) && lower(nameFromId(attribute?.id)) === lower(name));
   return named.length === 1 ? named[0] : null;
 }
 
@@ -131,9 +139,14 @@ const assignmentDiffers = (desired, live) => ASSIGNMENT_FIELDS.filter((field) =>
   field === 'userAttributeValues' ? list(live?.[field]) : live?.[field],
 ));
 
-/** A connector the tenant has: the backup's by id, else one with its name. */
+/**
+ * A connector the tenant has: the backup's by id, else the one with its name. The
+ * restore approval shows a connector by its name, so a connector is bound only when
+ * its name is the backup's (an id match under another name is not used).
+ */
 function liveConnectorFor(connector, connectors) {
-  const byId = connectors.find((candidate) => lower(candidate?.id) === lower(connector?.id));
+  const byId = connectors.find((candidate) => lower(candidate?.id) === lower(connector?.id)
+    && (!connector?.displayName || lower(candidate?.displayName) === lower(connector.displayName)));
   if (byId) return byId;
   const named = connectors.filter((candidate) => connector?.displayName && lower(candidate?.displayName) === lower(connector.displayName));
   return named.length === 1 ? named[0] : null;

@@ -263,3 +263,21 @@ test('a built-in attribute is skipped and a different data type is a manual step
   assert.deepEqual(graph.writes.at(-1), { method: 'PATCH', path: '/identity/userFlowAttributes/extension_x_Size' });
   assert.equal(graph.objects.get('/identity/userFlowAttributes/extension_x_Size').description, 'Shoe size');
 });
+
+test('a connector or attribute is bound only under the name the approval shows', () => {
+  const live = { identityProviders: [], userAttributeAssignments: [], languages: [], apiConnectorConfiguration: {} };
+  const payload = {
+    id: FLOW, identityProviders: [], languages: [],
+    userAttributeAssignments: [{ id: `extension_${SOURCE_APP}_KEELRTAttr`, userAttribute: { id: `extension_${SOURCE_APP}_KEELRTAttr`, displayName: 'Other' } }],
+    apiConnectorConfiguration: { postAttributeCollection: { id: 'conn-1', displayName: 'KEEL-RT-check' } },
+  };
+  const planned = planUserFlowParts(payload, live, {
+    providers: [],
+    attributes: [{ id: `extension_${TARGET_APP}_KEELRTAttr`, displayName: 'KEELRTAttr', userFlowAttributeType: 'custom' }],
+    // Same id as the backup's connector, another name: not the connector the approval named.
+    connectors: [{ id: 'conn-1', displayName: 'Someone else' }],
+  }, FLOW);
+  assert.deepEqual(planned.writes, []);
+  assert.ok(planned.steps.some((entry) => entry.requirement === `userAttribute:extension_${SOURCE_APP}_KEELRTAttr`));
+  assert.ok(planned.steps.some((entry) => entry.requirement === 'apiConnector:postAttributeCollection'));
+});

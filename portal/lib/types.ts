@@ -750,8 +750,8 @@ export interface DashboardData {
 
 export interface FlaggedThisWeek {
   flagged: number;
-  // How many of them an open alert on the same setting already shows.
-  alerted: number;
+  // How many of them nobody has dealt with yet (lib/change-feed-view.ts needsLook).
+  needsLook: number;
 }
 
 // What the menu's badges and bell read (GET /api/menu-status): the Overview's own

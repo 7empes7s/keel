@@ -12,7 +12,7 @@ import { ChangeFeed } from "@/components/baselines/change-feed";
 import { InsightsBody } from "@/components/insights/insights-body";
 import { ChangesViews } from "@/components/baselines/changes-views";
 import { openChangeCount } from "@/lib/changes-view";
-import type { ChangeFeedData, FeedPeriod, FeedRow } from "@/lib/change-feed-view";
+import type { ChangeFeedData, FeedNextStep, FeedPeriod, FeedRow } from "@/lib/change-feed-view";
 import { TENANT_WIDE_ONLY } from "@/lib/insights-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
@@ -486,7 +486,27 @@ const feedRow = (id: string, occurredAt: string, rest: Partial<FeedRow>): FeedRo
 const FEED_ADA = { kind: "user" as const, id: "a0a00000-0000-4000-8000-0000000000a1", name: "Amara Okafor" };
 const FEED_SAM = { kind: "user" as const, id: "b0b00000-0000-4000-8000-0000000000b2", name: "Sam Lee" };
 const FEED_APP = { kind: "servicePrincipal" as const, id: "c0c00000-0000-4000-8000-0000000000c3", name: "KEEL Restorer" };
-const CHANGE_FEED: ChangeFeedData = {
+// Each row's next step (engine/insights/nextSteps.mjs), one of every kind: flagged rows
+// still waiting under Open changes, and flagged rows someone already accepted or ignored.
+const step = (kind: FeedNextStep["kind"], text: string, rest: Partial<FeedNextStep> = {}): FeedNextStep => ({
+  kind, text, link: null, points: {}, dealtWith: ["accepted", "ignored", "undone", "closed"].includes(kind), ...rest,
+});
+const DECIDE = (id: string) => step("decide", "Waiting under Open changes.", { link: { label: "Accept or undo", href: `/changes?open=${id}` }, points: { openChange: id } });
+const AUDIT_ONLY = "Seen in the Microsoft audit log. The next backup shows whether it is still in place.";
+const FEED_STEPS: Record<string, FeedNextStep> = {
+  "drift:f1": DECIDE("dr1"),
+  "audit:entra:f2:0": step("decide", "A backup found this change too. It is waiting under Open changes.", { link: { label: "Accept or undo", href: "/changes?open=dr1" }, points: { openChange: "dr1" } }),
+  "service:f3": step("accepted", "Accepted by Sam Lee on 2 Oct.", { at: "2026-10-02T08:30:00Z" }),
+  "audit:entra:f4:0": step("audit", AUDIT_ONLY),
+  "audit:entra:f5:0": step("audit", AUDIT_ONLY, { alert: { id: "a1e70000-0000-4000-8000-000000000005", state: "acknowledged", at: "2026-10-01T17:00:00Z", text: "Its alert was acknowledged by Amara Okafor on 1 Oct." }, points: { alert: "a1e70000-0000-4000-8000-000000000005" }, dealtWith: true }),
+  "drift:f6": step("undone", "Undone on 1 Oct, approved by Amara Okafor.", { at: "2026-10-01T11:00:00Z" }),
+  "audit:intune:f7:0": step("audit", AUDIT_ONLY),
+  "service:f8": step("closed", "No longer waiting: a later change or a new approved setup replaced it."),
+  "audit:intune:f9:0": step("restore", "Deleted. A backup from before this change holds it.", { link: { label: "Restore from the backup before this change", href: "/restore?snapshot=0b5e0000-0000-4000-8000-0000000000c8" }, points: { snapshot: "0b5e0000-0000-4000-8000-0000000000c8" } }),
+  "drift:f10": DECIDE("dr4"),
+};
+const withSteps = (feed: ChangeFeedData): ChangeFeedData => ({ ...feed, rows: feed.rows.map((row) => ({ ...row, nextStep: FEED_STEPS[row.id] ?? row.nextStep ?? null })) });
+const CHANGE_FEED_ROWS: ChangeFeedData = {
   generatedAt: "2026-10-02T09:40:00Z", since: "2026-09-02T09:40:00Z", until: "2026-10-02T09:40:00Z", truncated: false,
   rows: [
     feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA,
@@ -509,6 +529,27 @@ const CHANGE_FEED: ChangeFeedData = {
       flags: [{ key: "location-trusted", severity: "high", sentence: "Now trusted for sign-in: Branch offices." }] }),
   ],
 };
+const CHANGE_FEED: ChangeFeedData = withSteps(CHANGE_FEED_ROWS);
+// Every kind of next step, with the content backup rows: a site opened to everyone (still
+// needs a look) and a OneDrive with new anyone links.
+const SITE_ID = "contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002";
+const CHANGE_FEED_STEPS: ChangeFeedData = {
+  ...CHANGE_FEED,
+  rows: [
+    feedRow("backup:s1:everyone:edit", "2026-10-02T09:10:00Z", { source: "backup", type: "siteAccess", typeName: "Site access", service: "SharePoint", priority: "critical", change: "added", activity: "Everyone in the company can now edit.",
+      object: { key: `site:${SITE_ID}`, name: "Finance", status: "found" },
+      flags: [{ key: "opened-to-everyone-edit", severity: "critical", sentence: "Opened to everyone in the company: everyone in the company can now edit Finance." }],
+      nextStep: step("site", "Who can reach this site changed.", { link: { label: "See who can reach this site", href: `/sites/${encodeURIComponent(SITE_ID)}` }, points: { site: SITE_ID } }) }),
+    feedRow("backup:d1:links", "2026-10-02T09:05:00Z", { source: "backup", type: "oneDriveAccess", typeName: "OneDrive access", service: "OneDrive", priority: "high", change: "added", activity: "2 new links anyone can open.",
+      object: { key: "drive:b!abc", name: "Sam Lee’s OneDrive", status: "found" },
+      nextStep: step("onedrive", "Keel has no page for one OneDrive. Check who it is shared with in the SharePoint admin center, under the owner’s OneDrive.") }),
+    ...CHANGE_FEED.rows,
+    feedRow("drift:s3", "2026-09-28T09:00:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Require MFA for admins", name: "Require MFA for admins", status: "found" },
+      flags: [{ key: "ca-mfa-removed", severity: "critical", sentence: "No longer asks for MFA: Require MFA for admins." }],
+      nextStep: step("ignored", "Ignored by Sam Lee on 30 Sep.", { at: "2026-09-30T09:00:00Z" }) }),
+  ],
+};
+
 const DRIFT = [
   { id: "dr1", naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", changeType: "modified", blastRadius: "tenant-lockout", detectedAt: "2026-10-02T09:12:00Z",
     before: { displayName: "Block legacy auth", state: "enabled", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
@@ -1606,14 +1647,21 @@ const ANONYMOUS_NOTE = <AnonymityNote setting={ANONYMITY_ON} />;
 // Every change with names hidden: people get code names, and so does a group named by a
 // person's address, in its flag sentence too (the engine code-names it the same way).
 const FEED_HIDDEN_GROUP = HARNESS_NAMER("amara.okafor@contoso.com");
+// Deciders and acknowledgers get code names, as the engine names them.
+const hideStepNames = (next: FeedNextStep): FeedNextStep => {
+  const hide = (text: string) => text.replace(/Amara Okafor/g, HARNESS_NAMER("amara.okafor@contoso.com")).replace(/Sam Lee/g, HARNESS_NAMER("sam.lee@contoso.com"));
+  return { ...next, text: hide(next.text), ...(next.alert ? { alert: { ...next.alert, text: hide(next.alert.text) } } : {}) };
+};
 const CHANGE_FEED_HIDDEN: ChangeFeedData = {
   ...CHANGE_FEED,
   rows: [
     feedRow("drift:h1", "2026-10-02T09:00:00Z", { source: "drift", type: "groupMembership", typeName: "Group membership", priority: "critical", change: "added",
       object: { key: "edge:member:hidden", name: FEED_HIDDEN_GROUP, status: "found" }, person: displayActor(FEED_SAM, HARNESS_NAMER) as FeedRow["person"],
       priorityReason: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.`,
-      flags: [{ key: "role-group-member-added", severity: "critical", sentence: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.` }] }),
-    ...CHANGE_FEED.rows.map((row) => (row.person && row.person.kind === "user" ? { ...row, person: displayActor(row.person, HARNESS_NAMER) as FeedRow["person"] } : row)),
+      flags: [{ key: "role-group-member-added", severity: "critical", sentence: `Someone was added to a group that holds admin roles: ${FEED_HIDDEN_GROUP}.` }],
+      nextStep: DECIDE("dr3") }),
+    ...CHANGE_FEED.rows.map((row) => (row.person && row.person.kind === "user" ? { ...row, person: displayActor(row.person, HARNESS_NAMER) as FeedRow["person"] } : row))
+      .map((row) => (row.nextStep ? { ...row, nextStep: hideStepNames(row.nextStep) } : row)),
   ],
 };
 
@@ -2975,7 +3023,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 }, flaggedThisWeek: posture === 0 ? { flagged: 3, alerted: 0 } : null }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } , notify: posture === 0 ? { channels: 0, routed: 0 } : { channels: 1, routed: 1 }, flaggedThisWeek: posture === 0 ? { flagged: 3, needsLook: 3 } : null }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity/anonymous": {
       const all = activityJobs(jobs).map(hidePeople);
       return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}
@@ -3046,6 +3094,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/emergency-access/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
     case "/insights": return insightsPage(CHANGE_FEED);
     case "/insights/none": return insightsPage(INSIGHTS_NONE);
+    case "/insights/steps": return insightsPage(CHANGE_FEED_STEPS);
     case "/insights/anonymous": return insightsPage(CHANGE_FEED_HIDDEN, "7", ANONYMOUS_NOTE);
     case "/insights/capped": return insightsPage(INSIGHTS_CAPPED, "90");
     case "/insights/empty": return insightsPage({ ...CHANGE_FEED, rows: [] });
@@ -3057,6 +3106,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <ChangesViews current="feed" />
       {ANONYMOUS_NOTE}
       <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED_HIDDEN} period="30" /></div></>;
+    case "/changes/feed-steps": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED_STEPS} period="30" /></div></>;
+    case "/changes/reader": {
+      // A reader without the decide capability: the panel shows the change, no Accept or Undo.
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
+        <ChangeList baseline={BASELINES[0]} capabilities={["read"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} /></>;
+    }
     case "/changes/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
       <ChangesViews current="feed" />
       <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;

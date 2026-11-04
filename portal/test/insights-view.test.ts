@@ -7,7 +7,10 @@ import { after, before, test } from "node:test";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
-import type { FeedRow } from "@/lib/change-feed-view";
+import { feedFlaggedCounts, needsLook, type FeedRow } from "@/lib/change-feed-view";
+import { getChangeFeed } from "@/lib/change-feed";
+import { getDriftData } from "@/lib/portal-data";
+import { acceptDrift } from "../../engine/govern/baseline.mjs";
 import { getFlaggedThisWeek } from "@/lib/insights";
 import {
   changeHref, changesByDay, changesByService, insightsRecord, insightsVerdict, quietServices, readInsightsPeriod, startSentence, topPeople, whereToStart,
@@ -94,20 +97,32 @@ const OVERVIEW: Pick<DashboardData, "alerts" | "headline" | "openDriftByBlastRad
   waiting: { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 },
 };
 
-test("the Overview row appears only for flagged changes that no open alert shows", () => {
+test("the Overview row counts the flagged changes that still need a look", () => {
   assert.equal(flaggedChangesRow(null), null);
   assert.equal(flaggedChangesRow(undefined), null);
-  assert.equal(flaggedChangesRow({ flagged: 0, alerted: 0 }), null);
-  assert.equal(flaggedChangesRow({ flagged: 2, alerted: 2 }), null, "every flagged change already has an open alert");
-  const row3 = flaggedChangesRow({ flagged: 4, alerted: 1 });
-  assert.equal(row3?.title, "3 flagged changes this week");
+  assert.equal(flaggedChangesRow({ flagged: 0, needsLook: 0 }), null);
+  assert.equal(flaggedChangesRow({ flagged: 2, needsLook: 0 }), null, "every flagged change was dealt with");
+  const row3 = flaggedChangesRow({ flagged: 4, needsLook: 3 });
+  assert.equal(row3?.title, "3 flagged changes this week need a look");
   assert.equal(row3?.href, "/insights");
-  assert.equal(flaggedChangesRow({ flagged: 1, alerted: 0 })?.title, "1 flagged change this week");
+  assert.equal(flaggedChangesRow({ flagged: 1, needsLook: 1 })?.title, "1 flagged change this week needs a look");
 
   assert.deepEqual(attentionRows(OVERVIEW, null).map((entry) => entry.key), []);
-  assert.deepEqual(attentionRows({ ...OVERVIEW, flaggedThisWeek: { flagged: 3, alerted: 0 } }, null).map((entry) => entry.key), ["flagged-changes"]);
-  assert.deepEqual(attentionRows({ ...OVERVIEW, flaggedThisWeek: { flagged: 3, alerted: 3 } }, null).map((entry) => entry.key), []);
+  assert.deepEqual(attentionRows({ ...OVERVIEW, flaggedThisWeek: { flagged: 3, needsLook: 3 } }, null).map((entry) => entry.key), ["flagged-changes"]);
+  assert.deepEqual(attentionRows({ ...OVERVIEW, flaggedThisWeek: { flagged: 3, needsLook: 0 } }, null).map((entry) => entry.key), []);
   assert.deepEqual(attentionRows({ ...OVERVIEW, flaggedThisWeek: null }, null).map((entry) => entry.key), []);
+});
+
+test("a flagged change someone dealt with leaves the count and moves below the open ones", () => {
+  const step = (dealtWith: boolean): FeedRow["nextStep"] => ({ kind: dealtWith ? "accepted" : "decide", text: dealtWith ? "Accepted by Amara Okafor on 28 Oct." : "Waiting under Open changes.", link: dealtWith ? null : { label: "Accept or undo", href: "/changes?open=x" }, points: {}, dealtWith });
+  const rows = ROWS.map((entry) => (entry.id === "c" ? { ...entry, nextStep: step(true) } : entry.id === "b" ? { ...entry, nextStep: step(false) } : entry));
+  assert.deepEqual(insightsVerdict({ rows, truncated: false }, "7"), { text: "7 changes in the last 7 days; 2 need a look.", tone: "urgent" });
+  const start = whereToStart(rows, "7", NOW);
+  assert.deepEqual(start.flagged.map((item) => [item.id, item.needsLook]), [["b", true], ["a", true], ["c", false]]);
+  assert.equal(start.flagged[2].nextStep?.text, "Accepted by Amara Okafor on 28 Oct.");
+  assert.deepEqual(feedFlaggedCounts(rows), { needsLook: 2, dealtWith: 1 });
+  const allDealt = ROWS.map((entry) => ({ ...entry, nextStep: step(true) }));
+  assert.deepEqual(insightsVerdict({ rows: allDealt, truncated: false }, "7"), { text: "7 changes in the last 7 days; 3 flagged, all dealt with.", tone: "fine" });
 });
 
 test("the read-access check: tenant-wide readers read the page; entity readers get the sentence; others are refused", () => {
@@ -153,9 +168,9 @@ after(async () => {
   await database?.cleanup();
 });
 
-test("the Overview loader counts flagged changes of the last week and those an open alert shows", async () => {
+test("the Overview loader counts flagged changes of the last week that still need a look", async () => {
   const ref = tenantRef();
-  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 0, alerted: 0 });
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 0, needsLook: 0 });
   for (const [index, app] of APPS.entries()) {
     await client.query(
       `INSERT INTO audit_change_fact (tenant_ref, source_event_id, occurred_at, target_type, target_id, operation, activity, actor_kind, actor_id)
@@ -175,15 +190,98 @@ test("the Overview loader counts flagged changes of the last week and those an o
      VALUES ($1, 'entra:plain:0', $2, 'Group', 'a2000000-0000-4000-8000-000000000009', 'update', 'Update group', 'user', 'b0b00000-0000-4000-8000-0000000000b2')`,
     [ref, hoursAgo(3)],
   );
-  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, alerted: 0 });
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, needsLook: 3 });
 
-  const alert = (key: string, state: string) => client.query(
-    `INSERT INTO alert (tenant_ref, resource_key, control, condition, state, condition_active, severity, first_opened_at, occurrence_started_at, last_firing_at, last_observed_at, last_event_id)
-     VALUES ($1, $2, 'insights.flag', 'app-credential-added', $3, true, 'warning', now(), now(), now(), now(), 'e1')`,
-    [ref, key, state],
-  );
+  // An open alert does not take a change out of "needs a look"; a resolved or
+  // acknowledged one does.
   await alert(APPS[0], "open");
   await alert(APPS[1], "resolved");
-  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, alerted: 1 });
-  assert.equal(flaggedChangesRow(await getFlaggedThisWeek())?.title, "2 flagged changes this week");
+  await alert(APPS[2], "acknowledged");
+  assert.deepEqual(await getFlaggedThisWeek(), { flagged: 3, needsLook: 1 });
+  assert.equal(flaggedChangesRow(await getFlaggedThisWeek())?.title, "1 flagged change this week needs a look");
+  await client.query("DELETE FROM alert WHERE tenant_ref = $1", [ref]);
+  await client.query("DELETE FROM audit_change_fact WHERE tenant_ref = $1", [ref]);
+});
+
+const alert = (key: string, state: string) => client.query(
+  `INSERT INTO alert (tenant_ref, resource_key, control, condition, state, condition_active, severity, first_opened_at, occurrence_started_at, last_firing_at, last_observed_at, last_event_id,
+                      acknowledged_by, acknowledged_at, resolved_at)
+   VALUES ($1, $2, 'insights.flag', 'app-credential-added', $3, true, 'warning', now(), now(), now(), now(), 'e1',
+           CASE WHEN $3 = 'acknowledged' THEN 'ops@contoso.test' END, CASE WHEN $3 = 'acknowledged' THEN now() END, CASE WHEN $3 = 'resolved' THEN now() END)`,
+  [tenantRef(), key, state],
+);
+
+// One fixture for all four counts: Insights' verdict and "Where to start", Every change's
+// Flagged count and the Overview row. Accepting a change under Open changes, or
+// acknowledging an alert on one, drops each of them by one.
+test("Insights, Every change and the Overview count the same flagged changes, and each decision drops all four", async () => {
+  const ref = tenantRef();
+  const locations = ["11000000-0000-4000-8000-000000000001", "11000000-0000-4000-8000-000000000002"];
+  const named = (id: string, trusted: boolean) => ({ id, displayName: `Office ${id.slice(-1)}`, isTrusted: trusted });
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@contoso.test') RETURNING id", [ref, hoursAgo(100)]);
+  const backup = async (at: Date) => (await client.query(
+    "INSERT INTO snapshot (tenant_ref, started_at, completed_at, status) VALUES ($1, $2, $2::timestamptz + interval '10 minutes', 'complete') RETURNING id",
+    [ref, at],
+  )).rows[0];
+  const approved = await backup(hoursAgo(90));
+  const found = await backup(hoursAgo(30));
+  const driftIds: string[] = [];
+  for (const id of locations) {
+    const { rows: [version] } = await client.query(
+      `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+       VALUES ($1, $2, 'namedLocation', $3, 'h1', 'tier2', 'access-affecting', 'full', '{}') RETURNING id`,
+      [approved.id, `namedLocation:${id}`, named(id, false)],
+    );
+    await client.query("INSERT INTO baseline_resource (baseline_id, natural_key, resource_version_id) VALUES ($1, $2, $3)", [baseline.id, `namedLocation:${id}`, version.id]);
+    await client.query(
+      `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+       VALUES ($1, $2, 'namedLocation', $3, 'h2', 'tier2', 'access-affecting', 'full', '{}')`,
+      [found.id, `namedLocation:${id}`, named(id, true)],
+    );
+    const { rows: [drift] } = await client.query(
+      `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, before_hash, after_hash, before_payload, after_payload, blast_radius, detected_at)
+       VALUES ($1, $2, $3, $4, 'namedLocation', 'modified', 'h1', 'h2', $5, $6, 'access-affecting', $7) RETURNING id::text AS id`,
+      [ref, baseline.id, found.id, `namedLocation:${id}`, named(id, false), named(id, true), hoursAgo(29)],
+    );
+    driftIds.push(String(drift.id));
+  }
+  await client.query(
+    `INSERT INTO audit_change_fact (tenant_ref, source_event_id, occurred_at, target_type, target_id, operation, activity, actor_kind, actor_id)
+     VALUES ($1, 'entra:four:0', $2, 'ServicePrincipal', $3, 'update', 'Add service principal credentials', 'user', 'b0b00000-0000-4000-8000-0000000000b2')`,
+    [ref, hoursAgo(5), APPS[0]],
+  );
+
+  async function counts() {
+    const feed = await getChangeFeed({ days: 7 });
+    const verdict = insightsVerdict(feed, "7").text;
+    return {
+      verdict: Number(/; (\d+) needs? a look/.exec(verdict)?.[1] ?? 0),
+      whereToStart: whereToStart(feed.rows, "7", feed.generatedAt).flagged.filter((item) => item.needsLook).length,
+      flaggedTile: feedFlaggedCounts(feed.rows).needsLook,
+      overview: (await getFlaggedThisWeek()).needsLook,
+      feed,
+    };
+  }
+  const before = await counts();
+  assert.deepEqual([before.verdict, before.whereToStart, before.flaggedTile, before.overview], [3, 3, 3, 3]);
+
+  // "Accept or undo" opens the change Open changes lists.
+  const first = before.feed.rows.find((entry) => entry.id === `drift:${driftIds[0]}`)!;
+  assert.deepEqual(first.nextStep?.link, { label: "Accept or undo", href: `/changes?open=${driftIds[0]}` });
+  assert.ok((await getDriftData()).items.some((item) => item.id === driftIds[0]), "the change is under Open changes");
+
+  await acceptDrift(client, { driftId: driftIds[0], actor: "ops@contoso.test", reason: "Planned office move" });
+  const accepted = await counts();
+  assert.deepEqual([accepted.verdict, accepted.whereToStart, accepted.flaggedTile, accepted.overview], [2, 2, 2, 2]);
+  const decided = accepted.feed.rows.find((entry) => entry.id === `drift:${driftIds[0]}`)!;
+  assert.equal(decided.nextStep?.kind, "accepted");
+  assert.match(decided.nextStep?.text ?? "", /^Accepted by ops@contoso\.test on \d{1,2} [A-Z][a-z]{2}\.$/);
+  assert.equal(needsLook(decided), false);
+
+  await alert(APPS[0], "acknowledged");
+  const acknowledged = await counts();
+  assert.deepEqual([acknowledged.verdict, acknowledged.whereToStart, acknowledged.flaggedTile, acknowledged.overview], [1, 1, 1, 1]);
+  // An open alert alone changes nothing.
+  await client.query("UPDATE alert SET state = 'open', acknowledged_at = NULL, acknowledged_by = NULL WHERE tenant_ref = $1", [ref]);
+  assert.equal((await counts()).overview, 2);
 });

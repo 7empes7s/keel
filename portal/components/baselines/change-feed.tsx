@@ -5,6 +5,7 @@ import { useMemo } from "react";
 
 import { RiskChip } from "@/components/baselines/parts";
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { NextStep } from "@/components/insights/next-step";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping } from "@/components/list/selectable-list";
 import { Segmented } from "@/components/pickers/segmented";
@@ -13,7 +14,7 @@ import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict } from "@/components/verdict";
 import {
   CHANGE_WORDS, FEED_GROUPING_KEYS, FEED_GROUPING_LABELS, PRIORITY_WORDS, SOURCE_WORDS, feedCsv, feedFlags, feedGroupLabel, feedGroups, feedObjectName, feedPersonName, feedSummary,
-  isFlagged, readFlaggedOnly, type ChangeFeedData, type FeedPeriod, type FeedPriority, type FeedRow, FEED_PERIODS,
+  feedFlaggedCounts, isFlagged, nextStepRecord, readFlaggedOnly, type ChangeFeedData, type FeedPeriod, type FeedPriority, type FeedRow, FEED_PERIODS,
 } from "@/lib/change-feed-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import type { RiskTone } from "@/lib/menu-status";
@@ -28,7 +29,10 @@ import { useViewState } from "@/lib/use-view-state";
 // (`priority=critical,high`). Read-only: deciding on a change happens under Open changes.
 // A rule that knows what a change does flags it ("Turned off: Require MFA for admins.",
 // engine/insights/flags.mjs): the sentence shows on the row, and the Flagged tile
-// (`flagged=1`) narrows whatever the priority tiles show to flagged changes.
+// (`flagged=1`) narrows whatever the priority tiles show to flagged changes. Its count is
+// the flagged changes that still need a look (needsLook, as Insights counts them). Each
+// row says its next step (engine/insights/nextSteps.mjs): "Accept or undo" opens the
+// change under Open changes, whose panel holds the decision and its approvals.
 
 const PRIORITY_TONES: Record<FeedPriority, RiskTone | null> = { critical: "urgent", high: "soon", normal: "low", low: null };
 const PRIORITY_ICONS: Record<FeedPriority, IconName> = { critical: "alert", high: "clock", normal: "info", low: "check" };
@@ -85,7 +89,7 @@ const SORTS = [
 ];
 
 function rowText(row: FeedRow): string {
-  return [feedObjectName(row), row.typeName, row.service ?? "", CHANGE_WORDS[row.change], row.activity ?? "", ...feedFlags(row).map((flag) => flag.sentence), feedPersonName(row), SOURCE_WORDS[row.source].label].join(" ").toLowerCase();
+  return [feedObjectName(row), row.typeName, row.service ?? "", CHANGE_WORDS[row.change], row.activity ?? "", ...feedFlags(row).map((flag) => flag.sentence), feedPersonName(row), SOURCE_WORDS[row.source].label, row.nextStep?.text ?? ""].join(" ").toLowerCase();
 }
 
 export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: FeedPeriod }) {
@@ -97,8 +101,9 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
   const others = flaggedOnly ? FLAGGED_ONLY : [];
   const shown = useMemo(() => applyFilters(feed.rows, TILES, picked, others), [feed.rows, picked.join(","), flaggedOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const counts = useMemo(() => new Map(tileCounts(feed.rows, TILES, picked, others).map((entry) => [entry.key, entry])), [feed.rows, picked.join(","), flaggedOnly]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Flagged changes among what the priority tiles show.
-  const flaggedCount = useMemo(() => applyFilters(feed.rows, TILES, picked).filter(isFlagged).length, [feed.rows, picked.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Flagged changes among what the priority tiles show: those that still need a look, and all.
+  const tiled = useMemo(() => applyFilters(feed.rows, TILES, picked), [feed.rows, picked.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { needsLook: flaggedCount, dealtWith: dealtCount } = feedFlaggedCounts(tiled);
   const lists = useMemo(() => groupings(now), [now]);
   const summary = feedSummary(feed.rows);
   const activeFilters: ActiveFilter[] = [
@@ -136,7 +141,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
 
       <div className="cf-tools">
         <Segmented label="Period" onChange={choosePeriod} options={FEED_PERIODS.map((value) => ({ value, label: `${value} days` }))} value={period} />
-        <p className="bl-help"><Icon name="info" /> Every change from backups, service reads and the Microsoft audit log. To accept or undo one, use Open changes.</p>
+        <p className="bl-help"><Icon name="info" /> Every change from backups, service reads and the Microsoft audit log. Each one says its next step; accepting or undoing happens under Open changes.</p>
       </div>
 
       <section aria-label="Changes by priority" className="cf-tiles">
@@ -173,7 +178,8 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
         >
           <span className="cf-tile-label"><Icon name="alert" />Flagged{flaggedOnly ? <Icon className="tile-check" name="check" /> : null}</span>
           <b className="cf-tile-count">{flaggedCount}</b>
-          <small>A rule knows what these do: turned off, opened wider, new admin</small>
+          <small>{flaggedCount === 1 ? "Needs" : "Need"} a look: a rule knows what {flaggedCount === 1 ? "it does" : "they do"}, such as turned off or a new admin</small>
+          {dealtCount ? <small className="tile-adds">{dealtCount} more flagged, already dealt with</small> : null}
         </button>
       </section>
 
@@ -214,6 +220,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
                       ))}
                     </ul>
                   ) : null}
+                  <NextStep step={row.nextStep} />
                 </span>
                 <RiskChip tone={toneOf(row)}>{PRIORITY_WORDS[row.priority]}</RiskChip>
                 <span className="bl-row-who">
@@ -230,7 +237,7 @@ export function ChangeFeed({ feed, period }: { feed: ChangeFeedData; period: Fee
         <TechnicalDetails summary="Technical details: these changes">
           <RecordField copy={false} label="Read with" value="GET /api/changes/feed?by=day|type|service|priority|person&days=30" />
           {feed.rows.map((row) => (
-            <RecordField key={row.id} label={`Change feed ID · ${row.type}`} usage={`${SOURCE_WORDS[row.source].label}. Setting ${row.object.key}${row.person ? `, by ${row.person.kind} ${row.person.id}` : ""}, at ${row.occurredAt}${isFlagged(row) ? `. Flags: ${feedFlags(row).map((flag) => `${flag.key} (${flag.severity})`).join(", ")}` : ""}`} value={row.id} />
+            <RecordField key={row.id} label={`Change feed ID · ${row.type}`} usage={`${SOURCE_WORDS[row.source].label}. Setting ${row.object.key}${row.person ? `, by ${row.person.kind} ${row.person.id}` : ""}, at ${row.occurredAt}${isFlagged(row) ? `. Flags: ${feedFlags(row).map((flag) => `${flag.key} (${flag.severity})`).join(", ")}` : ""}. ${nextStepRecord(row)}`} value={row.id} />
           ))}
         </TechnicalDetails>
       </section>

@@ -25,6 +25,10 @@
  * Each row also carries `flags` (flags.mjs): what the change does, when a rule knows it
  * ("Turned off: Require MFA for admins."). A critical flag makes the row critical, a high
  * flag raises a low or normal row to high. Only the JSON paths the rules read are selected.
+ *
+ * And each row carries `nextStep` (nextSteps.mjs): what to do next ("Accept or undo" under
+ * Open changes, restore from a backup, see who can reach a site) or how it was dealt with,
+ * read for the whole page at once.
  */
 import { objectNameSql } from '../cir/objectName.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/openDrift.mjs';

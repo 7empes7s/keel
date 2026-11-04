@@ -166,15 +166,16 @@ export function notifyNobodyRow(notify: DashboardData["notify"], openAlerts: num
 }
 
 /**
- * Flagged changes of the last 7 days that no open alert shows yet, as one row that opens
- * Insights. Null when there are none, or for a reader who cannot see the change feed.
+ * Flagged changes of the last 7 days that still need a look (nobody decided them, no alert
+ * on them was acknowledged or resolved), as one row that opens Insights. The same count as
+ * Insights' verdict. Null when there are none, or for a reader who cannot see the feed.
  */
 export function flaggedChangesRow(flagged: DashboardData["flaggedThisWeek"]): AttentionRow | null {
-  const count = flagged ? Math.max(flagged.flagged - flagged.alerted, 0) : 0;
+  const count = flagged ? Math.max(flagged.needsLook, 0) : 0;
   if (!count) return null;
   return {
     key: "flagged-changes", tone: "soon", icon: "alert",
-    title: `${plural(count, "flagged change", "flagged changes")} this week`,
+    title: `${plural(count, "flagged change", "flagged changes")} this week ${count === 1 ? "needs" : "need"} a look`,
     detail: "A rule knows what these do, such as a rule turned off or a new admin. Start with them.",
     href: "/insights",
   };
@@ -182,7 +183,7 @@ export function flaggedChangesRow(flagged: DashboardData["flaggedThisWeek"]): At
 
 /**
  * "Needs attention": the computed problems that the verdict does not already state, the
- * changes that could lock out admins, flagged changes no alert shows yet, and the work
+ * changes that could lock out admins, flagged changes that still need a look, and the work
  * that waits on a person. Urgent first.
  * Each row opens the list behind it. pendingApprovals is null for viewers who cannot approve.
  */

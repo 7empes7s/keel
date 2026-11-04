@@ -133,6 +133,35 @@ change feed read (`portal/lib/insights-view.ts`, `portal/components/insights/ins
 - **Record layer:** the window read, the count from each source and whether the limit was hit.
 - **Access:** the same as Every change: tenant-wide readers. An entity-scoped reader gets one sentence
   and no feed read.
-- **Overview:** one "Needs attention" row, "3 flagged changes this week", for flagged changes of the
-  last 7 days that no open alert shows. An alert counts when it is open, reopened or acknowledged
-  and its `resource_key` is the flagged row's object key (the key A10 is expected to use).
+- **Overview:** one "Needs attention" row, "3 flagged changes this week need a look", for flagged
+  changes of the last 7 days that still need a look (see below). It counts exactly what the verdict
+  counts.
+
+## What happens after a flag
+
+Every row of Every change and of "Where to start" says its next step, worked out by
+`engine/insights/nextSteps.mjs` from the row's source and object key. One step per row, the first
+that applies:
+
+| Step | When | Shows |
+|---|---|---|
+| Decided | Accepted, ignored or undone under Changes › Open changes. An audit row takes the decision of the backup change that found the same object after it. | "Accepted by Amara Okafor on 3 Nov", "Ignored by …", "Undone on 3 Nov, approved by …" |
+| Accept or undo | The change is still open under Open changes (approved-setup or service-setting change; an audit row whose object has an open change). | A link to `/changes?open=<id>`: the Open changes panel, with its own Accept, Ignore and Undo, approvals and capability checks. |
+| Restore | A deleted object that a complete backup from before the change holds. | "Restore from the backup before this change", to `/restore?snapshot=<id>`. |
+| Site | A content backup found a change in who can reach a site. | "See who can reach this site", to `/sites/<id>`. |
+| OneDrive | The same for a OneDrive. Keel has no OneDrive page. | Where to look, no link. |
+| Audit log | Only the audit log saw it. | "Seen in the Microsoft audit log. The next backup shows whether it is still in place." |
+| No longer waiting | A backup or service change that left Open changes without a decision (a later change or a new approved setup replaced it). | One sentence. |
+
+**Needs a look** means flagged and not dealt with yet. A change is dealt with when it is decided (or no
+longer waiting), or when an alert whose `resource_key` is the row's object key was acknowledged or
+resolved after the change. An open alert does not count. The rule lives in one place
+(`needsLook` in `portal/lib/change-feed-view.ts`), and the Insights verdict, "Where to start", Every
+change's Flagged tile and the Overview row all count with it. Flagged rows someone dealt with stay
+listed with their state, below the open ones in "Where to start"; the Flagged tile counts only the open
+ones and says how many more were dealt with.
+
+Deciders are named the way "Hide people's names" says (code names when it is on). Ids appear only in
+each row's Technical details ("Next step: decide (open change …)"). The states are read with a fixed
+number of queries for the whole page (one per source, plus alerts, backups and names), never one per
+row, and only on Every change, Insights and the Overview, so Open changes is not slowed.

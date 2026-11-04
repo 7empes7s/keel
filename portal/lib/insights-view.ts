@@ -3,8 +3,8 @@
 // (engine/insights/flags.mjs). Pure, so the page, the UI harness and the tests share it.
 import { SERVICES as FEED_SERVICES } from "../../engine/insights/taxonomy.mjs";
 import {
-  FEED_PERIODS, feedFlags, feedGroups, feedObjectName, feedPersonName, isFlagged,
-  type ChangeFeedData, type FeedFlag, type FeedPeriod, type FeedPriority, type FeedRow, type FeedSource,
+  FEED_PERIODS, feedFlags, feedGroups, feedObjectName, feedPersonName, isFlagged, needsLook,
+  type ChangeFeedData, type FeedFlag, type FeedNextStep, type FeedPeriod, type FeedPriority, type FeedRow, type FeedSource,
 } from "@/lib/change-feed-view";
 import { ago } from "@/lib/presentation";
 
@@ -25,19 +25,22 @@ const plural = (count: number, one: string, many: string) => `${count.toLocaleSt
 export type InsightsTone = "urgent" | "soon" | "fine";
 
 /**
- * The page's one sentence: how many changes, and how many need a look.
- * "143 changes in the last 7 days; 4 need a look." / "…; none flagged." When the feed
- * hit its limit the count is a floor, so it says "At least".
+ * The page's one sentence: how many changes, and how many flagged ones still need a look
+ * (needsLook: not decided, no alert acknowledged or resolved).
+ * "143 changes in the last 7 days; 4 need a look." / "…; none flagged." / "…; 3 flagged,
+ * all dealt with." When the feed hit its limit the count is a floor, so it says "At least".
  */
 export function insightsVerdict(feed: Pick<ChangeFeedData, "rows" | "truncated">, period: FeedPeriod): { text: string; tone: InsightsTone } {
   const span = `in the last ${period} days`;
   if (!feed.rows.length) return { text: `No changes ${span}.`, tone: "fine" };
   const flagged = feed.rows.filter(isFlagged);
+  const open = feed.rows.filter(needsLook);
   const total = `${feed.truncated ? "At least " : ""}${plural(feed.rows.length, "change", "changes")}`;
   const sentence = (rest: string) => `${total.charAt(0).toUpperCase()}${total.slice(1)} ${span}; ${rest}.`;
   if (!flagged.length) return { text: sentence("none flagged"), tone: "fine" };
-  const critical = flagged.some((row) => feedFlags(row).some((flag) => flag.severity === "critical"));
-  return { text: sentence(`${flagged.length.toLocaleString("en-GB")} ${flagged.length === 1 ? "needs" : "need"} a look`), tone: critical ? "urgent" : "soon" };
+  if (!open.length) return { text: sentence(`${flagged.length.toLocaleString("en-GB")} flagged, all dealt with`), tone: "fine" };
+  const critical = open.some((row) => feedFlags(row).some((flag) => flag.severity === "critical"));
+  return { text: sentence(`${open.length.toLocaleString("en-GB")} ${open.length === 1 ? "needs" : "need"} a look`), tone: critical ? "urgent" : "soon" };
 }
 
 export interface StartItem {
@@ -53,6 +56,10 @@ export interface StartItem {
   when: string;
   occurredAt: string;
   href: string;
+  // What to do next, or how it was dealt with (engine/insights/nextSteps.mjs).
+  nextStep: FeedNextStep | null;
+  // Flagged and nobody has dealt with it yet.
+  needsLook: boolean;
 }
 
 const SEVERITY_RANK: Record<FeedFlag["severity"], number> = { critical: 0, high: 1 };
@@ -96,15 +103,18 @@ function startItem(row: FeedRow, reason: StartItem["reason"], period: FeedPeriod
     id: row.id, reason, tone: critical ? "urgent" : "soon", sentence: startSentence(row, now), flags,
     objectName: feedObjectName(row), who: feedPersonName(row), when: ago(row.occurredAt, now), occurredAt: row.occurredAt,
     href: changeHref(row, period),
+    nextStep: row.nextStep ?? null,
+    needsLook: needsLook(row),
   };
 }
 
 /**
- * Where to start: flagged changes first, most severe then newest; then changes to
- * critical or high kinds that no rule flagged, most urgent then newest.
+ * Where to start: flagged changes first, those still needing a look before those someone
+ * dealt with, each most severe then newest; then changes to critical or high kinds that
+ * no rule flagged, most urgent then newest.
  */
 export function whereToStart(rows: readonly FeedRow[], period: FeedPeriod, now: string): { flagged: StartItem[]; watch: StartItem[] } {
-  const flagged = rows.filter(isFlagged).sort((a, b) => worstFlag(a) - worstFlag(b) || newestFirst(a, b));
+  const flagged = rows.filter(isFlagged).sort((a, b) => Number(needsLook(b)) - Number(needsLook(a)) || worstFlag(a) - worstFlag(b) || newestFirst(a, b));
   const watch = rows
     .filter((row) => !isFlagged(row) && (row.priority === "critical" || row.priority === "high"))
     .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || newestFirst(a, b));

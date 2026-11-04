@@ -9,7 +9,7 @@ import {
 } from "../../engine/insights/view.mjs";
 import {
   FEED_PERIODS, feedGroups, isFlagged,
-  type ChangeFeedData, type FeedFlag, type FeedPeriod, type FeedRow, type FeedSource,
+  type ChangeFeedData, type FeedFlag, type FeedNextStep, type FeedPeriod, type FeedRow, type FeedSource,
 } from "@/lib/change-feed-view";
 
 export const INSIGHTS_PERIODS = FEED_PERIODS;
@@ -46,6 +46,10 @@ export interface StartItem {
   when: string;
   occurredAt: string;
   href: string;
+  // What to do next, or how it was dealt with (engine/insights/nextSteps.mjs).
+  nextStep: FeedNextStep | null;
+  // Flagged and nobody has dealt with it yet.
+  needsLook: boolean;
 }
 
 /** Where a change is listed: Every change, for the same period, found by its name. */
@@ -59,8 +63,9 @@ export function startSentence(row: FeedRow, now: string): string {
 }
 
 /**
- * Where to start: flagged changes first, most severe then newest; then changes to
- * critical or high kinds that no rule flagged, most urgent then newest.
+ * Where to start: flagged changes first, those still needing a look before those someone
+ * dealt with, each most severe then newest; then changes to critical or high kinds that
+ * no rule flagged, most urgent then newest.
  */
 export function whereToStart(rows: readonly FeedRow[], period: FeedPeriod, now: string): { flagged: StartItem[]; watch: StartItem[] } {
   return engineWhereToStart([...rows], period, now) as { flagged: StartItem[]; watch: StartItem[] };

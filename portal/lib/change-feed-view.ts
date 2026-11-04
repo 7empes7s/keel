@@ -2,7 +2,10 @@
 // and audit event as one row (engine/insights/feed.mjs), grouped by day, type, service,
 // priority or person. Pure, so server pages, the API and client lists share it.
 import { FEED_GROUPINGS, groupChangeFeed } from "../../engine/insights/feedGroups.mjs";
-import { feedFlags as engineFlags, feedObjectName as engineObjectName, feedPersonName as enginePersonName } from "../../engine/insights/view.mjs";
+import {
+  feedFlags as engineFlags, feedObjectName as engineObjectName, feedPersonName as enginePersonName, isDealtWith as engineDealtWith,
+  needsLook as engineNeedsLook,
+} from "../../engine/insights/view.mjs";
 import { csvLine } from "@/lib/csv";
 
 export type FeedSource = "drift" | "service" | "backup" | "audit";
@@ -24,6 +27,25 @@ export interface FeedFlag {
   key: string;
   severity: "critical" | "high";
   sentence: string;
+}
+
+// What to do next about a row (engine/insights/nextSteps.mjs): decide it under Open
+// changes, how it was decided, restore from a backup, see who can reach a site, or only the
+// audit log saw it. `dealtWith`: decided, or its alert was acknowledged or resolved.
+export type FeedNextStepKind = "accepted" | "ignored" | "undone" | "decide" | "restore" | "site" | "onedrive" | "audit" | "closed";
+
+export interface FeedNextStep {
+  kind: FeedNextStepKind;
+  // One plain sentence: never an id, people named the way "Hide people's names" says.
+  text: string;
+  link: { label: string; href: string } | null;
+  // When it was decided, for decided rows.
+  at?: string;
+  // An alert on the same object that was acknowledged or resolved after the change.
+  alert?: { id: string; state: string; at: string; text: string };
+  // What the step points to, for Technical details only (ids).
+  points: { openChange?: string; site?: string; snapshot?: string; alert?: string };
+  dealtWith: boolean;
 }
 
 export interface FeedRow {
@@ -48,6 +70,8 @@ export interface FeedRow {
   person: FeedPerson | null;
   // Empty when no rule flags the change; absent on rows read before flags existed.
   flags?: FeedFlag[];
+  // Absent on rows read before next steps existed.
+  nextStep?: FeedNextStep | null;
 }
 
 export interface FeedGroup {
@@ -142,6 +166,37 @@ export function feedFlags(row: Pick<FeedRow, "flags">): FeedFlag[] {
 
 export const isFlagged = (row: Pick<FeedRow, "flags">): boolean => feedFlags(row).length > 0;
 
+/** Whether someone dealt with the change: decided under Open changes, or its alert was
+ *  acknowledged or resolved. */
+export const isDealtWith = (row: Pick<FeedRow, "nextStep">): boolean => engineDealtWith(row);
+
+/**
+ * The one rule for "needs a look": flagged, and nobody has dealt with it yet. Insights'
+ * verdict and "Where to start", Every change's Flagged count and the Overview row all
+ * count with it, so they agree.
+ */
+export const needsLook = (row: Pick<FeedRow, "flags" | "nextStep">): boolean => engineNeedsLook(row);
+
+/** Flagged changes that still need a look, and those someone dealt with: what Every
+ *  change's Flagged tile shows. */
+export function feedFlaggedCounts(rows: readonly FeedRow[]): { needsLook: number; dealtWith: number } {
+  const flagged = rows.filter(isFlagged);
+  const open = flagged.filter(needsLook).length;
+  return { needsLook: open, dealtWith: flagged.length - open };
+}
+
+/** Technical details for a row's next step: what it points to, ids allowed. */
+export function nextStepRecord(row: Pick<FeedRow, "nextStep">): string {
+  const points = row.nextStep?.points ?? {};
+  const parts = [
+    points.openChange ? `open change ${points.openChange}` : null,
+    points.site ? `site ${points.site}` : null,
+    points.snapshot ? `backup ${points.snapshot}` : null,
+    points.alert ? `alert ${points.alert}` : null,
+  ].filter(Boolean);
+  return row.nextStep ? `Next step: ${row.nextStep.kind}${parts.length ? ` (${parts.join(", ")})` : ""}` : "Next step: not read";
+}
+
 /** The address value of the Flagged filter: on or off. */
 export function readFlaggedOnly(value: string | null | undefined): boolean {
   return value === "1";
@@ -149,10 +204,11 @@ export function readFlaggedOnly(value: string | null | undefined): boolean {
 
 /** One line per row, names as shown on the page (code names when names are hidden). */
 export function feedCsv(rows: readonly FeedRow[]): string {
-  const header = csvLine(["When (UTC)", "Service", "Type", "Name", "Change", "What happened", "What it does", "Who", "Priority", "Found by"]);
+  const header = csvLine(["When (UTC)", "Service", "Type", "Name", "Change", "What happened", "What it does", "Who", "Priority", "Found by", "Next step"]);
   const lines = rows.map((row) => csvLine([
     row.occurredAt, row.service ?? "Other", row.typeName, feedObjectName(row), CHANGE_WORDS[row.change],
     row.activity ?? "", feedFlags(row).map((flag) => flag.sentence).join(" "), feedPersonName(row), PRIORITY_WORDS[row.priority], SOURCE_WORDS[row.source].label,
+    row.nextStep ? [row.nextStep.text, row.nextStep.alert?.text].filter(Boolean).join(" ") : "",
   ]));
   return [header, ...lines].join("\n") + "\n";
 }

@@ -2720,6 +2720,80 @@ for (const hash of ["/changes/feed", "/changes/feed-anonymous"]) {
   }
 }
 
+// #979: every next-step kind renders on Every change and on Insights at the phone and
+// laptop widths, in both themes: exactly one next step per row, no sideways scroll, axe
+// passing, and no ids outside the record layer.
+const STEP_KINDS = ["decide", "accepted", "ignored", "undone", "restore", "site", "onedrive", "audit", "closed"];
+for (const hash of ["/changes/feed-steps", "/insights/steps", "/changes/feed-anonymous", "/insights/anonymous"]) {
+  for (const width of [375, 390, 1278]) {
+    for (const theme of ["light", "dark"] as const) {
+      test(`contract · next steps · ${hash} · ${width} · ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await open(page, hash, theme);
+        expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        if (hash.startsWith("/changes")) {
+          // Every row on the page says exactly one next step.
+          const perRow = await page.locator(".cf-row").evaluateAll((rows) => rows.map((row) => row.querySelectorAll(".ns-step").length));
+          expect(perRow.length).toBeGreaterThan(0);
+          expect(perRow.every((count) => count === 1)).toBe(true);
+          if (hash === "/changes/feed-steps") {
+            const kinds = await page.locator(".cf-row .ns-step").evaluateAll((steps) => [...new Set(steps.map((step) => step.getAttribute("data-kind")))]);
+            expect(kinds.sort()).toEqual([...STEP_KINDS].sort());
+          }
+        }
+        // Each step wraps inside its row.
+        const outside = await page.locator(".ns-step").evaluateAll((steps) => steps.filter((step) => {
+          const row = (step.closest(".cf-row, .ins-item") as HTMLElement).getBoundingClientRect();
+          const box = step.getBoundingClientRect();
+          return box.right > row.right + 1 || box.left < row.left - 1;
+        }).map((step) => step.textContent));
+        expect(outside).toEqual([]);
+        const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+        const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+        expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+      });
+    }
+  }
+}
+
+// #979: following "Accept or undo" lands on Open changes with that change's panel open; a
+// reader without the decide capability sees the change but no Accept or Undo controls.
+test("next steps: Accept or undo opens the change under Open changes; the links say where they go", async ({ page }) => {
+  await page.setViewportSize({ width: 1278, height: 900 });
+  await open(page, "/changes/feed-steps", "dark");
+  const policy = page.locator(".cf-row", { hasText: "Switched to report-only" });
+  await expect(policy.locator(".ns-step")).toContainText("Waiting under Open changes.");
+  await expect(page.locator(".cf-row", { hasText: "Finance" }).first().getByRole("link", { name: "See who can reach this site" })).toHaveAttribute("href", /#\/sites\/contoso\.sharepoint\.com/);
+  await expect(page.locator(".cf-row", { hasText: "OneDrive" }).locator(".ns-step").getByRole("link")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Restore from the backup before this change" })).toHaveAttribute("href", "#/restore?snapshot=0b5e0000-0000-4000-8000-0000000000c8");
+  await expect(page.locator(".cf-row", { hasText: "Old project team" }).locator(".ns-step")).toHaveText("Undone on 1 Oct, approved by Amara Okafor.");
+  await expect(page.locator(".cf-row", { hasText: "Helpdesk admins" }).locator(".ns-step")).toContainText("Its alert was acknowledged by Amara Okafor on 1 Oct.");
+  // The record layer names what each step points to.
+  await expect(page.locator('[data-layer="record"]').first()).toContainText("Next step: decide (open change dr1)");
+
+  await policy.getByRole("link", { name: "Accept or undo" }).click();
+  await expect(page).toHaveURL(/#\/changes\?open=dr1$/);
+  const panel = page.getByRole("dialog");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Block legacy auth");
+  await expect(panel.getByRole("button", { name: /^Accept/ }).first()).toBeVisible();
+
+  await open(page, "/changes/reader?open=dr1", "light");
+  const readOnly = page.getByRole("dialog");
+  await expect(readOnly).toContainText("Block legacy auth");
+  await expect(readOnly.getByRole("button", { name: /^(Accept|Undo|Ignore)/ })).toHaveCount(0);
+});
+
+test("next steps with names hidden: deciders show as code names", async ({ page }) => {
+  for (const hash of ["/changes/feed-anonymous", "/insights/anonymous"]) {
+    await open(page, hash, "light");
+    const text = await textOutside(page, "main#main-content", '[data-layer="record"]');
+    expect(text).not.toMatch(/Amara Okafor|Sam Lee/);
+    expect(text).toMatch(/Accepted by Person [A-Z2-9]{4} on 2 Oct\./);
+  }
+});
+
 // Insights A7 and A8: some flagged, none flagged, names hidden and an empty tenant pass
 // the mechanical checks at the phone and laptop widths, in both themes: one h1, one
 // verdict, no ids.
@@ -2745,16 +2819,22 @@ for (const hash of ["/insights", "/insights/none", "/insights/anonymous", "/insi
 test("insights: verdict, where to start, the shape of the period and the record", async ({ page }) => {
   await page.setViewportSize({ width: 1278, height: 900 });
   await open(page, "/insights", "dark");
-  await expect(page.locator(".verdict-sentence")).toHaveText("10 changes in the last 7 days; 3 need a look.");
+  await expect(page.locator(".verdict-sentence")).toHaveText("10 changes in the last 7 days; 2 need a look.");
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See every flagged change" })).toHaveAttribute("href", /changes\?view=feed&days=7&flagged=1$/);
   const flagged = page.getByRole("list", { name: "Flagged changes" }).locator(".ov-row");
   await expect(flagged).toHaveCount(3);
   await expect(flagged.first()).toContainText("Switched to report-only, so it no longer blocks anything: Block legacy auth.");
   await expect(flagged.first()).toContainText("Amara Okafor changed Block legacy auth, a Conditional Access policy,");
   await expect(flagged.first()).toHaveAttribute("href", /changes\?view=feed&days=7&q=block\+legacy\+auth$/);
-  // High flags after the critical one, newest first.
-  await expect(flagged.nth(1)).toContainText("SharePoint sharing opened wider");
-  await expect(flagged.nth(2)).toContainText("Now trusted for sign-in: Branch offices.");
+  // The high flag that still needs a look after the critical one; the accepted one last, marked so.
+  await expect(flagged.nth(1)).toContainText("Now trusted for sign-in: Branch offices.");
+  await expect(flagged.nth(2)).toContainText("SharePoint sharing opened wider");
+  await expect(flagged.nth(2)).toContainText("Dealt with");
+  const steps = page.getByRole("list", { name: "Flagged changes" }).locator(".ns-step");
+  await expect(steps).toHaveCount(3);
+  await expect(steps.nth(0).getByRole("link", { name: "Accept or undo" })).toHaveAttribute("href", "#/changes?open=dr1");
+  await expect(steps.nth(2)).toHaveText("Accepted by Sam Lee on 2 Oct.");
+  await expect(steps.nth(2).getByRole("link")).toHaveCount(0);
   const watch = page.getByRole("list", { name: "Other changes to look at" }).locator(".ov-row");
   await expect(watch).toHaveCount(2);
   await expect(watch.first()).toContainText("Block legacy auth");
@@ -2770,7 +2850,7 @@ test("insights: verdict, where to start, the shape of the period and the record"
   await expect(page.getByRole("list", { name: "Flagged changes" })).toHaveCount(0);
 
   await open(page, "/insights/capped", "light");
-  await expect(page.locator(".verdict-sentence")).toHaveText("At least 10 changes in the last 90 days; 3 need a look.");
+  await expect(page.locator(".verdict-sentence")).toHaveText("At least 10 changes in the last 90 days; 2 need a look.");
   await expect(page.locator(".verdict-detail")).toContainText("Showing the newest 10 changes.");
 
   await open(page, "/insights/empty", "light");
@@ -6216,7 +6296,9 @@ test("every change: flag sentences on their rows, and a Flagged tile that narrow
     await expect(branch).toContainText("High");
     await expect(page.locator(".cf-row", { hasText: "Helpdesk admins" }).getByRole("list", { name: "What this change does" })).toHaveCount(0);
     const tile = page.locator(".cf-tile", { hasText: "Flagged" });
-    await expect(tile.locator(".cf-tile-count")).toHaveText("3");
+    // The tile counts what still needs a look; the list keeps the accepted one too.
+    await expect(tile.locator(".cf-tile-count")).toHaveText("2");
+    await expect(tile).toContainText("1 more flagged, already dealt with");
     await tile.click();
     await expect(page).toHaveURL(/flagged=1/);
     await expect(tile).toHaveAttribute("aria-pressed", "true");

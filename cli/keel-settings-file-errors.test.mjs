@@ -180,6 +180,9 @@ test('no operator tool parses a settings file with a bare JSON.parse', () => {
     'release/acceptanceLedger.mjs: JSON.parse(readFileSync(join(dir',
     'release/acceptanceLedger.mjs: JSON.parse(readFileSync(path',
     'release/acceptanceLedger.mjs: JSON.parse(readFileSync(fixturePath',
+    // The release sign-off reads evidence records and the journeys file named by --fixture.
+    'release/readiness.mjs: JSON.parse(readFileSync(path',
+    'release/readiness.mjs: JSON.parse(readFileSync(fixturePath',
     'release/qualification.mjs: JSON.parse(readFileSync(pinPath',
     'release/qualification.mjs: JSON.parse(readFileSync(resolve(evidenceDir',
     'release/qualification.mjs: JSON.parse(readFileSync(evidencePath',

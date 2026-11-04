@@ -44,7 +44,8 @@ import { Icon } from "@/components/shell/icons";
 import { PeoplePage } from "@/components/people/people-page";
 import { PoliciesPage } from "@/components/policies/policies-page";
 import { PolicyPage } from "@/components/policies/policy-page";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { evidenceTarget, OLD_ROUTE_TARGETS } from "@/lib/old-routes";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
 import { lastRestoreTile, pastRestoresVerdict } from "@/lib/restore-view";
@@ -882,6 +883,7 @@ const RULE_DELETE_FIELDS = [
   { field: "blastRadius", before: "tenant-lockout", after: null }, { field: "maxBlastRadius", before: "cosmetic", after: null },
   { field: "maxActionsPerWindow", before: null, after: null }, { field: "windowSeconds", before: null, after: null },
 ];
+const UNNAMED_SCRIPT_KEY = "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1";
 const EVIDENCE = [
   { seq: "18205", occurred_at: "2026-10-02T09:39:02Z", kind: "approval-decision", actor: "amara.okafor@contoso.example", subject: { requestId: "a9e10000-0000-4000-8000-000000000100", action: "restore", decision: "approved", executor: "worker", jobId: "a3" } },
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
@@ -889,7 +891,8 @@ const EVIDENCE = [
   { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
   { seq: "18201", occurred_at: "2026-10-02T09:05:10Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: false } },
   { seq: "18200", occurred_at: "2026-10-02T08:52:30Z", kind: "action-attempt", actor: "sam.ortiz@contoso.example", subject: { action: "restore", decision: "denied", reason: "capability" } },
-  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: true } },
+  // A setting no backup names: its key is only an id, so the page names its kind.
+  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: UNNAMED_SCRIPT_KEY, matched: true } },
   { seq: "18180", occurred_at: "2026-09-29T11:20:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "deleted", policyId: "5a000000-0000-4000-8000-000000000002", name: "KEEL-RT Alert on lockout risk", action: "alert", fields: RULE_DELETE_FIELDS } },
   { seq: "18179", occurred_at: "2026-09-29T11:10:00Z", kind: "policy-change", actor: "marouanedefili@gmail.com", subject: { change: "edited", policyId: "5a000000-0000-4000-8000-000000000001", name: "KEEL-RT Undo low-risk group changes", action: "auto_remediate", fields: RULE_EDIT_FIELDS } },
   { seq: "18171", occurred_at: "2026-09-28T06:10:00Z", kind: "recovery-drill", actor: "scheduler", subject: { mode: "live", outcome: "passed", cleanup: { status: "complete" } } },
@@ -949,7 +952,9 @@ const activityJobs = (jobs: Job[]): Job[] => [
   job("y1", "restore", "failed", { requestedBy: "amara.okafor@contoso.example", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: Exchange Online would not accept 2 of the mailbox rules", createdAt: "2026-10-01T16:50:00Z", startedAt: "2026-10-01T16:50:30Z", finishedAt: "2026-10-01T16:52:00Z", references: refs("amara.okafor@contoso.example", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010", resources: 2, snapshotAt: "2026-10-01T09:12:00Z" } }) }),
   job("y2", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier2" }, createdAt: "2026-10-01T02:00:00Z", startedAt: "2026-10-01T02:00:10Z", finishedAt: "2026-10-01T02:09:00Z" }),
   job("y3", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier1" }, createdAt: "2026-09-30T02:00:00Z", startedAt: "2026-09-30T02:00:10Z", finishedAt: "2026-09-30T02:03:00Z" }),
-  job("y4", "collect", "succeeded", { requestedBy: "scheduler", params: {}, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z" }),
+  // An automatic roll back of a change to a setting no backup names.
+  job("y4", "remediate", "succeeded", { requestedBy: "policy-automation", params: { driftIds: ["d6e00000-0000-4000-8000-0000000000e1"] }, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z",
+    references: refs("policy-automation", { changes: [{ kind: "change", id: "d6e00000-0000-4000-8000-0000000000e1", name: null, readable: true, naturalKey: UNNAMED_SCRIPT_KEY, resourceType: "deviceManagementScript", changeType: "modified" }] }) }),
 ];
 const CAPTURED = (capturedAt: string, sourceSnapshotId: string | null, basis: BaselineCapture["basis"] = "source-snapshot"): BaselineCapture => ({
   basis, capturedAt, ageMs: Date.parse(now) - Date.parse(capturedAt), sourceSnapshotId,
@@ -2855,6 +2860,18 @@ function IncidentsRoute({ viewer }: { viewer: boolean }) {
   </>;
 }
 
+// An old address the portal redirects on the server: the harness replaces the address
+// the same way, so the checks run on the page a person lands on.
+function Redirect({ to }: { to: string }) {
+  const router = useRouter();
+  useEffect(() => { router.replace(to); }, [router, to]);
+  return null;
+}
+
+function OldEvidence() {
+  return <Redirect to={evidenceTarget(Object.fromEntries(useSearchParams()))} />;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
@@ -2879,6 +2896,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <JobRefresher active={active} />
       </>;
     }
+    case "/backups": case "/coverage": case "/jobs": return <Redirect to={OLD_ROUTE_TARGETS[path]} />;
+    case "/evidence": return <OldEvidence />;
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
       return <>

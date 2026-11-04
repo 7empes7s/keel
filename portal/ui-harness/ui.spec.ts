@@ -75,6 +75,11 @@ const PAGES = [
   { name: "benchmarks-names-hidden", hash: "/compliance/anonymous" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
+  // Old addresses that redirect: the checks run on the page they land on.
+  { name: "backups", hash: "/backups" },
+  { name: "coverage", hash: "/coverage" },
+  { name: "evidence", hash: "/evidence" },
+  { name: "jobs", hash: "/jobs" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -112,6 +117,40 @@ for (const theme of ["dark", "light"] as const) {
     });
   }
 }
+
+// The old addresses the portal redirects (issue #965): the page each lands on passes
+// axe at phone and laptop widths too, and carries the old filters under their new names.
+const OLD_ADDRESSES = [
+  { name: "backups", hash: "/backups", lands: "/protect" },
+  { name: "coverage", hash: "/coverage", lands: "/protect" },
+  { name: "evidence", hash: "/evidence", lands: "/activity?show=records" },
+  { name: "jobs", hash: "/jobs", lands: "/activity?show=jobs" },
+];
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [375, 390, 1278]) {
+    for (const { name, hash, lands } of OLD_ADDRESSES) {
+      test(`a11y · ${name} · ${width} · ${theme}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await open(page, hash, theme);
+        expect(new URL(page.url()).hash).toBe(`#${lands}`);
+        const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+        const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+        expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+      });
+    }
+  }
+}
+
+test("old addresses · /evidence keeps its filters, and unnamed settings read by their kind", async ({ page }) => {
+  await open(page, "/evidence?kind=policy-evaluation&from=2026-10-01T00:00:00Z&to=2026-10-02T23:59:59Z");
+  expect(new URL(page.url()).hash).toBe("#/activity?show=records&what=policy&range=2026-10-01..2026-10-02");
+  await expect(page.locator(".ac-row-link")).toHaveText([
+    "Policies checked a change to Finance approvers (group)",
+    "Policies checked a change to an unnamed device management script, and one applied",
+  ]);
+  await open(page, "/jobs");
+  await expect(page.locator(".ac-row-link").last()).toHaveText("Roll back of 1 change, including an unnamed device management script");
+});
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
 const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial", "job-content-partial"];
@@ -2518,7 +2557,13 @@ const RECORD_IDS: Record<string, string[]> = {
   "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
   sites: ["c0110000-0000-4000-8000-0000000000c5"],
   site: ["contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002", "a9900000-0000-4000-8000-0000000000a1", "a9900000-0000-4000-8000-0000000000a2", "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE"],
+  // The old addresses land on Protect and Activity; the unnamed device script's key and
+  // the roll back's change id stay in the record while the rows name its kind.
+  evidence: ["18190", "18205", "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1", "a9e10000-0000-4000-8000-000000000100"],
+  jobs: ["a4", "y4", "d6e00000-0000-4000-8000-0000000000e1", "deviceManagementScript:6d5e0000-0000-4000-8000-0000000000e1"],
 };
+RECORD_IDS.backups = RECORD_IDS.protect;
+RECORD_IDS.coverage = RECORD_IDS.protect;
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {
   // Each text node on its own line, so adjacent blocks never run together.

@@ -231,7 +231,7 @@ export function jobName(job: JobLike): string {
       if (params.workloadRestore && typeof params.workloadRestore === "object") return workloadDryRunName(params.workloadRestore as Record<string, unknown>);
       if (params.complianceFix && typeof params.complianceFix === "object") {
         const key = (params.complianceFix as { naturalKey?: unknown }).naturalKey;
-        return typeof key === "string" && key ? `Dry run of a fix for a failing compliance check on ${namedResource(key)}` : "Dry run of a fix for a failing compliance check";
+        return typeof key === "string" && key ? `Dry run of a fix for a failing compliance check on ${inSentence(namedResource(key))}` : "Dry run of a fix for a failing compliance check";
       }
       const selected = Array.isArray(params.selection) ? params.selection.length : 0;
       return `Dry run of a restore of ${plural(selected, "selected setting")} from the backup of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
@@ -449,9 +449,11 @@ const quoted = (value: unknown): string => {
   const note = text(value);
   return note ? `: “${note.length > 140 ? `${note.slice(0, 139)}…` : note}”` : "";
 };
+// Inside a sentence a setting with no name reads "an unnamed group", as job names do.
+const inSentence = (label: string): string => label.replace(/^Unnamed /, "an unnamed ");
 const resourceOf = (subject: Subject, names: NamedKeys): string | null => {
   const key = text(subject.naturalKey);
-  return key ? namedResource(key, names, text(subject.resourceType)) : null;
+  return key ? inSentence(namedResource(key, names, text(subject.resourceType))) : null;
 };
 const adapterName = (value: unknown): string => (value === "servicenow" || value == null ? "ServiceNow" : words(String(value)));
 const accountLabel = (subject: Subject): string | null => {
@@ -701,7 +703,7 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
   // Alerts, people and emergency access
   "alert-action": (s, actor, names) => {
     const verb = { acknowledged: "acknowledged", resolved: "resolved", muted: "muted", unmuted: "unmuted" }[String(s.action)] ?? "changed";
-    const about = text(s.naturalKey) ? ` about ${namedResource(String(s.naturalKey), names)}` : "";
+    const about = text(s.naturalKey) ? ` about ${inSentence(namedResource(String(s.naturalKey), names))}` : "";
     return `${actor} ${verb} an alert${about}${quoted(s.note)}`;
   },
   "people-anonymity": (s, actor) => s.enabled === true

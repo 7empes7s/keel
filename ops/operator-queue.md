@@ -14863,12 +14863,12 @@ item that needs it stays untouched.
   result; evidence branch and commit; import counts; the run details; the proof listing; anything left in the tenant
   (expected: the KEEL-RT fixtures only, no tenant-wide change).
 
-### Q315: Rerun the Q268 default app credential rules update (part C) after PR #960 deploys (test tenant, tenant-wide setting put back), about 15 minutes
+### Q315: Rerun the Q268 default app credential rules update (part C) after PR #988 deploys (it carries #960, now closed) (test tenant, tenant-wide setting put back), about 15 minutes
 - Drafted by the "Fix default app credential rules restore" thread (2026-11-04). In Q268 C the update was `uncertain`: Graph sets
   `identifierUris.uriAdditionWithoutUniqueTenantIdentifier.isStateSetByMicrosoft` itself, so the dry run planned
   `applicationRestrictions` and its read-back differed. PR #960 never sends that field and leaves it out of the plan, the read-back
   check and the "changes admin access" effects. The dry run should now plan `isEnabled` only.
-- Needs: PR #960 merged and deployed (build B). Check: `grep -q withoutMicrosoftSet /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
+- Needs: PR #988 (carries #960) merged and deployed (build B). Check: `grep -q withoutMicrosoftSet /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
   Run the restore and the capture from the same build B, and pass that build to `--build`.
 - Status: todo
 - Result:

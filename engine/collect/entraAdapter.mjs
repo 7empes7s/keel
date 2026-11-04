@@ -74,6 +74,13 @@ function graphNativeAdapter(type) {
       if (extra.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: extra.error.status ?? null, capped: false, error: extra.error };
       result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + extra.pages;
     }
+    // Q271: a related object no route per object returns (an Intune role
+    // assignment's role) is read from the side that lists it.
+    if (entry.linkedFrom && !result?.error && !result?.capped && Array.isArray(result?.items) && result.items.length > 0) {
+      const linked = await withLinkedFrom(reader, entry, result.items);
+      if (linked.error) return { entry, path: linked.path ?? path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: linked.error.status ?? null, capped: false, error: linked.error };
+      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + linked.pages;
+    }
     // Restore gaps batch 5: a kind whose objects hold children with one more
     // collection each (an administrative template's settings and their values)
     // reads that collection per child.
@@ -305,6 +312,49 @@ async function withItemReads(reader, entry, items, { dropWhenNotFound = false } 
   }
   return { pages, error: null };
 }
+
+/**
+ * Q271: Graph has no route for an Intune role assignment's own role
+ * (`roleAssignments/{id}/roleDefinition` answers 400 "No OData route exists"),
+ * but each role lists its assignments. So the parents (the roles) are read, then
+ * each one's children (its assignments), and each object listed under one parent
+ * gets that parent's `fields` as `as`. An object under no parent is left without
+ * it (a restore then reports it cannot tell the role); under two, the kind fails.
+ * With no objects, nothing more is read.
+ * A parent that went between the two reads is skipped. Any other failed read
+ * fails the kind, so a backup never holds an assignment with a role guessed.
+ */
+async function withLinkedFrom(reader, entry, items) {
+  const { as, parents, children, fields } = entry.linkedFrom;
+  const listed = await reader.collect(entry.version, parents, { pageCap: Infinity });
+  if (listed?.error) return { error: listed.error, path: parents };
+  if (listed?.capped || !Array.isArray(listed?.items)) return { error: { error: `reading ${entry.type}: the list at ${parents} was incomplete` }, path: parents };
+  let pages = Number.isSafeInteger(listed.pages) ? listed.pages : 0;
+  const parentOf = new Map();
+  for (const parent of listed.items) {
+    if (typeof parent?.id !== 'string' || parent.id.length === 0) return { error: { error: `reading ${entry.type}: an object at ${parents} has no id` }, path: parents };
+    const path = children.replace('{parent}', encodeURIComponent(parent.id));
+    const result = await reader.collect(entry.version, path, { pageCap: Infinity });
+    if (result?.error?.status === 404 && !(result.pages > 0)) continue;
+    if (result?.error) return { error: result.error, path };
+    if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: the objects under ${parent.id} were incomplete` }, path };
+    pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
+    const picked = Object.fromEntries(fields.filter((field) => field in parent).map((field) => [field, parent[field]]));
+    for (const child of result.items) {
+      const key = String(child?.id ?? '').toLowerCase();
+      if (!key) continue;
+      if (parentOf.has(key) && parentOf.get(key).id !== picked.id) return { error: { error: `reading ${entry.type}: ${child.id} is listed under more than one object at ${parents}` }, path };
+      parentOf.set(key, picked);
+    }
+  }
+  for (const item of items) {
+    const found = parentOf.get(String(item?.id ?? '').toLowerCase());
+    if (found) item[as] = { ...found };
+  }
+  return { pages, error: null };
+}
+
+export const withLinkedFromForTest = withLinkedFrom;
 
 for (const descriptor of DESCRIPTORS) {
   register(descriptor, graphNativeAdapter(descriptor.type));

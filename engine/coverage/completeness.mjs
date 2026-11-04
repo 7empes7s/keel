@@ -256,7 +256,8 @@ export const COMPLETENESS = Object.freeze({
   androidManagedStoreAccountEnterpriseSettings: { whole: 'not-written', missing: [part('Enrollment company codes and QR codes', 'secret')] },
   managedDeviceCleanupRule: { missing: [part('A deleted rule, and a shorter wait before devices are retired', 'not-written')] },
   windowsQualityUpdatePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
-  operationApprovalPolicy: {},
+  // Q271 part B: Intune refuses app writes to these policies, so none is written.
+  operationApprovalPolicy: { whole: 'not-written' },
   // Restore gaps batch 5: the script body is read per script and written back.
   deviceCustomAttributeShellScript: {},
   // Remaining kinds, batch 4.

@@ -190,7 +190,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('DeviceManagementRBAC.ReadWrite.All', 'intune', 'Roles', 'Change Intune roles', 'Restore Intune scope tags, custom Intune admin roles and who holds them'),
   write('DeviceManagementManagedDevices.ReadWrite.All', 'intune', 'Devices', 'Change managed devices', 'Restore device categories'),
   write('DeviceManagementApps.ReadWrite.All', 'intune', 'Apps', 'Change Intune apps', 'Restore app protection and app settings'),
-  write('DeviceManagementConfiguration.ReadWrite.All', 'intune', 'Policies', 'Change Intune device settings', 'Restore device and compliance policies, and multi admin approval policies'),
+  write('DeviceManagementConfiguration.ReadWrite.All', 'intune', 'Policies', 'Change Intune device settings', 'Restore device and compliance policies'),
   write('DeviceManagementScripts.ReadWrite.All', 'intune', 'Policies', 'Change Intune scripts', 'Restore device scripts'),
   write('DeviceManagementServiceConfig.ReadWrite.All', 'intune', 'Settings', 'Change Intune enrolment settings', 'Restore enrolment notifications'),
   write('MailboxSettings.ReadWrite', 'exchange', 'Settings', 'Change mailbox settings', 'Restore mailbox settings such as auto-replies'),

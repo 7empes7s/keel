@@ -14479,3 +14479,18 @@ item that needs it stays untouched.
   commit, with `ONLY='baselines getDriftData'` and `timeout 300`. Delete the script and the output file afterwards.
 - **Report:** the commit, the output verbatim (only SQL text, counts and times), any `read-only transaction` line, and any
   `[keel-portal] slow query` line. Expected: well under 100 queries, and no `WITH seen AS` line over 1 s.
+
+### Q309: Rerun Q275 (Exchange audit, encryption and organization setting reads) after PR #947 deploys, then turn them on (read-only toward the tenant), about 15 minutes
+- Drafted by the "Handle new Exchange encryption fields" thread (2026-11-04). Q275 at 7cb46d1a ran `run` exit 3: message
+  encryption came back with no Guid (dropped as unidentified, so the family looked empty) and IRM did not return
+  `DecryptAttachmentOnDownload`. PR #947 keys message encryption by its `Identity` (expected key `ome:ome configuration`) and
+  drops that IRM field. No cmdlet or parameter changed; `run-cmdlet.ps1` is unchanged.
+- Needs: PR #947 merged and deployed (`grep -q byIdentity /opt/keel-live/engine/collect/workloads/exchangeOrgConfig.mjs`).
+- Status: todo
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
+  cmdlet. Grant, assign or create nothing.
+- Do: exactly Q275 steps 1–5 at the deployed commit (capture, pseudonymize check, evidence to
+  `claude/live-evidence-exchange-org-config` replacing the record there, import, `run`, `proof`).
+- **Report:** as in Q275, plus for `exchange-org-config`: outcome (expected **complete**), `discovery.empty` (expected `[]`),
+  `discovery.unidentified` (expected 0), `unknownFields` (expected `{}`), and the message encryption resource key. If any of
+  those differ, report them verbatim (field names only, never values).

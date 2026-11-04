@@ -11,6 +11,8 @@
  *    subtypes live in different collections, `singleton` for an object that is
  *    only ever updated in place);
  *  - `operations`: the verbs the record writes; anything else is refused;
+ *  - `updateSendsWhole`: an update sends every writable field, not only the
+ *    changed ones (Graph refuses a partial PATCH of a Defender role assignment);
  *  - `excluded`: fields never sent (navigation properties, reports, values the
  *    service computes); `createOnly`: fields sent on create and never on update;
  *  - `odataType`: 'required' (sent and checked), 'keep' (sent when present) or
@@ -150,6 +152,7 @@ export function defineRecord(spec) {
     planChanges: null,
     planCompletion: null,
     remapsReferences: false,
+    updateSendsWhole: false,
     collectionNamesType: false,
     tenantWide: false,
     checkedAfterWrite: [],
@@ -810,7 +813,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     }
     sent = body;
   } else if (fields.length > 0) {
-    sent = record.updateMethod === 'PUT' ? body
+    sent = record.updateMethod === 'PUT' || record.updateSendsWhole ? body
       : Object.fromEntries(Object.entries(body).filter(([field]) => field === '@odata.type' || fields.includes(field)));
     const result = record.writeVia
       ? await record.writeVia(io, { resource, payload, verb, body, sent, targetId, ctx })

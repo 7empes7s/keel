@@ -243,8 +243,9 @@ export async function restoreApprovalScope(client, artifact) {
   }
   // A compliance fix writes the value a control asks for, not the backup's.
   if (artifact.complianceFix) rules.add('compliance-fix');
-  // A tenant-wide workload write goes beyond the KEEL-RT- fixtures (issue #317).
-  if (artifact.workloadRestore?.allowTenantWide === true) rules.add('tenant-wide');
+  // A tenant-wide write goes beyond the KEEL-RT- fixtures (issue #317): a workload
+  // restore, or a snapshot dry run made with the tenant-wide option.
+  if (artifact.workloadRestore?.allowTenantWide === true || artifact.allowTenantWide === true) rules.add('tenant-wide');
   // The setting is the source tenant's; writing into another tenant is its own kind.
   if (tenantRefFor(artifact.targetTenantId) !== artifact.tenantRef) rules.add('other-tenant');
   const workload = artifact.workloadRestore?.workload

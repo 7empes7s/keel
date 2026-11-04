@@ -102,6 +102,9 @@ What it cannot see:
 - **A backup saved before the counts existed** (summary version 1, or a OneDrive record without
   `exposure`) compares as unknown, never as zero. It produces no row, so the upgrade never reads as
   "removed".
+- **A backup that could not read a group's members** compares its Everyone grants, guests and
+  owners as unknown, since all three come from group members. It produces no row for them, and
+  neither does the next full backup. Anyone links still compare.
 - **A site that inherits its roles** saves no Everyone list. Its Everyone grants are not compared.
 - **A site's first backup** has nothing to compare with.
 - **OneDrive** is compared file by file, from each file's record before and after. Only additions

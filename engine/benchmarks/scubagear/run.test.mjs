@@ -110,7 +110,7 @@ test('every rule of every product is a control, and each gets an answer on the f
   // Every rule Keel can check has a worked-out answer, and gets exactly it.
   const checked = Object.fromEntries(Object.entries(verdicts).filter(([, verdict]) => verdict !== 'unknown'));
   assert.deepEqual(checked, { ...FIXTURE_EXPECTED });
-  assert.equal(Object.keys(checked).length, 69);
+  assert.equal(Object.keys(checked).length, 77);
 });
 
 test('a rule Keel cannot check says why, and is never a pass', () => {
@@ -127,8 +127,8 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.SECURITYSUITE.6.1v1'), 'scubagear:field-not-read:hosted_content_filter_policies.RecommendedPolicyType');
   assert.equal(reason('MS.SHAREPOINT.1.2v1'), 'scubagear:field-not-read:SPO_tenant.ODBSharingCapability');
   const unchecked = scuba().filter((control) => control.unchecked);
-  // 38 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
-  assert.equal(unchecked.length, 38);
+  // 30 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
+  assert.equal(unchecked.length, 30);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 

@@ -58,6 +58,9 @@ export function leaseSummary(now = Date.now()): { held: number; oldestMs: number
 // Kept on globalThis so a development reload reuses the pools instead of leaking them.
 const registry: PoolRegistry = ((globalThis as { __keelPortalPools?: PoolRegistry }).__keelPortalPools ??= new Map());
 
+/** A new connection's setup query, until it has answered. */
+const settingUp = new WeakMap<pg.PoolClient, Promise<void>>();
+
 function poolFor(url: string): pg.Pool {
   let pool = registry.get(url);
   if (!pool) {
@@ -79,8 +82,12 @@ function poolFor(url: string): pg.Pool {
     // over-estimates (a correlated subquery, an unnest of unknown length) crossed
     // jit_above_cost and spent most of a second compiling before it ran. Set per new
     // connection, ahead of its first query, whatever options the database URL carries.
+    // The caller waits for it (connect below), so it never overlaps the first query.
     pool.on("connect", (client) => {
-      client.query("SET jit = off").catch((error: unknown) => console.error("[keel-portal] could not turn off JIT on a new connection", error));
+      settingUp.set(client, client.query("SET jit = off").then(
+        () => undefined,
+        (error: unknown) => console.error("[keel-portal] could not turn off JIT on a new connection", error),
+      ));
     });
     registry.set(url, pool);
   }
@@ -117,6 +124,11 @@ export async function connect(url: string): Promise<DbClient> {
       throw new DatabaseBusyError(error);
     }
     throw error;
+  }
+  const setup = settingUp.get(leased);
+  if (setup) {
+    settingUp.delete(leased);
+    await setup;
   }
   const lease = { at: Date.now() };
   leases.add(lease);

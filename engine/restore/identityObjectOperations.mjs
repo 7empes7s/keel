@@ -710,7 +710,7 @@ function appCredentialTrustRefusal(resource, verb) {
   const live = resource.live?.payload ?? {};
   const payload = resource.payload ?? {};
   const trusts = (value) => holdsNestedTrust('tenantAppManagementPolicy', value) || /trustedCertificateAuthority/i.test(JSON.stringify(value ?? null));
-  const fields = APP_RESTRICTION_FIELDS.filter((field) => !sameValue(payload[field], live[field]) && (trusts(payload[field]) || trusts(live[field])));
+  const fields = APP_RESTRICTION_FIELDS.filter((field) => !sameValue(withoutMicrosoftSet('tenantAppManagementPolicy', payload[field]), withoutMicrosoftSet('tenantAppManagementPolicy', live[field])) && (trusts(payload[field]) || trusts(live[field])));
   if (fields.length === 0) return null;
   const description = `The default app credential rules differ in ${fields.join(' and ')}, where a restriction carries its trusted certificate authority setting. `
     + 'A restore never writes which certificate authorities are trusted, and Graph replaces these rules whole, so nothing was written. '

@@ -1522,6 +1522,16 @@ test('approval-held kinds: the default app credential rules never send or check 
   assert.equal(JSON.stringify(writes[0].body).includes('isStateSetByMicrosoft'), false, 'the flag Microsoft sets is never sent');
   assert.equal(writes[0].body.applicationRestrictions.identifierUris.uriAdditionWithoutUniqueTenantIdentifier.state, 'disabled');
   assert.equal(graph.objects.get(path).applicationRestrictions.identifierUris.uriAdditionWithoutUniqueTenantIdentifier.isStateSetByMicrosoft, false);
+
+  // With a trusted certificate authority restriction on both sides, a difference only
+  // in the flag is no trust step: the isEnabled change is still written.
+  const trusted = { restrictionType: 'trustedCertificateAuthority', certificateBasedApplicationConfigurationIds: ['cbac-1'], restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' };
+  const withTrust = (rules) => ({ ...rules, applicationRestrictions: { ...rules.applicationRestrictions, keyCredentials: [trusted] } });
+  const trustedResource = singleton('tenantAppManagementPolicy', withTrust(backup), withTrust(live));
+  graph = microsoftSetsState(idoFakeGraph({ seed: { [path]: withTrust(live) } }), path);
+  result = await singletonWrite(graph, 'tenantAppManagementPolicy', withTrust(backup), withTrust(live), { ...CUSTOMER, approvedContentEffects: approvedEffects(trustedResource) });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph).map((write) => write.body), [{ isEnabled: true }]);
 });
 
 test('approval-held kinds: a restriction that carries trusted certificate authorities is never written, even approved', async () => {

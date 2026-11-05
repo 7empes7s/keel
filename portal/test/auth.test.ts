@@ -20,8 +20,8 @@ import {
   type ResolvedIdentity,
   type SignInHints,
 } from "@/lib/principal";
-import { DatabaseBusyError } from "@/lib/db";
-import { BUSY_MESSAGE, createAccessMiddleware } from "@/proxy";
+import { DatabaseBusyError, connect, databaseUnreachableReason } from "@/lib/db";
+import { BUSY_MESSAGE, UNREACHABLE_MESSAGE, createAccessMiddleware } from "@/proxy";
 
 const issuer = "https://keel-test.cloudflareaccess.com";
 const audience = "keel-test-audience";
@@ -107,12 +107,14 @@ async function accessToken({
   signingKey = trustedPrivateKey,
   tokenAudience = audience,
   expiresAt = "5 minutes",
+  email = authenticatedEmail,
 }: {
   signingKey?: CryptoKey;
   tokenAudience?: string;
   expiresAt?: number | string | Date;
+  email?: string;
 } = {}): Promise<string> {
-  return new SignJWT({ email: authenticatedEmail })
+  return new SignJWT({ email })
     .setProtectedHeader({ alg: "RS256", kid: trustedKeyId })
     .setIssuer(issuer)
     .setAudience(tokenAudience)
@@ -339,6 +341,86 @@ test("any other sign-in check failure is still a plain 403", async () => {
     assert.equal(response.headers.get("x-middleware-next"), null);
     assert.deepEqual(await response.json(), { error: "forbidden" });
   }
+});
+
+test("a signed-in browser with no principal gets a page that says who to ask, not raw JSON (#1005)", async () => {
+  const unregistered = middlewareResolvingWith(async () => ({ principalId: null, capabilities: [] }));
+
+  const response = await unregistered(request("/", await accessToken({ email: "new.person+<b>@example.com" })));
+
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("x-middleware-next"), null);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html/);
+  const html = await response.text();
+  assert.match(html, /This account isn't set up in Keel yet\./);
+  // The email comes from the token, so it is escaped before it goes into the page.
+  assert.match(html, /Ask an admin to add new\.person\+&#60;b&#62;@example\.com\./);
+  assert.doesNotMatch(html, /<b>/);
+});
+
+// Live 2026-11-04 22:45 (#1005): the port forward in front of Postgres died. Every sign-in
+// failed to connect with this exact error and was answered 403 "forbidden" until 14:10 the
+// next day. The resolver below goes through the portal's real connect() to a closed port.
+async function closedPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return address.port;
+}
+
+test("a database that can't be reached during the sign-in check answers 503 and says so, never 403 (#1005)", async (t) => {
+  const url = `postgres://keel:unused@127.0.0.1:${await closedPort()}/keel`;
+  const unreachable = middlewareResolvingWith(async () => {
+    const client = await connect(url);
+    await client.end();
+    return { principalId: "principal-1", capabilities: ["read"] };
+  });
+  const logged: string[] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => { logged.push(args.map(String).join(" ")); });
+
+  const api = await unreachable(request("/api/drift?x=1", await accessToken(), "GET", { "cf-ray": "9a55c3abcd9394d6-FRA" }));
+  assert.equal(api.status, 503);
+  assert.equal(api.headers.get("cache-control"), "no-store");
+  assert.equal(api.headers.get("retry-after"), "60");
+  // Fails closed: the request never reaches the route.
+  assert.equal(api.headers.get("x-middleware-next"), null);
+  assert.equal(api.headers.get(`x-middleware-request-${PRINCIPAL_ID_HEADER}`), null);
+  assert.deepEqual(await api.json(), { error: "database-unreachable", message: UNREACHABLE_MESSAGE });
+
+  const page = await unreachable(request("/", await accessToken()));
+  assert.equal(page.status, 503);
+  assert.equal(page.headers.get("x-middleware-next"), null);
+  assert.match(page.headers.get("content-type") ?? "", /^text\/html/);
+  const html = await page.text();
+  assert.match(html, /Keel can't reach its database right now\./);
+  assert.match(html, /Nothing was changed\. Try again in a minute\./);
+
+  assert.equal(logged.length, 2);
+  assert.match(logged[0], /^\[keel-portal\] 503 database unreachable: GET \/api\/drift \(sign-in check failed: ECONNREFUSED, cf-ray 9a55c3abcd9394d6-FRA\)$/);
+  assert.doesNotMatch(logged[0], /x=1/);
+  assert.match(logged[1], /^\[keel-portal\] 503 database unreachable: GET \/ \(/);
+});
+
+test("connection failures count as an unreachable database, other errors do not", () => {
+  const coded = (message: string, code: string) => Object.assign(new Error(message), { code });
+  assert.equal(databaseUnreachableReason(coded("connect ECONNREFUSED 127.0.0.1:5433", "ECONNREFUSED")), "ECONNREFUSED");
+  assert.equal(databaseUnreachableReason(coded("getaddrinfo ENOTFOUND db.internal", "ENOTFOUND")), "ENOTFOUND");
+  assert.equal(databaseUnreachableReason(coded("connect ETIMEDOUT 10.0.0.5:5432", "ETIMEDOUT")), "ETIMEDOUT");
+  assert.equal(databaseUnreachableReason(coded('password authentication failed for user "keel"', "28P01")), "28P01");
+  assert.equal(databaseUnreachableReason(coded("the database system is starting up", "57P03")), "57P03");
+  assert.equal(databaseUnreachableReason(new Error("Connection terminated unexpectedly")), "connection terminated");
+  assert.equal(databaseUnreachableReason(new Error("Connection terminated due to connection timeout")), "connection terminated");
+  // localhost resolving to two addresses, both refused.
+  const both = Object.assign(new AggregateError([coded("connect ECONNREFUSED ::1:5433", "ECONNREFUSED"), coded("connect ECONNREFUSED 127.0.0.1:5433", "ECONNREFUSED")], ""), {});
+  assert.equal(databaseUnreachableReason(both), "ECONNREFUSED");
+
+  assert.equal(databaseUnreachableReason(coded('relation "principal" does not exist', "42P01")), null);
+  assert.equal(databaseUnreachableReason(new Error("Connection terminated by a bug in this message")), null);
+  assert.equal(databaseUnreachableReason(new DatabaseBusyError(new Error("timeout exceeded when trying to connect"))), null);
+  assert.equal(databaseUnreachableReason(null), null);
 });
 
 test("GET /api/health is reachable without a token and returns the literal body", async () => {

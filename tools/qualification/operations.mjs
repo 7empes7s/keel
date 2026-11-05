@@ -21,6 +21,7 @@
  * and never change it: a passing fake cannot register, promote or qualify
  * anything (capabilities.mjs owns claims). No network, no tenant.
  */
+import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 import { CATALOG } from '../tenant-probe/catalog.mjs';
@@ -44,6 +45,10 @@ import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOp
 const DIRECTORY_POLICY_COLLECTIONS = new Set(Object.values(DIRECTORY_POLICY_RECORDS).map((entry) => entry.collection));
 
 const STS_DEFINITION = Object.freeze(['{"TokenLifetimePolicy":{"Version":1,"AccessTokenLifetime":"8:00:00"}}']);
+
+// Issue #1007: a stand-in terms of use document (a PDF header and nothing else).
+const FIXTURE_AGREEMENT_PDF = Buffer.from('%PDF-1.4\n% KEEL fixture terms of use\n%%EOF\n');
+const FIXTURE_AGREEMENT_PDF_SHA256 = createHash('sha256').update(FIXTURE_AGREEMENT_PDF).digest('hex');
 
 export const FIXTURE_PAYLOADS = Object.freeze({
   // Wave 2 ENTRA: directory policies and a delegated consent.
@@ -256,6 +261,26 @@ export const FIXTURE_PAYLOADS = Object.freeze({
         fallbackPrimaryApprovers: [], escalationApprovers: [], fallbackEscalationApprovers: [] }],
     },
     accessPackage: { id: 'fixture-source-package' },
+  },
+  // Issue #1007: terms of use with one English PDF, named by its hash as the
+  // backup stores it (engine/collect/agreementFiles.mjs).
+  agreement: {
+    displayName: 'Fixture terms', isViewingBeforeAcceptanceRequired: true, isPerDeviceAcceptanceRequired: false,
+    userReacceptRequiredFrequency: 'P90D', termsExpiration: null,
+    files: [{ fileName: 'Fixture.pdf', displayName: 'Fixture terms', language: 'en', isDefault: true, isMajorVersion: false,
+      fileData: { sha256: FIXTURE_AGREEMENT_PDF_SHA256, size: FIXTURE_AGREEMENT_PDF.length } }],
+  },
+  // Issue #1007: a weekly review of a group's members by one user, in the shape
+  // Graph returns (accessreviewset-post-definitions).
+  accessReviewScheduleDefinition: {
+    displayName: 'Fixture review', descriptionForAdmins: 'Fixture review', descriptionForReviewers: 'Fixture review',
+    scope: { '@odata.type': '#microsoft.graph.accessReviewQueryScope', query: '/groups/aaaaaaaa-0000-4000-8000-000000001007/transitiveMembers', queryType: 'MicrosoftGraph' },
+    reviewers: [{ query: '/users/aaaaaaaa-0000-4000-8000-000000001008', queryType: 'MicrosoftGraph', queryRoot: null }],
+    settings: {
+      mailNotificationsEnabled: true, reminderNotificationsEnabled: true, justificationRequiredOnApproval: true, defaultDecisionEnabled: false,
+      defaultDecision: 'None', instanceDurationInDays: 3, autoApplyDecisionsEnabled: false, recommendationsEnabled: true,
+      recurrence: { pattern: { type: 'weekly', interval: 1 }, range: { type: 'noEnd', startDate: '2026-01-05' } },
+    },
   },
   entitlementManagementSettings: { externalUserLifecycleAction: 'blockSignInAndDelete', durationUntilExternalUserDeletedAfterBlocked: 'P30D' },
   appManagementPolicy: {
@@ -558,6 +583,8 @@ const FIXTURE_TARGET_IDS = Object.freeze({
   accessPackageResourceRoleScope: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group']],
   // Issue #993: the package, group and approver live in the target under other ids.
   accessPackageAssignmentPolicy: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group'], ['user:approver@fixture.example', 'fixture-user']],
+  // Issue #1007: the reviewed group and the reviewer live in the target under other ids.
+  accessReviewScheduleDefinition: [['group:fixture-group', 'bbbbbbbb-0000-4000-8000-000000001007'], ['user:reviewer@fixture.example', 'bbbbbbbb-0000-4000-8000-000000001008']],
 });
 
 // The references canonicalize gives these fixtures (issue #992).
@@ -571,6 +598,10 @@ const FIXTURE_REFERENCES = Object.freeze({
     { field: 'accessPackage.id', symbol: 'accessPackage:fixture-source-package', required: true },
     { field: 'specificAllowedTargets[0].groupId', symbol: 'group:fixture-group', required: true },
     { field: 'requestApprovalSettings.stages[0].primaryApprovers[0].userId', symbol: 'user:approver@fixture.example', required: true },
+  ],
+  accessReviewScheduleDefinition: [
+    { field: 'scope.query', symbol: 'group:fixture-group', required: true },
+    { field: 'reviewers[0].query', symbol: 'user:reviewer@fixture.example', required: true },
   ],
 });
 
@@ -595,6 +626,9 @@ const LISTED_BEFORE_CREATE = new Set([
   '/identity/userFlowAttributes', '/identity/identityProviders', '/identity/apiConnectors',
   '/identityGovernance/entitlementManagement/accessPackages',
   '/identityGovernance/entitlementManagement/connectedOrganizations', '/identityGovernance/entitlementManagement/assignmentPolicies',
+  // Issue #1007: an access review series is looked for by name and scope before a
+  // create, and terms of use by name.
+  '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
 ]);
@@ -1059,6 +1093,8 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
           // As a promotion whose dry run's content effects were approved (or need no
           // approval): the approval-held kinds write only those (restore/approvalHeld.mjs).
           approvedContentEffects: classifyContentEffects([resource]).effects,
+          // Issue #1007: the terms of use PDF the agreement fixture names, as the store holds it.
+          agreementFiles: new Map([[FIXTURE_AGREEMENT_PDF_SHA256, FIXTURE_AGREEMENT_PDF]]),
           // The deletion guard verifies a policy against the CURRENT target state;
           // the fixture's live object is that state (it excludes no break-glass id).
           deletionGuardOptions: {

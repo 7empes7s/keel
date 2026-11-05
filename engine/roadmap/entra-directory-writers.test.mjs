@@ -141,9 +141,9 @@ test('each writer type is a fixture-tested create and update, delete is unsuppor
 test('the formerly unknown Entra types without a writer stay manual and are restored by hand', () => {
   // Issue #994 gave authentication contexts and staged rollout a writer
   // (sign-in-settings.test.mjs); certificate authorities stay manual by design.
-  // Issue #991 registered roleAssignmentSchedule, #992 accessPackage and #993 connectedOrganization.
-  // Issue #1008 registered activityBasedTimeoutPolicy (STS_TYPES).
-  const stillManual = ['certificateBasedAuthConfiguration', 'accessReviewScheduleDefinition'];
+  // Issue #991 registered roleAssignmentSchedule, #992 accessPackage, #993 connectedOrganization
+  // and #1007 accessReviewScheduleDefinition. Issue #1008 registered activityBasedTimeoutPolicy (STS_TYPES).
+  const stillManual = ['certificateBasedAuthConfiguration'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);
@@ -156,6 +156,9 @@ test('the formerly unknown Entra types without a writer stay manual and are rest
     assert.equal(TYPE_DECISIONS[type].decision, 'automated', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'keel', type);
   }
+  // Issue #1007: access review series are created by KEEL; their past reviews never are.
+  assert.equal(TYPE_DECISIONS.accessReviewScheduleDefinition.decision, 'automated');
+  assert.equal(completenessFor('accessReviewScheduleDefinition', TYPE_DECISIONS.accessReviewScheduleDefinition).recreate, 'keel');
   assert.equal(TYPE_DECISIONS.accessPackageAssignment.decision, 'manual');
 });
 
@@ -637,17 +640,17 @@ test('a writer\'s follow-up steps become completion items; parts that are only a
 });
 
 test('a type with no writer gets a by-hand step with the backed-up values and its admin center path', () => {
-  // Wave 2 IDO gave lifecycle workflows a writer, so an access review is the example.
-  const review = {
-    id: 'ar-1', displayName: 'KEEL-RT quarterly review', createdDateTime: '2026-01-01T00:00:00Z',
-    scope: { query: '/groups/g-1/transitiveMembers', queryType: 'MicrosoftGraph' }, settings: { recurrence: { pattern: { type: 'absoluteMonthly', interval: 3 } } },
+  // Wave 2 IDO gave lifecycle workflows a writer, and issue #1007 access reviews and
+  // terms of use, so an access package assignment is the example.
+  const assignment = {
+    id: 'as-1', displayName: 'KEEL-RT assignment', createdDateTime: '2026-01-01T00:00:00Z', state: 'delivered',
   };
-  const steps = byHandSteps('accessReviewScheduleDefinition', review, TYPE_DECISIONS.accessReviewScheduleDefinition);
+  const steps = byHandSteps('accessPackageAssignment', assignment, TYPE_DECISIONS.accessPackageAssignment);
   assert.equal(steps[0].requirement, 'followUp:recreate-by-hand');
-  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Access reviews');
-  assert.equal(steps[0].values.displayName, 'KEEL-RT quarterly review');
+  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Entitlement management > Access packages > <package> > Assignments');
+  assert.equal(steps[0].values.displayName, 'KEEL-RT assignment');
   assert.ok(!('id' in steps[0].values) && !('createdDateTime' in steps[0].values), 'ids and timestamps are not values to enter');
-  assert.equal(steps[1].actionable, false, 'past reviews are a record only');
+  assert.equal(steps[1].actionable, false, 'the original request is a record only');
   assert.throws(() => byHandSteps('lifecycleWorkflow', {}, TYPE_DECISIONS.lifecycleWorkflow), /has a writer/);
   assert.throws(() => byHandSteps('application', incompleteApp, TYPE_DECISIONS.application), /has a writer/);
 });
@@ -671,7 +674,7 @@ test('bestEffortCreate adopts a matching object instead of making a twin, and re
   });
   assert.equal(adopted.applied.targetId, 'a1');
   assert.equal(adopted.applied.adopted, true);
-  assert.ok(adopted.applied.followUp.some((step) => step.part === 'The agreement documents'));
+  assert.ok(adopted.applied.followUp.some((step) => step.part === 'Who accepted the terms'));
   graph.read = async () => ({ ok: true, status: 200, body: { value: [{ id: 'a1', displayName: 'KEEL-RT terms' }, { id: 'a2', displayName: 'KEEL-RT terms' }] } });
   const ambiguous = await bestEffortCreate(graph, resource, {
     path: '/identityGovernance/termsOfUse/agreements', body: {}, decision: TYPE_DECISIONS.agreement, match: (object) => object.displayName === 'KEEL-RT terms',

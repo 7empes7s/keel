@@ -17,6 +17,7 @@
 import { classify, buildIndex, walkGuids, ownIdentifiers } from '../../tools/tenant-probe/references.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { naturalKeyFor } from './naturalKey.mjs';
+import { queryReferenceValues } from './queryReferences.mjs';
 
 export class NaturalKeyCollisionError extends Error {
   constructor(collisions) {
@@ -214,7 +215,7 @@ function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
   const references = [];
   const seen = new Set();
   const staleReferences = [];
-  for (const { path, guid, prefix } of [...referenceValues(obj, idToSymbol), ...scopeReferenceValues(type, obj)]) {
+  for (const { path, guid, prefix } of [...referenceValues(obj, idToSymbol), ...scopeReferenceValues(type, obj), ...queryReferenceValues(type, obj)]) {
     if (seen.has(path)) continue;
     seen.add(path);
     const batchSymbol = idToSymbol.get(guid.toLowerCase());

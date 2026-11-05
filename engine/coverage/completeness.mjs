@@ -148,7 +148,7 @@ export const COMPLETENESS = Object.freeze({
     part('Activations people made themselves', 'read-only'),
     part('Changing or removing an active assignment, and ones inherited through a group', 'not-written'),
   ] },
-  accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
+  accessReviewScheduleDefinition: { missing: [part('Past reviews and their decisions', 'read-only'), part('Changes to an existing series, which Microsoft only lets an app replace whole', 'not-written')] },
   accessPackage: { missing: [part('Its assignment policies and who holds it, which are restored separately', 'not-written')] },
   connectedOrganization: { missing: [part('A federated domain identity source, whose sign-in settings a restore never writes', 'not-written'), part('Sponsors who do not exist in the target', 'not-written')] },
   // Wave 1 CAT-ENTRA: Entra governance.
@@ -162,7 +162,7 @@ export const COMPLETENESS = Object.freeze({
   accessPackageAssignmentPolicy: { missing: [part('Approval and request history', 'read-only'), part('Custom extensions (Logic Apps) the policy calls', 'not-written')] },
   accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
   entitlementManagementSettings: {},
-  agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },
+  agreement: { missing: [part('Who accepted the terms', 'read-only'), part('A changed document for a language the terms already have, and settings Microsoft sets only when terms are created', 'not-written'), part('A document Microsoft did not hand out when the backup was taken', 'binary-route')] },
   b2xIdentityUserFlow: { missing: [
     part('Custom page text (language overrides)', 'other-route'),
     part('An identity provider or API connector that is not set up in the target, and the client secret or password each one uses', 'secret'),

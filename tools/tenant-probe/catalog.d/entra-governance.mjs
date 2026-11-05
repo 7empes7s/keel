@@ -32,9 +32,11 @@ export default [
     query: '$expand=target,accessPackage',
     note: 'Restored by request through the assignment policy, never copied.' },
   { type: 'entitlementManagementSettings', path: '/identityGovernance/entitlementManagement/settings', version: 'v1.0', singleton: true, criticality: 'tier3', blastRadius: 'cosmetic' },
-  // Terms of use. Needs Entra ID P1. The agreement documents are files on a
-  // separate route.
+  // Terms of use. Needs Entra ID P1. Issue #1007: each agreement is read with its
+  // files (one per language, agreement-list-files); the PDF bytes are stored by
+  // hash beside the snapshot, never in it (engine/collect/agreementFiles.mjs).
   { type: 'agreement', path: '/identityGovernance/termsOfUse/agreements', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    itemReads: { as: 'files', single: true, field: 'files', path: '/identityGovernance/termsOfUse/agreements/{item}?$expand=files', sortBy: 'language' },
     note: 'Conditional Access can require acceptance, so a missing agreement blocks sign-in.' },
   // App management policies: credential rules for applications and service
   // principals. The tenant default is a singleton.

@@ -136,6 +136,7 @@ import { assignmentTargetResolver, attachIntuneAssignments, writesIntuneAssignme
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal, loadCreatedTargetIds } from '../engine/restore/rollbackJournal.mjs';
 import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
+import { agreementFileHashes, loadAgreementFiles } from '../engine/store/agreementFiles.mjs';
 import {
   BRANDING_RESOURCE_TYPES, applyBrandingAssetUploads, brandingLocaleFor, brandingUploadDigestInput, planBrandingAssetUploads,
   readLiveBrandingAssets,
@@ -456,6 +457,7 @@ export async function runRestore({
     loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
     readLiveBrandingAssets: readLiveBrandingAssetsFn = readLiveBrandingAssets,
     applyBrandingAssetUploads: applyBrandingAssetUploadsFn = applyBrandingAssetUploads,
+    loadAgreementFiles: loadAgreementFilesFn = loadAgreementFiles,
   } = dependencies;
 
   if (incidentId !== undefined) {
@@ -1079,6 +1081,11 @@ export async function runRestore({
       }
     }
     const brandingUploads = brandingUploadDigestInput(brandingPlan.uploads);
+    // Issue #1007: the terms of use files the agreements in this plan name, by
+    // hash, for the agreement writer to upload. None to load, nothing is read.
+    const agreementHashes = agreementFileHashes(resources);
+    const agreementFiles = agreementHashes.length === 0 ? new Map()
+      : await loadAgreementFilesFn(client, { tenantRef: sourceTenantRef, hashes: agreementHashes });
 
     // Roadmap task-59: delete impact is re-evaluated at execution against the
     // CURRENT live state just collected. A resource still referencing one being
@@ -1332,6 +1339,7 @@ export async function runRestore({
         approvedContentEffects,
         trustSkippedLocations,
         allowTenantWide,
+        agreementFiles,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       logFailures(logger, result.failed);

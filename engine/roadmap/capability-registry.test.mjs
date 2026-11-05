@@ -84,6 +84,9 @@ const REGISTERED = Object.freeze({
   // Issue #993: connected organizations and access package policies.
   connectedOrganization: ['create', 'update'],
   accessPackageAssignmentPolicy: ['create', 'update'],
+  // Issue #1007: access review series (create only).
+  accessReviewScheduleDefinition: ['create'],
+  agreement: ['create', 'update'],
   entitlementManagementSettings: ['update'],
   appManagementPolicy: ['create', 'update'],
   multiTenantOrganization: ['update'],

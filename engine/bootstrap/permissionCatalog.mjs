@@ -189,6 +189,8 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('OrganizationalBranding.ReadWrite.All', 'entra', 'Settings', 'Change sign-in page branding', 'Restore company branding'),
   write('CustomSecAttributeDefinition.ReadWrite.All', 'entra', 'Settings', 'Change custom security attributes', 'Restore attribute definitions'),
   write('MultiTenantOrganization.ReadWrite.All', 'entra', 'Settings', 'Change multitenant organisation', 'Restore linked tenants'),
+  write('Agreement.ReadWrite.All', 'governance', 'Policies', 'Change terms of use', 'Restore terms of use and their documents'),
+  write('AccessReview.ReadWrite.All', 'governance', 'Policies', 'Change access reviews', 'Restore access review series'),
   write('EntitlementManagement.ReadWrite.All', 'governance', 'Policies', 'Change access packages', 'Restore catalogs and access package settings'),
   write('LifecycleWorkflows.ReadWrite.All', 'governance', 'Policies', 'Change joiner and leaver workflows', 'Restore lifecycle workflows'),
   write('DeviceManagementRBAC.ReadWrite.All', 'intune', 'Roles', 'Change Intune roles', 'Restore Intune scope tags, custom Intune admin roles and who holds them'),

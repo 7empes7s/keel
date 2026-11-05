@@ -31,10 +31,11 @@ test('no type is left unknown: every catalogue type has one of the four coverage
 // Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs),
 // issue #992 one for access packages (accessPackageOperations.mjs), issue #991 one for
 // roleAssignmentSchedule (adminRoleOperations.mjs), issue #994 authentication
-// contexts and staged rollout (signInSettingsOperations.mjs), and issue #993
-// connected organizations (entitlementPolicyOperations.mjs).
+// contexts and staged rollout (signInSettingsOperations.mjs), issue #993
+// connected organizations (entitlementPolicyOperations.mjs), and issue #1007
+// access review series (accessReviewOperations.mjs).
 const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage', 'roleAssignmentSchedule',
-  'authenticationContextClassReference', 'featureRolloutPolicy', 'connectedOrganization', 'activityBasedTimeoutPolicy']);
+  'authenticationContextClassReference', 'featureRolloutPolicy', 'connectedOrganization', 'accessReviewScheduleDefinition', 'activityBasedTimeoutPolicy']);
 // Issue #994: certificate authorities are manual by design, not waiting for a writer.
 const MANUAL_BY_DESIGN = new Set(['certificateBasedAuthConfiguration']);
 
@@ -125,7 +126,7 @@ test('a record cannot claim more than the decision behind it', () => {
 test('the coverage doc shows the four states and nothing "not yet investigated"', () => {
   const doc = renderCoverageDoc();
   assert.ok(!/not yet investigated/i.test(doc));
-  assert.match(doc, /\| Access reviews \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
+  assert.match(doc, /\| Custom authentication extensions \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
   assert.match(doc, /\| Delegated app consents \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Named locations \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Built-in admin roles \| [^|]+ \| Microsoft-managed \| Nothing to restore \|/);

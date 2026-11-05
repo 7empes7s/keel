@@ -80,3 +80,30 @@ export function featureRolloutEffects(resource) {
   if (typeof on === 'boolean' && on !== wasOn) effects.push({ field: 'isEnabled', effect: SIGN_IN_EFFECT, before: wasOn, after: on });
   return effects;
 }
+
+/** A definition entry without its spacing, so only a changed timeout is a change. */
+const parsedEntry = (entry) => {
+  try { return JSON.stringify(JSON.parse(entry)); } catch { return entry; }
+};
+const comparable = (field, value) => (field === 'definition' && Array.isArray(value) ? value.map(parsedEntry) : normal(value));
+
+/**
+ * Issue #1008: an idle sign-out policy applies only as the organization default,
+ * which signs out every user of every app after the idle time. A write whose
+ * backup was the default (the writer puts it into the live default) or whose live
+ * object is the default changes sign-in for everyone: its name and definition are
+ * each an effect.
+ */
+export function idleSignOutDefaultEffects(resource) {
+  if (!resource?.payload || resource.verb === 'delete') return [];
+  const before = present(resource) ? (resource.live.payload ?? {}) : null;
+  if (resource.payload.isOrganizationDefault !== true && before?.isOrganizationDefault !== true) return [];
+  const effects = [];
+  for (const field of ['displayName', 'definition']) {
+    const after = resource.payload[field];
+    if (after === undefined) continue;
+    const was = before ? normal(before[field]) : null;
+    if (JSON.stringify(comparable(field, was)) !== JSON.stringify(comparable(field, after))) effects.push({ field, effect: SIGN_IN_EFFECT, before: was, after });
+  }
+  return effects;
+}

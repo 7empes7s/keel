@@ -41,7 +41,7 @@ import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/resto
 import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
-import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects } from './signInSettingEffects.mjs';
+import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
 
 export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing', SIGN_IN_EFFECT]);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
@@ -72,7 +72,8 @@ const DISCLOSURES = Object.freeze({
     + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
   // Issue #994: an authentication context that something uses, or a staged rollout.
   [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
-    + 'or which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom. '
+    + 'which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom, '
+    + 'or how long everyone can stay idle before being signed out (the organization default idle sign-out policy). '
     + 'People may be asked for other sign-in methods, may stop being asked, or may not be able to sign in until it is set right. '
     + `Check the change with the person who owns sign-in before approving. ${NOT_BACKED_UP}`,
 });
@@ -717,6 +718,8 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // groups a staged rollout covers. Each is judged on create too.
   authenticationContextClassReference: { reviewed: true, effectsOf: authenticationContextEffects },
   featureRolloutPolicy: { reviewed: true, effectsOf: featureRolloutEffects },
+  // Issue #1008: a write into the organization default idle sign-out policy signs out everyone.
+  activityBasedTimeoutPolicy: { reviewed: true, effectsOf: idleSignOutDefaultEffects },
   // Issue #991: an active time-bound Entra role assignment gives admin access back
   // from the moment it is created, so who, which role and where are each a
   // "changes admin access" effect, shown by name. Its writer (adminRoleOperations.mjs)

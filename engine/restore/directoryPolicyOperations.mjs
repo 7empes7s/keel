@@ -24,7 +24,8 @@
  *    changes the flag either. An idle sign-out policy applies only as the
  *    organization default (Graph allows one), so a backup that was the default
  *    is written into the live default when there is one (issue #1008): its name
- *    and definition are updated in place, never a second default created.
+ *    and definition are updated in place, never a second default created. That
+ *    signs out every user, so it waits for the restore's approved dry run.
  *  - Which apps a policy is assigned to is not in the backup yet; it is a
  *    follow-up step from the type's completeness record.
  *  - A permission grant policy's include and exclude condition sets are
@@ -50,6 +51,8 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
 import { qualificationFor, remappingFor, withExplicitReferences } from '../coverage/qualification.mjs';
+import { effectApproved } from '../safety/contentEffects.mjs';
+import { idleSignOutDefaultEffects } from '../safety/signInSettingEffects.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 
@@ -69,6 +72,28 @@ const stsPolicy = (resourceType, collection, docsName, extra = {}) => Object.fre
   updateFields: Object.freeze(['displayName', 'definition']),
   ...extra,
 });
+
+/**
+ * Issue #1008: a write into the live organization default idle sign-out policy
+ * signs out every user, so it is made only when the restore's approved dry run
+ * showed it: every effect of the planned write (idleSignOutDefaultEffects) is
+ * approved, exactly. Fails closed: a write the dry run showed no effect for is held.
+ * Returns the skipped outcome, or null when the write may go ahead.
+ */
+function liveDefaultWriteHeld(resource, verb, live, approvedContentEffects) {
+  const effects = idleSignOutDefaultEffects({ ...resource, verb })
+    .map((effect) => ({ naturalKey: resource.naturalKey, resourceType: resource.resourceType, ...effect }));
+  if (effects.length > 0 && effects.every((effect) => effectApproved(effect, approvedContentEffects))) return null;
+  const description = `This writes over "${live.displayName}", the organization default idle sign-out policy (its name and idle timeouts), `
+    + 'which signs out every user of every app after the idle time, so it is written only once the restore\'s dry run is approved. '
+    + 'Run the restore as a dry run, have someone other than you approve "Changes sign-in" in Approvals, then run it again. '
+    + 'If restore approvals are turned off for Entra ID, running the reviewed dry run again writes it.';
+  return {
+    naturalKey: resource.naturalKey,
+    reason: `manual: ${description}`,
+    completion: [{ kind: 'manual-setting', requirement: 'signInApproval', fields: ['displayName', 'definition'], description }],
+  };
+}
 
 const PERMISSION_GRANT_CONDITION_FIELDS = Object.freeze([
   'permissionClassification', 'permissionType', 'resourceApplication', 'permissions', 'clientApplicationIds',
@@ -488,6 +513,10 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
     return { applied: { naturalKey, targetId, changes, followUp } };
   }
   if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes, followUp } };
+  if (entry.defaultInPlace && operation === 'update' && live?.isOrganizationDefault === true) {
+    const held = liveDefaultWriteHeld(resource, verb, live, ctx.approvedContentEffects);
+    if (held) return { skipped: held };
+  }
 
   const journal = await journalBefore(rollbackClient, {
     runId, restoreRef, resource, operation, targetId,

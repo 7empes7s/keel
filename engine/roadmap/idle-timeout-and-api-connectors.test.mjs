@@ -77,11 +77,37 @@ test('a definition entry that does not parse refuses the write before any Graph 
   }
 });
 
-test('a backed-up organization default updates the live default in place and never creates a second one', async () => {
+const signInApprovals = (resource) => classifyContentEffects([resource]).effects;
+
+test('writing over the live organization default waits for the approval: the dry run lists it, an unapproved run writes nothing', async () => {
   const graph = recordingGraph();
   const liveDefault = { id: 'live-default', displayName: 'Contoso idle sign-out', definition: idleDefinition('04:00:00'), isOrganizationDefault: true };
   graph.objects.set(`${POLICIES}/live-default`, liveDefault);
-  const result = await run(graph, [idleResource('create', { isOrganizationDefault: true })]);
+  const resource = idleResource('create', { isOrganizationDefault: true });
+  const effects = signInApprovals(resource);
+  assert.deepEqual(effects.map((effect) => [effect.effect, effect.field]), [['changes-sign-in', 'definition'], ['changes-sign-in', 'displayName']]);
+
+  const dry = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(dry.failed, []);
+  assert.equal(dry.applied[0].targetId, 'live-default', 'the dry run shows the live default is the one written');
+  assert.deepEqual(graph.writes, []);
+
+  for (const approved of [[], effects.slice(0, 1)]) {
+    const held = await run(graph, [resource], { approvedContentEffects: approved });
+    assert.equal(held.applied.length, 0);
+    assert.deepEqual(held.skipped[0].completion.map((step) => step.requirement), ['signInApproval']);
+    assert.match(held.skipped[0].reason, /writes over "Contoso idle sign-out", the organization default/);
+    assert.deepEqual(graph.writes, []);
+  }
+  assert.deepEqual(graph.objects.get(`${POLICIES}/live-default`), liveDefault, 'the live default is unchanged');
+});
+
+test('an approved run updates the live default in place and never creates a second one', async () => {
+  const graph = recordingGraph();
+  const liveDefault = { id: 'live-default', displayName: 'Contoso idle sign-out', definition: idleDefinition('04:00:00'), isOrganizationDefault: true };
+  graph.objects.set(`${POLICIES}/live-default`, liveDefault);
+  const resource = idleResource('create', { isOrganizationDefault: true });
+  const result = await run(graph, [resource], { approvedContentEffects: signInApprovals(resource) });
   assert.deepEqual(result.failed, []);
   assert.deepEqual(graph.bodies.map((entry) => [entry.method, entry.path]), [['PATCH', `${POLICIES}/live-default`]]);
   assert.deepEqual(graph.bodies[0].body, { displayName: 'KEEL-RT-idle', definition: idleDefinition('01:00:00') }, 'the flag is never sent');
@@ -90,9 +116,24 @@ test('a backed-up organization default updates the live default in place and nev
   assert.ok(!result.applied[0].followUp.some((step) => step.requirement === 'followUp:organization-default'), 'it is the default again: no step');
 
   // A second run finds it and writes nothing.
-  const again = await run(graph, [idleResource('create', { isOrganizationDefault: true })]);
+  const again = await run(graph, [resource], { approvedContentEffects: signInApprovals(resource) });
   assert.deepEqual(again.failed, []);
   assert.equal(graph.bodies.length, 1);
+});
+
+test('an update of a live default is held without the approval too, even when the backup was not the default', async () => {
+  const graph = recordingGraph();
+  const live = { id: 'live-default', displayName: 'KEEL-RT-idle', definition: idleDefinition('04:00:00'), isOrganizationDefault: true };
+  graph.objects.set(`${POLICIES}/live-default`, live);
+  const resource = idleResource('update', {}, live);
+  const held = await run(graph, [resource]);
+  assert.equal(held.applied.length, 0);
+  assert.deepEqual(held.skipped[0].completion.map((step) => step.requirement), ['signInApproval']);
+  assert.deepEqual(graph.writes, []);
+
+  const result = await run(graph, [resource], { approvedContentEffects: signInApprovals(resource) });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies.map((entry) => [entry.method, entry.body]), [['PATCH', { definition: idleDefinition('01:00:00') }]]);
 });
 
 test('with no live default, a backed-up default is recreated as an ordinary policy with a step to make it the default', async () => {

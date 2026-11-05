@@ -48,37 +48,8 @@ export const UNREACHABLE_MESSAGE = "Keel can't reach its database right now.";
 /** The retry-after an unreachable-database answer carries. */
 export const UNREACHABLE_RETRY_SECONDS = 60;
 
-// Socket errors from connecting (node's `code`), and Postgres refusing the connection:
-// SQLSTATE class 08 (connection exception), 28 (wrong user or password) and the
-// shutdown / starting-up codes 57P01-57P03.
-const UNREACHABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH", "EPIPE"]);
-const UNREACHABLE_SQLSTATE = /^(08|28)[0-9A-Z]{3}$|^57P0[123]$/;
-// pg's own messages when a connection drops or never finishes opening.
-const UNREACHABLE_MESSAGES = /^Connection terminated( unexpectedly| due to connection timeout)?$/;
-
-/**
- * The short name of why the database can't be reached (an error code, or "connection
- * terminated"), or null when the error is something else. Live 2026-11-04 (#1005): the
- * port forward in front of Postgres died, every sign-in got `connect ECONNREFUSED`, and
- * the portal said "forbidden" instead of saying the database was down.
- */
-export function databaseUnreachableReason(error: unknown): string | null {
-  const seen = new Set<unknown>();
-  const visit = (value: unknown): string | null => {
-    if (!value || typeof value !== "object" || seen.has(value)) return null;
-    seen.add(value);
-    const { code, message, errors, cause } = value as { code?: unknown; message?: unknown; errors?: unknown; cause?: unknown };
-    if (typeof code === "string" && (UNREACHABLE_CODES.has(code) || UNREACHABLE_SQLSTATE.test(code))) return code;
-    if (typeof message === "string" && UNREACHABLE_MESSAGES.test(message)) return "connection terminated";
-    // Node reports a refused connection to every address of a host as one AggregateError.
-    for (const inner of Array.isArray(errors) ? errors : []) {
-      const reason = visit(inner);
-      if (reason) return reason;
-    }
-    return visit(cause);
-  };
-  return visit(error);
-}
+// Shared with keel-scheduler and the database watchdog (#1010).
+export { databaseUnreachableReason } from "../../engine/store/unreachable.mjs";
 
 // When each pooled connection was handed out, so a full pool can say how long the
 // holders have had theirs: many short holds mean too many requests at once, one very

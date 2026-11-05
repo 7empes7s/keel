@@ -1,4 +1,5 @@
 import { CATALOG, catalogReadPath, catalogReadPaths, itemReadsOf } from '../../tools/tenant-probe/catalog.mjs';
+import { digestAgreementFiles } from './agreementFiles.mjs';
 import { isServerError, redactSecrets, supportIds } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
@@ -326,7 +327,11 @@ async function withItemRead(reader, entry, read, items, { dropWhenNotFound = fal
       if (!one) continue;
       if (field) {
         const held = one[field];
-        if (held && typeof held === 'object' && !Array.isArray(held)) {
+        // Issue #1007: a field holding a list (an agreement's files) is kept as a list.
+        if (Array.isArray(held)) {
+          const kept = fields ? held.map((child) => onlyFields(child, fields)) : held;
+          item[as] = sortBy ? [...kept].sort((left, right) => byText(left?.[sortBy], right?.[sortBy]) || byText(left?.id, right?.id)) : kept;
+        } else if (held && typeof held === 'object') {
           item[as] = Object.fromEntries(Object.entries(held).filter(([key]) => !key.includes('@odata.'))
             .map(([key, child]) => [key, onlyFields(child, fields)]));
         }
@@ -471,6 +476,9 @@ export async function collectM1(reader, scope = {}) {
       context.organizationId = items[0]?.id ?? context.organizationId;
     }
   }
+  // Issue #1007: a live agreement's files are named by hash, as the backup names
+  // them; the bytes are not kept.
+  digestAgreementFiles(collected).collected.forEach((entry, index) => { collected[index] = entry; });
   // Kept off the array's entries so callers that iterate [type, items] pairs
   // are unchanged.
   Object.defineProperty(collected, 'unread', { value: unread, enumerable: false });

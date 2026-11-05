@@ -5,6 +5,8 @@ import { loadSymbolContext, recordSymbolContext, seedSymbolContext } from '../st
 import { collectRelationships, recordRelationships, parentTypesForFamilies, DEFAULT_RELATIONSHIP_FAMILIES } from './relationships.mjs';
 import { brandingLocales, collectBrandingAssets, organizationIdOf } from './brandingAssets.mjs';
 import { recordBrandingAssets } from '../store/brandingAssets.mjs';
+import { digestAgreementFiles } from './agreementFiles.mjs';
+import { recordAgreementFiles } from '../store/agreementFiles.mjs';
 
 /** Group ids (lowercase) named in any collected Conditional Access policy's user conditions. */
 export function conditionalAccessGroupIds(canonical) {
@@ -51,7 +53,11 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
   if (fullyEnumerated.size > 0 && context.size > 0) {
     context = new Map([...context].filter(([, alias]) => !fullyEnumerated.has(alias.type)));
   }
-  const canonical = canonicalizeAll(result.collected, { context });
+  // Issue #1007: terms of use PDFs are named by hash in the payload and their
+  // bytes stored once per tenant and hash, before the payload is hashed.
+  const agreementFiles = digestAgreementFiles(result.collected);
+  if (agreementFiles.blobs.length > 0) await recordAgreementFiles(client, { tenantRef, blobs: agreementFiles.blobs });
+  const canonical = canonicalizeAll(agreementFiles.collected, { context });
   const snapshotId = await createSnapshot(client, { tenantRef });
   for (const resource of canonical) {
     const versionId = await insertResourceVersion(client, {

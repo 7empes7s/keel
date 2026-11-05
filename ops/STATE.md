@@ -153,6 +153,13 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   and update are fixture-tested with no live record yet. Capture needs KEEL-RT-993-org (proposed, one
   operator-owned domain) and KEEL-RT-993-policy on KEEL-RT-992-package (steps in the #993 PR body); both
   writes are approval-held.
+- Access review series (#1007): `accessReviewScheduleDefinition` create is fixture-tested with no live record
+  yet. Capture needs KEEL-RT-1007-review of the empty KEEL-RT-148-group reviewed by carla, auto-apply off
+  (steps in the #1007 PR body); the write is approval-held and needs `AccessReview.ReadWrite.All` granted.
+- Terms of use (#1007): `agreement` create and update are fixture-tested with no live record yet. First check a
+  backup holds each PDF (fileData shows a sha256, not null; the Graph reference shows null) and that the
+  Restorer's `Agreement.ReadWrite.All` application grant is accepted; then capture KEEL-RT-1007-terms (steps in
+  the #1007 PR body). Approval-held; PDFs live in `agreement_file_blob`, which prune does not touch yet.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

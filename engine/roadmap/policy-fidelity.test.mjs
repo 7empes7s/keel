@@ -388,6 +388,7 @@ test('the policy batch runner drives the subset through applyWave and prints the
   assert.match(text, /authenticationStrengthPolicy create: passed · claim fixture-tested · id server-assigned · subtype custom only/);
   assert.match(text, /authenticationStrengthPolicy update proof: current · writes description, displayName/);
   assert.match(text, /authenticationStrengthPolicy builtIn: refused \(immutable\)/);
-  assert.match(text, /activityBasedTimeoutPolicy: research-needed — definition is a JSON string KEEL does not parse/);
+  // Issue #1008: the idle sign-out policy is a qualified subset now.
+  assert.doesNotMatch(text, /activityBasedTimeoutPolicy: research-needed/);
   assert.match(text, /permissionGrantPolicy create: passed/);
 });

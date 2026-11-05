@@ -194,9 +194,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.',
     todo: 'A restore that changes a flow waits for a second approver while restore approvals are on. An identity provider or API connector that is not set up in the target is listed for you to set up first: KEEL never holds their secrets or passwords. Custom page text is not backed up, and a restore never takes a provider, attribute or connector off a flow.',
   }),
-  identityApiConnector: manual('API connectors for user flows', NOT_BUILT,
-    'The password or certificate a connector uses can never be read back.',
-    'Recreate the connector using the backup, and enter its password or certificate again.'),
+  identityApiConnector: auto('API connectors for user flows', {
+    keeps: 'Recreates a missing connector and puts its name and the address it calls back (tested against a simulated tenant only).',
+    todo: 'A restore that changes a connector waits for a second approver while restore approvals are on. Its password or certificate can never be read back: a recreated connector gets a placeholder password nobody knows, so it does not work until you enter the real password or certificate by hand.',
+  }),
   customAuthenticationExtension: manual('Custom authentication extensions', NOT_BUILT,
     'KEEL backs these up but does not restore them yet.',
     'Recreate the extension in the Entra admin center from the backup, then check that its endpoint still answers. Sign-ins and workflows that call it need it back first.'),
@@ -260,9 +261,10 @@ export const TYPE_GUIDE = Object.freeze({
   adminConsentRequestPolicy: auto('Admin consent requests', {
     keeps: 'Puts the admin consent request workflow back, including who reviews requests.',
   }),
-  activityBasedTimeoutPolicy: manual('Idle sign-out policy', NOT_BUILT,
-    'The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.',
-    'Recreate the policy by hand using the backup.'),
+  activityBasedTimeoutPolicy: auto('Idle sign-out policy', {
+    keeps: 'Puts the policy\'s name and idle sign-out times back (tested against a simulated tenant only). A policy that was the organization default is written into the tenant\'s current default, never added as a second one.',
+    todo: 'If the tenant has no default policy, it comes back as an ordinary one: make it the default by hand after checking it.',
+  }),
   claimsMappingPolicy: auto('Token claims mapping', {
     keeps: 'Recreates the policy and puts its name and settings back (tested against a simulated tenant only).',
     todo: 'Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.',

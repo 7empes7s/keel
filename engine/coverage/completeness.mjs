@@ -167,7 +167,8 @@ export const COMPLETENESS = Object.freeze({
     part('Custom page text (language overrides)', 'other-route'),
     part('An identity provider or API connector that is not set up in the target, and the client secret or password each one uses', 'secret'),
   ] },
-  identityApiConnector: { whole: 'not-written', missing: [part('Password or certificate', 'secret', always)] },
+  // Issue #1008: created with a placeholder password nobody knows; the real one is set by hand.
+  identityApiConnector: { missing: [part('Password or certificate', 'secret', always)] },
   // Read per parent object.
   accessPackageResourceRoleScope: { missing: [part('A role on a SharePoint site that is not in the catalog, or on a group or app that does not exist in the target', 'not-written')] },
   synchronizationJob: { whole: 'not-written', missing: [
@@ -191,7 +192,9 @@ export const COMPLETENESS = Object.freeze({
   authenticationFlowsPolicy: {},
   permissionGrantPolicy: { missing: [part('The include and exclude rules of a custom policy', 'other-route', heldUnless(['includes', 'excludes'])), part('A built-in app consent policy', 'microsoft-managed', builtInGrantPolicy)] },
   adminConsentRequestPolicy: {},
-  activityBasedTimeoutPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
+  // Issue #1008: a backed-up organization default updates the live default; with none
+  // live, the writer's own follow-up step says to make the recreated policy the default.
+  activityBasedTimeoutPolicy: { missing: [part('Which apps the policy is assigned to', 'other-route')] },
   claimsMappingPolicy: { missing: STS_POLICY_MISSING },
   homeRealmDiscoveryPolicy: { missing: STS_POLICY_MISSING },
   tokenIssuancePolicy: { missing: STS_POLICY_MISSING },

@@ -27,7 +27,7 @@ import { DIRECTORY_POLICY_RECORDS, definitionProblem } from '../restore/director
 import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
-const STS_TYPES = ['tokenLifetimePolicy', 'tokenIssuancePolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy'];
+const STS_TYPES = ['tokenLifetimePolicy', 'tokenIssuancePolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'activityBasedTimeoutPolicy'];
 const WRITER_TYPES = [...STS_TYPES, 'permissionGrantPolicy', 'oauth2PermissionGrant'];
 const SETS = 'permissionGrantPolicies';
 
@@ -106,6 +106,7 @@ const definitionFor = (type) => ({
   tokenIssuancePolicy: ['{"TokenIssuancePolicy":{"Version":1,"SigningAlgorithm":"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256","TokenResponseSigningPolicy":"TokenOnly","SamlTokenVersion":"2.0"}}'],
   claimsMappingPolicy: ['{"ClaimsMappingPolicy":{"Version":1,"IncludeBasicClaimSet":"true","ClaimsSchema":[{"Source":"user","ID":"employeeid","JwtClaimType":"emp"}]}}'],
   homeRealmDiscoveryPolicy: ['{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":true,"PreferredDomain":"keel-rt.example"}}'],
+  activityBasedTimeoutPolicy: ['{"ActivityBasedTimeoutPolicy":{"Version":1,"ApplicationPolicies":[{"ApplicationId":"default","WebSessionIdleTimeout":"01:00:00"}]}}'],
 }[type]);
 
 function stsResource(type, verb, { payload = {}, live = null } = {}) {
@@ -141,8 +142,8 @@ test('the formerly unknown Entra types without a writer stay manual and are rest
   // Issue #994 gave authentication contexts and staged rollout a writer
   // (sign-in-settings.test.mjs); certificate authorities stay manual by design.
   // Issue #991 registered roleAssignmentSchedule, #992 accessPackage and #993 connectedOrganization.
-  const stillManual = ['certificateBasedAuthConfiguration',
-    'activityBasedTimeoutPolicy', 'accessReviewScheduleDefinition'];
+  // Issue #1008 registered activityBasedTimeoutPolicy (STS_TYPES).
+  const stillManual = ['certificateBasedAuthConfiguration', 'accessReviewScheduleDefinition'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);

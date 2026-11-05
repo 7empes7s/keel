@@ -365,7 +365,8 @@ test('the identity batch runner drives every qualified operation through applyWa
   }
 
   const policy = await runExpansionBatch('policy');
-  assert.ok(policy.remaining.some((entry) => entry.resourceType === 'activityBasedTimeoutPolicy' && entry.status === 'research-needed'));
+  // Issue #1008 qualified the idle sign-out policy.
+  assert.ok(!policy.remaining.some((entry) => entry.resourceType === 'activityBasedTimeoutPolicy'));
   // Wave 2 ENTRA: the app consent policy create runs through the harness.
   assert.equal(policy.operations.find((op) => op.resourceType === 'permissionGrantPolicy' && op.operation === 'create')?.result, 'passed');
   await assert.rejects(() => runExpansionBatch('everything'), /unknown expansion batch/);

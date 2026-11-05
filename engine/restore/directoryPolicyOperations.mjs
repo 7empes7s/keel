@@ -6,6 +6,8 @@
  *  - token lifetime, token issuance, claims mapping and home realm discovery
  *    policies (one shape: a displayName, a `definition` array of JSON strings
  *    and an isOrganizationDefault flag);
+ *  - activity-based timeout (idle sign-out) policies, the same shape (issue
+ *    #1008); their per-app idle timeouts are entries of the definition;
  *  - permission grant policies (app consent policies), custom ones only;
  *  - delegated app consents (oauth2PermissionGrants).
  *
@@ -19,7 +21,10 @@
  *    policy. Making it the default changes sign-in for every app at once (for
  *    home realm discovery, where every federated user signs in), so it is a
  *    follow-up step for a person, never written by KEEL. An update never
- *    changes the flag either.
+ *    changes the flag either. An idle sign-out policy applies only as the
+ *    organization default (Graph allows one), so a backup that was the default
+ *    is written into the live default when there is one (issue #1008): its name
+ *    and definition are updated in place, never a second default created.
  *  - Which apps a policy is assigned to is not in the backup yet; it is a
  *    follow-up step from the type's completeness record.
  *  - A permission grant policy's include and exclude condition sets are
@@ -53,7 +58,7 @@ export const DIRECTORY_POLICY_OPERATIONS_CONTRACT_VERSION = 1;
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
 const APP_CONFIG = 'Policy.ReadWrite.ApplicationConfiguration';
 
-const stsPolicy = (resourceType, collection, docsName) => Object.freeze({
+const stsPolicy = (resourceType, collection, docsName, extra = {}) => Object.freeze({
   resourceType,
   family: 'sts-policy',
   collection,
@@ -62,6 +67,7 @@ const stsPolicy = (resourceType, collection, docsName) => Object.freeze({
   docs: `${DOCS}/resources/${docsName}?view=graph-rest-1.0`,
   createFields: Object.freeze(['displayName', 'definition']),
   updateFields: Object.freeze(['displayName', 'definition']),
+  ...extra,
 });
 
 const PERMISSION_GRANT_CONDITION_FIELDS = Object.freeze([
@@ -75,6 +81,8 @@ export const DIRECTORY_POLICY_RECORDS = Object.freeze({
   tokenIssuancePolicy: stsPolicy('tokenIssuancePolicy', '/policies/tokenIssuancePolicies', 'tokenissuancepolicy'),
   claimsMappingPolicy: stsPolicy('claimsMappingPolicy', '/policies/claimsMappingPolicies', 'claimsmappingpolicy'),
   homeRealmDiscoveryPolicy: stsPolicy('homeRealmDiscoveryPolicy', '/policies/homeRealmDiscoveryPolicies', 'homerealmdiscoverypolicy'),
+  // Issue #1008: `defaultInPlace`, a backup that was the organization default updates the live default.
+  activityBasedTimeoutPolicy: stsPolicy('activityBasedTimeoutPolicy', '/policies/activityBasedTimeoutPolicies', 'activitybasedtimeoutpolicy', { defaultInPlace: true }),
   permissionGrantPolicy: Object.freeze({
     resourceType: 'permissionGrantPolicy',
     family: 'permission-grant-policy',
@@ -449,7 +457,10 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
     } else {
       const listed = await retryOperation(() => writer.read(version, listPath(entry, desired)));
       if (listed?.ok !== true) return { failed: { naturalKey, error: `could not list ${entry.collection} to look for an existing object: ${detailOf(listed)}` } };
-      const existing = (listed.body?.value ?? []).filter(matcherFor(entry, desired));
+      // Issue #1008: the backup's organization default goes into the live default, never beside it.
+      const defaults = entry.defaultInPlace && desired.isOrganizationDefault === true
+        ? (listed.body?.value ?? []).filter((object) => object.isOrganizationDefault === true) : [];
+      const existing = defaults.length > 0 ? defaults : (listed.body?.value ?? []).filter(matcherFor(entry, desired));
       if (existing.length > 1) {
         return { failed: { naturalKey, error: `${existing.length} existing ${entry.resourceType} objects match the backup, so KEEL cannot tell which one to keep` } };
       }
@@ -462,7 +473,7 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   }
   if (operation === 'update' && !targetId) return { failed: { naturalKey, error: `${entry.resourceType} update has no target id` } };
 
-  const followUp = directoryPolicyFollowUp(entry, resource, verb, desired, live, decision);
+  const followUp = directoryPolicyFollowUp(entry, resource, operation, desired, live, decision);
   const body = operation === 'create'
     ? directoryPolicyBody(entry, desired, 'create')
     : Object.fromEntries(changedDirectoryPolicyFields(entry, desired, live).map((field) => [field, directoryPolicyBody(entry, desired, 'update')[field]]));

@@ -34,7 +34,7 @@ test('no type is left unknown: every catalogue type has one of the four coverage
 // contexts and staged rollout (signInSettingsOperations.mjs), and issue #993
 // connected organizations (entitlementPolicyOperations.mjs).
 const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'accessPackage', 'roleAssignmentSchedule',
-  'authenticationContextClassReference', 'featureRolloutPolicy', 'connectedOrganization']);
+  'authenticationContextClassReference', 'featureRolloutPolicy', 'connectedOrganization', 'activityBasedTimeoutPolicy']);
 // Issue #994: certificate authorities are manual by design, not waiting for a writer.
 const MANUAL_BY_DESIGN = new Set(['certificateBasedAuthConfiguration']);
 
@@ -86,8 +86,9 @@ test('a backup is incomplete when any object is, and lists each incomplete objec
   const backup = assessBackup(resources, decisionFor);
   assert.equal(backup.incomplete, true);
   assert.deepEqual(backup.objects.map((object) => object.naturalKey), ['application:KEEL-RT-a', 'activityBasedTimeoutPolicy:KEEL-RT-idle']);
+  // Issue #1008: KEEL writes the idle sign-out policy; an ordinary one misses only its app assignments.
   assert.deepEqual(backup.objects[1].missing.map((item) => [item.part, item.reason]), [
-    ['The whole setting', 'not-written'], ['Which apps the policy is assigned to', 'other-route'],
+    ['Which apps the policy is assigned to', 'other-route'],
   ]);
 
   const complete = assessBackup(resources.slice(1, 4), decisionFor);
@@ -124,7 +125,7 @@ test('a record cannot claim more than the decision behind it', () => {
 test('the coverage doc shows the four states and nothing "not yet investigated"', () => {
   const doc = renderCoverageDoc();
   assert.ok(!/not yet investigated/i.test(doc));
-  assert.match(doc, /\| Idle sign-out policy \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
+  assert.match(doc, /\| Access reviews \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
   assert.match(doc, /\| Delegated app consents \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Named locations \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Built-in admin roles \| [^|]+ \| Microsoft-managed \| Nothing to restore \|/);

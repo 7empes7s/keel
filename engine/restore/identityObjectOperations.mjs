@@ -1019,7 +1019,6 @@ export const IDENTITY_NEEDS_REVIEW = Object.freeze({
 /** Types read in wave 1 that no record here can write in full, and why. */
 export const IDENTITY_BEST_EFFORT = Object.freeze({
   agreement: 'the terms of use file (PDF) is never returned by Graph',
-  identityApiConnector: 'the connector password or certificate is never returned by Graph',
   accessPackageAssignment: 'an assignment is granted by a request through its policy, never copied',
   synchronizationJob: 'a provisioning job needs its template, schema and the target system\'s credentials',
   accessPackageCatalogResource: 'a group or app is added to a catalog only by the resource role writer, when a package grants it and it exists in the target; a site is added by hand',

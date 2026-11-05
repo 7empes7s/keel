@@ -26,11 +26,22 @@
  * change after it is made, so a different data type live is a manual step,
  * never a delete.
  *
+ * Issue #1008: an API connector (identityApiConnector) is created and updated
+ * behind the restore approval: its name and target URL only. Graph never
+ * returns its password or certificate, and a create must carry one, so a
+ * create sends basic authentication under a random name and password nobody
+ * ever sees (never the backup's authenticationConfiguration). The connector
+ * therefore cannot call its API until a person sets the real password or
+ * certificate, which every write lists as a step. This writer never binds a
+ * connector to a user flow; the flow's own writer does that.
+ *
  * Routes follow the Graph v1.0 references and are fixture-tested, not
  * live-qualified.
  */
+import { randomBytes } from 'node:crypto';
+
 import { defineRecord, outcomeDetail, sameValue } from './recordWriter.mjs';
-import { readAllPages, withApprovalGate } from './approvalHeld.mjs';
+import { createdOnce, readAllPages, withApprovalGate } from './approvalHeld.mjs';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
@@ -389,6 +400,51 @@ async function attributeCreatePreflight(io, { payload, verb }) {
   return { skipped: `the attribute "${payload.displayName}" is already there with the backup's data type (${same.id}), so nothing is written` };
 }
 
+// ---------------------------------------------------------- API connectors
+
+/**
+ * Graph needs an authentication on create: basic authentication under a random
+ * name and password, made for this one write and never kept, logged or journaled.
+ * A call with it fails, so the connector cannot be used by mistake.
+ */
+function placeholderAuthentication() {
+  return {
+    '@odata.type': '#microsoft.graph.basicAuthentication',
+    username: `keel-placeholder-${randomBytes(6).toString('hex')}`,
+    password: randomBytes(36).toString('base64url'),
+  };
+}
+
+const connectorPath = (targetId) => `${API_CONNECTORS}/${encodeURIComponent(targetId)}`;
+
+/** The create (with the placeholder authentication) or the update of the name and URL. */
+function connectorWrite(io, { verb, body, sent, targetId }) {
+  if (verb === 'create') {
+    const authenticationConfiguration = placeholderAuthentication();
+    return io.retryOperation(() => io.writer.write('v1.0', API_CONNECTORS, { method: 'POST', body: { ...body, authenticationConfiguration } }));
+  }
+  return io.retryOperation(() => io.writer.write('v1.0', connectorPath(targetId), { method: 'PATCH', body: sent }));
+}
+
+const connectorRead = (io, { targetId }) => io.retryOperation(() => io.writer.read('v1.0', connectorPath(targetId)));
+
+/**
+ * On an update, the step for the password or certificate KEEL never reads or
+ * writes (a create lists it from the type's completeness record, as
+ * `connectorCredential` too).
+ */
+function connectorCredentialSteps({ payload, verb }) {
+  if (verb !== 'update') return [];
+  const certificate = /certificate/i.test(String(payload?.authenticationConfiguration?.['@odata.type'] ?? ''));
+  return [Object.freeze({
+    kind: 'credential', requirement: 'connectorCredential',
+    description: `KEEL never reads or writes the ${certificate ? 'certificate' : 'password'} of the API connector ${payload?.displayName ?? ''}. `
+      + `Check in ${CONNECTORS_PORTAL} that it still uses the real one, and set it by hand if not.`,
+  })];
+}
+
+const sameConnectorName = (row, payload) => lower(row?.displayName) === lower(payload?.displayName);
+
 export const USER_FLOW_RECORDS = Object.freeze({
   // Every write is held behind the restore approval (withApprovalGate): the flow's
   // kind and its parts are "access-changing" effects (safety/contentEffects.mjs).
@@ -406,5 +462,22 @@ export const USER_FLOW_RECORDS = Object.freeze({
     operations: ['create', 'update'], writable: ['description'], createOnly: ['displayName', 'dataType'],
     refusal: attributeRefusal, preflight: attributeCreatePreflight,
     permission: 'IdentityUserFlow.ReadWrite.All', docs: v1('identityuserflowattribute-post'),
+  }),
+  // Issue #1008: its name and target URL are "access-changing" effects
+  // (safety/contentEffects.mjs), so every write waits for the restore approval.
+  // A create first looks for a connector with the backup's name: the same URL
+  // means it is done, another URL is left for a person.
+  identityApiConnector: defineRecord({
+    resourceType: 'identityApiConnector', version: 'v1.0', collection: API_CONNECTORS,
+    operations: ['create', 'update'], writable: ['displayName', 'targetUrl'],
+    refusal: withApprovalGate(),
+    preflight: createdOnce({
+      version: 'v1.0', path: API_CONNECTORS, label: 'API connector', matches: sameConnectorName,
+      same: (row, payload) => row?.targetUrl === payload?.targetUrl,
+    }),
+    writeVia: connectorWrite, readVia: connectorRead,
+    afterWrite: async (_io, step) => ({ completion: connectorCredentialSteps(step) }),
+    planCompletion: connectorCredentialSteps,
+    permission: 'APIConnectors.ReadWrite.All', docs: v1('identityapiconnector-create'),
   }),
 });

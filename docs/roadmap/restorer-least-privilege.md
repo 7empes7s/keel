@@ -47,6 +47,7 @@ in the same file. Gate tools are in `tools/qualification/`.
 | Mailbox settings (gate 122) | `workloads/exchange.mjs` | `PATCH /users/{id}/mailboxSettings` | `MailboxSettings.ReadWrite` |
 | CAS mailbox and mailbox retention (gate 122) | `workloads/exchange.mjs` | `Set-CASMailbox`, `Set-Mailbox` | `Exchange.ManageAsApp`, Exchange Administrator (D-122a: keep) |
 | Purview label and label policy (gate 123) | `workloads/purview.mjs` | `Set-Label`, `Set-LabelPolicy` | `Exchange.ManageAsApp`, Compliance Administrator (D-123a: keep) |
+| Idle sign-out policies and user flow API connectors: create, update (#1008) | `directoryPolicyOperations.mjs`, `userFlowOperations.mjs` | `POST|PATCH /policies/activityBasedTimeoutPolicies`, `POST|PATCH /identity/apiConnectors` | `Policy.ReadWrite.ApplicationConfiguration`, `APIConnectors.ReadWrite.All` (declared, not yet verified as granted) |
 
 The writer's read-backs (`GraphWriter.read`) stay inside the same resources, so each
 `ReadWrite` scope above covers them. Pre-restore observation runs on the Collector.

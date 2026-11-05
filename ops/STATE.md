@@ -120,6 +120,10 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   and update are fixture-tested with no live record yet. Capture needs KEEL-RT-993-org (proposed, one
   operator-owned domain) and KEEL-RT-993-policy on KEEL-RT-992-package (steps in the #993 PR body); both
   writes are approval-held.
+- Idle sign-out policies and API connectors (#1008): `activityBasedTimeoutPolicy` and `identityApiConnector`
+  create and update are fixture-tested with no live record yet. Capture needs KEEL-RT-idle (never the
+  organization default) and KEEL-RT-connector on no user flow (steps in the #1008 PR body); the connector
+  write is approval-held.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

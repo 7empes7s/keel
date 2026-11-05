@@ -262,6 +262,9 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // which identity providers, what they are asked, and which API connector checks
   // them. Its kind is set on create; its parts are written after the flow.
   b2xIdentityUserFlow: Object.freeze(['userFlowType', 'identityProviders', 'userAttributeAssignments', 'languages', 'apiConnectorConfiguration']),
+  // Issue #1008: an API connector's name (which a user flow binds it by) and the
+  // URL it sends what guests enter at sign-up to.
+  identityApiConnector: Object.freeze(['displayName', 'targetUrl']),
   // Issue #992: the group, app or site role an access package grants. Adding it
   // lets everyone who can request the package get that access.
   accessPackageResourceRoleScope: Object.freeze(['role', 'scope']),
@@ -707,6 +710,8 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // Issue #995: a guest sign-up user flow is judged on create too: recreating it lets
   // guests sign themselves up again, with its identity providers and API connectors.
   b2xIdentityUserFlow: { reviewed: true, judgesCreates: true, rules: userFlowRules() },
+  // Issue #1008: a recreated API connector is judged too: it names where sign-up data goes.
+  identityApiConnector: { reviewed: true, judgesCreates: true, rules: accessRules('identityApiConnector') },
   // Issue #994: sign-in settings whose effects depend on more than the object
   // (signInSettingEffects.mjs): what uses an authentication context, and the
   // groups a staged rollout covers. Each is judged on create too.

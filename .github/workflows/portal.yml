@@ -10,6 +10,7 @@ on:
       # The container scripts and Dockerfiles: engine tests read them, and CI resolves pinned base images.
       - "ops/powershell/**"
       - ".github/workflows/portal.yml"
+      - "package.json"
   # Every push to master runs, with no path filter: the live auto-deploy deploys a commit
   # only when this workflow succeeded on that exact commit, so a docs-only commit on top of
   # a code change must still get a run.
@@ -79,6 +80,35 @@ jobs:
             portal/ui-harness/playwright-report
             portal/ui-harness/test-results
           retention-days: 14
+
+  code-health:
+    name: Lint, dead code and file size (ratchet)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            portal/package-lock.json
+            engine/package-lock.json
+            tools/code-health/package-lock.json
+      # ESLint is type-aware, so it needs the portal's and engine's dependencies for their types.
+      - name: Install engine dependencies
+        run: npm ci
+        working-directory: engine
+      - name: Install portal dependencies
+        run: npm ci
+        working-directory: portal
+      - name: Install code-health tools
+        run: npm ci
+        working-directory: tools/code-health
+      - name: ESLint, knip and file sizes against the baseline
+        # Fails only on violations that are not in tools/code-health/baseline.json. When a PR
+        # fixes some, lower the baseline with `npm --prefix tools/code-health run baseline`.
+        run: node tools/code-health/ratchet.mjs check
 
   tests:
     name: Portal tests (Postgres)

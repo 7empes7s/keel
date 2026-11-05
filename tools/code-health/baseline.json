@@ -1,0 +1,1418 @@
+{
+  "eslint": {
+    "cli/keel-baseline-create.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-collect.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-export.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-import.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-notify.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-plan.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-remediate.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "cli/keel-restore.mjs": {
+      "@typescript-eslint/no-floating-promises": 1,
+      "no-unused-vars": 1
+    },
+    "cli/keel-settings-file-errors.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/authz/displayName.mjs": {
+      "no-control-regex": 1
+    },
+    "engine/benchmarks/defenderEmail.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/benchmarks/scubagear/adapters.mjs": {
+      "no-unused-vars": 7
+    },
+    "engine/benchmarks/scubagear/config.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/benchmarks/scubagear/rego.mjs": {
+      "no-control-regex": 6
+    },
+    "engine/benchmarks/scubagear/run.test.mjs": {
+      "no-unused-vars": 4
+    },
+    "engine/collect/workloads/exchange.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/collect/workloads/teamsCollaboration.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/collect/workloads/teamsExtended.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/content/restore/files.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/coverage/capabilityFragments.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/govern/baselineWorkloads.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/govern/same-content-actions.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/identity/adapters/cmdb.mjs": {
+      "no-useless-escape": 1
+    },
+    "engine/identity/auditIngest.mjs": {
+      "no-useless-escape": 1
+    },
+    "engine/insights/feedGroups.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/powershell/jobQueue.mjs": {
+      "no-control-regex": 1
+    },
+    "engine/powershell/jobQueue.test.mjs": {
+      "no-control-regex": 2
+    },
+    "engine/reconcile/deletedItemsSelect.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/brandingAssets.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/createServerOwned.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/entitlementPolicyOperations.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/restore/fasterRestore.test.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "engine/restore/graphWriter.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/restore/identityObjectOperations.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/restore/intuneExtended.test.mjs": {
+      "no-unused-vars": 10
+    },
+    "engine/restore/intuneOperations.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/namedTrustSettings.mjs": {
+      "no-control-regex": 1
+    },
+    "engine/restore/nativeRecoveryEvidence.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/recordWriter.mjs": {
+      "no-dupe-keys": 4
+    },
+    "engine/restore/verifyServerFields.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/verifyServerManaged.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/cmdletSettings.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/dscDistributionGroups.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/exchange.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/exchangeRoleDefinitions.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/purview.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/sharepoint.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/sharepointSiteGrants.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/sharepointSitePermissions.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/restore/workloads/teams.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/closure-ceiling.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/config-export.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/coverage-ui.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/dsc-distribution-groups-live-acceptance.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/evidence-anchors.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/exchange-config.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/exchange-extended.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/exchange-live-acceptance.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/exchange-mail-flow.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/exchange-role-definitions-live-acceptance.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/generic-siem.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/onedrive-purview-live-acceptance.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/onedrive-purview.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/purview-unpublish-live-acceptance.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/sentinel-adapter.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/servicenow-live-acceptance.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/sharepoint-live-acceptance.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/sharepoint-read.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/sharepoint-site-grants-live-acceptance.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/sharepoint-site-permissions-live-acceptance.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/sharepoint-structure-writes-live-acceptance.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/sharepoint-tenant.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/roadmap/teams-config.test.mjs": {
+      "no-unused-vars": 2
+    },
+    "engine/roadmap/workload-writers-live-acceptance.test.mjs": {
+      "no-unused-vars": 1
+    },
+    "engine/test/fakePnpStructure.mjs": {
+      "no-unused-vars": 3
+    },
+    "engine/test/fakeSharePointRest.mjs": {
+      "no-unused-vars": 1
+    },
+    "portal/app/approvals/page.tsx": {
+      "react-hooks/error-boundaries": 6
+    },
+    "portal/app/changes/page.tsx": {
+      "react-hooks/error-boundaries": 6
+    },
+    "portal/app/error.tsx": {
+      "@next/next/no-html-link-for-pages": 1
+    },
+    "portal/app/insights/page.tsx": {
+      "react-hooks/error-boundaries": 4
+    },
+    "portal/components/activity/activity-page.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/alerts/alerts-page.tsx": {
+      "react-hooks/preserve-manual-memoization": 2,
+      "react-hooks/set-state-in-effect": 2
+    },
+    "portal/components/approval-inbox.tsx": {
+      "react-hooks/use-memo": 1
+    },
+    "portal/components/ask-records.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/baselines/attribution-lookup.ts": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/baselines/change-feed.tsx": {
+      "react-hooks/use-memo": 3
+    },
+    "portal/components/baselines/change-list.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "react-hooks/preserve-manual-memoization": 4
+    },
+    "portal/components/baselines/details-sheet.tsx": {
+      "react-hooks/refs": 1
+    },
+    "portal/components/command-palette.tsx": {
+      "react-hooks/refs": 1,
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/compliance/compliance-page.tsx": {
+      "react-hooks/preserve-manual-memoization": 4
+    },
+    "portal/components/compliance/exception-sheet.tsx": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "portal/components/compliance/intune-baselines-page.tsx": {
+      "react-hooks/preserve-manual-memoization": 1
+    },
+    "portal/components/compliance/known-standards.tsx": {
+      "react-hooks/use-memo": 1
+    },
+    "portal/components/compliance/own-check-sheet.tsx": {
+      "react-hooks/exhaustive-deps": 1,
+      "react-hooks/preserve-manual-memoization": 1
+    },
+    "portal/components/dashboard/coverage-ring.tsx": {
+      "react-hooks/immutability": 1
+    },
+    "portal/components/incidents/incidents-page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "react-hooks/preserve-manual-memoization": 5
+    },
+    "portal/components/list/selectable-list.tsx": {
+      "react-hooks/exhaustive-deps": 3,
+      "react-hooks/refs": 1,
+      "react-hooks/set-state-in-effect": 2,
+      "react-hooks/use-memo": 1
+    },
+    "portal/components/notifications/notifications-page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "react-hooks/preserve-manual-memoization": 3
+    },
+    "portal/components/people/people-page.tsx": {
+      "react-hooks/use-memo": 1
+    },
+    "portal/components/policies/new-rule-sheet.tsx": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "portal/components/policies/policies-page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "portal/components/policies/policy-page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "portal/components/protect-coverage.tsx": {
+      "react-hooks/preserve-manual-memoization": 4
+    },
+    "portal/components/readiness/readiness-page.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/recovery-completion.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/resilience-view.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "portal/components/restore/workload-restore.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/schedules/schedules-page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "react-hooks/preserve-manual-memoization": 3,
+      "react-hooks/set-state-in-effect": 1
+    },
+    "portal/components/setup/permissions-panel.tsx": {
+      "react-hooks/exhaustive-deps": 4,
+      "react-hooks/immutability": 1,
+      "react-hooks/preserve-manual-memoization": 1,
+      "react-hooks/use-memo": 2
+    },
+    "portal/components/shell/app-shell.tsx": {
+      "react-hooks/exhaustive-deps": 3,
+      "react-hooks/set-state-in-effect": 3
+    },
+    "portal/components/shell/menu.tsx": {
+      "react-hooks/set-state-in-effect": 2
+    },
+    "portal/components/shell/popover.tsx": {
+      "react-hooks/refs": 1
+    },
+    "portal/components/sites-table.tsx": {
+      "react-hooks/preserve-manual-memoization": 3
+    },
+    "portal/components/value-report/value-report-page.tsx": {
+      "react-hooks/preserve-manual-memoization": 4
+    },
+    "portal/lib/ask-view.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "portal/lib/compliance-view.ts": {
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "portal/lib/discovery.ts": {
+      "@next/next/no-assign-module-variable": 1
+    },
+    "portal/lib/resilience-view.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "portal/lib/use-poll.ts": {
+      "react-hooks/refs": 2
+    },
+    "portal/test/approval-names.test.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "portal/test/evidence.test.ts": {
+      "no-regex-spaces": 1
+    },
+    "tools/qualification/apiDrift.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "tools/qualification/dscDistributionGroupsLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/entraLive.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "tools/qualification/exchangeLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/exchangeRoleDefinitionsLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/nativeRecovery.mjs": {
+      "@typescript-eslint/no-floating-promises": 1,
+      "no-unused-vars": 1
+    },
+    "tools/qualification/onedrivePurviewLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/operations.mjs": {
+      "@typescript-eslint/no-floating-promises": 1,
+      "no-unused-vars": 4
+    },
+    "tools/qualification/sharepointLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/sharepointSiteGrantsLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/sharepointSitePermissionsLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/sharepointStructureWritesLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/storageLiveAcceptance.mjs": {
+      "@typescript-eslint/no-floating-promises": 1
+    },
+    "tools/qualification/teamsLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/workloadWritesAcceptance.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/qualification/workloadWritesLive.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/recovery/reconstruct.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/rehearsal/roundTrip.mjs": {
+      "no-extra-boolean-cast": 2
+    },
+    "tools/release/journeys.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/release/qualification.mjs": {
+      "no-unused-vars": 1
+    },
+    "tools/tenant-probe/references.mjs": {
+      "no-fallthrough": 1
+    }
+  },
+  "knip": {
+    "engine/authz/entityScope.mjs": {
+      "exports": 3
+    },
+    "engine/authz/recoveryAuthenticator.mjs": {
+      "exports": 5
+    },
+    "engine/authz/recoveryMode.mjs": {
+      "exports": 1
+    },
+    "engine/benchmarks/evaluate.mjs": {
+      "exports": 1
+    },
+    "engine/benchmarks/intuneBaselines.mjs": {
+      "exports": 4
+    },
+    "engine/benchmarks/ownChecks.mjs": {
+      "exports": 6
+    },
+    "engine/benchmarks/registry.mjs": {
+      "exports": 2
+    },
+    "engine/benchmarks/scubagear/adapters.mjs": {
+      "exports": 14
+    },
+    "engine/benchmarks/scubagear/config.mjs": {
+      "exports": 1
+    },
+    "engine/benchmarks/scubagear/controls.mjs": {
+      "exports": 2
+    },
+    "engine/benchmarks/scubagear/fixtureTenant.mjs": {
+      "exports": 1
+    },
+    "engine/benchmarks/scubagear/opa.mjs": {
+      "exports": 1
+    },
+    "engine/benchmarks/scubagear/report.mjs": {
+      "exports": 2
+    },
+    "engine/benchmarks/standards.mjs": {
+      "exports": 1
+    },
+    "engine/bootstrap/connections.mjs": {
+      "exports": 2
+    },
+    "engine/bootstrap/graphHost.mjs": {
+      "exports": 6
+    },
+    "engine/bootstrap/onboarding.mjs": {
+      "exports": 1
+    },
+    "engine/bootstrap/plan.mjs": {
+      "exports": 1
+    },
+    "engine/bootstrap/prerequisites.mjs": {
+      "exports": 3
+    },
+    "engine/cir/canonicalize.mjs": {
+      "exports": 1
+    },
+    "engine/collect/brandingAssets.mjs": {
+      "exports": 2
+    },
+    "engine/collect/descriptors.mjs": {
+      "duplicates": 1
+    },
+    "engine/collect/workloadContract.mjs": {
+      "exports": 9
+    },
+    "engine/collect/workloads/cmdletFamilies.mjs": {
+      "exports": 2
+    },
+    "engine/collect/workloads/defenderEmail.mjs": {
+      "exports": 4
+    },
+    "engine/collect/workloads/defenderIndicators.mjs": {
+      "exports": 7
+    },
+    "engine/collect/workloads/exchange.mjs": {
+      "exports": 7
+    },
+    "engine/collect/workloads/exchangeExtended.mjs": {
+      "exports": 6
+    },
+    "engine/collect/workloads/exchangeOrgConfig.mjs": {
+      "exports": 5
+    },
+    "engine/collect/workloads/exchangeOrgPolicies.mjs": {
+      "exports": 2
+    },
+    "engine/collect/workloads/exchangeRecipients.mjs": {
+      "exports": 1
+    },
+    "engine/collect/workloads/exchangeRoleGroups.mjs": {
+      "exports": 5
+    },
+    "engine/collect/workloads/mailFlow.mjs": {
+      "exports": 7
+    },
+    "engine/collect/workloads/onedrive.mjs": {
+      "exports": 6
+    },
+    "engine/collect/workloads/powerPlatform.mjs": {
+      "exports": 8
+    },
+    "engine/collect/workloads/powershellConfigs.mjs": {
+      "exports": 1
+    },
+    "engine/collect/workloads/purview.mjs": {
+      "exports": 8
+    },
+    "engine/collect/workloads/purviewDlpSupport.mjs": {
+      "exports": 1
+    },
+    "engine/collect/workloads/purviewExtended.mjs": {
+      "exports": 5
+    },
+    "engine/collect/workloads/purviewRetentionDlp.mjs": {
+      "exports": 9
+    },
+    "engine/collect/workloads/sharepoint.mjs": {
+      "exports": 3
+    },
+    "engine/collect/workloads/sharepointStructure.mjs": {
+      "exports": 6
+    },
+    "engine/collect/workloads/sharepointTenant.mjs": {
+      "exports": 4
+    },
+    "engine/collect/workloads/teams.mjs": {
+      "exports": 4
+    },
+    "engine/collect/workloads/teamsCollaboration.mjs": {
+      "exports": 1
+    },
+    "engine/collect/workloads/teamsExtended.mjs": {
+      "exports": 6
+    },
+    "engine/collect/workloads/teamsPolicies.mjs": {
+      "exports": 6
+    },
+    "engine/collect/workloads/teamsVoiceNetwork.mjs": {
+      "exports": 1
+    },
+    "engine/config/configFile.mjs": {
+      "exports": 2
+    },
+    "engine/content/drive.mjs": {
+      "exports": 7
+    },
+    "engine/content/exchangeItems.mjs": {
+      "exports": 1
+    },
+    "engine/content/exchangeMail.mjs": {
+      "exports": 2
+    },
+    "engine/content/mailboxes.mjs": {
+      "exports": 1
+    },
+    "engine/content/onedrives.mjs": {
+      "exports": 1
+    },
+    "engine/content/planner.mjs": {
+      "exports": 3
+    },
+    "engine/content/restore/files.mjs": {
+      "exports": 9
+    },
+    "engine/content/restore/gate.mjs": {
+      "exports": 2
+    },
+    "engine/content/restore/journal.mjs": {
+      "exports": 2
+    },
+    "engine/content/restore/mail.mjs": {
+      "exports": 2
+    },
+    "engine/content/restore/mime.mjs": {
+      "exports": 2
+    },
+    "engine/content/restore/teamsMessages.mjs": {
+      "exports": 4
+    },
+    "engine/content/sharepointSites.mjs": {
+      "exports": 7
+    },
+    "engine/content/store.mjs": {
+      "exports": 6
+    },
+    "engine/content/teams.mjs": {
+      "exports": 7
+    },
+    "engine/contracts/release.mjs": {
+      "exports": 1
+    },
+    "engine/contracts/topology.mjs": {
+      "exports": 6
+    },
+    "engine/coverage/catalogDrift.mjs": {
+      "exports": 2
+    },
+    "engine/coverage/completeness.mjs": {
+      "exports": 1
+    },
+    "engine/coverage/qualification.mjs": {
+      "exports": 6
+    },
+    "engine/coverage/recoveryMetrics.mjs": {
+      "exports": 5
+    },
+    "engine/coverage/serviceBackups.mjs": {
+      "exports": 3
+    },
+    "engine/coverage/snapshots.mjs": {
+      "exports": 1
+    },
+    "engine/discovery/discover.mjs": {
+      "exports": 10
+    },
+    "engine/discovery/metadata.mjs": {
+      "exports": 4
+    },
+    "engine/discovery/powershellCommands.mjs": {
+      "exports": 1
+    },
+    "engine/discovery/transport.mjs": {
+      "exports": 2
+    },
+    "engine/export/bundle.mjs": {
+      "exports": 9
+    },
+    "engine/govern/approvalMode.mjs": {
+      "exports": 3
+    },
+    "engine/govern/approvalPolicy.mjs": {
+      "exports": 2
+    },
+    "engine/govern/approvals.mjs": {
+      "exports": 6
+    },
+    "engine/govern/baseline.mjs": {
+      "exports": 1
+    },
+    "engine/govern/baselineScore.mjs": {
+      "exports": 2
+    },
+    "engine/govern/compare.mjs": {
+      "exports": 7
+    },
+    "engine/govern/incidents.mjs": {
+      "exports": 6
+    },
+    "engine/govern/ownerReview.mjs": {
+      "exports": 4
+    },
+    "engine/govern/references.mjs": {
+      "exports": 5
+    },
+    "engine/govern/restoreApprovalSettings.mjs": {
+      "exports": 2
+    },
+    "engine/govern/semanticDrift.mjs": {
+      "exports": 1
+    },
+    "engine/govern/sharingDirection.mjs": {
+      "exports": 2
+    },
+    "engine/graph/dynamicImpact.mjs": {
+      "exports": 2
+    },
+    "engine/graph/impact.mjs": {
+      "exports": 3
+    },
+    "engine/identity/attribution.mjs": {
+      "exports": 2
+    },
+    "engine/identity/auditIngest.mjs": {
+      "exports": 1
+    },
+    "engine/identity/auditSources.mjs": {
+      "exports": 1
+    },
+    "engine/identity/ownership.mjs": {
+      "exports": 3
+    },
+    "engine/insights/feed.mjs": {
+      "exports": 5
+    },
+    "engine/insights/flags.mjs": {
+      "exports": 2
+    },
+    "engine/insights/names.mjs": {
+      "exports": 2
+    },
+    "engine/insights/nextSteps.mjs": {
+      "exports": 1
+    },
+    "engine/insights/sharingExposure.mjs": {
+      "exports": 3
+    },
+    "engine/insights/summary.mjs": {
+      "exports": 4
+    },
+    "engine/insights/templateAreas.mjs": {
+      "exports": 2
+    },
+    "engine/insights/view.mjs": {
+      "exports": 2
+    },
+    "engine/itsm/adapters/servicenow.mjs": {
+      "exports": 4
+    },
+    "engine/itsm/bridge.mjs": {
+      "exports": 2
+    },
+    "engine/itsm/outbox.mjs": {
+      "exports": 5
+    },
+    "engine/jobs/progress.mjs": {
+      "exports": 1
+    },
+    "engine/notify/adapters.mjs": {
+      "exports": 10
+    },
+    "engine/notify/alerts.mjs": {
+      "exports": 5
+    },
+    "engine/notify/escalation.mjs": {
+      "exports": 1
+    },
+    "engine/notify/notifications.mjs": {
+      "duplicates": 1,
+      "exports": 8
+    },
+    "engine/notify/weeklySummary.mjs": {
+      "exports": 1
+    },
+    "engine/policy/activation.mjs": {
+      "exports": 4
+    },
+    "engine/policy/changeIntent.mjs": {
+      "exports": 5
+    },
+    "engine/policy/evaluate.mjs": {
+      "exports": 2
+    },
+    "engine/powershell/dscJob.mjs": {
+      "exports": 3
+    },
+    "engine/powershell/jobQueue.mjs": {
+      "exports": 9
+    },
+    "engine/query/intent.mjs": {
+      "exports": 2
+    },
+    "engine/reports/value.mjs": {
+      "exports": 11
+    },
+    "engine/restore/accessPackageOperations.mjs": {
+      "exports": 3
+    },
+    "engine/restore/adminRoleOperations.mjs": {
+      "exports": 6
+    },
+    "engine/restore/administrativeOperations.mjs": {
+      "exports": 4
+    },
+    "engine/restore/bestEffortRecreate.mjs": {
+      "exports": 2
+    },
+    "engine/restore/compensation.mjs": {
+      "exports": 2
+    },
+    "engine/restore/completion.mjs": {
+      "exports": 7
+    },
+    "engine/restore/conditionalAccessEnforcement.mjs": {
+      "exports": 2
+    },
+    "engine/restore/credentialPaths.mjs": {
+      "exports": 1
+    },
+    "engine/restore/directoryPolicyOperations.mjs": {
+      "exports": 9
+    },
+    "engine/restore/dryRunArtifact.mjs": {
+      "exports": 1
+    },
+    "engine/restore/entitlementPolicyOperations.mjs": {
+      "exports": 4
+    },
+    "engine/restore/graphWriter.mjs": {
+      "exports": 1
+    },
+    "engine/restore/identityObjectOperations.mjs": {
+      "exports": 12
+    },
+    "engine/restore/intuneOperations.mjs": {
+      "exports": 16
+    },
+    "engine/restore/namedLocationTrust.mjs": {
+      "exports": 1
+    },
+    "engine/restore/namedTrustSettings.mjs": {
+      "exports": 3
+    },
+    "engine/restore/nativeRecoveryEvidence.mjs": {
+      "exports": 4
+    },
+    "engine/restore/plannedIds.mjs": {
+      "exports": 1
+    },
+    "engine/restore/policyOperations.mjs": {
+      "exports": 1
+    },
+    "engine/restore/recordWriter.mjs": {
+      "exports": 8
+    },
+    "engine/restore/recoveryMechanism.mjs": {
+      "exports": 1
+    },
+    "engine/restore/relationshipWriter.mjs": {
+      "exports": 1
+    },
+    "engine/restore/rollbackJournal.mjs": {
+      "exports": 1
+    },
+    "engine/restore/selection.mjs": {
+      "exports": 1
+    },
+    "engine/restore/signInSettingsOperations.mjs": {
+      "exports": 7
+    },
+    "engine/restore/tenantPolicyOperations.mjs": {
+      "exports": 8
+    },
+    "engine/restore/userFlowOperations.mjs": {
+      "exports": 4
+    },
+    "engine/restore/userOperations.mjs": {
+      "exports": 5
+    },
+    "engine/restore/wavePlanner.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/cmdletSettings.mjs": {
+      "exports": 3
+    },
+    "engine/restore/workloads/dispatch.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/dscDeclarations.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/exchange.mjs": {
+      "exports": 4
+    },
+    "engine/restore/workloads/exchangeRoleDeclarations.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/exchangeRoleDefinitions.mjs": {
+      "exports": 6
+    },
+    "engine/restore/workloads/fixtureGuard.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/purview.mjs": {
+      "exports": 2
+    },
+    "engine/restore/workloads/restoreChoices.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/sharepoint.mjs": {
+      "exports": 2
+    },
+    "engine/restore/workloads/sharepointSiteGrants.mjs": {
+      "exports": 3
+    },
+    "engine/restore/workloads/sharepointSitePermissions.mjs": {
+      "exports": 2
+    },
+    "engine/restore/workloads/sharepointStructure.mjs": {
+      "exports": 6
+    },
+    "engine/restore/workloads/teams.mjs": {
+      "exports": 1
+    },
+    "engine/restore/workloads/writeDeclarations.mjs": {
+      "exports": 1
+    },
+    "engine/restore/writers/ido.mjs": {
+      "exports": 2
+    },
+    "engine/safety/breakGlassReadiness.mjs": {
+      "exports": 10
+    },
+    "engine/safety/contentEffects.mjs": {
+      "exports": 3
+    },
+    "engine/safety/outboundDestination.mjs": {
+      "exports": 2
+    },
+    "engine/safety/policyScenario.mjs": {
+      "exports": 7
+    },
+    "engine/safety/scriptBodies.mjs": {
+      "exports": 1
+    },
+    "engine/safety/signInSettingEffects.mjs": {
+      "exports": 2
+    },
+    "engine/schedules/forecast.mjs": {
+      "exports": 13
+    },
+    "engine/schedules/offsite.mjs": {
+      "exports": 5
+    },
+    "engine/storage/adapter.mjs": {
+      "exports": 4
+    },
+    "engine/storage/azureBlob.mjs": {
+      "exports": 2
+    },
+    "engine/storage/qualification.mjs": {
+      "exports": 3
+    },
+    "engine/storage/recoveryManifest.mjs": {
+      "exports": 1
+    },
+    "engine/storage/storageLiveEvidence.mjs": {
+      "exports": 3
+    },
+    "engine/storage/targets.mjs": {
+      "exports": 2
+    },
+    "engine/store/retention.mjs": {
+      "exports": 5
+    },
+    "engine/store/rotation.mjs": {
+      "exports": 1
+    },
+    "engine/telemetry/adapters/cef.mjs": {
+      "exports": 7
+    },
+    "engine/telemetry/adapters/sentinel.mjs": {
+      "exports": 1
+    },
+    "engine/telemetry/adapters/webhook.mjs": {
+      "exports": 3
+    },
+    "engine/telemetry/events.mjs": {
+      "exports": 5
+    },
+    "engine/telemetry/outbox.mjs": {
+      "exports": 4
+    },
+    "engine/test/fakePnpStructure.mjs": {
+      "exports": 2
+    },
+    "engine/test/fakeSharePointRest.mjs": {
+      "exports": 3
+    },
+    "engine/test/setupGraphFixture.mjs": {
+      "exports": 5
+    },
+    "portal/components/ask-view.tsx": {
+      "exports": 1
+    },
+    "portal/components/backup-failure.tsx": {
+      "exports": 1
+    },
+    "portal/components/baselines/change-decision.tsx": {
+      "exports": 2
+    },
+    "portal/components/baselines/change-facts.tsx": {
+      "exports": 1
+    },
+    "portal/components/change-attribution.tsx": {
+      "exports": 1
+    },
+    "portal/components/change-comparison.tsx": {
+      "exports": 2
+    },
+    "portal/components/change-intent.tsx": {
+      "exports": 3
+    },
+    "portal/components/command-palette.tsx": {
+      "exports": 4
+    },
+    "portal/components/compensation-panel.tsx": {
+      "exports": 1,
+      "types": 1
+    },
+    "portal/components/decision-workbook.tsx": {
+      "exports": 1
+    },
+    "portal/components/job-status-badge.tsx": {
+      "exports": 1
+    },
+    "portal/components/job-table.tsx": {
+      "exports": 1
+    },
+    "portal/components/list/find-input.tsx": {
+      "exports": 1
+    },
+    "portal/components/list/selectable-list.tsx": {
+      "types": 1
+    },
+    "portal/components/nav-links.tsx": {
+      "types": 1
+    },
+    "portal/components/policies/new-rule-sheet.tsx": {
+      "exports": 2
+    },
+    "portal/components/restore-selection.tsx": {
+      "exports": 1
+    },
+    "portal/components/restore/workload-restore.tsx": {
+      "exports": 3
+    },
+    "portal/components/restore/workload-services.tsx": {
+      "exports": 1
+    },
+    "portal/components/shell/icons.tsx": {
+      "exports": 1
+    },
+    "portal/components/shell/menu.tsx": {
+      "exports": 2
+    },
+    "portal/components/technical-details.tsx": {
+      "exports": 2
+    },
+    "portal/components/ui/alert-list.tsx": {
+      "exports": 1
+    },
+    "portal/components/ui/person.tsx": {
+      "exports": 1
+    },
+    "portal/components/ui/skeleton.tsx": {
+      "exports": 1
+    },
+    "portal/components/ui/stat-tiles.tsx": {
+      "types": 1
+    },
+    "portal/lib/activity-changes.ts": {
+      "exports": 2
+    },
+    "portal/lib/activity-view.ts": {
+      "exports": 7
+    },
+    "portal/lib/alerts-view.ts": {
+      "exports": 5
+    },
+    "portal/lib/alerts.ts": {
+      "exports": 1
+    },
+    "portal/lib/anonymity.ts": {
+      "exports": 1
+    },
+    "portal/lib/app-names.ts": {
+      "exports": 1
+    },
+    "portal/lib/approval-inbox.ts": {
+      "exports": 5,
+      "types": 1
+    },
+    "portal/lib/approval-mode.ts": {
+      "exports": 2
+    },
+    "portal/lib/approval-view.ts": {
+      "exports": 2
+    },
+    "portal/lib/ask-view.ts": {
+      "exports": 2,
+      "types": 6
+    },
+    "portal/lib/backup-failure.ts": {
+      "types": 2
+    },
+    "portal/lib/baseline-history-view.ts": {
+      "exports": 2,
+      "types": 1
+    },
+    "portal/lib/baselines-view.ts": {
+      "exports": 1
+    },
+    "portal/lib/breakglass-calls.ts": {
+      "exports": 1
+    },
+    "portal/lib/change-feed-view.ts": {
+      "exports": 1,
+      "types": 1
+    },
+    "portal/lib/change-intents-view.ts": {
+      "exports": 1,
+      "types": 1
+    },
+    "portal/lib/changed-values.ts": {
+      "exports": 2
+    },
+    "portal/lib/changes-view.ts": {
+      "exports": 3
+    },
+    "portal/lib/compare-view.ts": {
+      "exports": 5,
+      "types": 2
+    },
+    "portal/lib/compliance-view.ts": {
+      "exports": 15,
+      "types": 1
+    },
+    "portal/lib/connections-view.ts": {
+      "exports": 2,
+      "types": 2
+    },
+    "portal/lib/date-range.ts": {
+      "types": 1
+    },
+    "portal/lib/denial-throttle.ts": {
+      "exports": 1
+    },
+    "portal/lib/discovery.ts": {
+      "types": 3
+    },
+    "portal/lib/drift-diff.ts": {
+      "exports": 1
+    },
+    "portal/lib/incidents-view.ts": {
+      "exports": 1,
+      "types": 2
+    },
+    "portal/lib/insights.ts": {
+      "exports": 1
+    },
+    "portal/lib/integrations-view.ts": {
+      "exports": 1
+    },
+    "portal/lib/job-view.ts": {
+      "exports": 1,
+      "types": 1
+    },
+    "portal/lib/live-records.ts": {
+      "exports": 1
+    },
+    "portal/lib/menu-prefs.ts": {
+      "exports": 2
+    },
+    "portal/lib/notifications-view.ts": {
+      "exports": 7,
+      "types": 2
+    },
+    "portal/lib/notifications.ts": {
+      "exports": 2,
+      "types": 2
+    },
+    "portal/lib/overview-view.ts": {
+      "exports": 1,
+      "types": 1
+    },
+    "portal/lib/owner-review-view.ts": {
+      "exports": 1,
+      "types": 4
+    },
+    "portal/lib/paging.ts": {
+      "exports": 2
+    },
+    "portal/lib/people-view.ts": {
+      "exports": 5
+    },
+    "portal/lib/pick-summary.ts": {
+      "types": 2
+    },
+    "portal/lib/policy-preview-view.ts": {
+      "exports": 2,
+      "types": 1
+    },
+    "portal/lib/policy-view.ts": {
+      "exports": 2,
+      "types": 1
+    },
+    "portal/lib/portal-data.ts": {
+      "exports": 4
+    },
+    "portal/lib/portal-jobs.ts": {
+      "exports": 2
+    },
+    "portal/lib/presentation.ts": {
+      "exports": 7
+    },
+    "portal/lib/protect-view.ts": {
+      "exports": 7,
+      "types": 1
+    },
+    "portal/lib/readiness-view.ts": {
+      "exports": 4,
+      "types": 3
+    },
+    "portal/lib/record-compare.ts": {
+      "exports": 1,
+      "types": 1
+    },
+    "portal/lib/record-glossary.ts": {
+      "types": 1
+    },
+    "portal/lib/record-values.ts": {
+      "exports": 3,
+      "types": 1
+    },
+    "portal/lib/resilience-view.ts": {
+      "exports": 2,
+      "types": 2
+    },
+    "portal/lib/restore-approvals.ts": {
+      "types": 2
+    },
+    "portal/lib/restore-changes.ts": {
+      "exports": 1,
+      "types": 2
+    },
+    "portal/lib/restore-config.ts": {
+      "exports": 1
+    },
+    "portal/lib/restore-view.ts": {
+      "exports": 2,
+      "types": 1
+    },
+    "portal/lib/restore-workload-choices.ts": {
+      "exports": 1
+    },
+    "portal/lib/restore-workloads.ts": {
+      "types": 1
+    },
+    "portal/lib/same-origin.ts": {
+      "exports": 1
+    },
+    "portal/lib/saved-names.ts": {
+      "exports": 1
+    },
+    "portal/lib/schedule-forecast-view.ts": {
+      "exports": 1
+    },
+    "portal/lib/schedules-view.ts": {
+      "exports": 1
+    },
+    "portal/lib/scuba-lists.ts": {
+      "exports": 1
+    },
+    "portal/lib/semantic-drift.ts": {
+      "exports": 2
+    },
+    "portal/lib/send-each.ts": {
+      "exports": 2
+    },
+    "portal/lib/sentences.ts": {
+      "exports": 3,
+      "types": 1
+    },
+    "portal/lib/service-changes-view.ts": {
+      "exports": 2
+    },
+    "portal/lib/servicenow.ts": {
+      "types": 1
+    },
+    "portal/lib/services.ts": {
+      "exports": 1
+    },
+    "portal/lib/setup-host.ts": {
+      "exports": 2,
+      "types": 4
+    },
+    "portal/lib/setup-view.ts": {
+      "exports": 6,
+      "types": 1
+    },
+    "portal/lib/severity.ts": {
+      "exports": 1
+    },
+    "portal/lib/site-permissions-view.ts": {
+      "exports": 6,
+      "types": 3
+    },
+    "portal/lib/site-permissions.ts": {
+      "exports": 2
+    },
+    "portal/lib/type-groups.ts": {
+      "exports": 1
+    },
+    "portal/lib/types.ts": {
+      "types": 9
+    },
+    "portal/lib/value-report-view.ts": {
+      "exports": 7,
+      "types": 4
+    },
+    "portal/lib/value-report.ts": {
+      "exports": 1
+    },
+    "portal/lib/who-to-ask.ts": {
+      "exports": 1
+    },
+    "portal/lib/workload-kinds.ts": {
+      "exports": 1
+    },
+    "portal/lib/written-reason.ts": {
+      "exports": 3
+    },
+    "portal/lib/xlsx.ts": {
+      "exports": 1
+    },
+    "status/buildProgress.mjs": {
+      "exports": 3
+    },
+    "status/render.mjs": {
+      "exports": 1
+    }
+  },
+  "lines": {
+    "cli/keel-restore.mjs": 2483,
+    "cli/keel-restore.test.mjs": 1228,
+    "cli/keel-worker.mjs": 1124,
+    "cli/keel-worker.test.mjs": 929,
+    "engine/collect/workloadContract.mjs": 1108,
+    "engine/content/restore/files.mjs": 860,
+    "engine/content/sharepointSites.mjs": 809,
+    "engine/coverage/coverageDoc.mjs": 1047,
+    "engine/coverage/qualification.mjs": 1575,
+    "engine/govern/approvals.mjs": 828,
+    "engine/govern/incidents.mjs": 816,
+    "engine/reports/value.mjs": 1017,
+    "engine/restore/applyEngine.mjs": 2344,
+    "engine/restore/identityObjectOperations.mjs": 1360,
+    "engine/restore/identityObjectOperations.test.mjs": 1580,
+    "engine/restore/intuneExtended.test.mjs": 2428,
+    "engine/restore/intuneOperations.mjs": 2902,
+    "engine/restore/recordWriter.mjs": 944,
+    "engine/restore/tenantPolicyOperations.mjs": 892,
+    "engine/restore/workloads/cmdletSettings.mjs": 1144,
+    "engine/restore/workloads/sharepointStructure.mjs": 998,
+    "engine/roadmap/admin-role-fidelity.test.mjs": 947,
+    "engine/roadmap/entra-live-gate.test.mjs": 947,
+    "engine/roadmap/grounded-query.test.mjs": 846,
+    "engine/roadmap/intune-restore.test.mjs": 826,
+    "engine/roadmap/keel-recovery.test.mjs": 1264,
+    "engine/roadmap/onedrive-purview-live-acceptance.test.mjs": 830,
+    "engine/roadmap/onedrive-purview.test.mjs": 848,
+    "engine/roadmap/symbol-context.test.mjs": 803,
+    "engine/roadmap/workload-writers-live-acceptance.test.mjs": 824,
+    "engine/roadmap/workload-writers.test.mjs": 954,
+    "engine/safety/breakGlassReadiness.mjs": 934,
+    "engine/safety/contentEffects.mjs": 1193,
+    "engine/safety/policyScenario.mjs": 817,
+    "portal/components/approval-inbox.tsx": 803,
+    "portal/components/notifications/notifications-page.tsx": 977,
+    "portal/components/restore-selection.tsx": 1147,
+    "portal/lib/action.ts": 1061,
+    "portal/lib/compliance-view.ts": 1241,
+    "portal/lib/portal-data.ts": 2051,
+    "portal/lib/resilience-view.ts": 801,
+    "portal/lib/types.ts": 835,
+    "portal/test/action.test.ts": 1118,
+    "portal/test/approvals.test.ts": 849,
+    "portal/ui-harness/app.tsx": 3442,
+    "portal/ui-harness/ui.spec.ts": 6513,
+    "tools/qualification/entraLive.mjs": 833,
+    "tools/qualification/live-gate-plan.mjs": 1046,
+    "tools/qualification/operations.mjs": 1221,
+    "tools/release/journeys.mjs": 915,
+    "tools/release/qualification.mjs": 1063
+  }
+}

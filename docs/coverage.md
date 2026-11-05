@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 115 at least in part and 9 hold nothing to restore; the other 61 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 117 at least in part and 9 hold nothing to restore; the other 59 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -54,7 +54,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Entitlement management settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Terms of use | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -156,9 +156,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Guest sign-up user flows.** Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.
   - *Not brought back:* custom page text (language overrides) (stored separately and not in the backup yet); an identity provider or API connector that is not set up in the target, and the client secret or password each one uses (Microsoft never returns it).
   - *You do:* A restore that changes a flow waits for a second approver while restore approvals are on. An identity provider or API connector that is not set up in the target is listed for you to set up first: KEEL never holds their secrets or passwords. Custom page text is not backed up, and a restore never takes a provider, attribute or connector off a flow.
-- **API connectors for user flows** (not built yet). The password or certificate a connector uses can never be read back.
+- **API connectors for user flows.** Recreates a missing connector and puts its name and the address it calls back (tested against a simulated tenant only).
   - *Not brought back:* password or certificate (Microsoft never returns it).
-  - *You do:* Recreate the connector using the backup, and enter its password or certificate again.
+  - *You do:* A restore that changes a connector waits for a second approver while restore approvals are on. Its password or certificate can never be read back: a recreated connector gets a placeholder password nobody knows, so it does not work until you enter the real password or certificate by hand.
 - **Provisioning and cross-tenant sync jobs** (not built yet). A job's attribute mappings are stored separately, its sign-in details can never be read back, and a running job changes accounts in another directory.
   - *Not brought back:* its attribute mappings (the sync schema) (stored separately and not in the backup yet); the sign-in details for the target app, if it uses any (Microsoft never returns it); run history and current status (no tool can write it).
   - *You do:* Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.
@@ -230,7 +230,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-13) |
 | App consent policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin consent requests | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Idle sign-out policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Idle sign-out policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Token claims mapping | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Sign-in routing (home realm discovery) | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Token issuance policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -286,9 +286,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app consent policy (set by Microsoft).
   - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet are set by hand.
 - **Admin consent requests.** Puts the admin consent request workflow back, including who reviews requests.
-- **Idle sign-out policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
+- **Idle sign-out policy.** Puts the policy's name and idle sign-out times back (tested against a simulated tenant only). A policy that was the organization default is written into the tenant's current default (never added as a second one) only once someone approves the change, because it signs out every user.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy by hand using the backup.
+  - *You do:* If the tenant has no default policy, it comes back as an ordinary one: make it the default by hand after checking it.
 - **Token claims mapping.** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet); being the organization default (KEEL recreates it as an ordinary policy) (in the backup, but KEEL does not write it yet).
   - *You do:* Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.

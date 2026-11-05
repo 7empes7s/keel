@@ -160,6 +160,10 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   backup holds each PDF (fileData shows a sha256, not null; the Graph reference shows null) and that the
   Restorer's `Agreement.ReadWrite.All` application grant is accepted; then capture KEEL-RT-1007-terms (steps in
   the #1007 PR body). Approval-held; PDFs live in `agreement_file_blob`, which prune does not touch yet.
+- Idle sign-out policies and API connectors (#1008): `activityBasedTimeoutPolicy` and `identityApiConnector`
+  create and update are fixture-tested with no live record yet. Capture needs KEEL-RT-idle (never the
+  organization default) and KEEL-RT-connector on no user flow (steps in the #1008 PR body); the connector
+  write and any write into the live organization default idle sign-out policy are approval-held.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

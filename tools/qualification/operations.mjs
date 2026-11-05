@@ -53,6 +53,10 @@ const FIXTURE_AGREEMENT_PDF_SHA256 = createHash('sha256').update(FIXTURE_AGREEME
 export const FIXTURE_PAYLOADS = Object.freeze({
   // Wave 2 ENTRA: directory policies and a delegated consent.
   tokenLifetimePolicy: { displayName: 'Fixture token lifetime', definition: STS_DEFINITION, isOrganizationDefault: false },
+  activityBasedTimeoutPolicy: {
+    displayName: 'Fixture idle sign-out', isOrganizationDefault: false,
+    definition: ['{"ActivityBasedTimeoutPolicy":{"Version":1,"ApplicationPolicies":[{"ApplicationId":"default","WebSessionIdleTimeout":"01:00:00"}]}}'],
+  },
   tokenIssuancePolicy: { displayName: 'Fixture token issuance', definition: ['{"TokenIssuancePolicy":{"Version":1,"TokenResponseSigningPolicy":"TokenOnly"}}'], isOrganizationDefault: false },
   claimsMappingPolicy: { displayName: 'Fixture claims mapping', definition: ['{"ClaimsMappingPolicy":{"Version":1,"IncludeBasicClaimSet":"true"}}'], isOrganizationDefault: false },
   homeRealmDiscoveryPolicy: { displayName: 'Fixture sign-in routing', definition: ['{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":false}}'], isOrganizationDefault: false },
@@ -226,6 +230,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     identityProviders: [], userAttributeAssignments: [], languages: [], apiConnectorConfiguration: {},
   },
   identityUserFlowAttribute: { displayName: 'Fixture attribute', description: 'Fixture', dataType: 'string', userFlowAttributeType: 'custom' },
+  // Issue #1008: an API connector as Graph returns it (the password masked).
+  identityApiConnector: {
+    displayName: 'Fixture connector', targetUrl: 'https://fixture.example/api/signup',
+    authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
+  },
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -708,6 +717,14 @@ export function fakeGraph() {
       writes.push({ method, path });
       const flowWrite = userFlowWrite(objects, path, method, body);
       if (flowWrite) return flowWrite;
+      // Issue #1008: Graph needs an authentication to create an API connector, and returns its password masked.
+      if (method === 'POST' && path === '/identity/apiConnectors') {
+        if (!body?.authenticationConfiguration) return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'authenticationConfiguration is required' } } };
+        next += 1;
+        const created = { ...body, id: `fixture-connector-${next}`, authenticationConfiguration: { ...body.authenticationConfiguration, password: '******' } };
+        objects.set(`${path}/${created.id}`, created);
+        return { ok: true, status: 201, body: created };
+      }
       // Roadmap task-152: a Conditional Access policy is restored from its own
       // deleted-items container; the fake keeps one deleted map for both.
       const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path)

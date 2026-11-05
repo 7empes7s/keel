@@ -150,6 +150,8 @@ const REGISTERED = Object.freeze({
   // Issue #995: guest sign-up user flows and their custom attributes.
   b2xIdentityUserFlow: ['create', 'update'],
   identityUserFlowAttribute: ['create', 'update'],
+  // Issue #1008: API connectors.
+  identityApiConnector: ['create', 'update'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],
@@ -183,6 +185,7 @@ const REGISTERED = Object.freeze({
   tokenIssuancePolicy: ['create', 'update'],
   claimsMappingPolicy: ['create', 'update'],
   homeRealmDiscoveryPolicy: ['create', 'update'],
+  activityBasedTimeoutPolicy: ['create', 'update'],
   permissionGrantPolicy: ['create', 'update'],
   oauth2PermissionGrant: ['create', 'update'],
   // Issue #994: authentication contexts (an upsert under the backup's id) and staged rollout.

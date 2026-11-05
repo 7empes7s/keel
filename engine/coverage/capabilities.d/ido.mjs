@@ -184,6 +184,9 @@ export default [
   { resourceType: 'b2xIdentityUserFlow', operation: 'update', path: '/identity/b2xUserFlows', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'identityUserFlowAttribute', operation: 'create', path: '/identity/userFlowAttributes', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'identityUserFlowAttribute', operation: 'update', path: '/identity/userFlowAttributes', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Issue #1008: API connectors (behind the restore approval, created with a placeholder password). Never deleted.
+  { resourceType: 'identityApiConnector', operation: 'create', path: '/identity/apiConnectors', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: 'engine/roadmap/idle-timeout-and-api-connectors.test.mjs' },
+  { resourceType: 'identityApiConnector', operation: 'update', path: '/identity/apiConnectors', handler: IDENTITY, idOutcome: 'preserved', proofRef: 'engine/roadmap/idle-timeout-and-api-connectors.test.mjs' },
   // Restore gaps, batch 12: Windows app protection policies and iOS app provisioning profiles.
   { resourceType: 'windowsManagedAppProtection', operation: 'create', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'windowsManagedAppProtection', operation: 'update', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },

@@ -448,6 +448,19 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     breakGlass: 'The fixture flow is not added to any app, so nobody can sign up through it.',
     note: 'Check the dry run lists the flow under "Changes access" and the enforce run writes only after that is approved; a provider that is not set up in the tenant is reported as a manual step.',
   },
+  // Issue #1008.
+  identityApiConnector: {
+    kind: 'named-object', fixture: `API connector ${FIXTURE_PREFIX}-connector calling https://keel-rt.invalid/api/signup with basic authentication (any throwaway username and password), on no user flow`,
+    select: `${FIXTURE_PREFIX}-connector`, drift: 'change its target URL to https://keel-rt.invalid/api/other; for create, delete it',
+    breakGlass: 'The fixture connector is on no user flow and calls an address that does not exist, so nobody signs up through it.',
+    note: 'Check the dry run lists the name and URL under "Changes access" and the enforce run writes only after that is approved; check the recreated connector has a placeholder username starting keel-placeholder- and the restore lists setting the real password as a step. Nothing is added to a user flow.',
+  },
+  activityBasedTimeoutPolicy: {
+    kind: 'named-object', fixture: `idle sign-out policy ${FIXTURE_PREFIX}-idle (Graph only) with a one-hour default idle timeout, isOrganizationDefault false`,
+    select: `${FIXTURE_PREFIX}-idle`, drift: 'change its WebSessionIdleTimeout to 02:00:00; for create, delete it',
+    breakGlass: 'The fixture is never the organization default, so it signs nobody out. Never make it the default, and never change the tenant\'s own default policy.',
+    note: 'Check the definition reads back with the backed-up idle timeout and isOrganizationDefault is still false.',
+  },
   defenderRoleAssignment: {
     kind: 'named-object', fixture: `assignment ${FIXTURE_PREFIX}-defender-assignment of the custom role ${FIXTURE_PREFIX}-defender-role to the empty group ${FIXTURE_PREFIX}-group`,
     select: `${FIXTURE_PREFIX}-defender-assignment`, drift: 'delete it: the restore recreates it; then add a second group: the restore takes it away again',

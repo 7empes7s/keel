@@ -17,6 +17,7 @@ export const ENTRA_WRITE_PATHS = Object.freeze({
   tokenIssuancePolicy: '/policies/tokenIssuancePolicies',
   claimsMappingPolicy: '/policies/claimsMappingPolicies',
   homeRealmDiscoveryPolicy: '/policies/homeRealmDiscoveryPolicies',
+  activityBasedTimeoutPolicy: '/policies/activityBasedTimeoutPolicies',
   permissionGrantPolicy: '/policies/permissionGrantPolicies',
   oauth2PermissionGrant: '/oauth2PermissionGrants',
 });

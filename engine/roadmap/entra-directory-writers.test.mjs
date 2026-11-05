@@ -140,9 +140,9 @@ test('each writer type is a fixture-tested create and update, delete is unsuppor
 test('the formerly unknown Entra types without a writer stay manual and are restored by hand', () => {
   // Issue #994 gave authentication contexts and staged rollout a writer
   // (sign-in-settings.test.mjs); certificate authorities stay manual by design.
-  // Issue #991 registered roleAssignmentSchedule, #992 accessPackage and #993 connectedOrganization.
-  const stillManual = ['certificateBasedAuthConfiguration',
-    'activityBasedTimeoutPolicy', 'accessReviewScheduleDefinition'];
+  // Issue #991 registered roleAssignmentSchedule, #992 accessPackage, #993 connectedOrganization
+  // and #1007 accessReviewScheduleDefinition.
+  const stillManual = ['certificateBasedAuthConfiguration', 'activityBasedTimeoutPolicy'];
   for (const type of stillManual) {
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);
@@ -155,6 +155,9 @@ test('the formerly unknown Entra types without a writer stay manual and are rest
     assert.equal(TYPE_DECISIONS[type].decision, 'automated', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'keel', type);
   }
+  // Issue #1007: access review series are created by KEEL; their past reviews never are.
+  assert.equal(TYPE_DECISIONS.accessReviewScheduleDefinition.decision, 'automated');
+  assert.equal(completenessFor('accessReviewScheduleDefinition', TYPE_DECISIONS.accessReviewScheduleDefinition).recreate, 'keel');
   assert.equal(TYPE_DECISIONS.accessPackageAssignment.decision, 'manual');
 });
 
@@ -636,17 +639,16 @@ test('a writer\'s follow-up steps become completion items; parts that are only a
 });
 
 test('a type with no writer gets a by-hand step with the backed-up values and its admin center path', () => {
-  // Wave 2 IDO gave lifecycle workflows a writer, so an access review is the example.
-  const review = {
-    id: 'ar-1', displayName: 'KEEL-RT quarterly review', createdDateTime: '2026-01-01T00:00:00Z',
-    scope: { query: '/groups/g-1/transitiveMembers', queryType: 'MicrosoftGraph' }, settings: { recurrence: { pattern: { type: 'absoluteMonthly', interval: 3 } } },
+  // Wave 2 IDO gave lifecycle workflows a writer and issue #1007 access reviews, so terms of use are the example.
+  const terms = {
+    id: 'ag-1', displayName: 'KEEL-RT terms of use', createdDateTime: '2026-01-01T00:00:00Z', isViewingBeforeAcceptanceRequired: true,
   };
-  const steps = byHandSteps('accessReviewScheduleDefinition', review, TYPE_DECISIONS.accessReviewScheduleDefinition);
+  const steps = byHandSteps('agreement', terms, TYPE_DECISIONS.agreement);
   assert.equal(steps[0].requirement, 'followUp:recreate-by-hand');
-  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Access reviews');
-  assert.equal(steps[0].values.displayName, 'KEEL-RT quarterly review');
+  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Terms of use');
+  assert.equal(steps[0].values.displayName, 'KEEL-RT terms of use');
   assert.ok(!('id' in steps[0].values) && !('createdDateTime' in steps[0].values), 'ids and timestamps are not values to enter');
-  assert.equal(steps[1].actionable, false, 'past reviews are a record only');
+  assert.equal(steps.at(-1).actionable, false, 'who accepted is a record only');
   assert.throws(() => byHandSteps('lifecycleWorkflow', {}, TYPE_DECISIONS.lifecycleWorkflow), /has a writer/);
   assert.throws(() => byHandSteps('application', incompleteApp, TYPE_DECISIONS.application), /has a writer/);
 });

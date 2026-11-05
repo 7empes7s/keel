@@ -142,7 +142,8 @@ export const TYPE_DECISIONS = Object.freeze({
   tokenIssuancePolicy: automated('tokenissuancepolicy', STS_SUBSET),
   tokenLifetimePolicy: automated('tokenlifetimepolicy', STS_SUBSET),
   featureRolloutPolicy: automated('featurerolloutpolicy', 'issue-994 subset: create and update of the name, description, feature and organization-wide flag, plus add-only groups found live by their natural key, only behind the break-glass lockout gate and once approved under the restore approval setting; a recreated rollout lands switched off and switching it on is a separate approved step; delete is not registered'),
-  accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
+  // Issue #1007: the series is recreated; its history never is.
+  accessReviewScheduleDefinition: automated('accessreviewscheduledefinition', 'issue #1007 subset: create of a missing series from the backup with its scope, reviewers, fallback reviewers, stages, who is told, settings and recurrence, behind the restore approval; every user, group and app its queries name is matched in the target by natural key, and one that cannot be (or a query naming anything else by id) holds the whole series as a manual step; a start date that has passed becomes the restore day (a step says so) and a series whose end date has passed is not recreated; an existing series with the same name and scope is never duplicated; update (Graph replaces the whole series) and delete are not registered; past reviews, decisions and history are never recreated (a manual step)'),
   // Issue #992: entitlement management, part 1.
   accessPackage: automated('accesspackage', 'create and update of the name, description and whether it is hidden, in its catalog (the restored or live catalog, matched by natural key); a create waits for its catalog and is refused when the catalog is in neither; delete is not registered; its policies and assignments are their own types'),
   // Issue #993: entitlement management, part 2.
@@ -158,7 +159,8 @@ export const TYPE_DECISIONS = Object.freeze({
   accessPackageAssignmentPolicy: automated('accesspackageassignmentpolicy', 'issue #993: create and update (a whole replace) on the restored or live access package; every user, group and connected organization it names as requestor, approver or reviewer is matched in the target by natural key, and one that cannot be is a manual step that holds the whole policy; every change to who may request, approve or review, or how long access lasts, is behind the restore approval, and the step names a loosening; custom extensions are never written (a manual step, and an update of a live policy that has them is held); delete is not registered'),
   accessPackageAssignment: incomplete('an assignment is granted through a request against its policy, never copied'),
   entitlementManagementSettings: automated('entitlementmanagementsettings', 'Wave 2: update in place'),
-  agreement: incomplete('the agreement documents are files on a separate route, and acceptances cannot be recreated'),
+  // Issue #1007: checked against the Graph v1.0 reference; not buildable app-only.
+  agreement: incomplete('Graph v1.0 serves terms of use to a signed-in admin only (every agreement route, list, file, create, update and add file, lists no application permission) and returns no document (a file read gives fileData null), so an app-only restore can neither read the PDF nor write an agreement; acceptances cannot be recreated by anyone'),
   appManagementPolicy: automated('appmanagementpolicy', 'Wave 2: create and update; the apps a policy applies to are a separate edge not yet collected'),
   tenantAppManagementPolicy: automated('tenantappmanagementpolicy', 'approval-held kinds: update in place of the default rules for app secrets and certificates; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; a restriction that names trusted certificate authorities is a manual step (trust-field rule); tenant-wide, so the test tenant needs the tenant-wide option', {
     liveFailures: {
@@ -381,6 +383,8 @@ for (const operation of ['create', 'update']) {
   recordRemappingProof('accessPackageAssignmentPolicy', operation, 'engine/restore/entitlementPolicyOperations.test.mjs');
   recordRemappingProof('connectedOrganization', operation, 'engine/restore/entitlementPolicyOperations.test.mjs');
 }
+// Issue #1007: an access review's queries pointed at the target's users, groups and apps.
+recordRemappingProof('accessReviewScheduleDefinition', 'create', 'engine/restore/accessReviewOperations.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -943,8 +947,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   unifiedRoleManagementPolicyAssignment: byHand('identity-application', null, 'none', 'Entra binds one settings policy to each role; the binding is read to name the role, never written'),
   roleAssignmentSchedule: subset('identity-application', 'POST /roleManagement/directory/roleAssignmentScheduleRequests', 'RoleAssignmentSchedule.ReadWrite.Directory',
     'create (adminAssign with a justification) of an active time-bound assignment an admin made is fixture-tested and keeps the snapshot end date; an activation is never replayed; an expired or group-inherited one is not restored, and a permanent one is restored as roleAssignment; an existing one is matched by principal, role and scope and never requested twice; it is held until a "changes admin access" approval; update and removal are refused'),
-  accessReviewScheduleDefinition: research('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
-    'review history and decisions cannot be recreated; only the definition could be'),
+  accessReviewScheduleDefinition: subset('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
+    'create is fixture-tested behind the restore approval, with every user, group and app in its queries matched by natural key (a missing one holds the series) and a start date never in the past; an existing series is never duplicated; update is not registered; review history and decisions cannot be recreated'),
   accessPackage: subset('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',
     'create in its catalog and update of the name, description and whether it is hidden are fixture-tested; a missing catalog refuses the create; policies and assignments are their own types'),
   connectedOrganization: subset('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations; PATCH .../{id}; POST .../{id}/internalSponsors|externalSponsors/$ref', 'EntitlementManagement.ReadWrite.All',
@@ -971,7 +975,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   entitlementManagementSettings: subset('identity-application', 'PATCH /identityGovernance/entitlementManagement/settings', 'EntitlementManagement.ReadWrite.All',
     'update of the tenant singleton is fixture-tested'),
   agreement: research('identity-application', 'POST /identityGovernance/termsOfUse/agreements', 'Agreement.ReadWrite.All',
-    'the agreement documents are files on a separate route that is not backed up, and acceptances cannot be recreated'),
+    'Graph v1.0 serves terms of use to a signed-in admin only (every agreement route, list, file, create, update and add file, lists no application permission) and returns no document (a file read gives fileData null), so an app-only restore can neither read the PDF nor write an agreement; acceptances cannot be recreated by anyone'),
   b2xIdentityUserFlow: subset('identity-application', 'POST /identity/b2xUserFlows; POST .../{id}/identityProviders/$ref; POST/PATCH .../{id}/userAttributeAssignments; POST .../userAttributeAssignments/setOrder; PATCH .../{id}/languages/{id}; PUT .../{id}/apiConnectorConfiguration/{step}/$ref', 'IdentityUserFlow.ReadWrite.All',
     'create and update of a flow and its parts are fixture-tested and written only with an approved "changes access" effect or with approvals off; identity provider secrets and connector passwords are never written; delete is refused'),
   identityApiConnector: research('identity-application', 'POST /identity/apiConnectors', 'APIConnectors.ReadWrite.All',

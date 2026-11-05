@@ -28,7 +28,8 @@
  * assignments, provisioning jobs, catalog resources on their own) have no
  * record here; IDENTITY_BEST_EFFORT names them and why. Access packages and
  * their resource roles are in accessPackageOperations.mjs; connected
- * organizations and access package policies in entitlementPolicyOperations.mjs.
+ * organizations and access package policies in entitlementPolicyOperations.mjs;
+ * access review series in accessReviewOperations.mjs.
  *
  * Routes follow the Graph v1.0 references and are fixture-tested, not
  * live-qualified.
@@ -45,6 +46,7 @@ import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './ap
 import { USER_FLOW_RECORDS } from './userFlowOperations.mjs';
 import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from './accessPackageOperations.mjs';
 import { ASSIGNMENT_POLICY_RECORD, CONNECTED_ORGANIZATION_RECORD, entitlementPolicyDispatch } from './entitlementPolicyOperations.mjs';
+import { ACCESS_REVIEW_RECORD, accessReviewDispatch } from './accessReviewOperations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -804,6 +806,9 @@ export const IDENTITY_RECORDS = Object.freeze({
   // access package policies, behind the restore approval.
   connectedOrganization: CONNECTED_ORGANIZATION_RECORD,
   accessPackageAssignmentPolicy: ASSIGNMENT_POLICY_RECORD,
+  // Issue #1007 (accessReviewOperations.mjs): access review series, created
+  // behind the restore approval with their principals matched in the target.
+  accessReviewScheduleDefinition: ACCESS_REVIEW_RECORD,
   entitlementManagementSettings: defineRecord({
     resourceType: 'entitlementManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
     singleton: true, operations: ['update'], permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagementsettings-update'),
@@ -1018,7 +1023,7 @@ export const IDENTITY_NEEDS_REVIEW = Object.freeze({
 
 /** Types read in wave 1 that no record here can write in full, and why. */
 export const IDENTITY_BEST_EFFORT = Object.freeze({
-  agreement: 'the terms of use file (PDF) is never returned by Graph',
+  agreement: 'Graph returns no terms of use file (fileData is null), and its agreement routes take only a signed-in admin, never an app',
   identityApiConnector: 'the connector password or certificate is never returned by Graph',
   accessPackageAssignment: 'an assignment is granted by a request through its policy, never copied',
   synchronizationJob: 'a provisioning job needs its template, schema and the target system\'s credentials',
@@ -1325,7 +1330,7 @@ export async function applyIdentityEdges(writer, operations, ctx = {}) {
 /** One write of a type this module owns. */
 export async function applyIdentityObjectWrite(writer, resource, verb, ctx = {}) {
   if (resource.resourceType === 'user') return applyUserRecreate(writer, resource, verb, ctx);
-  const routed = accessPackageDispatch(resource, verb, ctx) ?? entitlementPolicyDispatch(resource, verb, ctx);
+  const routed = accessPackageDispatch(resource, verb, ctx) ?? entitlementPolicyDispatch(resource, verb, ctx) ?? accessReviewDispatch(resource, verb, ctx);
   if (routed?.done) return routed.done;
   if (routed) return applyRecordWrite(writer, routed.record, routed.resource, verb, ctx);
   const record = IDENTITY_RECORDS[resource.resourceType];

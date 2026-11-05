@@ -18,6 +18,7 @@ const IDENTITY_PROOF = 'engine/restore/identityObjectOperations.test.mjs';
 const INTUNE_PROOF = 'engine/restore/intuneExtended.test.mjs';
 const ACCESS_PACKAGE_PROOF = 'engine/restore/accessPackageOperations.test.mjs';
 const POLICY_PROOF = 'engine/restore/entitlementPolicyOperations.test.mjs';
+const ACCESS_REVIEW_PROOF = 'engine/restore/accessReviewOperations.test.mjs';
 
 export default [
   { resourceType: 'servicePrincipal', operation: 'update', path: '/servicePrincipals', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
@@ -39,6 +40,8 @@ export default [
   { resourceType: 'connectedOrganization', operation: 'update', path: '/identityGovernance/entitlementManagement/connectedOrganizations', handler: IDENTITY, idOutcome: 'preserved', proofRef: POLICY_PROOF },
   { resourceType: 'accessPackageAssignmentPolicy', operation: 'create', path: '/identityGovernance/entitlementManagement/assignmentPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: POLICY_PROOF },
   { resourceType: 'accessPackageAssignmentPolicy', operation: 'update', path: '/identityGovernance/entitlementManagement/assignmentPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: POLICY_PROOF },
+  // Issue #1007: access review series (create only).
+  { resourceType: 'accessReviewScheduleDefinition', operation: 'create', path: '/identityGovernance/accessReviews/definitions', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: ACCESS_REVIEW_PROOF },
   { resourceType: 'entitlementManagementSettings', operation: 'update', path: '/identityGovernance/entitlementManagement/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'create', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'update', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

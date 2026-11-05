@@ -40,6 +40,7 @@ import { appendEvidence } from '../govern/evidence.mjs';
 import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/restoreApprovalSettings.mjs';
 import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
+import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects } from './signInSettingEffects.mjs';
 
@@ -275,6 +276,10 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // people request a package nobody could request before, and a change can loosen
   // who may request or remove an approval step, so every change is held.
   accessPackageAssignmentPolicy: Object.freeze(['allowedTargetScope', 'specificAllowedTargets', 'requestorSettings', 'requestApprovalSettings', 'reviewSettings', 'automaticRequestSettings', 'expiration']),
+  // Issue #1007: an access review decides whose access is reviewed and who
+  // decides, and its settings can remove access by themselves (a default
+  // decision applied automatically). A recreated series starts reviewing again.
+  accessReviewScheduleDefinition: Object.freeze(['scope', 'instanceEnumerationScope', 'reviewers', 'fallbackReviewers', 'stageSettings', 'settings']),
 });
 // Nested fields Microsoft sets on its own, at any depth: a restore never sends
 // them, and they are no change. Graph sets a default app credential rules
@@ -294,7 +299,7 @@ export function withoutMicrosoftSet(resourceType, value) {
   return strip(value);
 }
 // The batch 2 kinds: their access values name principals and roles.
-const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope', 'accessPackageAssignmentPolicy', 'connectedOrganization']);
+const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope', 'accessPackageAssignmentPolicy', 'connectedOrganization', 'accessReviewScheduleDefinition']);
 // Compared in a canonical form with nulls dropped, so a value that reads back with
 // its keys in another order, or with empty fields Graph adds, is no change.
 const withoutNulls = (value) => {
@@ -402,8 +407,33 @@ const sponsorValue = (field) => (payload, resource) => {
   return sponsors.map((sponsor) => names.get(String(sponsor?.id ?? '').toLowerCase())
     ?? sponsor?.userPrincipalName ?? sponsor?.displayName ?? 'a sponsor the backup does not name').sort();
 };
+// Issue #1007: an access review names users, groups and apps inside its Graph
+// queries ("/groups/{id}/transitiveMembers"). Each one the backup holds a
+// reference for is shown by that reference's name in its query
+// ("/groups/{group:Sales}/transitiveMembers"). A writer that rewrote the queries
+// to the target's ids keeps the backup's references as `queryReferences`.
+const queryNamedValue = (field) => (payload, resource) => {
+  const value = withoutNulls(payload?.[field]);
+  if (value === null || value === undefined) return null;
+  const symbols = new Map((resource?.queryReferences ?? resource?.references ?? [])
+    .filter((ref) => typeof ref?.symbol === 'string').map((ref) => [ref.field, ref.symbol]));
+  const show = (node, path) => {
+    if (Array.isArray(node)) return node.map((item, index) => show(item, `${path}[${index}]`));
+    if (!node || typeof node !== 'object') return node;
+    return Object.fromEntries(Object.entries(node).map(([key, child]) => {
+      const at = `${path}.${key}`;
+      const symbol = key === 'query' && typeof child === 'string' ? symbols.get(at) : null;
+      if (!symbol) return [key, show(child, at)];
+      const match = QUERY_PRINCIPAL.exec(child);
+      return [key, match ? child.replace(match[2], `{${symbol}}`) : child];
+    }));
+  };
+  const shown = show(value, field);
+  return typeof shown === 'object' ? canonical(shown) : shown;
+};
 const OWN_ACCESS_READERS = Object.freeze({
   connectedOrganization: Object.freeze({ identitySources: identitySourceValue, internalSponsors: sponsorValue('internalSponsors'), externalSponsors: sponsorValue('externalSponsors') }),
+  accessReviewScheduleDefinition: Object.freeze(Object.fromEntries(APPROVAL_HELD_FIELDS.accessReviewScheduleDefinition.map((field) => [field, queryNamedValue(field)]))),
 });
 const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
   .map((field) => rule(field, 'access-changing', accessChanges, OWN_ACCESS_READERS[resourceType]?.[field]

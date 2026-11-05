@@ -148,7 +148,7 @@ export const COMPLETENESS = Object.freeze({
     part('Activations people made themselves', 'read-only'),
     part('Changing or removing an active assignment, and ones inherited through a group', 'not-written'),
   ] },
-  accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
+  accessReviewScheduleDefinition: { missing: [part('Past reviews and their decisions', 'read-only'), part('Changes to an existing series, which Microsoft only lets an app replace whole', 'not-written')] },
   accessPackage: { missing: [part('Its assignment policies and who holds it, which are restored separately', 'not-written')] },
   connectedOrganization: { missing: [part('A federated domain identity source, whose sign-in settings a restore never writes', 'not-written'), part('Sponsors who do not exist in the target', 'not-written')] },
   // Wave 1 CAT-ENTRA: Entra governance.

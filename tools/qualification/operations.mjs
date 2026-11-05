@@ -248,6 +248,18 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     },
     accessPackage: { id: 'fixture-source-package' },
   },
+  // Issue #1007: a weekly review of a group's members by one user, in the shape
+  // Graph returns (accessreviewset-post-definitions).
+  accessReviewScheduleDefinition: {
+    displayName: 'Fixture review', descriptionForAdmins: 'Fixture review', descriptionForReviewers: 'Fixture review',
+    scope: { '@odata.type': '#microsoft.graph.accessReviewQueryScope', query: '/groups/aaaaaaaa-0000-4000-8000-000000001007/transitiveMembers', queryType: 'MicrosoftGraph' },
+    reviewers: [{ query: '/users/aaaaaaaa-0000-4000-8000-000000001008', queryType: 'MicrosoftGraph', queryRoot: null }],
+    settings: {
+      mailNotificationsEnabled: true, reminderNotificationsEnabled: true, justificationRequiredOnApproval: true, defaultDecisionEnabled: false,
+      defaultDecision: 'None', instanceDurationInDays: 3, autoApplyDecisionsEnabled: false, recommendationsEnabled: true,
+      recurrence: { pattern: { type: 'weekly', interval: 1 }, range: { type: 'noEnd', startDate: '2026-01-05' } },
+    },
+  },
   entitlementManagementSettings: { externalUserLifecycleAction: 'blockSignInAndDelete', durationUntilExternalUserDeletedAfterBlocked: 'P30D' },
   appManagementPolicy: {
     displayName: 'Fixture credential policy', description: 'Fixture', isEnabled: true,
@@ -549,6 +561,8 @@ const FIXTURE_TARGET_IDS = Object.freeze({
   accessPackageResourceRoleScope: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group']],
   // Issue #993: the package, group and approver live in the target under other ids.
   accessPackageAssignmentPolicy: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group'], ['user:approver@fixture.example', 'fixture-user']],
+  // Issue #1007: the reviewed group and the reviewer live in the target under other ids.
+  accessReviewScheduleDefinition: [['group:fixture-group', 'bbbbbbbb-0000-4000-8000-000000001007'], ['user:reviewer@fixture.example', 'bbbbbbbb-0000-4000-8000-000000001008']],
 });
 
 // The references canonicalize gives these fixtures (issue #992).
@@ -562,6 +576,10 @@ const FIXTURE_REFERENCES = Object.freeze({
     { field: 'accessPackage.id', symbol: 'accessPackage:fixture-source-package', required: true },
     { field: 'specificAllowedTargets[0].groupId', symbol: 'group:fixture-group', required: true },
     { field: 'requestApprovalSettings.stages[0].primaryApprovers[0].userId', symbol: 'user:approver@fixture.example', required: true },
+  ],
+  accessReviewScheduleDefinition: [
+    { field: 'scope.query', symbol: 'group:fixture-group', required: true },
+    { field: 'reviewers[0].query', symbol: 'user:reviewer@fixture.example', required: true },
   ],
 });
 
@@ -586,6 +604,8 @@ const LISTED_BEFORE_CREATE = new Set([
   '/identity/userFlowAttributes', '/identity/identityProviders', '/identity/apiConnectors',
   '/identityGovernance/entitlementManagement/accessPackages',
   '/identityGovernance/entitlementManagement/connectedOrganizations', '/identityGovernance/entitlementManagement/assignmentPolicies',
+  // Issue #1007: an access review series is looked for by name and scope before a create.
+  '/identityGovernance/accessReviews/definitions',
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
 ]);

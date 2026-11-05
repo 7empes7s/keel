@@ -3,7 +3,7 @@
 Read this first if you are a new session. It says where the live system, the queues and the open work stand.
 Keep it current: update it in the same PR as any change to the facts below, and refresh the date.
 
-- **Last updated:** 2026-11-04
+- **Last updated:** 2026-11-05
 - **Older history:** an earlier version of this file (to 2026-10-09) lives on branch `claude/operator-queue`.
   It is out of date; use it only for history.
 
@@ -120,6 +120,9 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   and update are fixture-tested with no live record yet. Capture needs KEEL-RT-993-org (proposed, one
   operator-owned domain) and KEEL-RT-993-policy on KEEL-RT-992-package (steps in the #993 PR body); both
   writes are approval-held.
+- Access review series (#1007): `accessReviewScheduleDefinition` create is fixture-tested with no live record
+  yet. Capture needs KEEL-RT-1007-review of the empty KEEL-RT-148-group reviewed by carla, auto-apply off
+  (steps in the #1007 PR body); the write is approval-held and needs `AccessReview.ReadWrite.All` granted.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

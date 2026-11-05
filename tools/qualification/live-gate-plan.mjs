@@ -578,6 +578,12 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the policy id KEEL shows for the fixture', drift: 'change its description; for the weakening check, turn approval off by hand and see the restore hold it; for create, delete the policy (keep the package)',
     note: `The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. The requestor group has no members, so nobody can request the package. Delete the policy before the package and catalog.`,
   },
+  // Issue #1007: an access review series of an empty group, reviewed by one fixture user.
+  accessReviewScheduleDefinition: {
+    kind: 'named-object', fixture: `an access review series KEEL-RT-1007-review of the members of ${FIXTURE_PREFIX}-group (no members), reviewed by keel-rt-20260908-carla, weekly, no default decision, auto-apply off`,
+    select: 'the access review id KEEL shows for the fixture', drift: 'delete the series (create is the only verb)',
+    note: 'The write is approval-held: run the dry run, check it names the group and the reviewer and says the start date and that past reviews are not recreated, have a second person approve "Changes admin access", then enforce. The group has no members and auto-apply is off, so the review removes nobody. Delete the series at the end.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

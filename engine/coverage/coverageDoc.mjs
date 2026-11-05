@@ -140,9 +140,10 @@ export const TYPE_GUIDE = Object.freeze({
   unifiedRoleManagementPolicyAssignment: manual('Role-to-settings links', MS,
     'Entra links exactly one settings policy to each role itself. Nobody writes the link.',
     'Nothing to restore. The settings are restored with admin role activation settings.'),
-  accessReviewScheduleDefinition: manual('Access reviews', NOT_BUILT,
-    'The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.',
-    'Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.'),
+  accessReviewScheduleDefinition: auto('Access reviews', {
+    keeps: 'Recreates a missing access review series with what it reviews, its reviewers and fallback reviewers, its stages, who is told, and its settings and schedule, matched to the people, groups and apps in your tenant. A series that started in the past starts on the restore day.',
+    todo: 'An access review decides whose access is checked and can remove access by itself, so a restore writes it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A review naming someone who no longer exists is not recreated. Past reviews and their decisions are never recreated, and a change to an existing series is made by hand.',
+  }),
   accessPackage: auto('Access packages', {
     keeps: 'Recreates access packages in their catalog and puts their name, description and visibility back. A package is created only once its catalog is there.',
     todo: 'Its request policies are restored separately. Who holds it is not restored: people request it again.',
@@ -187,8 +188,8 @@ export const TYPE_GUIDE = Object.freeze({
   entitlementManagementSettings: auto('Entitlement management settings', {
     keeps: 'Puts the settings back.',
   }),
-  agreement: manual('Terms of use', NOT_BUILT,
-    'The agreement documents are files that are not backed up yet, and nobody can recreate who accepted them.',
+  agreement: manual('Terms of use', MS,
+    'Microsoft lets only a signed-in admin, never an app, create or change terms of use, and never hands out the agreement documents, so KEEL cannot back up the documents or restore them. Nobody can recreate who accepted them.',
     'Upload the documents again and recreate the terms of use in the Entra admin center using the backup. Users will be asked to accept again.'),
   b2xIdentityUserFlow: auto('Guest sign-up user flows', {
     keeps: 'Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.',

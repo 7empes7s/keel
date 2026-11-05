@@ -40,9 +40,9 @@ const changed = (resourceType) => {
   };
 };
 
-test('approval-held kinds: the kinds of batches 1 and 2, access package resource roles and policies, connected organizations (#993) and guest sign-up user flows (#995), each in a service the restore approval setting knows', () => {
+test('approval-held kinds: the kinds of batches 1 and 2, access package resource roles and policies, connected organizations (#993), guest sign-up user flows (#995) and access review series (#1007), each in a service the restore approval setting knows', () => {
   assert.deepEqual([...APPROVAL_HELD_KINDS].sort(), [
-    'accessPackageAssignmentPolicy', 'accessPackageResourceRoleScope', 'b2xIdentityUserFlow', 'connectedOrganization', 'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
+    'accessPackageAssignmentPolicy', 'accessPackageResourceRoleScope', 'accessReviewScheduleDefinition', 'b2xIdentityUserFlow', 'connectedOrganization', 'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
     'exchangeRoleAssignment', 'tenantAppManagementPolicy',
   ]);
   assert.ok(CONTENT_EFFECTS.includes('access-changing'));

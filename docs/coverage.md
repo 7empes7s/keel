@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 113 at least in part and 9 hold nothing to restore; the other 63 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 114 at least in part and 9 hold nothing to restore; the other 62 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -39,7 +39,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Admin role activation settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
-| Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access reviews | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Connected organizations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -52,7 +52,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Access package policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Access package assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Entitlement management settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Terms of use | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Terms of use | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -115,9 +115,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* A restore that would weaken protection waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID. Approvers must still exist.
 - **Role-to-settings links** (Nothing to restore). Entra links exactly one settings policy to each role itself. Nobody writes the link.
   - *You do:* Nothing to restore. The settings are restored with admin role activation settings.
-- **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
-  - *Not brought back:* past reviews and their decisions (no tool can write it).
-  - *You do:* Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.
+- **Access reviews.** Recreates a missing access review series with what it reviews, its reviewers and fallback reviewers, its stages, who is told, and its settings and schedule, matched to the people, groups and apps in your tenant. A series that started in the past starts on the restore day.
+  - *Not brought back:* past reviews and their decisions (no tool can write it); changes to an existing series, which Microsoft only lets an app replace whole (in the backup, but KEEL does not write it yet).
+  - *You do:* An access review decides whose access is checked and can remove access by itself, so a restore writes it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A review naming someone who no longer exists is not recreated. Past reviews and their decisions are never recreated, and a change to an existing series is made by hand.
 - **Access packages.** Recreates access packages in their catalog and puts their name, description and visibility back. A package is created only once its catalog is there.
   - *Not brought back:* its assignment policies and who holds it, which are restored separately (in the backup, but KEEL does not write it yet).
   - *You do:* Its request policies are restored separately. Who holds it is not restored: people request it again.
@@ -150,7 +150,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the original request and its approval (no tool can write it).
   - *You do:* Use the backup to see who held which access package, then assign it again in Entra ID Governance.
 - **Entitlement management settings.** Puts the settings back.
-- **Terms of use** (not built yet). The agreement documents are files that are not backed up yet, and nobody can recreate who accepted them.
+- **Terms of use** (Microsoft limit). Microsoft lets only a signed-in admin, never an app, create or change terms of use, and never hands out the agreement documents, so KEEL cannot back up the documents or restore them. Nobody can recreate who accepted them.
   - *Not brought back:* the agreement documents (a file the backup does not hold); who accepted the terms (no tool can write it).
   - *You do:* Upload the documents again and recreate the terms of use in the Entra admin center using the backup. Users will be asked to accept again.
 - **Guest sign-up user flows.** Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.

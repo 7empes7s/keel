@@ -18,6 +18,10 @@ The live portal is https://keel.techinsiderbytes.com, behind Cloudflare Access.
 - **Deploying:** green `master` deploys automatically to Mulinux (`keel-deploy.timer` to `/opt/keel-live`), and only commits whose Portal run succeeded are deployed. Check the live URL after a deploy.
 - **Never** skip, disable or quarantine a test to get green.
 
+## Map and skills
+- **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the layers, import directions, tables, the restore safety model, generated files and tests. Read it before exploring.
+- **Skills** (`.claude/skills/`): `keel-restore-writer`, `keel-collector`, `keel-live-bug-fix`, `keel-portal-page`, `keel-generated-files` (regenerating and merge conflicts) and `keel-pr-checklist` (run it before every PR).
+
 ## Shared rules (generated from 7empes7s/brain; edit the brain, not this section)
 
 <!-- brain:start -->

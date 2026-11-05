@@ -1884,6 +1884,7 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
       deletionGuardOptions: ctx.deletionGuardOptions,
       approvedContentEffects,
       signInPathGate: { reader: ctx.targetReader, protectedPrincipalIds: ctx.protectedPrincipalIds },
+      approvedContentEffects,
     });
     results.applied.push(...result.applied);
     results.skipped.push(...result.skipped);

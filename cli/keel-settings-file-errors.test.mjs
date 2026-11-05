@@ -136,9 +136,6 @@ test('no command parses a settings file with a bare JSON.parse', () => {
 // fixtures and documentation read from a folder) may still be parsed directly.
 test('no operator tool parses a settings file with a bare JSON.parse', () => {
   const allowed = new Set([
-    // The code-health ratchet reads ESLint's report and its own checked-in baseline.
-    'code-health/ratchet.mjs: JSON.parse(readFileSync(out',
-    'code-health/ratchet.mjs: JSON.parse(readFileSync(baselinePath',
     'coverage-fixtures/fixtures.mjs: JSON.parse(readFileSync(MANIFEST',
     'qualification/apiDrift.mjs: JSON.parse(readFile(sourcesPath',
     "qualification/benchmarkLicense.mjs: JSON.parse(readFileSync(new URL('../../docs/roadmap/benchmark-content/nist-sp800-53-rev5-pin.json'",

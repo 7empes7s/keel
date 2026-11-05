@@ -1,5 +1,0 @@
-{
-  "name": "keel",
-  "private": true,
-  "description": "Repository root. No dependencies or scripts: engine/, portal/ and status/ install their own. knip needs this file to analyse imports across folders (tools/code-health)."
-}

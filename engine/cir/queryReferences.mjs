@@ -7,7 +7,7 @@
  * `reviewers[0].query`), resolved through that object's natural key; the
  * restore writer puts the target's id back into the same query.
  */
-export const QUERY_REFERENCE_TYPES = new Set(['accessReviewScheduleDefinition']);
+const QUERY_REFERENCE_TYPES = new Set(['accessReviewScheduleDefinition']);
 
 const GUID_TEXT = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 /** A user, group or app in a query (after an optional /v1.0 or /beta). */

@@ -34,7 +34,7 @@ import { VERBATIM_RESOLUTIONS, resolveSymbol } from '../graph/resolver.mjs';
 import { createdOnce, withApprovalGate } from './approvalHeld.mjs';
 import { defineRecord, trustFieldStep } from './recordWriter.mjs';
 
-export const ACCESS_REVIEW_DEFINITIONS = '/identityGovernance/accessReviews/definitions';
+const ACCESS_REVIEW_DEFINITIONS = '/identityGovernance/accessReviews/definitions';
 const PORTAL = 'the Entra admin center, under Identity Governance, Access reviews';
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
 const TYPE = 'accessReviewScheduleDefinition';
@@ -66,7 +66,7 @@ function setAt(root, path, value) {
  * defaults it adds (queryRoot, an empty pattern's month and index), and a
  * start date as a day. Lists keep their order; nulls and empty lists are unset.
  */
-export function holdsSent(live, sent) {
+function holdsSent(live, sent) {
   // Nothing sent: Graph keeps its own default.
   if (sent === null || sent === undefined) return true;
   if (Array.isArray(sent) && sent.length === 0) return live === null || live === undefined || (Array.isArray(live) && live.length === 0);
@@ -130,7 +130,7 @@ function reviewSteps(payload, movedFrom, today) {
  * Returns { resource } (the backup kept as `backupPayload`, its references as
  * `queryReferences`), { failed } or { skipped }.
  */
-export function targetAccessReview(resource, verb, ctx = {}) {
+function targetAccessReview(resource, verb, ctx = {}) {
   const { naturalKey } = resource;
   const payload = resource.payload;
   if (!payload || typeof payload !== 'object') return { failed: { naturalKey, error: 'the backup holds no access review to write' } };

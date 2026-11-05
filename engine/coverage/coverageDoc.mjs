@@ -262,7 +262,7 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts the admin consent request workflow back, including who reviews requests.',
   }),
   activityBasedTimeoutPolicy: auto('Idle sign-out policy', {
-    keeps: 'Puts the policy\'s name and idle sign-out times back (tested against a simulated tenant only). A policy that was the organization default is written into the tenant\'s current default, never added as a second one.',
+    keeps: 'Puts the policy\'s name and idle sign-out times back (tested against a simulated tenant only). A policy that was the organization default is written into the tenant\'s current default (never added as a second one) only once someone approves the change, because it signs out every user.',
     todo: 'If the tenant has no default policy, it comes back as an ordinary one: make it the default by hand after checking it.',
   }),
   claimsMappingPolicy: auto('Token claims mapping', {

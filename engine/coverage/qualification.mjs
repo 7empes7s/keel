@@ -137,7 +137,7 @@ export const TYPE_DECISIONS = Object.freeze({
   }),
   deviceRegistrationPolicy: automated('deviceregistrationpolicy', 'approval-held kinds: update in place (PUT) of who may join and register devices, the device limit, MFA to join and local admin passwords; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; tenant-wide, so the test tenant needs the tenant-wide option'),
   // Issue #1008.
-  activityBasedTimeoutPolicy: automated('activitybasedtimeoutpolicy', 'issue #1008 subset: create and update of the name and definition (every definition entry must parse as JSON, and the idle timeouts are compared parsed, not as text); a backup that was the organization default updates the live default in place, never a second default, and with no live default it is recreated as an ordinary policy with a follow-up step; delete is not registered'),
+  activityBasedTimeoutPolicy: automated('activitybasedtimeoutpolicy', 'issue #1008 subset: create and update of the name and definition (every definition entry must parse as JSON, and the idle timeouts are compared parsed, not as text); a backup that was the organization default updates the live default in place behind the restore approval (changes sign-in), never a second default, and with no live default it is recreated as an ordinary policy with a follow-up step; delete is not registered'),
   claimsMappingPolicy: automated('claimsmappingpolicy', STS_SUBSET),
   homeRealmDiscoveryPolicy: automated('homerealmdiscoverypolicy', STS_SUBSET),
   tokenIssuancePolicy: automated('tokenissuancepolicy', STS_SUBSET),

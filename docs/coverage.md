@@ -286,7 +286,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app consent policy (set by Microsoft).
   - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet are set by hand.
 - **Admin consent requests.** Puts the admin consent request workflow back, including who reviews requests.
-- **Idle sign-out policy.** Puts the policy's name and idle sign-out times back (tested against a simulated tenant only). A policy that was the organization default is written into the tenant's current default, never added as a second one.
+- **Idle sign-out policy.** Puts the policy's name and idle sign-out times back (tested against a simulated tenant only). A policy that was the organization default is written into the tenant's current default (never added as a second one) only once someone approves the change, because it signs out every user.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* If the tenant has no default policy, it comes back as an ordinary one: make it the default by hand after checking it.
 - **Token claims mapping.** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).

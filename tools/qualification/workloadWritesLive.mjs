@@ -80,6 +80,7 @@ import { TENANT_WIDE_OPTION, onTestTenant } from '../../engine/restore/workloads
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
+import { redactSecrets } from '../tenant-probe/graph.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
   CAPTURE_CREATE_PREFIX, PUT_BACK_RETRIES, WORKLOAD_WRITES_CREDENTIAL_MODE, WORKLOAD_WRITES_LIVE_GATE, WORKLOAD_WRITES_LIVE_OPERATION,
@@ -274,7 +275,8 @@ export async function captureWorkloadWrites({
     } catch (error) {
       if (error instanceof CmdletError) {
         const failed = structuredFailure(error);
-        requests.push({ ...entry, outcome: failed.status, error: { code: failed.error.code, errorId: failed.error.errorId ?? null } });
+        // The cmdlet's own message, so a failed call in the log says why it failed (#1009).
+        requests.push({ ...entry, outcome: failed.status, error: { code: failed.error.code, errorId: failed.error.errorId ?? null, message: redactSecrets(failed.error.message ?? null) } });
       }
       throw error;
     }
@@ -377,14 +379,16 @@ export async function captureWorkloadWrites({
         capture.ok = true;
         created.push({ family, name });
       } catch (error) {
-        if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') capture.error = `${add.method} failed: ${error.message}`;
-        else { capture.error = `${add.method} had no answer (${error.message}); it may have applied`; created.push({ family, name, unknown: true }); }
+        if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') capture.error = `${add.method} failed: ${redactSecrets(error.message)}`;
+        else { capture.error = `${add.method} had no answer (${redactSecrets(error.message)}); it may have applied`; created.push({ family, name, unknown: true }); }
       }
       if (capture.ok || created.some((item) => item.name === name)) {
         try {
           const seen = await readUntil(async () => named(name)(await readFamily()), (entry) => sameValue(entry?.fields?.Description, marker), timing);
           capture.readBackVerified = seen.matched;
           capture.final = seen.found?.fields?.Description ?? null;
+          // A New- answered ok is not ok until the re-read shows it.
+          if (!seen.matched) { capture.ok = false; capture.error ??= 'the re-read does not show the new policy as written'; }
         } catch (error) {
           capture.error ??= `read back failed: ${error.message}`;
         }
@@ -484,18 +488,26 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     identity = identityOf(write, now);
     if (identity.Identity !== capture.identity || !identityNamesFixture(write, capture)) { capture.error = 'the fixture\'s identity changed since the first read; nothing was written'; return; }
     putBack = original ?? (change.type === 'text' ? '' : original);
+    let sendError = null;
     try {
       await writeCmdlet(write.method, { ...identity, [change.field]: change.after });
     } catch (error) {
       // A cmdlet error is a definite answer, except Purview's "saved, but deploying failed",
       // whose value lands (Q260): the read-back decides. Anything else may have applied.
       const cmdletError = error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR';
-      if (cmdletError && !isSavedButNotDeployed(error.detail)) { capture.error = `${write.method} failed: ${error.message}`; return; }
-      if (!cmdletError) capture.error = `${write.method} had no answer (${error.message}); it may have applied`;
+      if (cmdletError && !isSavedButNotDeployed(error.detail)) { capture.error = `${write.method} failed: ${redactSecrets(error.message)}`; return; }
+      if (cmdletError) sendError = `${write.method} failed: ${redactSecrets(error.message)}`;
+      else capture.error = `${write.method} had no answer (${redactSecrets(error.message)}); it may have applied`;
     }
     state.written = true;
     const seen = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], change.after), timing);
     capture.readBackVerified = seen.matched;
+    // Only the re-read can make the write ok: a cmdlet that failed or "succeeded" without the
+    // value landing is a failed write, never ok (#1009).
+    if (!seen.matched) {
+      const drift = seen.error ? `the re-read failed (${redactSecrets(seen.error.message)})` : `the re-read does not show ${change.field} as written`;
+      capture.error ??= sendError ? `${sendError}; ${drift}` : drift;
+    }
   } catch (error) {
     capture.error ??= error.message;
   }
@@ -505,7 +517,7 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
   const restored = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], capture.before), timing);
   capture.restoredToOriginal = restored.matched;
   capture.final = restored.found?.fields?.[change.field] ?? null;
-  capture.ok = capture.error === null && revertError === null;
+  capture.ok = capture.error === null && revertError === null && capture.readBackVerified;
   if (!restored.matched) {
     const why = revertError?.message ?? restored.error?.message ?? null;
     capture.error = `PUTTING THE SETTING BACK FAILED${why ? ` (${why})` : ''}: set ${change.field} on ${capture.fixture} to ${JSON.stringify(capture.before)} by hand`;

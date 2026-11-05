@@ -60,7 +60,7 @@ function touGraph({ agreements = [], policies = [] } = {}) {
   let next = 0;
   const ok = (status, body) => ({ ok: true, status, body: structuredClone(body) });
   const notFound = () => ({ ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } });
-  const own = ({ files, ...agreement }) => agreement;
+  const own = ({ files: _files, ...agreement }) => agreement;
   return {
     state,
     calls,
@@ -269,7 +269,7 @@ const liveAgreement = (en = EN_PDF) => ({
   files: [{ ...graphAgreement().files[0], id: `${LIVE_ID}-file-0`, fileData: { data: en.toString('base64') } }],
 });
 const updateResource = (live) => {
-  const { files, ...own } = live;
+  const { files: _files, ...own } = live;
   return resource({ live: { state: 'present', targetId: LIVE_ID, payload: own } });
 };
 

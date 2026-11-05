@@ -14,14 +14,14 @@
  */
 import { createHash } from 'node:crypto';
 
-export const AGREEMENT_TYPE = 'agreement';
+const AGREEMENT_TYPE = 'agreement';
 // Entra limits a terms of use PDF to well under this; a larger one is not stored.
-export const MAX_AGREEMENT_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_AGREEMENT_FILE_BYTES = 20 * 1024 * 1024;
 
 export const sha256Hex = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 /** One file with its bytes replaced by their digest, and the bytes to store (or null). */
-export function digestAgreementFile(file) {
+function digestAgreementFile(file) {
   if (!file || typeof file !== 'object') return { file, blob: null };
   const data = file.fileData?.data;
   const bytes = typeof data === 'string' && data.length > 0 ? Buffer.from(data, 'base64') : null;

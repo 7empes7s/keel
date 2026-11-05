@@ -154,7 +154,8 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {}, organ
     allowlist: moduleAllowlist(module),
     answer(cmdlet, parameters) {
       const hook = hooks.cmdlet?.({ cmdlet, parameters, state });
-      if (hook?.error || hook === 'crash') return hook;
+      // A list is the cmdlet's own answer: a write that reports success without applying.
+      if (hook?.error || hook === 'crash' || Array.isArray(hook)) return hook;
       if (cmdlet.startsWith('Get-')) return state[`${cmdlet}${parameters.QuarantinePolicyType ? `:${parameters.QuarantinePolicyType}` : ''}`] ?? [];
       writes.push({ cmdlet, parameters });
       const { Identity, ...values } = parameters;
@@ -592,6 +593,35 @@ test('any other cmdlet error on the write is still a definite failure, and nothi
   assert.equal(rule.ok, false);
   assert.match(rule.error, /Set-DlpComplianceRule failed/);
   assert.equal(evidence.subject.requests.filter((item) => item.cmdlet === 'Set-DlpComplianceRule').length, 1);
+});
+
+// #1009: the 2026-10-30 capture logged three failed Set-RetentionCompliancePolicy calls. Its ok
+// rested on the re-reads; a write whose re-read does not show the value is never ok.
+test('a retention policy write that fails to deploy and never lands is a failed write, with the cmdlet\'s message', async () => {
+  const live = fakeTenant('purview-retention-dlp', {
+    hooks: { cmdlet: ({ cmdlet, parameters }) => (cmdlet === 'Set-RetentionCompliancePolicy' && String(parameters.Comment).startsWith('KEEL capture') ? { error: DEPLOY_FAILED } : null) },
+  });
+  const { evidence, needsManualRevert } = await signedCapture('purview-retention-dlp', live);
+  const policy = evidence.subject.writes.find((item) => item.operationId === 'purview.retention-policy.update');
+  assert.equal(policy.ok, false);
+  assert.equal(policy.readBackVerified, false);
+  assert.match(policy.error, /^Set-RetentionCompliancePolicy failed: .*PolicyDeploymentException.*; the re-read does not show Comment as written$/);
+  assert.deepEqual(needsManualRevert, []);
+  const [failed] = evidence.subject.requests.filter((item) => item.cmdlet === 'Set-RetentionCompliancePolicy' && item.outcome === 'failed');
+  assert.match(failed.error.message, /PolicyDeploymentException/);
+});
+
+test('a retention policy write answered ok whose re-read shows the field unchanged is reported as drift, not ok', async () => {
+  const live = fakeTenant('purview-retention-dlp', {
+    hooks: { cmdlet: ({ cmdlet, parameters }) => (cmdlet === 'Set-RetentionCompliancePolicy' && String(parameters.Comment).startsWith('KEEL capture') ? [] : null) },
+  });
+  const before = structuredClone(live.state['Get-RetentionCompliancePolicy']);
+  const { evidence } = await signedCapture('purview-retention-dlp', live);
+  const policy = evidence.subject.writes.find((item) => item.operationId === 'purview.retention-policy.update');
+  assert.equal(policy.ok, false);
+  assert.equal(policy.readBackVerified, false);
+  assert.equal(policy.error, 'the re-read does not show Comment as written');
+  assert.deepEqual(live.state['Get-RetentionCompliancePolicy'], before);
 });
 
 test('run-cmdlet.ps1 answers the confirmation prompt of Set-DlpComplianceRule with -Confirm:$false, and the job cannot pass Confirm', () => {

@@ -90,6 +90,13 @@ test("every job and audit entry is one row with a kind, an outcome and a person,
   assert.equal(recordOutcome(ENTRIES[3]), "recorded");
 });
 
+test("a scheduler that couldn't reach the database shows as a failed backup row with how long it lasted (#1010)", () => {
+  const entry = { kind: "scheduler.database-unreachable", actor: "x", subject: { since: "2026-11-04T22:45:00.000Z", until: "2026-11-05T14:10:00.000Z", reason: "ECONNREFUSED", missedTicks: 185, lateSchedules: 4 } };
+  assert.equal(recordOutcome(entry), "failed");
+  assert.equal(kindOfRecord(entry.kind), "backup");
+  assert.equal(evidenceSentence(entry, "KEEL scheduler"), "Keel's scheduler couldn't reach its database for 15 hours, so scheduled backups and checks waited; 4 scheduled runs started late");
+});
+
 test("audit sentences name the request and the reason, and have one per kind", () => {
   assert.equal(evidenceSentence({ kind: "approval-decision", actor: "x", subject: { decision: "rejected", action: "remediate" } }, "Sam Ortiz"), "Sam Ortiz rejected a request to roll back changes");
   assert.equal(evidenceSentence({ kind: "approval-decision", actor: "x", subject: { decision: "approve" } }, "Sam Ortiz"), "Sam Ortiz approved a request");

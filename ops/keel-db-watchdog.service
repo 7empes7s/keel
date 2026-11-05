@@ -1,0 +1,20 @@
+# ops/keel-db-watchdog.service (#1010): one database check; see ops/keel-db-watchdog.sh.
+[Unit]
+Description=KEEL database watchdog
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/keel-live
+Environment=TZ=UTC
+# KEEL_DB_URL, read at run time; never copied into the repo or the log.
+EnvironmentFile=/etc/keel/db.env
+StateDirectory=keel-db-watchdog
+ExecStart=/usr/bin/bash /opt/keel-live/ops/keel-db-watchdog.sh
+# Two 30 s probes, a 30 s docker restart and a portal restart fit well inside this.
+TimeoutStartSec=170
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=keel-db-watchdog

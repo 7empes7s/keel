@@ -699,6 +699,11 @@ const EVIDENCE_SENTENCES: Record<string, SentenceOf> = {
     ? `A backup of ${plural(Number(s.types ?? 0), "type")} finished with ${plural(s.items, "setting")}`
     : "A backup finished",
   "backup-complete": () => "A backup finished",
+  "scheduler.database-unreachable": (s) => {
+    const took = duration(text(s.since), text(s.until));
+    const late = typeof s.lateSchedules === "number" && s.lateSchedules > 0 ? `; ${plural(s.lateSchedules, "scheduled run")} started late` : "";
+    return `Keel's scheduler couldn't reach its database${took ? ` for ${took}` : ""}, so scheduled backups and checks waited${late}`;
+  },
   "chain-break-explained": (s, actor) => Array.isArray(s.breakSeqs)
     ? `${actor} explained a known break in the audit record: ${s.breakSeqs.length.toLocaleString("en-GB")} ${s.breakSeqs.length === 1 ? "entry was" : "entries were"} chained wrongly by a Keel bug, since fixed`
     : `${actor} explained a known break in the audit record`,

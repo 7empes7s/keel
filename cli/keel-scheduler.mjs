@@ -6,6 +6,8 @@ import { schedulerPrincipal } from '../engine/authz/systemPrincipal.mjs';
 export { schedulerPrincipal } from '../engine/authz/systemPrincipal.mjs';
 import { nextDueAt, validateSchedule } from '../engine/schedules/cadence.mjs';
 import { processCollectionCompletions } from '../engine/schedules/completions.mjs';
+import { noteUnreachable, recordRecovery } from '../engine/schedules/outage.mjs';
+import { databaseUnreachableReason } from '../engine/store/unreachable.mjs';
 import { parseCliArgs } from './args.mjs';
 
 // Due instant is persisted, so an interrupted retry always addresses the same job.
@@ -51,15 +53,39 @@ export async function tick(client, { now = new Date(), afterEnqueue } = {}) {
   return jobs;
 }
 
+// systemd's StateDirectory=keel-scheduler sets STATE_DIRECTORY; the gap file lives there.
+export const DEFAULT_STATE_DIR = '/var/lib/keel-scheduler';
+
+/**
+ * One timer run. A database that can't be reached is recorded as "database unreachable"
+ * (#1010): noted on the host now, written to the audit record once it answers again.
+ */
+export async function runOnce({ dbUrl, stateDir, connectFn = connect, now = () => new Date(), logger = console }) {
+  let client;
+  try {
+    client = await connectFn(dbUrl);
+    await recordRecovery(client, stateDir, { actor: (await schedulerPrincipal(client)).id, now: now() });
+    logger.log(`scheduler: ${(await tick(client, { now: now() })).length} scheduled job(s)`);
+  } catch (error) {
+    const reason = databaseUnreachableReason(error);
+    if (!reason) throw error;
+    const outage = await noteUnreachable(stateDir, { reason, now: now() });
+    logger.error(`scheduler: database unreachable (${reason}); no schedules checked (${outage.missedTicks} missed since ${outage.since})`);
+    return { unreachable: reason };
+  } finally {
+    await client?.end().catch(() => {});
+  }
+  return { unreachable: null };
+}
+
 async function main() {
   if (parseCliArgs(process.argv.slice(2), { name: 'keel-scheduler', booleans: ['help'] }).values.help) {
     console.log('usage: keel-scheduler.mjs (with KEEL_DB_URL set)');
     return;
   }
   if (!process.env.KEEL_DB_URL) throw new Error('KEEL_DB_URL is required');
-  const client = await connect(process.env.KEEL_DB_URL);
-  try { console.log(`scheduler: ${ (await tick(client)).length } scheduled job(s)`); }
-  finally { await client.end(); }
+  const { unreachable } = await runOnce({ dbUrl: process.env.KEEL_DB_URL, stateDir: process.env.STATE_DIRECTORY ?? DEFAULT_STATE_DIR });
+  if (unreachable) process.exitCode = 1;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -10,6 +10,8 @@ User=root
 WorkingDirectory=/opt/keel-live
 Environment=TZ=UTC
 EnvironmentFile=/etc/keel/db.env
+# Holds database-unreachable.json while the database can't be reached (#1010).
+StateDirectory=keel-scheduler
 ExecStart=/usr/bin/node /opt/keel-live/cli/keel-scheduler.mjs
 StandardOutput=journal
 StandardError=journal

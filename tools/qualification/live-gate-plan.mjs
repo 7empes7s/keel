@@ -578,6 +578,12 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the policy id KEEL shows for the fixture', drift: 'change its description; for the weakening check, turn approval off by hand and see the restore hold it; for create, delete the policy (keep the package)',
     note: `The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. The requestor group has no members, so nobody can request the package. Delete the policy before the package and catalog.`,
   },
+  // Issue #1007: terms of use that no Conditional Access policy requires.
+  agreement: {
+    kind: 'named-object', fixture: 'terms of use KEEL-RT-1007-terms with one English PDF (a one-page fixture document), viewing required, required by no Conditional Access policy',
+    select: 'the terms of use id KEEL shows for the fixture', drift: 'change its name; for create, delete the terms of use (no policy requires them, so no one is asked to accept)',
+    note: 'First check the backup holds the PDF (fileData shows a sha256, not null): the Graph reference shows fileData null, and the live read decides it. The write is approval-held: run the dry run, check it says everyone will be asked to accept again, have a second person approve "Changes admin access", then enforce. Delete the terms at the end.',
+  },
   // Issue #1007: an access review series of an empty group, reviewed by one fixture user.
   accessReviewScheduleDefinition: {
     kind: 'named-object', fixture: `an access review series KEEL-RT-1007-review of the members of ${FIXTURE_PREFIX}-group (no members), reviewed by keel-rt-20260908-carla, weekly, no default decision, auto-apply off`,

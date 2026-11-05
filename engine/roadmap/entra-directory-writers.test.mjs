@@ -639,16 +639,17 @@ test('a writer\'s follow-up steps become completion items; parts that are only a
 });
 
 test('a type with no writer gets a by-hand step with the backed-up values and its admin center path', () => {
-  // Wave 2 IDO gave lifecycle workflows a writer and issue #1007 access reviews, so terms of use are the example.
-  const terms = {
-    id: 'ag-1', displayName: 'KEEL-RT terms of use', createdDateTime: '2026-01-01T00:00:00Z', isViewingBeforeAcceptanceRequired: true,
+  // Wave 2 IDO gave lifecycle workflows a writer, and issue #1007 access reviews and
+  // terms of use, so an access package assignment is the example.
+  const assignment = {
+    id: 'as-1', displayName: 'KEEL-RT assignment', createdDateTime: '2026-01-01T00:00:00Z', state: 'delivered',
   };
-  const steps = byHandSteps('agreement', terms, TYPE_DECISIONS.agreement);
+  const steps = byHandSteps('accessPackageAssignment', assignment, TYPE_DECISIONS.accessPackageAssignment);
   assert.equal(steps[0].requirement, 'followUp:recreate-by-hand');
-  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Terms of use');
-  assert.equal(steps[0].values.displayName, 'KEEL-RT terms of use');
+  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Entitlement management > Access packages > <package> > Assignments');
+  assert.equal(steps[0].values.displayName, 'KEEL-RT assignment');
   assert.ok(!('id' in steps[0].values) && !('createdDateTime' in steps[0].values), 'ids and timestamps are not values to enter');
-  assert.equal(steps.at(-1).actionable, false, 'who accepted is a record only');
+  assert.equal(steps[1].actionable, false, 'the original request is a record only');
   assert.throws(() => byHandSteps('lifecycleWorkflow', {}, TYPE_DECISIONS.lifecycleWorkflow), /has a writer/);
   assert.throws(() => byHandSteps('application', incompleteApp, TYPE_DECISIONS.application), /has a writer/);
 });
@@ -672,7 +673,7 @@ test('bestEffortCreate adopts a matching object instead of making a twin, and re
   });
   assert.equal(adopted.applied.targetId, 'a1');
   assert.equal(adopted.applied.adopted, true);
-  assert.ok(adopted.applied.followUp.some((step) => step.part === 'The agreement documents'));
+  assert.ok(adopted.applied.followUp.some((step) => step.part === 'Who accepted the terms'));
   graph.read = async () => ({ ok: true, status: 200, body: { value: [{ id: 'a1', displayName: 'KEEL-RT terms' }, { id: 'a2', displayName: 'KEEL-RT terms' }] } });
   const ambiguous = await bestEffortCreate(graph, resource, {
     path: '/identityGovernance/termsOfUse/agreements', body: {}, decision: TYPE_DECISIONS.agreement, match: (object) => object.displayName === 'KEEL-RT terms',

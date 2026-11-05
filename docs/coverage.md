@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 114 at least in part and 9 hold nothing to restore; the other 62 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 115 at least in part and 9 hold nothing to restore; the other 61 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -52,7 +52,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Access package policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Access package assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Entitlement management settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Terms of use | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Terms of use | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -150,9 +150,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the original request and its approval (no tool can write it).
   - *You do:* Use the backup to see who held which access package, then assign it again in Entra ID Governance.
 - **Entitlement management settings.** Puts the settings back.
-- **Terms of use** (Microsoft limit). Microsoft lets only a signed-in admin, never an app, create or change terms of use, and never hands out the agreement documents, so KEEL cannot back up the documents or restore them. Nobody can recreate who accepted them.
-  - *Not brought back:* the agreement documents (a file the backup does not hold); who accepted the terms (no tool can write it).
-  - *You do:* Upload the documents again and recreate the terms of use in the Entra admin center using the backup. Users will be asked to accept again.
+- **Terms of use.** Recreates missing terms of use with their documents (the default one and each language) and settings, and puts back the name and whether people must open them first. A language the terms are missing is added back.
+  - *Not brought back:* who accepted the terms (no tool can write it); a changed document for a language the terms already have, and settings Microsoft sets only when terms are created (in the backup, but KEEL does not write it yet); a document Microsoft did not hand out when the backup was taken (a file the backup does not hold).
+  - *You do:* Terms of use can stop people signing in, so a restore writes them only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Who accepted is never brought back: everyone will be asked to accept again. Recreated terms get a new identity, so the restore lists the Conditional Access policies that require the old ones for you to update by hand. A changed document for an existing language is uploaded by hand as a new version.
 - **Guest sign-up user flows.** Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.
   - *Not brought back:* custom page text (language overrides) (stored separately and not in the backup yet); an identity provider or API connector that is not set up in the target, and the client secret or password each one uses (Microsoft never returns it).
   - *You do:* A restore that changes a flow waits for a second approver while restore approvals are on. An identity provider or API connector that is not set up in the target is listed for you to set up first: KEEL never holds their secrets or passwords. Custom page text is not backed up, and a restore never takes a provider, attribute or connector off a flow.

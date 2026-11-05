@@ -162,7 +162,7 @@ export const COMPLETENESS = Object.freeze({
   accessPackageAssignmentPolicy: { missing: [part('Approval and request history', 'read-only'), part('Custom extensions (Logic Apps) the policy calls', 'not-written')] },
   accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
   entitlementManagementSettings: {},
-  agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },
+  agreement: { missing: [part('Who accepted the terms', 'read-only'), part('A changed document for a language the terms already have, and settings Microsoft sets only when terms are created', 'not-written'), part('A document Microsoft did not hand out when the backup was taken', 'binary-route')] },
   b2xIdentityUserFlow: { missing: [
     part('Custom page text (language overrides)', 'other-route'),
     part('An identity provider or API connector that is not set up in the target, and the client secret or password each one uses', 'secret'),

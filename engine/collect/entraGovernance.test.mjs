@@ -52,8 +52,9 @@ test('the family lists exactly these types', () => {
   }
 });
 
-// Issue #995: a user flow's parts are read per flow (its own test below).
-const PER_OBJECT_READS = new Set(['b2xIdentityUserFlow']);
+// Issue #995: a user flow's parts are read per flow (its own test below), and
+// issue #1007 an agreement's files (restore/agreementOperations.test.mjs).
+const PER_OBJECT_READS = new Set(['b2xIdentityUserFlow', 'agreement']);
 
 test('each type collects a KEEL-RT- fixture with one GET and canonicalizes it read-only', async () => {
   for (const [type, endpoint, singleton] of CASES) {

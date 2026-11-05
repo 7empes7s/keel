@@ -86,6 +86,7 @@ const REGISTERED = Object.freeze({
   accessPackageAssignmentPolicy: ['create', 'update'],
   // Issue #1007: access review series (create only).
   accessReviewScheduleDefinition: ['create'],
+  agreement: ['create', 'update'],
   entitlementManagementSettings: ['update'],
   appManagementPolicy: ['create', 'update'],
   multiTenantOrganization: ['update'],

@@ -188,9 +188,10 @@ export const TYPE_GUIDE = Object.freeze({
   entitlementManagementSettings: auto('Entitlement management settings', {
     keeps: 'Puts the settings back.',
   }),
-  agreement: manual('Terms of use', MS,
-    'Microsoft lets only a signed-in admin, never an app, create or change terms of use, and never hands out the agreement documents, so KEEL cannot back up the documents or restore them. Nobody can recreate who accepted them.',
-    'Upload the documents again and recreate the terms of use in the Entra admin center using the backup. Users will be asked to accept again.'),
+  agreement: auto('Terms of use', {
+    keeps: 'Recreates missing terms of use with their documents (the default one and each language) and settings, and puts back the name and whether people must open them first. A language the terms are missing is added back.',
+    todo: 'Terms of use can stop people signing in, so a restore writes them only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Who accepted is never brought back: everyone will be asked to accept again. Recreated terms get a new identity, so the restore lists the Conditional Access policies that require the old ones for you to update by hand. A changed document for an existing language is uploaded by hand as a new version.',
+  }),
   b2xIdentityUserFlow: auto('Guest sign-up user flows', {
     keeps: 'Recreates a missing flow and puts back its identity providers, the attributes it asks for in the same order, its languages and the API connector at each step.',
     todo: 'A restore that changes a flow waits for a second approver while restore approvals are on. An identity provider or API connector that is not set up in the target is listed for you to set up first: KEEL never holds their secrets or passwords. Custom page text is not backed up, and a restore never takes a provider, attribute or connector off a flow.',

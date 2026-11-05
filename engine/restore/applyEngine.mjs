@@ -467,6 +467,9 @@ export async function applyWave(writer, governor, wave, {
   throttleRetryOptions,
   // Clock for the task-64 recovery deadline check; injectable for tests.
   now = () => new Date(),
+  // Issue #1007: the backed-up terms of use files (sha256 -> bytes) the
+  // agreement writer uploads; cli/keel-restore.mjs loads them from the store.
+  agreementFiles = null,
   // Roadmap task-109: the source snapshot's per-type coverage entries
   // ({ [resourceType]: { outcome } }). A governed delete needs a complete one.
   observedCoverage = null,
@@ -719,7 +722,7 @@ export async function applyWave(writer, governor, wave, {
       if (resumedGoverned()) return;
       const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
         mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
-        now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure, lockoutGate,
+        now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure, lockoutGate, agreementFiles,
         tenantRef: typeof targetTenant === 'string' && targetTenant ? tenantRefFor(targetTenant) : null,
         allowTenantWide: allowTenantWide === true,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,

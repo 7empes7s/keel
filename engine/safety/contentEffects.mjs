@@ -1191,6 +1191,3 @@ export async function dryRunsAwaitingContentEffectApproval(client, { tenantRef, 
   }
   return waiting;
 }
-
-// THROWAWAY (#1002 demo, reverted next commit): an unused export.
-export function codeHealthDemoUnused() { return 1; }

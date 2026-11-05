@@ -35,6 +35,29 @@ node cli/keel-schedules-host.mjs health                    # after those jobs fi
   the new worker. After changing `keel-worker.service`, re-install it and run
   `systemctl daemon-reload`, or reload falls back to a restart.
 
+## Database watchdog
+
+`keel-db-watchdog.timer` runs `ops/keel-db-watchdog.sh` every minute (#1010, after the 16-hour
+outage in #1005, when Docker's port forward for `keel-postgres` died while Postgres kept running).
+Each run opens a real connection with `KEEL_DB_URL` from `/etc/keel/db.env`
+(`node cli/keel-db-watchdog.mjs probe`; exit 0 answers, 2 unreachable). After 2 failed checks in a
+row it runs `docker restart -t 30 keel-postgres` (container running) or `docker start keel-postgres`
+(stopped), then `systemctl restart keel-portal`. Each restart needs 2 new failed checks. After 3
+restarts in an hour, or with no container at all, it stops trying until the database answers again.
+
+- Every action is logged to journald (`journalctl -u keel-db-watchdog`) and to
+  `/opt/ai-vault/daily/<date>.md`.
+- What it did (restarted, started, gave up) goes as a `database.watchdog` alert to every channel
+  with a rule that takes alerts. The channels live in the database, so the alert waits in
+  `/var/lib/keel-db-watchdog/alerts/` until the database answers. With no such channel the log is the
+  record.
+- The state directory holds counts and times only: no address, password or DSN.
+- `keel-scheduler` records ticks that couldn't reach the database in
+  `/var/lib/keel-scheduler/database-unreachable.json` and, once it answers, writes one
+  "Scheduler couldn't reach the database" audit entry per tenant, shown in Activity under Backups.
+- The deploy's health check should also run the probe (see `ops/STATE.md`, operator steps), so a
+  deploy never reports healthy with the database down. `/api/health` stays free of state.
+
 ## KEEL status dashboard
 
 `keel-status-generate.timer` runs `status/generate.mjs` every 60s, publishing

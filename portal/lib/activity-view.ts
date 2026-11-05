@@ -21,7 +21,7 @@ const DAY = 86_400_000;
 export type ActivityKind = "backup" | "restore" | "rollback" | "setup" | "approval" | "policy" | "drill" | "copy" | "other";
 
 export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; icon: IconName; jobs: string[]; records: string[] }> = {
-  backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started", "backup-complete"] },
+  backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started", "backup-complete", "scheduler.database-unreachable"] },
   restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check", "workload-restore"] },
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution", "change-intent"] },
   setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot", "baseline-reinstate", "disposition"] },
@@ -99,6 +99,7 @@ export function recordOutcome(entry: Pick<EvidenceEntry, "kind" | "subject">): O
   if (entry.kind === "offsite-copy" && !((subject.verification as { ok?: unknown } | undefined)?.ok === true && subject.remoteSha256 === subject.dumpSha256)) return "failed";
   if (entry.kind === "automation-execution" && subject.outcome !== "executed") return "failed";
   if (entry.kind === "incident-recovery-check" && subject.outcome === "unsafe") return "failed";
+  if (entry.kind === "scheduler.database-unreachable") return "failed";
   return "recorded";
 }
 
@@ -212,6 +213,7 @@ export const RECORD_KIND_WORDS: Record<string, string> = {
   "job.started": "Job started",
   "collection.completed": "Backup finished",
   "backup-complete": "Backup finished",
+  "scheduler.database-unreachable": "Scheduler couldn't reach the database",
   "offsite-copy": "Off-site copy",
   "alert-action": "Alert",
   "people-anonymity": "Hide people's names",

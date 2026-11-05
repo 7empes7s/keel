@@ -1,0 +1,11 @@
+# ops/keel-db-watchdog.timer (#1010)
+[Unit]
+Description=Check every minute that KEEL's database answers
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=5s
+Unit=keel-db-watchdog.service
+
+[Install]
+WantedBy=timers.target

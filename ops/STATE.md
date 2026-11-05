@@ -89,6 +89,39 @@ so queue edits never deploy.
   Exchange and SharePoint Administrator, Global Reader, Security Reader and the Power Platform management
   app; Restorer has `DeviceManagementScripts.ReadWrite.All` and keeps its full write set while developing.
 
+## Operator steps waiting
+
+**Database watchdog (#1010).** Once the PR is live (`/opt/keel-live` holds `ops/keel-db-watchdog.sh`), as
+root on Mulinux (keel-operator):
+
+```sh
+cd /opt/keel-live
+install -m 644 ops/keel-db-watchdog.service ops/keel-db-watchdog.timer ops/keel-scheduler.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl start keel-db-watchdog.service && journalctl -u keel-db-watchdog -n 5 --no-pager   # exit 0, nothing logged
+systemctl enable --now keel-db-watchdog.timer
+systemctl list-timers keel-db-watchdog.timer --no-pager                                        # next run within a minute
+```
+
+`keel-scheduler.service` gains only `StateDirectory=keel-scheduler`. For an alert to reach a person, a
+channel needs a rule that takes alerts (`*`, or `database.*`, at warning or above) on the Notifications page.
+
+**Deploy health check (vps-deployer owns `deploy.sh`).** In `/opt/keel-deploy/deploy.sh`, `healthy()` must
+also prove the database answers. Replace its loop body with:
+
+```sh
+    [ "$(curl -s -m 5 "$HEALTH_URL" 2>/dev/null)" = '{"status":"ok"}' ] && db_answers && return 0
+```
+
+and add above it (a tree from before #1010 has no probe, so a rollback to one skips the check):
+
+```sh
+db_answers() {
+  [ -f "$LIVE/cli/keel-db-watchdog.mjs" ] || return 0
+  (set -a; . /etc/keel/db.env; cd "$LIVE" && timeout 30 node cli/keel-db-watchdog.mjs probe) >> "$LOG" 2>&1
+}
+```
+
 ## Open live gates
 
 The release sign-off (task-124, #985) is generated: `node tools/release/readiness.mjs signoff --build <candidate>`.

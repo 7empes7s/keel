@@ -170,7 +170,8 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}
       if (cmdlet.startsWith('Get-')) return state[`${cmdlet}${parameters.QuarantinePolicyType ? `:${parameters.QuarantinePolicyType}` : ''}`] ?? [];
       writes.push({ cmdlet, parameters });
       const hook = hooks.cmdlet?.({ cmdlet, parameters, state });
-      if (hook?.error || hook === 'crash') return hook;
+      // A list is the cmdlet's own answer: a write that reports success without applying.
+      if (hook?.error || hook === 'crash' || Array.isArray(hook)) return hook;
       const { Identity, ...values } = parameters;
       const lists = [...(targets[cmdlet] ?? [])].map((key) => (state[key] ??= []));
       if (cmdlet.startsWith('New-')) {
@@ -635,6 +636,23 @@ test('Purview: a retention policy saved while its deployment fails is read back;
   const notLanded = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'x' failed to be deployed.", category: 'ConnectionError', errorId: '[],Write-ErrorMessage' }, false);
   assert.deepEqual(notLanded.result.operations.map((op) => [op.outcome, op.writes]), [['failed', 1]]);
   assert.match(notLanded.result.operations[0].reasons[0], /re-read does not show it; it was not resent/);
+});
+
+test('Purview: a retention policy Set answered ok whose re-read shows Comment unchanged is a verification failure (#1009)', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('purview-retention-dlp');
+  const source = await recordSource(client, tenantRef, 'purview-retention-dlp', live);
+  live.state['Get-RetentionCompliancePolicy'][0].Comment = 'changed';
+  const { artifact } = await planned(client, tenantRef, 'purview-retention-dlp', { source, live });
+  const tenant = fakeTenant('purview-retention-dlp', {
+    state: live.state,
+    hooks: { cmdlet: ({ cmdlet }) => (cmdlet === 'Set-RetentionCompliancePolicy' ? [] : null) },
+  });
+  const result = await execute(client, tenantRef, 'purview-retention-dlp', artifact, tenant);
+  assert.deepEqual(result.operations.map((op) => [op.outcome, op.writes]), [['verification-failed', 1]]);
+  assert.deepEqual(result.operations[0].reasons, ['Comment did not read back as written']);
+  assert.equal(live.state['Get-RetentionCompliancePolicy'][0].Comment, 'changed');
 });
 
 test('a rule whose policy was not read, or a read stopped at its limit, plans nothing', async (t) => {

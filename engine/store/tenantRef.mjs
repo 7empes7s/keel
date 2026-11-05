@@ -21,8 +21,3 @@ export function assertTenantRef(tenantRef, name = 'tenantRef') {
   }
   return tenantRef;
 }
-
-// THROWAWAY (#1002 demo, reverted next commit): a floating promise and an unused export.
-export function codeHealthDemoUnused() {
-  Promise.resolve().then(() => 1);
-}

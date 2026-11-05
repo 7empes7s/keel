@@ -153,7 +153,8 @@ promoted through `workloads/dispatch.mjs`.
 
 ## What may import what
 
-Nothing lints this. One rule is tested: `portal/test/client-boundary.test.ts`, which stops a server module
+No lint checks import directions (the code-health ESLint config in `tools/code-health/` checks other rules). One
+rule is tested: `portal/test/client-boundary.test.ts`, which stops a server module
 importing a plain value from a `"use client"` module. The rest is how the code is laid out today. Keep to it:
 - `engine/` never imports `portal/`. Outside tests, it imports `cli/` only in one place
   (`engine/policy/activation.mjs`). From `tools/` it imports only `tools/tenant-probe/` (the Graph client and
@@ -227,6 +228,7 @@ Tables are in `engine/store/schema.sql`, unless marked "(fragment)", which means
 | `docs/roadmap/benchmark-content/scubagear-coverage.md` | the ScubaGear rules | `node tools/scubagear-rules.mjs report --write` | `engine/benchmarks/scubagear/import.test.mjs` |
 | Release sign-off docs (`docs/roadmap/release-signoff.md`, `operator-gates.md`) | a candidate build | `node tools/release/readiness.mjs …` | operator only |
 | Operation counts in `engine/roadmap/fidelity-ledger.test.mjs` | `buildOperationLedger()` | recompute | itself |
+| `tools/code-health/baseline.json` | lint, knip and file-size counts | `npm --prefix tools/code-health run baseline` (only lowers counts) | `ratchet.mjs check` in CI |
 
 On a merge conflict, never pick a side. Regenerate the generated file, recompute the count, and keep both sides
 of the hand-written ledgers (`qualification.mjs`, `completeness.mjs`, `tools/qualification/operations.mjs`,
@@ -248,8 +250,13 @@ of the hand-written ledgers (`qualification.mjs`, `completeness.mjs`, `tools/qua
   - `fakeGraph()` in `tools/qualification/operations.mjs`
   - `idoFakeGraph()` in `engine/test/idoFakeGraph.mjs`
   - `engine/test/fake*.mjs` for cmdlets, DSC, PnP and SharePoint REST
-- **CI.** `.github/workflows/portal.yml` (Portal) has the `ui` job (typecheck, build, `test:ui`) and the `tests`
-  job (`npm test`, then the engine suite). It runs on PRs that touch `portal/`, `engine/`, `cli/`, `tools/`,
-  `ops/powershell/` or the workflow itself, and on every push to master. `merge-gate.yml` merges
+- **CI.** `.github/workflows/portal.yml` (Portal) has three jobs:
+  - `ui`: typecheck, build and `test:ui`
+  - `tests`: `npm test`, then the engine suite
+  - `code-health`: `node tools/code-health/ratchet.mjs check`. It runs ESLint, knip and an 800-line file size
+    limit against `tools/code-health/baseline.json`, and fails only on new violations (`docs/code-health.md`).
+
+  It runs on PRs that touch `portal/`, `engine/`, `cli/`, `tools/`, `ops/powershell/`, the root `package.json` or
+  the workflow itself, and on every push to master. `merge-gate.yml` merges
   `automerge`-labelled PRs (`tools/merge-gate.sh`), and `automerge-label.yml` removes the label on each push.
 - `EXCLUDED` in `tools/engine-test-files.sh` lists the few host-only suites. Never add to it to get green.

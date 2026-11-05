@@ -67,7 +67,11 @@ tools/dev-setup.sh                                   # once: Postgres 16, keel_t
 cd engine && node --test --test-concurrency=4 $(../tools/engine-test-files.sh)
 cd portal && npm run typecheck && npm run build && npm test
 cd portal && npx playwright install --with-deps chromium && npm run test:ui   # if components, app or globals.css changed
+npm ci --prefix tools/code-health && node tools/code-health/ratchet.mjs check  # lint, dead code, file size
 ```
+
+The ratchet fails on a new lint or knip finding, or on a file growing past 800 lines (a file already over that
+may grow 5% past its baseline). Split a module rather than raising the baseline (`docs/code-health.md`).
 
 Database tests need `KEEL_DB_TEST_URL` (and `KEEL_TENANT_CONFIG_PATH`). In a cloud session `tools/dev-setup.sh`
 puts them in the session's env; elsewhere, export the two lines it prints at the end.
@@ -102,5 +106,5 @@ The body has:
 - A **Self-review** line: what this review found and what you fixed.
 
 The `automerge` label goes on only when CI is green and the independent review has passed. Any push removes
-it. The **Portal** workflow runs on PRs that touch `portal/`, `engine/`, `cli/`, `tools/`, `ops/powershell/` or
-`.github/workflows/portal.yml`, and it must be green on the head commit.
+it. The **Portal** workflow runs on PRs that touch `portal/`, `engine/`, `cli/`, `tools/`, `ops/powershell/`, the root
+`package.json` or `.github/workflows/portal.yml`, and it must be green on the head commit.

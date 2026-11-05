@@ -1,6 +1,6 @@
 ---
 name: keel-generated-files
-description: Use when you change a type's restore status, coverage text or operation count, or when a merge or rebase conflicts in docs/coverage.md, engine/coverage/qualification.mjs, the ledger test counts or ops/STATE.md.
+description: Use when you change a type's restore status, coverage text or operation count, or when a merge or rebase conflicts in docs/coverage.md, engine/coverage/qualification.mjs, the ledger test counts, tools/code-health/baseline.json or ops/STATE.md.
 ---
 
 # Generated files and ledger counts
@@ -20,6 +20,7 @@ Resolve them by **regenerating** or **adding up**, never by picking one side.
 | `engine/coverage/completeness.mjs` | Hand-written | edit by hand | `engine/coverage/completeness.test.mjs` |
 | `tools/qualification/operations.mjs` (`FIXTURE_PAYLOADS`, `fakeGraph`) and `tools/qualification/live-gate-plan.mjs` | Hand-written | edit by hand | `fidelity-ledger.test.mjs` (fixture harness), `engine/roadmap/entra-live-gate.test.mjs`, `tools/qualification/live-gate-plan.test.mjs` |
 | `engine/roadmap/fidelity-ledger.test.mjs` | A test that pins counts (`supported.length`, `results.length`) | recompute (below) | itself |
+| `tools/code-health/baseline.json` | Ratchet counts (lint, knip, file size) per file | `npm --prefix tools/code-health run baseline` (never raises a count) | the `code-health` CI job |
 | `ops/STATE.md` "Open live gates" | Hand-written list | keep every line | review |
 
 Never edit `docs/coverage.md` by hand. Its header says so, and the test compares it byte for byte with
@@ -64,6 +65,9 @@ First bring in master: `git fetch origin && git merge origin/master`. Never forc
 - **`engine/roadmap/fidelity-ledger.test.mjs`**: never take one side's number. Recompute it (above) after the
   source files are merged. Keep both issues' parts of the message. Check that the number equals master's count
   plus what your branch adds.
+- **`tools/code-health/baseline.json`**: take master's side (`git checkout --theirs`), then run
+  `npm --prefix tools/code-health run baseline` so that the counts your branch fixed drop again. Never raise a
+  count by hand to get green.
 - **`ops/STATE.md`**: keep both sides' lines and update **Last updated**.
 
 Then run the ledger tests above, plus anything else your PR touched. A conflict resolution goes in the merge

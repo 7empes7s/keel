@@ -36,6 +36,8 @@ a built-in branch) and PR #999 (authentication contexts and staged rollout, regi
   - for a built-in branch, in `engine/coverage/capabilities.mjs`: `registerAll(type, path, verbs)` and
     `recordFixtureProof(type, verb, testFile)`.
 - Register only the verbs you prove. An unregistered verb is refused, which is the safe default.
+- Prefer a new module over growing `applyEngine.mjs`. The code-health ratchet lets a file over 800 lines grow
+  only 5% past its baseline (`docs/code-health.md`).
 
 ## 2. Fields: what is written and what becomes a manual step
 

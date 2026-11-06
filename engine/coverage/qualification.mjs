@@ -55,15 +55,10 @@ const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra }
 // incomplete configuration; recreated by hand from the backup until a
 // best-effort writer is registered (Wave 2).
 const incomplete = (reason) => manual(`incomplete configuration, backed up in full and recreated by hand from the backup until a best-effort writer is registered: ${reason}`);
-// Issue #148: a registered write that failed its live run. `reason` quotes the
-// committed demotion record verbatim (tools/qualification/entraLive.mjs checks
-// that), `failedAt` is the day it was decided and `fix` names what is being
-// changed. The write stays fixture-tested; the ledger row shows the failure.
-const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
 // Issue #148: a registered write that cannot be proven live on the test tenant
 // because of the tenant or the service, not a KEEL bug (the drift cannot be made,
-// or no write is ever planned). Same shape, with no fix and no demotion record:
-// the write stays fixture-tested and the ledger row says why it is unproven.
+// or no write is ever planned). A liveFailures entry with no fix and no demotion
+// record: the write stays fixture-tested and the ledger row says why it is unproven.
 const tenantLimit = (failedAt, reason) => Object.freeze({ failedAt, reason, fix: null });
 // Wave 2 ENTRA: the four token and sign-in routing policies share one writer.
 const STS_SUBSET = 'Wave 2 ENTRA subset: create and update of the name and definition (every definition entry must parse as JSON); a policy that was the organization default is recreated as an ordinary one and making it the default again is a follow-up step; which apps it is assigned to is set by hand; delete is not registered';

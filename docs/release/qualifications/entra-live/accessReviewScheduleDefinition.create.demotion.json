@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "accessReviewScheduleDefinition",
+  "operation": "create",
+  "reason": "POST /identityGovernance/accessReviews/definitions returned 400 \"Tenant is not authorized for Custom Scoping Conditions Feature\": the create body carries the backed-up instanceEnumerationScope and a scope query ending in /transitiveMembers/microsoft.graph.user, which the tenant has no licence for",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "decidedAt": "2026-11-06T16:01:28.065Z",
+  "builderSteps": [
+    "remove the create registration for accessReviewScheduleDefinition in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.accessReviewScheduleDefinition.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.accessReviewScheduleDefinition.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "restoreRef": "0f1f2990-7ca6-889d-a31e-457ff83cab1c",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
   "entry": {
     "naturalKey": "accessReviewPolicy:accessReviewPolicy",
     "resourceType": "accessReviewPolicy",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:47:14.478Z",
+    "recordedAt": "2026-11-06T15:38:27.671Z",
     "priorState": {
       "description": "Policy contains directory-level access review settings.",
       "displayName": "Access Review Policy",

@@ -1,29 +1,29 @@
 {
-  "restoreRef": "ff5bb49a-a2b4-8a9a-a75f-9119c6d420aa",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "tokenIssuancePolicy:185e665c-618c-8ba4-99b8-c735300c3355",
+    "naturalKey": "tokenIssuancePolicy:faf66fe1-7187-869a-a0a4-a5b6c5525eab",
     "resourceType": "tokenIssuancePolicy",
     "operation": "create",
-    "targetId": "f0a5eadd-2c7e-83b1-bfce-1f3e55a60cc3",
+    "targetId": "4e290a5b-4ec4-891c-9596-5a54d240870f",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:41:59.314Z",
+    "recordedAt": "2026-11-06T14:49:24.355Z",
     "priorState": null,
     "intendedState": {
-      "id": "185e665c-618c-8ba4-99b8-c735300c3355",
+      "id": "faf66fe1-7187-869a-a0a4-a5b6c5525eab",
       "definition": [
         "{\"TokenIssuancePolicy\":{\"Version\":1,\"SigningAlgorithm\":\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\",\"TokenResponseSigningPolicy\":\"TokenOnly\",\"SamlTokenVersion\":\"2.0\"}}"
       ],
-      "displayName": "KEEL-RT-248-issuance",
+      "displayName": "KEEL-RT-1031-token-issuance-policy-c",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "f0a5eadd-2c7e-83b1-bfce-1f3e55a60cc3",
+      "id": "4e290a5b-4ec4-891c-9596-5a54d240870f",
       "definition": [
         "{\"TokenIssuancePolicy\":{\"Version\":1,\"SigningAlgorithm\":\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\",\"TokenResponseSigningPolicy\":\"TokenOnly\",\"SamlTokenVersion\":\"2.0\"}}"
       ],
-      "displayName": "KEEL-RT-248-issuance",
+      "displayName": "KEEL-RT-1031-token-issuance-policy-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/tokenIssuancePolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

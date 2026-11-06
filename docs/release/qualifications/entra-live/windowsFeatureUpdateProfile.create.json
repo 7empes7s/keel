@@ -7,23 +7,23 @@
   "resourceType": "windowsFeatureUpdateProfile",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "53cbe4622e37eae6d11799414f10ff8dc62fae58",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-29T22:50:33.041Z",
-  "restoreRef": "f78c3f8f-db7e-830c-a11e-8ad5a9d55075",
-  "naturalKey": "windowsFeatureUpdateProfile:91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+  "observedAt": "2026-11-06T15:00:14.051Z",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "naturalKey": "windowsFeatureUpdateProfile:7f629363-6491-867b-8bdb-39ed0cfff93e",
   "fixtureKind": "named-object",
-  "captureSha256": "80ef1e9099b33892d756685f7cc253ba6f2c5950903e662f80177ee2d8cd5314",
+  "captureSha256": "99a3fa38a48e90b4fb46bc695fd59b43bcd2c92f1fc690fede62f94201c1f3f2",
   "proofRef": "docs/release/qualifications/entra-live/windowsFeatureUpdateProfile.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "11fcb68dce412b237e5fed9bffa60017b99ff6511a00b4c64611d3a91cc1548d"
+      "signature": "4141ca525c9d7de4529a14bd682e068d2faee756a132ba918123a2efd87d32fa"
     }
   }
 }

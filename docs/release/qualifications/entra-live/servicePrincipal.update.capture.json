@@ -1,0 +1,85 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "servicePrincipal:df0ce7d0-85f0-83dc-aad8-19539ca154bd",
+    "resourceType": "servicePrincipal",
+    "operation": "update",
+    "targetId": "2e05d54a-83cf-8e08-8885-2932a1679e28",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:20.597Z",
+    "priorState": {
+      "id": "2e05d54a-83cf-8e08-8885-2932a1679e28",
+      "tags": [],
+      "appId": "df0ce7d0-85f0-83dc-aad8-19539ca154bd",
+      "notes": "KEEL-RT test fixture (#1031) drifted",
+      "appRoles": [],
+      "description": null,
+      "displayName": "KEEL-RT-1031-app-u",
+      "accountEnabled": true,
+      "signInAudience": "AzureADMyOrg",
+      "servicePrincipalType": "Application",
+      "oauth2PermissionScopes": [],
+      "appRoleAssignmentRequired": false
+    },
+    "intendedState": {
+      "tags": [],
+      "notes": "KEEL-RT test fixture (#1031)",
+      "description": null,
+      "appRoleAssignmentRequired": false
+    },
+    "postState": {
+      "id": "2e05d54a-83cf-8e08-8885-2932a1679e28",
+      "info": {
+        "logoUrl": null,
+        "supportUrl": null,
+        "marketingUrl": null,
+        "termsOfServiceUrl": null,
+        "privacyStatementUrl": null
+      },
+      "tags": [],
+      "appId": "df0ce7d0-85f0-83dc-aad8-19539ca154bd",
+      "notes": "KEEL-RT test fixture (#1031)",
+      "addIns": [],
+      "appRoles": [],
+      "homepage": null,
+      "loginUrl": null,
+      "logoutUrl": null,
+      "replyUrls": [],
+      "isDisabled": null,
+      "description": null,
+      "displayName": "KEEL-RT-1031-app-u",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals/$entity",
+      "accountEnabled": true,
+      "appDescription": "KEEL-RT test fixture (#1031)",
+      "appDisplayName": "KEEL-RT-1031-app-u",
+      "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
+      "keyCredentials": [],
+      "signInAudience": "AzureADMyOrg",
+      "createdDateTime": "2026-11-06T14:31:04Z",
+      "deletedDateTime": null,
+      "alternativeNames": [],
+      "verifiedPublisher": {
+        "displayName": null,
+        "addedDateTime": null,
+        "verifiedPublisherId": null
+      },
+      "passwordCredentials": [],
+      "servicePrincipalType": "Application",
+      "tokenEncryptionKeyId": null,
+      "applicationTemplateId": null,
+      "servicePrincipalNames": [
+        "df0ce7d0-85f0-83dc-aad8-19539ca154bd"
+      ],
+      "appOwnerOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+      "oauth2PermissionScopes": [],
+      "samlSingleSignOnSettings": null,
+      "appRoleAssignmentRequired": false,
+      "disabledByMicrosoftStatus": null,
+      "preferredSingleSignOnMode": null,
+      "notificationEmailAddresses": [],
+      "preferredTokenSigningKeyThumbprint": null,
+      "resourceSpecificApplicationPermissions": []
+    }
+  }
+}

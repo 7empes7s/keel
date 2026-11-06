@@ -1,0 +1,31 @@
+{
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "entry": {
+    "naturalKey": "authenticationContextClassReference:c41",
+    "resourceType": "authenticationContextClassReference",
+    "operation": "update",
+    "targetId": "c41",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T14:49:13.920Z",
+    "priorState": {
+      "id": "c41",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-context-u",
+      "isAvailable": false
+    },
+    "intendedState": {
+      "id": "c41",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-context-u",
+      "isAvailable": false
+    },
+    "postState": {
+      "id": "c41",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-context-u",
+      "isAvailable": false,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/authenticationContextClassReferences/$entity"
+    }
+  }
+}

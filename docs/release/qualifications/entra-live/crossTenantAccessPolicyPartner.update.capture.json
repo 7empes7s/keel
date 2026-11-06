@@ -1,22 +1,19 @@
 {
-  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
   "entry": {
-    "naturalKey": "crossTenantAccessPolicyPartner:efc83404-0842-8940-959a-c048aa123c26",
+    "naturalKey": "crossTenantAccessPolicyPartner:3f777030-16f9-8f6d-90d3-8c60fcb3f6e7",
     "resourceType": "crossTenantAccessPolicyPartner",
     "operation": "update",
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T23:59:25.924Z",
+    "recordedAt": "2026-11-06T15:38:39.341Z",
     "priorState": {
-      "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
+      "tenantId": "3f777030-16f9-8f6d-90d3-8c60fcb3f6e7",
       "inboundTrust": null,
       "isServiceProvider": null,
-      "tenantRestrictions": null,
-      "b2bCollaborationInbound": null,
-      "b2bDirectConnectInbound": null,
-      "appServiceConnectInbound": null,
-      "b2bCollaborationOutbound": {
+      "tenantRestrictions": {
+        "devices": null,
         "applications": {
           "targets": [
             {
@@ -36,17 +33,21 @@
           "accessType": "blocked"
         }
       },
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "appServiceConnectInbound": null,
+      "b2bCollaborationOutbound": null,
       "b2bDirectConnectOutbound": null,
       "m365CollaborationInbound": null,
       "m365CollaborationOutbound": null,
       "isInMultiTenantOrganization": false,
       "automaticUserConsentSettings": {
-        "inboundAllowed": null,
-        "outboundAllowed": null
+        "inboundAllowed": true,
+        "outboundAllowed": true
       }
     },
     "intendedState": {
-      "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
+      "tenantId": "3f777030-16f9-8f6d-90d3-8c60fcb3f6e7",
       "inboundTrust": null,
       "isServiceProvider": null,
       "tenantRestrictions": null,
@@ -59,12 +60,12 @@
       "m365CollaborationOutbound": null,
       "isInMultiTenantOrganization": false,
       "automaticUserConsentSettings": {
-        "inboundAllowed": null,
-        "outboundAllowed": null
+        "inboundAllowed": true,
+        "outboundAllowed": true
       }
     },
     "postState": {
-      "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
+      "tenantId": "3f777030-16f9-8f6d-90d3-8c60fcb3f6e7",
       "inboundTrust": null,
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/partners/$entity",
       "isServiceProvider": null,
@@ -78,8 +79,8 @@
       "m365CollaborationOutbound": null,
       "isInMultiTenantOrganization": false,
       "automaticUserConsentSettings": {
-        "inboundAllowed": null,
-        "outboundAllowed": null
+        "inboundAllowed": true,
+        "outboundAllowed": true
       }
     }
   }

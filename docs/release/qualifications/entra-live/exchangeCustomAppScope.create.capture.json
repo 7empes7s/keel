@@ -1,30 +1,30 @@
 {
-  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
+  "restoreRef": "bafd4c93-0332-87e3-ab5c-65f6b9bdb1b2",
   "entry": {
-    "naturalKey": "exchangeCustomAppScope:de1c98b0-cbf3-8c87-81fa-253a42315834",
+    "naturalKey": "exchangeCustomAppScope:9a129e43-1175-8857-8c39-abcb9d298cb4",
     "resourceType": "exchangeCustomAppScope",
     "operation": "create",
-    "targetId": "d4e5b89e-dc62-8249-9579-2e9e6fb0c8ef",
+    "targetId": "12655617-750a-8592-9ba1-1b36fcfab558",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:25:20.527Z",
+    "recordedAt": "2026-11-06T15:55:34.414Z",
     "priorState": null,
     "intendedState": {
       "type": "RecipientScope",
-      "displayName": "KEEL-RT-237-app-scope",
+      "displayName": "KEEL-RT-1031-exchange-custom-app-scope-e",
       "customAttributes": {
         "Exclusive": false,
-        "RecipientFilter": "PrimarySmtpAddress -like 'keel-rt-scope-none*'"
+        "RecipientFilter": "PrimarySmtpAddress -like 'keel-rt-scope-1031e*'"
       }
     },
     "postState": {
-      "id": "d4e5b89e-dc62-8249-9579-2e9e6fb0c8ef",
+      "id": "12655617-750a-8592-9ba1-1b36fcfab558",
       "type": "RecipientScope",
-      "displayName": "KEEL-RT-237-app-scope",
+      "displayName": "KEEL-RT-1031-exchange-custom-app-scope-e",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/exchange/customAppScopes/$entity",
       "customAttributes": {
         "Exclusive": false,
-        "RecipientFilter": "PrimarySmtpAddress -like 'keel-rt-scope-none*'"
+        "RecipientFilter": "PrimarySmtpAddress -like 'keel-rt-scope-1031e*'"
       }
     }
   }

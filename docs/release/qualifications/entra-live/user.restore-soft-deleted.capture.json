@@ -1,5 +1,5 @@
 {
-  "restoreRef": "6dba1dd8-38e1-8ff1-b4f7-23efac8abb41",
+  "restoreRef": "2bcf45c7-c2ae-85e8-8a94-a0b56463d6e2",
   "entry": {
     "naturalKey": "user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
     "resourceType": "user",
@@ -7,13 +7,13 @@
     "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:08:42.728Z",
+    "recordedAt": "2026-11-06T15:59:51.628Z",
     "priorState": {
       "id": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
       "userType": "Member",
       "displayName": "KEEL-RT-20260908 Carla Nguyen",
       "accountEnabled": true,
-      "deletedDateTime": "2026-10-30T00:05:35Z",
+      "deletedDateTime": "2026-11-06T15:56:04Z",
       "userPrincipalName": "a0fcb2f8b0c38a889b94319165913d40keel-rt-u3f32611d4ab3@t42987720ee3.example",
       "onPremisesImmutableId": null,
       "onPremisesSyncEnabled": null

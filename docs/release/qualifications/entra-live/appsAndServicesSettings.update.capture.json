@@ -1,0 +1,32 @@
+{
+  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "entry": {
+    "naturalKey": "appsAndServicesSettings:appsAndServicesSettings",
+    "resourceType": "appsAndServicesSettings",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:34:38.977Z",
+    "priorState": {
+      "settings": {
+        "isOfficeStoreEnabled": true,
+        "isAppAndServicesTrialEnabled": false
+      },
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#admin/appsAndServices/$entity"
+    },
+    "intendedState": {
+      "settings": {
+        "isOfficeStoreEnabled": true,
+        "isAppAndServicesTrialEnabled": true
+      }
+    },
+    "postState": {
+      "settings": {
+        "isOfficeStoreEnabled": true,
+        "isAppAndServicesTrialEnabled": true
+      },
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#admin/appsAndServices/$entity"
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "androidDeviceOwnerEnrollmentProfile:ee662bd5-d556-8b59-aa94-3175769f91d0",
+    "resourceType": "androidDeviceOwnerEnrollmentProfile",
+    "operation": "update",
+    "targetId": "ee662bd5-d556-8b59-aa94-3175769f91d0",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:10.057Z",
+    "priorState": {
+      "id": "ee662bd5-d556-8b59-aa94-3175769f91d0",
+      "wifiSsid": null,
+      "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
+      "wifiHidden": false,
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-android-device-owner-enrollment-profile-u",
+      "configureWifi": true,
+      "enrollmentMode": "corporateOwnedDedicatedDevice",
+      "createdDateTime": "2026-11-06T14:27:35.7837994Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "wifiSecurityType": "none",
+      "deviceNameTemplate": "KEEL-RT-{{SERIAL}}",
+      "enrollmentTokenType": "default",
+      "isTeamsDeviceProfile": false,
+      "lastModifiedDateTime": "2026-11-06T14:43:11Z",
+      "tokenCreationDateTime": "0001-01-01T00:00:00Z",
+      "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
+    },
+    "intendedState": {
+      "wifiSsid": null,
+      "wifiHidden": false,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-android-device-owner-enrollment-profile-u",
+      "configureWifi": true,
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "wifiSecurityType": "none",
+      "deviceNameTemplate": "KEEL-RT-{{SERIAL}}"
+    },
+    "postState": {
+      "id": "ee662bd5-d556-8b59-aa94-3175769f91d0",
+      "wifiSsid": null,
+      "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
+      "tokenValue": null,
+      "wifiHidden": false,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-android-device-owner-enrollment-profile-u",
+      "qrCodeImage": null,
+      "wifiPassword": null,
+      "configureWifi": true,
+      "qrCodeContent": null,
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/androidDeviceOwnerEnrollmentProfiles/$entity",
+      "enrollmentMode": "corporateOwnedDedicatedDevice",
+      "createdDateTime": "2026-11-06T14:27:35.7837994Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "wifiSecurityType": "none",
+      "deviceNameTemplate": "KEEL-RT-{{SERIAL}}",
+      "enrolledDeviceCount": 0,
+      "enrollmentTokenType": "default",
+      "isTeamsDeviceProfile": false,
+      "lastModifiedDateTime": "2026-11-06T15:00:10Z",
+      "tokenCreationDateTime": "0001-01-01T00:00:00Z",
+      "tokenExpirationDateTime": "0001-01-01T00:00:00Z",
+      "enrollmentTokenUsageCount": 0
+    }
+  }
+}

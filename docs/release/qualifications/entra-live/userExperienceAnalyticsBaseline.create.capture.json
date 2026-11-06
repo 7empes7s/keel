@@ -1,0 +1,23 @@
+{
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "entry": {
+    "naturalKey": "userExperienceAnalyticsBaseline:66766a3c-d39e-826a-8ed4-3fa4e53d2789",
+    "resourceType": "userExperienceAnalyticsBaseline",
+    "operation": "create",
+    "targetId": "936d1256-44d8-8002-a5e3-943773f6e022",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T14:49:26.624Z",
+    "priorState": null,
+    "intendedState": {
+      "displayName": "KEEL-RT-1031-user-experience-analytics-baseline-c"
+    },
+    "postState": {
+      "id": "936d1256-44d8-8002-a5e3-943773f6e022",
+      "isBuiltIn": false,
+      "displayName": "KEEL-RT-1031-user-experience-analytics-baseline-c",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/userExperienceAnalyticsBaselines/$entity",
+      "createdDateTime": "2026-11-06T14:49:26.9910622Z"
+    }
+  }
+}

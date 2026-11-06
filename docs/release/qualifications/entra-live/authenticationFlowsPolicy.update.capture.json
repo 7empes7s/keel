@@ -1,0 +1,39 @@
+{
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
+  "entry": {
+    "naturalKey": "authenticationFlowsPolicy:authenticationFlowsPolicy",
+    "resourceType": "authenticationFlowsPolicy",
+    "operation": "update",
+    "targetId": "authenticationFlowsPolicy",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:38:37.243Z",
+    "priorState": {
+      "id": "authenticationFlowsPolicy",
+      "description": "Authentication flows policy allows modification of settings related to authentication flows in AAD tenant, such as self-service sign up configuration.",
+      "displayName": "Authentication flows policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationFlowsPolicy/$entity",
+      "selfServiceSignUp": {
+        "isEnabled": true
+      }
+    },
+    "intendedState": {
+      "id": "authenticationFlowsPolicy",
+      "description": "Authentication flows policy allows modification of settings related to authentication flows in AAD tenant, such as self-service sign up configuration.",
+      "displayName": "Authentication flows policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationFlowsPolicy/$entity",
+      "selfServiceSignUp": {
+        "isEnabled": false
+      }
+    },
+    "postState": {
+      "id": "authenticationFlowsPolicy",
+      "description": "Authentication flows policy allows modification of settings related to authentication flows in AAD tenant, such as self-service sign up configuration.",
+      "displayName": "Authentication flows policy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationFlowsPolicy/$entity",
+      "selfServiceSignUp": {
+        "isEnabled": false
+      }
+    }
+  }
+}

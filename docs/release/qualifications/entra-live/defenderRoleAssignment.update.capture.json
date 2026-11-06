@@ -1,24 +1,23 @@
 {
-  "restoreRef": "ff6a8b40-cdc0-8686-9c5a-1a4c67da84bb",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "defenderRoleAssignment:1516d61e-12db-8e33-8bb3-79a7ccf00f61",
+    "naturalKey": "defenderRoleAssignment:9fbedb4b-1e33-8431-a7c3-f3b0c81f7fda",
     "resourceType": "defenderRoleAssignment",
     "operation": "update",
-    "targetId": "1516d61e-12db-8e33-8bb3-79a7ccf00f61",
+    "targetId": "9fbedb4b-1e33-8431-a7c3-f3b0c81f7fda",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-04T07:46:52.214Z",
+    "recordedAt": "2026-11-06T15:00:11.409Z",
     "priorState": {
-      "id": "1516d61e-12db-8e33-8bb3-79a7ccf00f61",
+      "id": "9fbedb4b-1e33-8431-a7c3-f3b0c81f7fda",
       "appScopeIds": [
         "/"
       ],
-      "displayName": "KEEL-RT-311-defender-assignment",
+      "displayName": "KEEL-RT-1031-defender-assignment-u-drifted",
       "principalIds": [
-        "6b953e32-fc10-8c22-bd33-5b477b96d418",
-        "aae8a814-6513-8b94-a624-d47c7c94ae9d"
+        "0d3e5fca-8d48-84d7-a899-7513ba50c9f6"
       ],
-      "roleDefinitionId": "8e62c77a-3361-807d-b6a2-abc099170430",
+      "roleDefinitionId": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
       "directoryScopeIds": [
         "/"
       ]
@@ -27,26 +26,26 @@
       "appScopeIds": [
         "/"
       ],
-      "displayName": "KEEL-RT-311-defender-assignment",
+      "displayName": "KEEL-RT-1031-defender-assignment-u",
       "principalIds": [
-        "6b953e32-fc10-8c22-bd33-5b477b96d418"
+        "0d3e5fca-8d48-84d7-a899-7513ba50c9f6"
       ],
-      "roleDefinitionId": "8e62c77a-3361-807d-b6a2-abc099170430",
+      "roleDefinitionId": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
       "directoryScopeIds": [
         "/"
       ]
     },
     "postState": {
-      "id": "1516d61e-12db-8e33-8bb3-79a7ccf00f61",
+      "id": "9fbedb4b-1e33-8431-a7c3-f3b0c81f7fda",
       "appScopeIds": [
         "/"
       ],
-      "displayName": "KEEL-RT-311-defender-assignment",
+      "displayName": "KEEL-RT-1031-defender-assignment-u",
       "principalIds": [
-        "6b953e32-fc10-8c22-bd33-5b477b96d418"
+        "0d3e5fca-8d48-84d7-a899-7513ba50c9f6"
       ],
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleAssignments/$entity",
-      "roleDefinitionId": "8e62c77a-3361-807d-b6a2-abc099170430",
+      "roleDefinitionId": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
       "directoryScopeIds": [
         "/"
       ]

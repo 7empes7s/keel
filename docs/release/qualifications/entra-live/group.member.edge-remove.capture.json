@@ -1,20 +1,20 @@
 {
-  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
+  "restoreRef": "07db8f47-f26e-8d79-a3c5-0a70780920c2",
   "entry": {
-    "naturalKey": "edge:group:KEEL-RT-246-g6|member|remove|user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
+    "naturalKey": "edge:group:KEEL-RT-1031-group-u|member|remove|user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
     "resourceType": "group",
     "operation": "edge-remove",
-    "targetId": "7aa4fe5a-1e1e-8b55-a8c1-5da90ac5c92f",
+    "targetId": "0d3e5fca-8d48-84d7-a899-7513ba50c9f6",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T23:59:54.058Z",
+    "recordedAt": "2026-11-06T15:43:09.034Z",
     "priorState": {
       "kind": "relationship-edge",
       "family": "member",
       "present": true,
       "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
-      "parentTargetId": "7aa4fe5a-1e1e-8b55-a8c1-5da90ac5c92f",
-      "parentNaturalKey": "group:KEEL-RT-246-g6"
+      "parentTargetId": "0d3e5fca-8d48-84d7-a899-7513ba50c9f6",
+      "parentNaturalKey": "group:KEEL-RT-1031-group-u"
     },
     "intendedState": null,
     "postState": {

@@ -1,38 +1,38 @@
 {
-  "restoreRef": "c0d7f6cb-062a-8296-8013-025bf72a4f8d",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "defenderRoleAssignment:3b21454e-4af8-8e26-be08-7af0f065cc7d",
+    "naturalKey": "defenderRoleAssignment:9e8beeb1-f333-8e64-a48c-f67f1fcece79",
     "resourceType": "defenderRoleAssignment",
     "operation": "create",
-    "targetId": "70b884dd-117b-8e7d-85a4-17d09525ee5a",
+    "targetId": "2a1b8326-070f-857e-8ffe-068163fb500b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-04T04:36:12.424Z",
+    "recordedAt": "2026-11-06T15:00:11.484Z",
     "priorState": null,
     "intendedState": {
       "appScopeIds": [
         "/"
       ],
-      "displayName": "KEEL-RT-271-defender-assignment",
+      "displayName": "KEEL-RT-1031-defender-assignment-c",
       "principalIds": [
-        "2a9abce0-750b-817c-8a95-c260b7d68e0e"
+        "0d3e5fca-8d48-84d7-a899-7513ba50c9f6"
       ],
-      "roleDefinitionId": "d9a63887-3abd-80d7-aa47-e745c939bf36",
+      "roleDefinitionId": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
       "directoryScopeIds": [
         "/"
       ]
     },
     "postState": {
-      "id": "70b884dd-117b-8e7d-85a4-17d09525ee5a",
+      "id": "2a1b8326-070f-857e-8ffe-068163fb500b",
       "appScopeIds": [
         "/"
       ],
-      "displayName": "KEEL-RT-271-defender-assignment",
+      "displayName": "KEEL-RT-1031-defender-assignment-c",
       "principalIds": [
-        "2a9abce0-750b-817c-8a95-c260b7d68e0e"
+        "0d3e5fca-8d48-84d7-a899-7513ba50c9f6"
       ],
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleAssignments/$entity",
-      "roleDefinitionId": "d9a63887-3abd-80d7-aa47-e745c939bf36",
+      "roleDefinitionId": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
       "directoryScopeIds": [
         "/"
       ]

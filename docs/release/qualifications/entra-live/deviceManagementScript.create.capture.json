@@ -1,19 +1,19 @@
 {
-  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "deviceManagementScript:050755f7-b5c3-8f71-8043-e226f0b66d08",
+    "naturalKey": "deviceManagementScript:9e139402-4d3f-8368-8c5e-1c9d94e09c68",
     "resourceType": "deviceManagementScript",
     "operation": "create",
-    "targetId": "d5390934-36eb-8393-a09a-102c0b984fd4",
+    "targetId": "1e81365f-1427-82b6-87e9-6fe7a3d725ab",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:10:22.544Z",
+    "recordedAt": "2026-11-06T15:00:12.781Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-236.ps1",
+      "fileName": "keel-rt-1031-device-management-script-c.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-script",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-management-script-c",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "roleScopeTagIds": [
@@ -22,19 +22,19 @@
       "enforceSignatureCheck": false
     },
     "postState": {
-      "id": "d5390934-36eb-8393-a09a-102c0b984fd4",
-      "fileName": "keel-rt-236.ps1",
+      "id": "1e81365f-1427-82b6-87e9-6fe7a3d725ab",
+      "fileName": "keel-rt-1031-device-management-script-c.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-script",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-management-script-c",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
-      "createdDateTime": "2026-10-30T01:10:22.7085197Z",
+      "createdDateTime": "2026-11-06T15:00:12.8725945Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-10-30T01:10:22.7085197Z",
+      "lastModifiedDateTime": "2026-11-06T15:00:12.8725945Z",
       "enforceSignatureCheck": false
     }
   }

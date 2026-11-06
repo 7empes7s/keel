@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "activityBasedTimeoutPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T14:49:13.632Z",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "naturalKey": "activityBasedTimeoutPolicy:e0283044-f067-80f1-b85f-cdb68d9e4ede",
+  "fixtureKind": "named-object",
+  "captureSha256": "2aa1cb6bb7e24a6c079d9adb4a256b1e630d78cf19f81ae487527c3e068690cf",
+  "proofRef": "docs/release/qualifications/entra-live/activityBasedTimeoutPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "56e13a0e93ec1a3204cc56fc8528f44d24125800022614fe294a4bee009c80de"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "adminReportSettings",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T15:34:38.974Z",
+  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "naturalKey": "adminReportSettings:adminReportSettings",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "58f05877e88cf90b4cec11e8b19b037a5f6777c363871d2a834886db8371b27a",
+  "proofRef": "docs/release/qualifications/entra-live/adminReportSettings.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b620564b3073f134754e8bb7fcac41beec58231c7dec170939cf134935644cdd"
+    }
+  }
+}

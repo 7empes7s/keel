@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "authenticationContextClassReference",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T14:49:13.920Z",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "naturalKey": "authenticationContextClassReference:c41",
+  "fixtureKind": "named-object",
+  "captureSha256": "1a4988a9376890addfc8b769289f9794305f6d842c2875576287f97315f0ab7c",
+  "proofRef": "docs/release/qualifications/entra-live/authenticationContextClassReference.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "fe3c0ec5b108f7deaf2c990c12f22c63405abd7803d3811617e86d035c3171fd"
+    }
+  }
+}

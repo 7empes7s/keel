@@ -39,7 +39,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Admin role activation settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
-| Access reviews | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
+| Access reviews | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant; live test of recreating failed on 2026-11-06, fix in progress |
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Connected organizations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -236,8 +236,8 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Default app credential rules | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-11-04, fix in progress |
-| Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Default app credential rules | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-11-06, fix in progress |
 | Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | External user leave settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |

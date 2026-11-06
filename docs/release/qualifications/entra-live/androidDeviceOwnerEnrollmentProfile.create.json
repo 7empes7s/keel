@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "androidDeviceOwnerEnrollmentProfile",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T15:00:10.060Z",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "naturalKey": "androidDeviceOwnerEnrollmentProfile:e71347b1-da03-87f0-bf82-239211228da9",
+  "fixtureKind": "named-object",
+  "captureSha256": "9c21e5b33eb6ed4e88a0eba86bd47f21685e166fa11955ce576c5cec1f938988",
+  "proofRef": "docs/release/qualifications/entra-live/androidDeviceOwnerEnrollmentProfile.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "eedfed2a6e6178049607b975a2c4501905a52bb6a357cd6a5d684be1a6079778"
+    }
+  }
+}

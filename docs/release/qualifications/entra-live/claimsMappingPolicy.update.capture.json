@@ -1,37 +1,37 @@
 {
-  "restoreRef": "e4176fac-b702-8771-be59-6ec884076ae5",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "claimsMappingPolicy:c1adf28e-3e66-8841-9a67-437f7d266af0",
+    "naturalKey": "claimsMappingPolicy:59f32726-97f6-8460-b06c-7a2085f8e798",
     "resourceType": "claimsMappingPolicy",
     "operation": "update",
-    "targetId": "c1adf28e-3e66-8841-9a67-437f7d266af0",
+    "targetId": "59f32726-97f6-8460-b06c-7a2085f8e798",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:38:03.715Z",
+    "recordedAt": "2026-11-06T14:49:14.199Z",
     "priorState": {
-      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
+      "id": "59f32726-97f6-8460-b06c-7a2085f8e798",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-248-claims-drifted",
+      "displayName": "KEEL-RT-1031-claims-mapping-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
+      "id": "59f32726-97f6-8460-b06c-7a2085f8e798",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-248-claims",
+      "displayName": "KEEL-RT-1031-claims-mapping-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
+      "id": "59f32726-97f6-8460-b06c-7a2085f8e798",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-248-claims",
+      "displayName": "KEEL-RT-1031-claims-mapping-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/claimsMappingPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

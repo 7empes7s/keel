@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "multiTenantOrganization",
+  "operation": "update",
+  "reason": "PATCH /tenantRelationships/multiTenantOrganization returned 400 \"Invalid value specified for property description\": the backup has description null and Graph refuses null (and an empty string) for it",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
+  "decidedAt": "2026-11-06T16:01:28.396Z",
+  "builderSteps": [
+    "remove the update registration for multiTenantOrganization in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: update failed live: <reason>\" to TYPE_DECISIONS.multiTenantOrganization.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.multiTenantOrganization.liveFailures['update'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

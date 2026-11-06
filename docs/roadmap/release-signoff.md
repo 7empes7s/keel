@@ -28,6 +28,17 @@ decision on the eleven objective gaps; they stay listed as unsupported.
 - **One build.** Every record is judged against the candidate build. A record from another build
   is `other-build`: it decides nothing at the candidate, pass or fail, and goes on the recapture
   list. The Entra writes follow the same rule.
+- **Records-only commits keep the build** (issue #1044). Committing records makes a new commit,
+  and green master deploys it. So a record's build counts as the candidate when
+  `git diff --name-only --no-renames <record build> <candidate>` touches only `docs/**`,
+  `lessons/**` and `ops/STATE.md`. The record is verified at its own build and reported as
+  `same code` with the commit range. Deployed acceptance accepts a deployed checkout that differs
+  from its build in the same way. Any other path (`engine/`, `portal/`, `cli/`, `tools/`,
+  `ops/powershell/`, `infra/` and so on), or a commit git cannot find, keeps `other-build`.
+- **Code freeze during a capture window.** Only records-only PRs merge to master from the start of
+  a capture until the sign-off is regenerated, because any code merge restarts the window. The
+  sequence: freeze at C, deploy C, capture everything at C, merge the records (the deployed C'
+  differs from C in docs only), and run the sign-off at C'.
 - **Fresh.** 30 days for every record, 7 days for deployed acceptance (`stale` otherwise).
 - **Verified.** With the key and tenant, each fresh candidate-build record goes through
   `verifyEvidence` with `--require-live`. Without them it is `unverified`, never qualified.

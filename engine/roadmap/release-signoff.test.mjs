@@ -14,7 +14,9 @@
  * - Label deferred runtime shipped.          ('the deferred hybrid runtime never ships')
  */
 import { strict as assert } from 'node:assert';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -22,8 +24,10 @@ import { after, test } from 'node:test';
 import { HYBRID_RUNTIME } from '../contracts/topology.mjs';
 import { buildOperationLedger } from '../coverage/qualification.mjs';
 import { RELEASE_OBJECTIVES } from '../../tools/release/acceptanceLedger.mjs';
+import { buildRelation, gitChangedPaths } from '../../tools/release/qualification.mjs';
+import { ENTRA_LIVE_GATE, ENTRA_LIVE_KIND, TEST_TENANT_REFS } from '../../tools/qualification/entraLive.mjs';
 import {
-  GATE_STATES, REPO_ROOT, buildRecapturePlan, buildReleaseSignoff, classifyRecordAtBuild, deferredScope, recoveryRoutes,
+  GATE_STATES, REPO_ROOT, buildRecapturePlan, buildReleaseSignoff, classifyEntraAtBuild, classifyRecordAtBuild, deferredScope, recoveryRoutes,
   releaseGateInventory, renderSignoffMarkdown, writeFamilyCoverage,
 } from '../../tools/release/readiness.mjs';
 
@@ -120,6 +124,78 @@ test('a record from another build is recaptured, even if the verifier would acce
   assert.equal(teams.state, 'other-build');
   assert.equal(teams.build, OTHER);
   assert.ok(buildRecapturePlan(report).gates.some((gate) => gate.id === 'teams-live-acceptance'));
+});
+
+// --- Issue #1044: records-only commits keep the build ----------------------
+
+/** A throwaway git repo: C (code), C' = C + records and docs only, C'' = C' + an engine change, R = C' + an engine file moved into docs. */
+function repoWithCommits() {
+  const repo = mkdtempSync(join(tmpdir(), 'keel-signoff-git-'));
+  dirs.push(repo);
+  const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { encoding: 'utf8' }).trim();
+  const put = (file, text) => { mkdirSync(join(repo, file, '..'), { recursive: true }); writeFileSync(join(repo, file), text); };
+  const commit = (message) => { git('add', '-A'); git('commit', '-q', '-m', message); return git('rev-parse', 'HEAD'); };
+  git('init', '-q');
+  put('engine/restore/writer.mjs', 'export const v = 1;\n');
+  put('docs/coverage.md', 'v1\n');
+  const C = commit('code');
+  put('docs/release/qualifications/teams-live-acceptance.json', '{}\n');
+  put('lessons/2026-11-06-records.md', 'lesson\n');
+  put('ops/STATE.md', 'state\n');
+  const recordsOnly = commit('records only');
+  put('engine/restore/writer.mjs', 'export const v = 2;\n');
+  const codeChange = commit('engine fix');
+  git('reset', '-q', '--hard', recordsOnly);
+  renameSync(join(repo, 'engine/restore/writer.mjs'), join(repo, 'docs/writer.mjs'));
+  const moved = commit('engine file moved under docs');
+  return { C, recordsOnly, codeChange, moved, changedPaths: (from, to) => gitChangedPaths(from, to, { cwd: repo }) };
+}
+
+test('a record at C counts at C\' when C..C\' touches only docs, lessons and ops/STATE.md, reported as same-code', () => {
+  const { C, recordsOnly, changedPaths } = repoWithCommits();
+  assert.deepEqual(buildRelation(C, recordsOnly, { changedPaths }), { relation: 'same-code', range: `${C.slice(0, 10)}..${recordsOnly.slice(0, 10)}` });
+  const calls = [];
+  const report = signoff(fullDir((entry, value) => ({ ...value, build: C })), {
+    candidateBuild: recordsOnly, changedPaths, verify: (value, options) => { calls.push(options); return { ok: true, failures: [] }; },
+  });
+  assert.equal(report.verdict, 'ready', report.reasons.join('\n'));
+  const teams = report.gates.find((gate) => gate.id === 'teams-live-acceptance');
+  assert.equal(teams.state, 'live-qualified');
+  assert.equal(teams.build, C);
+  assert.deepEqual(teams.sameCode, { range: `${C.slice(0, 10)}..${recordsOnly.slice(0, 10)}` });
+  // Verified at the build the record names; deployed acceptance may see a records-only descendant deployed.
+  assert.ok(calls.every((call) => call.build === C));
+  assert.equal(calls[0].sameCode(recordsOnly, C), true);
+  assert.match(renderSignoffMarkdown(report), new RegExp(`same code: ${C.slice(0, 10)}\\.\\.${recordsOnly.slice(0, 10)}`));
+});
+
+test('a record at C is other-build at a candidate whose range touches engine/, or moves code under docs/', () => {
+  const { C, codeChange, moved, changedPaths } = repoWithCommits();
+  for (const candidateBuild of [codeChange, moved]) {
+    assert.equal(buildRelation(C, candidateBuild, { changedPaths }).relation, 'other-build');
+    const report = signoff(fullDir((entry, value) => (entry.gate === 'teams-live-acceptance' ? { ...value, build: C } : { ...value, build: candidateBuild })),
+      { candidateBuild, changedPaths });
+    assert.equal(report.verdict, 'pending');
+    const teams = report.gates.find((gate) => gate.id === 'teams-live-acceptance');
+    assert.equal(teams.state, 'other-build');
+    assert.equal(teams.sameCode, null);
+  }
+  // An unknown commit, or a build that is not a commit id, is never the same code.
+  assert.equal(buildRelation(OTHER, B, { changedPaths }).relation, 'other-build');
+  assert.equal(buildRelation('--output=x', B, { changedPaths: () => [] }).relation, 'other-build');
+});
+
+test('Entra writes follow the same rule: same-code counts, a code change is other-build', () => {
+  const { C, recordsOnly, codeChange, changedPaths } = repoWithCommits();
+  const captureLog = 'capture log';
+  const files = { captureLog, record: { kind: ENTRA_LIVE_KIND, gate: ENTRA_LIVE_GATE, tenantRef: TEST_TENANT_REFS[0], build: C,
+    synthetic: false, evidenceLevel: 'live-qualified', ok: true, outcome: 'succeeded', outcomeDetail: null, readBackVerified: true,
+    observedAt: hoursAgo(1), captureSha256: createHash('sha256').update(captureLog).digest('hex') } };
+  const at = (candidateBuild) => classifyEntraAtBuild(files, { candidateBuild, now: NOW, changedPaths });
+  const same = at(recordsOnly);
+  assert.equal(same.state, 'unverified');
+  assert.deepEqual(same.sameCode, { range: `${C.slice(0, 10)}..${recordsOnly.slice(0, 10)}` });
+  assert.equal(at(codeChange).state, 'other-build');
 });
 
 test('placeholders, fixture evidence and failed verification at the candidate', () => {

@@ -37,7 +37,7 @@ import {
   LIVE_ACCEPTANCE_GATES, OBJECTIVE_GAPS_DECISION, RELEASE_OBJECTIVES, classifyEntraOperation, loadEntraLiveFiles,
 } from './acceptanceLedger.mjs';
 import {
-  DEFAULT_MAX_AGE_HOURS, DEPLOYED_ACCEPTANCE_GATE, DEPLOYED_ACCEPTANCE_MAX_AGE_HOURS, verifyEvidence,
+  DEFAULT_MAX_AGE_HOURS, DEPLOYED_ACCEPTANCE_GATE, DEPLOYED_ACCEPTANCE_MAX_AGE_HOURS, buildRelation, gitChangedPaths, verifyEvidence,
 } from './qualification.mjs';
 
 export const READINESS_CONTRACT_VERSION = 1;
@@ -150,8 +150,11 @@ export async function buildReadiness({
 // One candidate build is judged against every checked-in live record. A record
 // counts only when it is fresh (30 days; 7 for deployed acceptance), was
 // captured at the candidate build and verifies with --require-live semantics.
-// Evidence from another build decides nothing at the candidate: it is listed
-// for recapture, never as qualified and never as a failure of the candidate.
+// A build that differs from the candidate only in records-only commits
+// (RECORDS_ONLY_PATHS, issue #1044) counts as the candidate and is reported as
+// 'same-code' with its commit range. Evidence from another build decides
+// nothing at the candidate: it is listed for recapture, never as qualified and
+// never as a failure of the candidate.
 // The report keeps four things apart for every objective: implemented (its
 // tests exist), live-qualified (its gates verify at the candidate), manual or
 // unsupported routes, and deferred scope. Nothing here captures, signs,
@@ -299,17 +302,27 @@ const ageDays = (observedAt, now) => {
   return Number.isNaN(at) ? null : Math.floor((now.getTime() - at) / (24 * HOUR_MS));
 };
 
+/** The build fields of a record judged at the candidate: same-code records name their commit range. */
+function relationAtBuild(recordBuild, candidateBuild, changedPaths) {
+  const { relation, range } = candidateBuild === null ? { relation: null, range: null }
+    : buildRelation(recordBuild, candidateBuild, { changedPaths });
+  return { otherBuild: relation === 'other-build', sameCode: relation === 'same-code' ? { range } : null };
+}
+
 /**
  * One record's state at the candidate build. `verify` is verifyEvidence (tests
- * inject a stand-in). Order: missing, unreadable, placeholder, stale, another
- * build, then (with key and tenant) the full --require-live verification.
+ * inject a stand-in) and `changedPaths` is gitChangedPaths. Order: missing,
+ * unreadable, placeholder, stale, another build, then (with key and tenant) the
+ * full --require-live verification, at the record's own build when it is the
+ * same code as the candidate.
  */
 export function classifyRecordAtBuild(entry, record, {
   candidateBuild = null, hmacKey = null, tenantRef = null, now = new Date(), evidenceDir, verify = verifyEvidence,
+  changedPaths = gitChangedPaths,
 } = {}) {
   if (!record) return { state: 'missing', build: null, observedAt: null, ageDays: null, reasons: ['no record has been captured'] };
   if (record.unreadable) return { state: 'failed', build: null, observedAt: null, ageDays: null, reasons: [`record unreadable: ${record.unreadable}`] };
-  const base = { build: record.build ?? null, observedAt: record.observedAt ?? null, ageDays: ageDays(record.observedAt, now) };
+  const base = { build: record.build ?? null, observedAt: record.observedAt ?? null, ageDays: ageDays(record.observedAt, now), sameCode: null };
   if (record.status !== undefined) {
     return { ...base, state: 'placeholder', reasons: [`placeholder (${record.status}): no live capture yet`] };
   }
@@ -321,7 +334,8 @@ export function classifyRecordAtBuild(entry, record, {
   const reasons = [];
   const stale = now.getTime() - at > entry.maxAgeHours * HOUR_MS;
   if (stale) reasons.push(`${base.ageDays} days old; the limit is ${entry.maxAgeHours / 24} days`);
-  const otherBuild = candidateBuild !== null && record.build !== candidateBuild;
+  const { otherBuild, sameCode } = relationAtBuild(record.build, candidateBuild, changedPaths);
+  base.sameCode = sameCode;
   if (otherBuild) reasons.push(`captured at build ${String(record.build).slice(0, 10)}, not the candidate ${candidateBuild.slice(0, 10)}`);
   if (stale) return { ...base, state: 'stale', reasons };
   if (otherBuild) return { ...base, state: 'other-build', reasons };
@@ -330,7 +344,8 @@ export function classifyRecordAtBuild(entry, record, {
     return { ...base, state: 'unverified', reasons: [`cannot verify without the ${missing.join(', ')}`] };
   }
   const result = verify(record, {
-    gate: entry.gate, tenantRef, build: candidateBuild, requireLive: true, hmacKey, evidenceDir, now, maxAgeHours: entry.maxAgeHours,
+    gate: entry.gate, tenantRef, build: sameCode ? record.build : candidateBuild, requireLive: true, hmacKey, evidenceDir, now,
+    maxAgeHours: entry.maxAgeHours, sameCode: (a, b) => buildRelation(a, b, { changedPaths }).relation === 'same-code',
   });
   return result.ok ? { ...base, state: 'live-qualified', reasons: [] } : { ...base, state: 'failed', reasons: result.failures };
 }
@@ -340,14 +355,16 @@ export function classifyRecordAtBuild(entry, record, {
  * classification, then the build rule on top (an Entra record from another
  * build is recaptured, not trusted).
  */
-export function classifyEntraAtBuild(files, { candidateBuild = null, hmacKey = null, now = new Date() } = {}) {
+export function classifyEntraAtBuild(files, { candidateBuild = null, hmacKey = null, now = new Date(), changedPaths = gitChangedPaths } = {}) {
   const ledger = classifyEntraOperation(files, { hmacKey, now });
   const record = files?.record && !files.record.unreadable ? files.record : null;
-  const base = { build: record?.build ?? null, observedAt: ledger.observedAt ?? null, ageDays: ageDays(ledger.observedAt, now) };
   const map = { 'live-qualified': 'live-qualified', unverified: 'unverified', expired: 'stale', demoted: 'demoted', failed: 'failed', missing: 'missing' };
   let state = map[ledger.status];
+  const judged = ['live-qualified', 'unverified'].includes(state);
+  const { otherBuild, sameCode } = judged ? relationAtBuild(record?.build, candidateBuild, changedPaths) : { otherBuild: false, sameCode: null };
+  const base = { build: record?.build ?? null, observedAt: ledger.observedAt ?? null, ageDays: ageDays(ledger.observedAt, now), sameCode };
   const reasons = [...ledger.failures];
-  if (['live-qualified', 'unverified'].includes(state) && candidateBuild !== null && record?.build !== candidateBuild) {
+  if (otherBuild) {
     state = 'other-build';
     reasons.splice(0, reasons.length, `captured at build ${String(record?.build ?? 'unknown').slice(0, 10)}, not the candidate ${candidateBuild.slice(0, 10)}`);
   }
@@ -480,7 +497,15 @@ export function buildReleaseSignoff({
   dir = path.join(REPO_ROOT, QUALIFICATIONS_PATH), root = REPO_ROOT, verify = verifyEvidence,
   inventory = releaseGateInventory(), entraOperations = registeredOperations(), objectiveGapsAccepted = false,
   routes = recoveryRoutes(), deferred = deferredScope({ root }), classifyEntra = classifyEntraAtBuild,
+  changedPaths = gitChangedPaths,
 } = {}) {
+  // Many records share a build: ask git once per commit pair.
+  const diffs = new Map();
+  const changedOnce = (from, to) => {
+    const key = `${from}..${to}`;
+    if (!diffs.has(key)) diffs.set(key, changedPaths(from, to));
+    return diffs.get(key);
+  };
   const reasons = [];
   let blocked = false;
   let pending = false;
@@ -502,7 +527,9 @@ export function buildReleaseSignoff({
   const gates = inventory.map((entry) => {
     const record = readJson(path.join(dir, entry.file));
     if (record && !record.unreadable) records.push(record);
-    const classified = classifyRecordAtBuild(entry, record, { candidateBuild, hmacKey, tenantRef, now, evidenceDir: dir, verify });
+    const classified = classifyRecordAtBuild(entry, record, {
+      candidateBuild, hmacKey, tenantRef, now, evidenceDir: dir, verify, changedPaths: changedOnce,
+    });
     return {
       id: entry.id, gate: entry.gate, task: entry.task, title: entry.title, family: entry.family,
       record: record ? `${QUALIFICATIONS_PATH}/${entry.file}` : null, doc: entry.doc, capture: entry.capture, verify: entry.verify,
@@ -528,7 +555,7 @@ export function buildReleaseSignoff({
       resourceType, operation, stem,
       record: files?.record ? `${QUALIFICATIONS_PATH}/entra-live/${stem}.json` : null,
       demotion: files?.demotion ? `${QUALIFICATIONS_PATH}/entra-live/${stem}.demotion.json` : null,
-      ...classifyEntra(files, { candidateBuild, hmacKey, now }),
+      ...classifyEntra(files, { candidateBuild, hmacKey, now, changedPaths: changedOnce }),
     };
   });
   const entraCounts = Object.fromEntries(GATE_STATES.map((state) => [state, entraRows.filter((row) => row.state === state).length])
@@ -622,6 +649,7 @@ export function buildRecapturePlan(signoff) {
 }
 
 const short = (build) => (build ? `\`${String(build).slice(0, 10)}\`` : '—');
+const buildCell = (row) => (row.sameCode ? `${short(row.build)} (same code: ${row.sameCode.range})` : short(row.build));
 const days = (value) => (value === null || value === undefined ? '—' : `${value} d`);
 
 /** Markdown tables from the generated report, for the docs (never hand-copied). */
@@ -632,7 +660,7 @@ export function renderSignoffMarkdown(signoff, plan = buildRecapturePlan(signoff
   lines.push('| Gate | Task | State | Build | Age | Record |', '|---|---|---|---|---|---|');
   for (const gate of signoff.gates) {
     const state = gate.acceptedGap ? `${gate.state} (accepted gap)` : gate.state;
-    lines.push(`| \`${gate.id}\` | ${gate.task} | ${state} | ${short(gate.build)} | ${days(gate.ageDays)} | ${gate.record ? 'yes' : 'none'} |`);
+    lines.push(`| \`${gate.id}\` | ${gate.task} | ${state} | ${buildCell(gate)} | ${days(gate.ageDays)} | ${gate.record ? 'yes' : 'none'} |`);
   }
   const counts = Object.entries(signoff.entra.counts).map(([state, count]) => `${count} ${state}`).join(', ');
   lines.push(`| \`entra-live-acceptance\` | issue-148 | ${signoff.entra.state} | per write | per write | ${signoff.entra.registered} registered writes: ${counts} |`, '');

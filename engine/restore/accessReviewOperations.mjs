@@ -86,9 +86,10 @@ function holdsSent(live, sent) {
   return sent === live;
 }
 
-// A group's members query as Graph reads it back: the users-only cast is its own.
-const DERIVED_USERS = /^(\/groups\/[^/]+\/transitiveMembers)\/microsoft\.graph\.user$/i;
-const SCOPE_GROUP = /^\/groups\/([^/?]+)\//i;
+// A group's members query as Graph reads it back: the users-only cast, and the
+// /v1.0/ prefix the live tenant reads back (#1055), are its own.
+const DERIVED_USERS = /^(?:\/v1\.0)?(\/groups\/[^/]+\/transitiveMembers)\/microsoft\.graph\.user$/i;
+const SCOPE_GROUP = /^(?:\/v1\.0)?\/groups\/([^/?]+)\//i;
 const INSTANCE_GROUP = /^\/(?:v1\.0\/)?groups\/([^/?]+)$/i;
 
 /** A scope without the users-only cast Graph adds to a group's members query. */

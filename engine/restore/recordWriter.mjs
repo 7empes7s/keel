@@ -52,6 +52,9 @@
  *    written); `readVia` reads the one object back ({ ok, status, body }, 404
  *    when it is not there). A create's id comes from the read back.
  *    `writeRoute` names that route for the ledger;
+ *  - `goneWhen(result)`: a read back, other than 404, that Graph answers for
+ *    an object that is gone (settings catalog policies answer 400
+ *    ResourceNotFound after their delete; issue #1056);
  *  - `deleteVia(io, step)`: the delete of such a type, through the same route
  *    (an app's link, taken out of the links its app holds); it is verified as
  *    gone through `readVia`, and the ledger names `writeRoute` for it too;
@@ -61,6 +64,10 @@
  *  - `planCompletion(step)`: in a dry run, the completion steps the record's
  *    `afterWrite` would add (a step for a person), so the plan lists the same
  *    outstanding work as the enforce run;
+ *  - `readBack`: { attempts, delayMs } for the reads after a write, for a
+ *    route whose replicas trail its writes longer than the default window
+ *    (an Exchange app scope created on one Exchange DC answers 404 on another,
+ *    #1058); `ctx.readAfterWriteOptions` still overrides it;
  *  - `tenantWide`: the object is one setting for the whole tenant and cannot
  *    carry a KEEL-RT- fixture name. On the test tenant it is planned and
  *    written only with the separate tenant-wide option (`ctx.allowTenantWide`),
@@ -149,6 +156,7 @@ export function defineRecord(spec) {
     readVia: null,
     writeRoute: null,
     deleteVia: null,
+    goneWhen: null,
     planChanges: null,
     planCompletion: null,
     remapsReferences: false,
@@ -156,6 +164,7 @@ export function defineRecord(spec) {
     collectionNamesType: false,
     tenantWide: false,
     checkedAfterWrite: [],
+    readBack: null,
     ...spec,
     operations: Object.freeze([...(spec.operations ?? [])]),
     excluded: Object.freeze([...(spec.excluded ?? [])]),
@@ -692,7 +701,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   const io = {
     writer,
     retryOperation: ctx.retryOperation ?? ((operation) => operation()),
-    readOptions: ctx.readAfterWriteOptions ?? {},
+    readOptions: { ...record.readBack, ...ctx.readAfterWriteOptions },
   };
   if (!record.operations.includes(verb)) {
     return { failed: { naturalKey, error: `unsupported operation: ${resource.resourceType} ${verb} has no operation record` } };
@@ -920,12 +929,13 @@ async function applyRecordDelete(io, record, resource, payload, ctx) {
   const reRead = record.readVia
     ? await readUntilWith(() => record.readVia(io, { payload, targetId }), gone, io.readOptions)
     : await readUntil(io, record.version, path, gone, io.readOptions);
-  if (!isNotFound(reRead) && reRead?.body?.deletedDateTime == null) {
+  const absent = isNotFound(reRead) || record.goneWhen?.(reRead) === true;
+  if (!absent && reRead?.body?.deletedDateTime == null) {
     await note(ctx, entry, 'uncertain', { postState: reRead?.body ?? null, detail: 'delete did not verify' });
     return { failed: { naturalKey, error: 'delete did not verify as absent or soft-deleted' } };
   }
   const removed = changes?.assignmentsRemoved ? `; its ${changes.assignmentsRemoved} assignment(s) were removed first` : '';
-  await note(ctx, entry, 'succeeded', { detail: `${isNotFound(reRead) ? 'absent' : 'soft-deleted'}${removed}` });
+  await note(ctx, entry, 'succeeded', { detail: `${absent ? 'absent' : 'soft-deleted'}${removed}` });
   return { applied: { naturalKey, targetId, ...(changes ? { changes } : {}) } };
 }
 

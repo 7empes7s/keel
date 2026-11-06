@@ -361,7 +361,7 @@ export function targetAssignmentPolicy(resource, verb, ctx = {}) {
   if (moved && !remappingFor(resource.resourceType, verb).qualified) {
     return { failed: { naturalKey, error: `unqualified-remapping: accessPackageAssignmentPolicy ${verb} would point at different ids, and reference remapping is not proven for this operation` } };
   }
-  return { resource: { ...resource, payload: rewritten, backupPayload: resource.backupPayload ?? payload, references: kept } };
+  return { resource: { ...resource, payload: rewritten, backupPayload: resource.backupPayload ?? payload, backupReferences: resource.backupReferences ?? resource.references, references: kept } };
 }
 
 // Requestor scopes Graph knows, from narrowest to widest. One KEEL cannot rank

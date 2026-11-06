@@ -931,10 +931,12 @@ export const IDENTITY_RECORDS = Object.freeze({
   // that limits which mailboxes an app role assignment reaches. Its kind is
   // set on create only. The app role assignments that name it are not written.
   // The filter of a scope an assignment uses is never changed (appScopeGuard).
+  // A scope just created on one Exchange DC can read back 404 "couldn't be
+  // found on <DC>" from another for longer than the default window (#1058).
   exchangeCustomAppScope: defineRecord({
     resourceType: 'exchangeCustomAppScope', version: 'beta', collection: '/roleManagement/exchange/customAppScopes',
     operations: ['create', 'update'], writable: ['displayName', 'customAttributes'], createOnly: ['type'],
-    updateGuard: appScopeGuard,
+    updateGuard: appScopeGuard, readBack: { attempts: 12, delayMs: 5000 },
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
   }),
   // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,

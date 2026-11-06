@@ -1674,6 +1674,37 @@ test('a delete that does not read back as gone fails', async () => {
   assert.match(result.failed.error, /did not verify/);
 });
 
+// Issue #1056: after the delete, Graph answers a settings catalog policy's read with 400 ResourceNotFound, not 404.
+test('a settings catalog policy delete that reads back as 400 ResourceNotFound is absent (#1056)', async () => {
+  const resourceNotFound = {
+    ok: false, status: 400,
+    body: { error: { code: 'ResourceNotFound', message: 'Resource not found', innerError: { date: '2026-11-05T10:00:00', 'request-id': 'req-1', 'client-request-id': 'req-1' } } },
+  };
+  const readsAfterDelete = (graph, answer) => {
+    const read = graph.read.bind(graph);
+    graph.read = async (version, path, options) => (graph.calls.some((call) => call.method === 'DELETE') && path.startsWith('/deviceManagement/') && !path.includes('/assignments')
+      ? answer : read(version, path, options));
+    return graph;
+  };
+  const deleteOf = async (type, answer) => {
+    const path = `${INTUNE_RECORDS[type].collection}/p-1`;
+    const payload = { id: 'p-1', name: 'KEEL-RT-Old', displayName: 'KEEL-RT-Old' };
+    const graph = readsAfterDelete(idoFakeGraph({ seed: { [path]: payload } }), answer);
+    const result = await applyIntuneExtendedWrite(graph, resourceOf(type, payload, { live: { state: 'present', targetId: 'p-1', payload } }), 'delete', {
+      ...FAST, deletionGuardOptions: GUARD, observedCoverage: COMPLETE(type),
+    });
+    return { graph, result };
+  };
+
+  const { graph, result } = await deleteOf('configurationPolicy', resourceNotFound);
+  assert.deepEqual(result.applied, { naturalKey: 'configurationPolicy:KEEL-RT-Old', targetId: 'p-1' }, result.failed?.error);
+  assert.equal(graph.calls.filter((call) => call.method === 'DELETE').length, 1);
+  // Any other 400, or the same answer on another route, still does not verify.
+  const otherError = { ...resourceNotFound, body: { error: { code: 'BadRequest', message: 'Bad request' } } };
+  assert.match((await deleteOf('configurationPolicy', otherError)).result.failed.error, /did not verify/);
+  assert.match((await deleteOf('deviceConfiguration', resourceNotFound)).result.failed.error, /did not verify/);
+});
+
 test('create and update stay on the built-in path for the three built-in policy types', async () => {
   for (const type of Object.keys(INTUNE_RECORDS)) assert.deepEqual(INTUNE_EXTENDED_RECORDS[type].operations, ['delete']);
   const result = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('deviceConfiguration', { displayName: 'x' }), 'create', FAST);

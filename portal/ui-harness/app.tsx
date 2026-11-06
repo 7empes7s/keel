@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApprovalModeProvider } from "@/components/approval-mode-context";
@@ -3404,8 +3404,26 @@ function App() {
   const [jobs, setJobs] = useState(initialJobs);
   const [loading, setLoading] = useState(false);
   const [posture, setPosture] = useState(0);
+  const [sampleOpen, setSampleOpen] = useState(false);
+  const sampleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { window.scrollTo(0, 0); }, [path]);
+
+  // The sample-data menu closes on Esc (focus back on its button) or a tap outside it.
+  useEffect(() => {
+    if (!sampleOpen) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setSampleOpen(false);
+      sampleRef.current?.querySelector<HTMLButtonElement>(".preview-toggle")?.focus();
+    }
+    function onPointer(event: PointerEvent) {
+      if (!sampleRef.current?.contains(event.target as Node)) setSampleOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onPointer); };
+  }, [sampleOpen]);
 
   function finishJob() {
     location.hash = "/jobs";
@@ -3418,11 +3436,15 @@ function App() {
   }
 
   return <>
-    <div className="preview-bar">
-      <span>Sample data</span>
-      <button className="btn btn-secondary btn-sm" onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 1400); }} type="button">Show loading state</button>
-      <button className="btn btn-secondary btn-sm" onClick={() => { location.hash = "/"; setPosture((value) => (value + 1) % 3); }} type="button">Cycle posture</button>
-      <button className="btn btn-secondary btn-sm" onClick={finishJob} type="button">Advance jobs</button>
+    <div className="preview-bar" ref={sampleRef}>
+      <div aria-label="Sample data" className="preview-menu" hidden={!sampleOpen} id="preview-menu" role="group">
+        <button className="btn btn-secondary btn-sm" onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 1400); }} type="button">Show loading state</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => { location.hash = "/"; setPosture((value) => (value + 1) % 3); }} type="button">Cycle posture</button>
+        <button className="btn btn-secondary btn-sm" onClick={finishJob} type="button">Advance jobs</button>
+      </div>
+      <button aria-controls="preview-menu" aria-expanded={sampleOpen} className="preview-toggle" onClick={() => setSampleOpen((value) => !value)} type="button">
+        <Icon name="dashboards" /><span className="preview-label">Sample data</span>
+      </button>
     </div>
     <AppShell
       capabilities={{ canApprove: true, canBackup: true, canConfigure: true, canPolicies: true, canRead: true, canUsers: true }}

@@ -588,3 +588,72 @@ test("brand mark: one smooth 12 s loop that moves only transform and opacity, an
   await page.locator(".rail .brand").hover();
   expect(await mark.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(before);
 });
+
+// The harness's sample-data control is one corner button that opens a small menu. On a
+// phone it sits above the tab bar, never over it, so every tab stays tappable (issue #1068).
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [375, 390]) {
+    test(`sample data: the corner button and its menu stay clear of the phone tab bar · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+      // Not CI mode: the control is shown, as in the preview people look at.
+      await page.goto(`${HARNESS}#/`);
+      await page.locator('.shell[data-statuses="ready"]').waitFor();
+      const toggle = page.getByRole("button", { name: "Sample data" });
+      const menu = page.locator("#preview-menu");
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(menu).toBeHidden();
+
+      const clearOfTabs = async () => {
+        const tabsTop = (await page.locator(".tabbar-slot").boundingBox())!.y;
+        for (const box of [await toggle.boundingBox(), await menu.boundingBox()]) {
+          if (box) expect(box.y + box.height).toBeLessThanOrEqual(tabsTop);
+        }
+        // Every tab is the element under its own centre, so a tap reaches it.
+        for (const tab of await page.locator(".tabbar .tab").all()) {
+          expect(await tab.evaluate((el) => {
+            const rect = el.getBoundingClientRect();
+            return el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+          })).toBe(true);
+        }
+      };
+      await clearOfTabs();
+
+      // Keyboard: open with Enter, act, close with Esc back onto the button.
+      await toggle.focus();
+      await page.keyboard.press("Enter");
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(menu).toBeVisible();
+      await clearOfTabs();
+      const results = await new AxeBuilder({ page }).include(".preview-bar").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+      expect(results.violations.map((violation) => violation.id)).toEqual([]);
+      const status = page.locator(".page-header .status-pill");
+      const before = await status.textContent();
+      await menu.getByRole("button", { name: "Cycle posture" }).click();
+      await expect(status).not.toHaveText(before!);
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      await expect(toggle).toBeFocused();
+      await noSidewaysScroll(page);
+
+      // A tap outside closes it.
+      await toggle.click();
+      await expect(menu).toBeVisible();
+      await page.locator("main#main-content h1").click();
+      await expect(menu).toBeHidden();
+    });
+  }
+}
+
+test("sample data: on a wide screen the corner control is a small labelled pill", async ({ page }) => {
+  await page.setViewportSize({ width: 1278, height: 900 });
+  await page.goto(`${HARNESS}#/`);
+  await page.locator('.shell[data-statuses="ready"]').waitFor();
+  const toggle = page.getByRole("button", { name: "Sample data" });
+  await expect(toggle).toHaveText("Sample data");
+  const box = (await toggle.boundingBox())!;
+  expect(box.height).toBeLessThanOrEqual(48);
+  expect(box.x + box.width).toBeGreaterThan(1278 - 200);
+  await toggle.click();
+  await expect(page.locator("#preview-menu").getByRole("button", { name: "Advance jobs" })).toBeVisible();
+});

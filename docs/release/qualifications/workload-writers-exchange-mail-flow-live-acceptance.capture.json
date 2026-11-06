@@ -13,7 +13,7 @@
         "safeLinksPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:47:35.202Z"
+      "at": "2026-11-06T14:28:53.157Z"
     },
     {
       "credential": "collector",
@@ -22,17 +22,17 @@
         "transportRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:47:57.216Z"
+      "at": "2026-11-06T14:29:15.456Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-TransportRule",
       "parameters": {
         "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
-        "Comments": "KEEL capture 2026-10-30T00:47:35.202Z"
+        "Comments": "KEEL capture 2026-11-06T14:28:53.156Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:48:00.323Z"
+      "at": "2026-11-06T14:29:18.792Z"
     },
     {
       "credential": "collector",
@@ -41,7 +41,7 @@
         "transportRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:48:30.910Z"
+      "at": "2026-11-06T14:29:49.026Z"
     },
     {
       "credential": "restorer",
@@ -51,7 +51,7 @@
         "Comments": "KEEL test fixture"
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:48:33.936Z"
+      "at": "2026-11-06T14:29:52.042Z"
     },
     {
       "credential": "collector",
@@ -60,7 +60,7 @@
         "transportRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:03.266Z"
+      "at": "2026-11-06T14:30:22.684Z"
     },
     {
       "credential": "collector",
@@ -69,17 +69,17 @@
         "inboundConnector"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:06.574Z"
+      "at": "2026-11-06T14:30:25.711Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-InboundConnector",
       "parameters": {
         "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
-        "Comment": "KEEL capture 2026-10-30T00:47:35.202Z"
+        "Comment": "KEEL capture 2026-11-06T14:28:53.156Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:49:09.698Z"
+      "at": "2026-11-06T14:30:28.900Z"
     },
     {
       "credential": "collector",
@@ -88,7 +88,7 @@
         "inboundConnector"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:15.459Z"
+      "at": "2026-11-06T14:30:32.966Z"
     },
     {
       "credential": "restorer",
@@ -98,7 +98,7 @@
         "Comment": "KEEL test fixture"
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:49:18.455Z"
+      "at": "2026-11-06T14:30:36.006Z"
     },
     {
       "credential": "collector",
@@ -107,7 +107,54 @@
         "inboundConnector"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:22.352Z"
+      "at": "2026-11-06T14:30:39.731Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "outboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:30:42.860Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-OutboundConnector",
+      "parameters": {
+        "Identity": "55945417-e979-88f7-9a0b-159f3460a638",
+        "Comment": "KEEL capture 2026-11-06T14:28:53.156Z"
+      },
+      "outcome": "ok",
+      "at": "2026-11-06T14:30:45.994Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "outboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:30:49.384Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-OutboundConnector",
+      "parameters": {
+        "Identity": "55945417-e979-88f7-9a0b-159f3460a638",
+        "Comment": "KEEL-RT fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-11-06T14:30:52.562Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "outboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:30:55.787Z"
     },
     {
       "credential": "collector",
@@ -116,7 +163,7 @@
         "antiPhishPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:25.441Z"
+      "at": "2026-11-06T14:30:58.858Z"
     },
     {
       "credential": "restorer",
@@ -126,7 +173,7 @@
         "EnableUnauthenticatedSender": false
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:49:28.533Z"
+      "at": "2026-11-06T14:31:02.003Z"
     },
     {
       "credential": "collector",
@@ -135,7 +182,7 @@
         "antiPhishPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:33.234Z"
+      "at": "2026-11-06T14:31:05.613Z"
     },
     {
       "credential": "restorer",
@@ -145,7 +192,7 @@
         "EnableUnauthenticatedSender": true
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:49:36.249Z"
+      "at": "2026-11-06T14:31:08.828Z"
     },
     {
       "credential": "collector",
@@ -154,7 +201,7 @@
         "antiPhishPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:39.484Z"
+      "at": "2026-11-06T14:31:12.380Z"
     },
     {
       "credential": "collector",
@@ -163,7 +210,7 @@
         "antiSpamPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:42.650Z"
+      "at": "2026-11-06T14:31:15.389Z"
     },
     {
       "credential": "restorer",
@@ -173,7 +220,7 @@
         "InlineSafetyTipsEnabled": false
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:49:45.721Z"
+      "at": "2026-11-06T14:31:18.481Z"
     },
     {
       "credential": "collector",
@@ -182,7 +229,7 @@
         "antiSpamPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:48.959Z"
+      "at": "2026-11-06T14:31:21.961Z"
     },
     {
       "credential": "restorer",
@@ -192,7 +239,7 @@
         "InlineSafetyTipsEnabled": true
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:49:52.076Z"
+      "at": "2026-11-06T14:31:24.999Z"
     },
     {
       "credential": "collector",
@@ -201,7 +248,7 @@
         "antiSpamPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:55.603Z"
+      "at": "2026-11-06T14:31:28.517Z"
     },
     {
       "credential": "collector",
@@ -210,17 +257,17 @@
         "antiMalwarePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:49:58.846Z"
+      "at": "2026-11-06T14:31:31.595Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-MalwareFilterPolicy",
       "parameters": {
         "Identity": "46dc1ba4-53ad-8cd1-af46-a8518d96a7fa",
-        "AdminDisplayName": "KEEL capture 2026-10-30T00:47:35.202Z"
+        "AdminDisplayName": "KEEL capture 2026-11-06T14:28:53.156Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:50:01.940Z"
+      "at": "2026-11-06T14:31:34.810Z"
     },
     {
       "credential": "collector",
@@ -229,7 +276,7 @@
         "antiMalwarePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:50:05.256Z"
+      "at": "2026-11-06T14:31:38.231Z"
     },
     {
       "credential": "restorer",
@@ -239,7 +286,7 @@
         "AdminDisplayName": ""
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:50:08.181Z"
+      "at": "2026-11-06T14:31:41.500Z"
     },
     {
       "credential": "collector",
@@ -248,7 +295,7 @@
         "antiMalwarePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:50:11.402Z"
+      "at": "2026-11-06T14:31:45.058Z"
     },
     {
       "credential": "collector",
@@ -257,7 +304,7 @@
         "safeLinksPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:50:14.435Z"
+      "at": "2026-11-06T14:31:49.159Z"
     },
     {
       "credential": "restorer",
@@ -267,7 +314,7 @@
         "EnableSafeLinksForEmail": false
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:50:17.556Z"
+      "at": "2026-11-06T14:31:52.479Z"
     },
     {
       "credential": "collector",
@@ -276,7 +323,7 @@
         "safeLinksPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:50:20.894Z"
+      "at": "2026-11-06T14:31:56.089Z"
     },
     {
       "credential": "restorer",
@@ -286,7 +333,7 @@
         "EnableSafeLinksForEmail": true
       },
       "outcome": "ok",
-      "at": "2026-10-30T00:50:24.105Z"
+      "at": "2026-11-06T14:31:59.239Z"
     },
     {
       "credential": "collector",
@@ -295,7 +342,7 @@
         "safeLinksPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T00:50:27.630Z"
+      "at": "2026-11-06T14:32:03.143Z"
     }
   ],
   "values": {
@@ -304,6 +351,9 @@
       "written": true
     },
     "mailflow.inbound-connector.update": {
+      "written": true
+    },
+    "mailflow.outbound-connector.update": {
       "written": true
     },
     "mailflow.anti-phish-policy.update": {

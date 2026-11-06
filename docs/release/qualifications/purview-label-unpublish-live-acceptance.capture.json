@@ -1,0 +1,182 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "cmdlet": "Get-Label",
+      "outcome": "ok"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-LabelPolicy",
+      "outcome": "ok"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-LabelPolicy",
+      "policy": "KEEL-RT-20261005-policy",
+      "labels": [
+        "KEEL-RT-20261005-anchor"
+      ],
+      "parameters": [
+        "Identity",
+        "RemoveLabels"
+      ],
+      "outcome": "ok"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-Label",
+      "outcome": "ok"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-LabelPolicy",
+      "outcome": "ok"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-LabelPolicy",
+      "policy": "KEEL-RT-20261005-policy",
+      "labels": [
+        "KEEL-RT-20261005-anchor"
+      ],
+      "parameters": [
+        "AddLabels",
+        "Identity"
+      ],
+      "outcome": "ok"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-Label",
+      "outcome": "ok"
+    },
+    {
+      "credential": "collector",
+      "cmdlet": "Get-LabelPolicy",
+      "outcome": "ok"
+    }
+  ],
+  "values": {
+    "end": {
+      "policy": {
+        "Name": "KEEL-RT-20261005-policy",
+        "Enabled": true,
+        "Mode": "Enforce",
+        "Priority": 1,
+        "Labels": [
+          "KEEL-RT-20261104-site-label",
+          "KEEL-RT-20261005-anchor",
+          "KEEL-RT-20261005-label2",
+          "KEEL-RT-20261007-label",
+          "KEEL-RT-20261005-label",
+          "KEEL-RT-20261005-label3",
+          "KEEL-RT-20261106-label1",
+          "KEEL-RT-20261106-label2"
+        ],
+        "ExchangeLocation": [
+          {
+            "DisplayName": "KEEL-RT-20260908 Alice Martin",
+            "Name": "keel-rt-u751f32126065@t42987720ee3.example",
+            "ImmutableIdentity": "fba227d1-5ad1-8391-b03a-7ba057b15aa0",
+            "Type": {
+              "value": 0,
+              "Value": "IndividualResource"
+            },
+            "Status": {
+              "value": 2,
+              "Value": "Success"
+            },
+            "Workload": {
+              "value": 1,
+              "Value": "Exchange"
+            },
+            "SourceType": null,
+            "SourceTypeDisplayName": null,
+            "SourceProvider": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "SourceEntryType": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "SchemaVersion": 2,
+            "Resources": null,
+            "ScopingGroup": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "GroupSet": "Default"
+          }
+        ],
+        "ModernGroupLocation": [],
+        "SharePointLocation": [],
+        "OneDriveLocation": [],
+        "Settings": null,
+        "WhenChangedUTC": "2026-11-06T14:23:18Z"
+      }
+    },
+    "start": {
+      "policy": {
+        "Name": "KEEL-RT-20261005-policy",
+        "Enabled": true,
+        "Mode": "Enforce",
+        "Priority": 1,
+        "Labels": [
+          "KEEL-RT-20261104-site-label",
+          "KEEL-RT-20261005-label2",
+          "KEEL-RT-20261007-label",
+          "KEEL-RT-20261005-anchor",
+          "KEEL-RT-20261005-label",
+          "KEEL-RT-20261005-label3",
+          "KEEL-RT-20261106-label1",
+          "KEEL-RT-20261106-label2"
+        ],
+        "ExchangeLocation": [
+          {
+            "DisplayName": "KEEL-RT-20260908 Alice Martin",
+            "Name": "keel-rt-u751f32126065@t42987720ee3.example",
+            "ImmutableIdentity": "fba227d1-5ad1-8391-b03a-7ba057b15aa0",
+            "Type": {
+              "value": 0,
+              "Value": "IndividualResource"
+            },
+            "Status": {
+              "value": 2,
+              "Value": "Success"
+            },
+            "Workload": {
+              "value": 1,
+              "Value": "Exchange"
+            },
+            "SourceType": null,
+            "SourceTypeDisplayName": null,
+            "SourceProvider": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "SourceEntryType": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "SchemaVersion": 2,
+            "Resources": null,
+            "ScopingGroup": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "GroupSet": "Default"
+          }
+        ],
+        "ModernGroupLocation": [],
+        "SharePointLocation": [],
+        "OneDriveLocation": [],
+        "Settings": null,
+        "WhenChangedUTC": "2026-11-06T14:19:46Z"
+      },
+      "label": "KEEL-RT-20261005-anchor",
+      "published": true
+    }
+  }
+}

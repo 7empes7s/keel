@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-30T00:54:33.070Z",
+  "observedAt": "2026-11-06T14:37:34.078Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T00:52:24.673Z",
+        "target": "KEEL capture 2026-11-06T14:36:50.564Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T00:54:33.070Z",
+        "capturedAt": "2026-11-06T14:37:34.078Z",
         "error": null
       }
     ],
@@ -226,7 +226,7 @@
         "cmdlet": "Set-ComplianceTag",
         "parameters": {
           "Identity": "7c28fd0e-98f6-811e-b725-f1605267ef23",
-          "Comment": "KEEL capture 2026-10-30T00:52:24.673Z"
+          "Comment": "KEEL capture 2026-11-06T14:36:50.564Z"
         },
         "outcome": "ok"
       },
@@ -256,16 +256,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "915d6b4f8a1f917fe14b684411aba9aa7e04d650ba428e69a189bfa169dc5a90"
+    "captureLogSha256": "6033c82f670c53675adb46eaa15833cd4b5a7c522b770a61d8fa71e675f2d2c1"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-purview-governance-live-acceptance.capture.json",
-      "sha256": "915d6b4f8a1f917fe14b684411aba9aa7e04d650ba428e69a189bfa169dc5a90"
+      "sha256": "6033c82f670c53675adb46eaa15833cd4b5a7c522b770a61d8fa71e675f2d2c1"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "bd8daf92c2644c98c91a26df6e6043d6b7e7016950e86d9489785104960c0557"
+      "signature": "8693f42abf58aa2d6b57ae9d36665ed14e60c2b56ed0ee89dd4ab6f45669cd0e"
     }
   }
 }

@@ -1,0 +1,66 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "onedrive-site-settings",
+      "families": [
+        "onedriveSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:29:20.280Z"
+    },
+    {
+      "credential": "collector",
+      "read": "onedrive-site-settings",
+      "families": [
+        "onedriveSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:29:22.428Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-PnPTenantSite",
+      "parameters": {
+        "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+        "DefaultLinkPermission": 1
+      },
+      "outcome": "ok",
+      "at": "2026-11-06T14:29:24.609Z"
+    },
+    {
+      "credential": "collector",
+      "read": "onedrive-site-settings",
+      "families": [
+        "onedriveSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:29:27.352Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-PnPTenantSite",
+      "parameters": {
+        "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+        "DefaultLinkPermission": 2
+      },
+      "outcome": "ok",
+      "at": "2026-11-06T14:29:29.368Z"
+    },
+    {
+      "credential": "collector",
+      "read": "onedrive-site-settings",
+      "families": [
+        "onedriveSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-11-06T14:29:33.634Z"
+    }
+  ],
+  "values": {
+    "refusalFamily": "onedriveSite",
+    "onedrive.site-settings.update": {
+      "written": true
+    }
+  }
+}

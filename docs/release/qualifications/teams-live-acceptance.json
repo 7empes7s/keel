@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "teams-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "operation": "teams.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-28T07:20:53.352Z",
+  "observedAt": "2026-11-06T14:31:19.672Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "sharePointQualification": {
       "gate": "sharepoint-live-acceptance",
       "evidence": "sharepoint-live-acceptance.json",
-      "captureLogSha256": "da2b3523bac397db01b6a03fcaaec0b5173a60ae78aa4f4d1513ef242f9835a9"
+      "captureLogSha256": "686ae54b7ed2cfc09180d224d51f85f37fc62bc28c8026a8613abb96e8654175"
     },
     "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
     "fixtureTeam": {
@@ -26,9 +26,9 @@
       "tenantIdSource": "collector-token"
     },
     "fixtureMember": {
-      "userId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+      "userId": "e90df366-8745-84de-b181-3a246f8fece4",
       "tenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
-      "membershipId": "MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
+      "membershipId": "MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2U5MGRmMzY2LTg3NDUtODRkZS1iMTgxLTNhMjQ2ZjhmZWNlNA==",
       "memberBefore": false,
       "memberAfter": false,
       "ownerBefore": false,
@@ -43,26 +43,140 @@
     "grants": {
       "collector": {
         "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
+          "Exchange.ManageAsApp",
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
           "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
           "Team.ReadBasic.All",
           "TeamMember.Read.All",
-          "TeamSettings.Read.All"
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
         ],
-        "roles": []
+        "roles": [
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
+        ]
       },
       "restorer": {
         "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
+          "Exchange.ManageAsApp",
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
           "TeamMember.ReadWrite.All",
-          "TeamSettings.ReadWrite.All"
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
         ],
-        "roles": []
+        "roles": [
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
+        ]
       }
     },
     "reads": [
       {
         "operationId": "teams.team-discovery",
         "version": "v1.0",
-        "capturedAt": "2026-10-28T07:20:15.512Z",
+        "capturedAt": "2026-11-06T14:30:09.113Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -71,7 +185,7 @@
       {
         "operationId": "teams.settings",
         "version": "v1.0",
-        "capturedAt": "2026-10-28T07:20:15.842Z",
+        "capturedAt": "2026-11-06T14:30:09.705Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -80,7 +194,7 @@
       {
         "operationId": "teams.membership",
         "version": "v1.0",
-        "capturedAt": "2026-10-28T07:20:16.157Z",
+        "capturedAt": "2026-11-06T14:30:10.066Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -89,7 +203,7 @@
       {
         "operationId": "teams.group-membership",
         "version": "v1.0",
-        "capturedAt": "2026-10-28T07:20:16.247Z",
+        "capturedAt": "2026-11-06T14:30:10.189Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -115,7 +229,7 @@
       "restoredToOriginal": true,
       "preFingerprint": "71e9dd4db55a1689420baa5768ac5afa659fa4955cf40cd2ce32a5fcddf01d29",
       "finalFingerprint": "71e9dd4db55a1689420baa5768ac5afa659fa4955cf40cd2ce32a5fcddf01d29",
-      "capturedAt": "2026-10-28T07:20:18.284Z"
+      "capturedAt": "2026-11-06T14:30:12.807Z"
     },
     "membershipWrites": {
       "captures": [
@@ -125,7 +239,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-28T07:20:20.286Z"
+          "capturedAt": "2026-11-06T14:30:14.620Z"
         },
         {
           "operationId": "teams.membership.update",
@@ -133,7 +247,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-28T07:20:24.352Z"
+          "capturedAt": "2026-11-06T14:30:18.339Z"
         },
         {
           "operationId": "teams.membership.remove",
@@ -141,7 +255,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-28T07:20:26.088Z"
+          "capturedAt": "2026-11-06T14:30:20.321Z"
         }
       ],
       "restoredToOriginal": true,
@@ -149,8 +263,7 @@
       "finalFingerprint": "e8ed744393d6482245f75a6772bee922ad61966cb9b15df7fe6ab06f7dc7bef3",
       "ownersPreFingerprint": "c99fdc31383377bb1f21d191a497a28d010f394afb78210e64e619efaee1eecb",
       "ownersFinalFingerprint": "c99fdc31383377bb1f21d191a497a28d010f394afb78210e64e619efaee1eecb",
-      "ownerLinkRemoved": false,
-      "error": "removing the fixture user's group member link failed (HTTP 400)"
+      "ownerLinkRemoved": true
     },
     "requests": [
       {
@@ -236,7 +349,7 @@
         "version": "v1.0",
         "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
         "status": 201,
-        "memberUserId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40"
+        "memberUserId": "e90df366-8745-84de-b181-3a246f8fece4"
       },
       {
         "credential": "restorer",
@@ -249,7 +362,7 @@
         "credential": "restorer",
         "method": "PATCH",
         "version": "v1.0",
-        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2U5MGRmMzY2LTg3NDUtODRkZS1iMTgxLTNhMjQ2ZjhmZWNlNA==",
         "status": 200
       },
       {
@@ -263,7 +376,7 @@
         "credential": "restorer",
         "method": "PATCH",
         "version": "v1.0",
-        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2U5MGRmMzY2LTg3NDUtODRkZS1iMTgxLTNhMjQ2ZjhmZWNlNA==",
         "status": 200
       },
       {
@@ -277,7 +390,7 @@
         "credential": "restorer",
         "method": "DELETE",
         "version": "v1.0",
-        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2U5MGRmMzY2LTg3NDUtODRkZS1iMTgxLTNhMjQ2ZjhmZWNlNA==",
         "status": 204
       },
       {
@@ -312,8 +425,106 @@
         "credential": "restorer",
         "method": "DELETE",
         "version": "v1.0",
-        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/a0fcb2f8-b0c3-8a88-9b94-319165913d40/$ref",
-        "status": 400
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners/e90df366-8745-84de-b181-3a246f8fece4/$ref",
+        "status": 404
+      },
+      {
+        "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/e90df366-8745-84de-b181-3a246f8fece4/$ref",
+        "status": 404
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners/e90df366-8745-84de-b181-3a246f8fece4/$ref",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+        "status": 200
       },
       {
         "credential": "restorer",
@@ -364,47 +575,47 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/teams-list",
-        "retrievedAt": "2026-10-28T07:20:12.349Z"
+        "retrievedAt": "2026-11-06T14:29:49.245Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-get",
-        "retrievedAt": "2026-10-28T07:20:12.633Z"
+        "retrievedAt": "2026-11-06T14:29:49.424Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-list-members",
-        "retrievedAt": "2026-10-28T07:20:13.063Z"
+        "retrievedAt": "2026-11-06T14:29:49.787Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/group-list-members",
-        "retrievedAt": "2026-10-28T07:20:13.396Z"
+        "retrievedAt": "2026-11-06T14:29:50.188Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-update?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-28T07:20:13.663Z"
+        "retrievedAt": "2026-11-06T14:29:50.341Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-post-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-28T07:20:13.902Z"
+        "retrievedAt": "2026-11-06T14:29:50.502Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-update-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-28T07:20:14.543Z"
+        "retrievedAt": "2026-11-06T14:29:50.652Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-delete-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-28T07:20:14.785Z"
+        "retrievedAt": "2026-11-06T14:29:50.836Z"
       }
     ],
-    "captureLogSha256": "f256dc702f2d9f21b348f5b893c3322fc5f62629e914a84009f9bac9fcfefbdc"
+    "captureLogSha256": "f2c785d28e1823d4b40b3d6435a32e034efe21059553f3db5932ee283ebd8727"
   },
   "proof": {
     "artifact": {
       "path": "teams-live-acceptance.capture.json",
-      "sha256": "f256dc702f2d9f21b348f5b893c3322fc5f62629e914a84009f9bac9fcfefbdc"
+      "sha256": "f2c785d28e1823d4b40b3d6435a32e034efe21059553f3db5932ee283ebd8727"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "71e4b370e9040220ae3be8dcdffa30be65a8c73535816bc826b63ef04b5813a2"
+      "signature": "4e205836d2b8b41372b0ee4dd80beec200b64f674f97a79848d40e0957da1781"
     }
   }
 }

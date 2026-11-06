@@ -397,6 +397,38 @@ function partnerTemplateAfterWrite(_io, { resource }) {
   return { completion: differs.length ? [partnerTemplateStep(differs)] : [] };
 }
 
+// ------------------------------------------------ multitenant organization
+
+// Issue #1034: Graph refuses a null or empty description (400 "Invalid value
+// specified for property 'description'"), so a description cannot be cleared
+// once set. An empty backup description is left out of the write, and a live
+// one that differs from it is a step for a person.
+const isEmptyText = (value) => value === null || value === undefined || value === '';
+
+const mtoBody = (body) => (isEmptyText(body.description) ? Object.fromEntries(Object.entries(body).filter(([field]) => field !== 'description')) : body);
+
+const mtoDescriptionStep = (payload, live) => (isEmptyText(payload?.description) && !isEmptyText(live?.description)
+  ? Object.freeze({
+    kind: 'manual-setting', requirement: 'multiTenantOrganizationDescription', fields: Object.freeze(['description']),
+    portalPath: 'Entra admin center > External Identities > Multitenant organization',
+    description: 'The backup has no description for the multitenant organization, but it has one now. Microsoft Graph cannot clear a description, so a restore leaves it as it is: change it by hand if it should differ.',
+  })
+  : null);
+
+function mtoRefusal(resource, verb) {
+  if (verb !== 'update' || !resource.live?.payload) return null;
+  const step = mtoDescriptionStep(resource.payload, resource.live.payload);
+  if (!step || !sameValue(resource.payload.displayName, resource.live.payload.displayName)) return null;
+  return { outcome: 'skipped', reason: `manual: ${step.description}`, completion: step };
+}
+
+function mtoAfterWrite(_io, { payload, before }) {
+  const step = mtoDescriptionStep(payload, before);
+  return { completion: step ? [step] : [] };
+}
+
+const mtoPlanCompletion = ({ payload, before }) => [mtoDescriptionStep(payload, before)].filter(Boolean);
+
 // ---------------------------------------------- SharePoint tenant settings
 
 /** The SharePoint tenant settings a restore writes; never the five sharing fields. */
@@ -837,6 +869,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   multiTenantOrganization: defineRecord({
     resourceType: 'multiTenantOrganization', tenantWide: true, version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
     singleton: true, operations: ['update'], writable: ['displayName', 'description'],
+    transform: mtoBody, refusal: mtoRefusal, afterWrite: mtoAfterWrite, planCompletion: mtoPlanCompletion,
     permission: 'MultiTenantOrganization.ReadWrite.All', docs: v1('multitenantorganization-update'),
   }),
   // Restore gaps, batch 2: Entra ID tenant settings that are one object per

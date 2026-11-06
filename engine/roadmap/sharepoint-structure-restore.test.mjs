@@ -145,6 +145,28 @@ test('the write transport refuses an undeclared cmdlet, parameter, structured va
   assert.deepEqual(live.writes, [], 'nothing was sent');
 });
 
+// Issue #1052: the job queue refused every template whose gzip and base64 passed 1024 characters.
+test('a site template over 1024 characters reaches the container, other long values are still refused', async () => {
+  const { createHash } = await import('node:crypto');
+  const { gzipSync } = await import('node:zlib');
+  const live = fakeTenant();
+  const columns = Array.from({ length: 40 }, (_, i) => ({
+    ID: `44444444-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    Name: `KeelRt${createHash('sha256').update(String(i)).digest('hex').slice(0, 24)}`,
+  }));
+  const xml = `<pnp:Provisioning xmlns:pnp="${NS}"><pnp:Templates ID="KEEL-RESTORE-TEMPLATES"><pnp:ProvisioningTemplate ID="KEEL-RESTORE" Version="1"><pnp:SiteFields>${columns.map((column) => `<Field ID="{${column.ID}}" Name="${column.Name}" StaticName="${column.Name}" DisplayName="${column.Name}" Type="Text" />`).join('')}</pnp:SiteFields></pnp:ProvisioningTemplate></pnp:Templates></pnp:Provisioning>`;
+  const gzip = gzipSync(Buffer.from(xml)).toString('base64');
+  assert.ok(gzip.length > 1024 && gzip.length <= MAX_TEMPLATE_GZIP_CHARS, `the template is ${gzip.length} characters`);
+  await structureWriteCmdlet({ cmdlet: 'Invoke-PnPSiteTemplate', parameters: { Url: SITE, TemplateGzip: gzip } }, live.powershell);
+  assert.deepEqual(live.writes.map((write) => write.cmdlet), ['Invoke-PnPSiteTemplate']);
+  const site = live.state.sites[SITE.toLowerCase()];
+  assert.ok(columns.every((column) => site.columns.some((item) => item.ID === column.ID)));
+  // Only TemplateGzip of Invoke-PnPSiteTemplate gets the longer limit.
+  await assert.rejects(structureWriteCmdlet({ cmdlet: 'Invoke-PnPSiteTemplate', parameters: { Url: `${SITE}/${'x'.repeat(1024)}`, TemplateGzip: gzip } }, live.powershell), /Url is longer than 1024 characters/);
+  await assert.rejects(structureWriteCmdlet({ cmdlet: 'Set-PnPSiteScript', parameters: { Identity: 'x', Content: 'x'.repeat(1025) } }, live.powershell), /Content is longer than 1024 characters/);
+  assert.equal(live.writes.length, 1, 'nothing else was sent');
+});
+
 // ------------------------------------------------------------ the template
 
 test('the restore template holds only what is missing and the navigation, never content, permissions or code', () => {

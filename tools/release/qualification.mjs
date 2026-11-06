@@ -315,17 +315,6 @@ function validateScubaGearBenchmarkAcceptanceSubject(evidence, { build } = {}) {
 }
 
 /**
- * Task-113: authenticated deployed release acceptance. The evidence is an
- * imported record from tools/release/deployed-acceptance.mjs, captured by the
- * operator against the deployed candidate with an authenticated session:
- * read-only GET probes of the coverage matrix, collection history, schedules
- * and restore review API contracts, each repeated without a session to record
- * the authorization behavior, plus the deployed checkout's revision. The
- * record must carry both a non-synthetic runner signature and the digest of
- * the raw capture transcript, and the transcript must agree with the signed
- * subject. Nothing here probes, restores or redeploys anything.
- */
-/**
  * Issue #1044: committing records makes a new commit that green master then
  * deploys, so the build the records name is never the deployed one. A commit
  * range that touches only these paths (evidence and docs) leaves the code as
@@ -358,6 +347,17 @@ export function buildRelation(recordBuild, candidateBuild, { changedPaths = gitC
   return { relation: 'same-code', range: `${recordBuild.slice(0, 10)}..${candidateBuild.slice(0, 10)}` };
 }
 
+/**
+ * Task-113: authenticated deployed release acceptance. The evidence is an
+ * imported record from tools/release/deployed-acceptance.mjs, captured by the
+ * operator against the deployed candidate with an authenticated session:
+ * read-only GET probes of the coverage matrix, collection history, schedules
+ * and restore review API contracts, each repeated without a session to record
+ * the authorization behavior, plus the deployed checkout's revision. The
+ * record must carry both a non-synthetic runner signature and the digest of
+ * the raw capture transcript, and the transcript must agree with the signed
+ * subject. Nothing here probes, restores or redeploys anything.
+ */
 export const DEPLOYED_ACCEPTANCE_GATE = 'deployed-acceptance';
 export const DEPLOYED_ACCEPTANCE_OPERATION = 'deployed-acceptance.read-probe';
 export const DEPLOYED_ACCEPTANCE_CREDENTIAL_MODE = 'operator-session';

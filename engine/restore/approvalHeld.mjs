@@ -32,9 +32,12 @@ const sameEffect = (approved, effect) => approved?.effect === effect.effect
 function unapprovedEffects(resource, verb, approvedContentEffects, kinds) {
   // A writer that rewrote the backup's ids to the target's (a role assignment's
   // members) keeps the backup as `backupPayload`: the effects are judged on it, as
-  // the dry run judged them, and name each principal (contentEffects.mjs).
+  // the dry run judged them, and name each principal (contentEffects.mjs). One that
+  // kept only the references it resolved keeps the backup's as `backupReferences`
+  // (issue #1059: a dry run named a value the enforce no longer had a reference for).
   const payload = resource.backupPayload ?? resource.payload;
-  const { effects } = classifyContentEffects([{ ...resource, payload, verb }]);
+  const references = resource.backupReferences ?? resource.references;
+  const { effects } = classifyContentEffects([{ ...resource, payload, references, verb }]);
   return effects.filter((effect) => kinds.includes(effect.effect)
     && !(approvedContentEffects ?? []).some((approved) => sameEffect(approved, effect)));
 }

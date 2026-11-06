@@ -404,6 +404,24 @@ test('a policy is created on the target\'s package, with its requestors and appr
   noTrustOrExtension(graph);
 });
 
+test('an approved policy create is written although a stage value matched a singleton\'s id in the backup (#1059)', async () => {
+  // Live shape (restore 1d7946a7): the stage says approverInformationVisibility
+  // "default", the id of the directoryRoleAccessReviewPolicy singleton, so the
+  // backup holds a reference for it. The dry run names it; the enforce must too.
+  const stage = { ...policyPayload().requestApprovalSettings.stages[0], approverInformationVisibility: 'default' };
+  const resource = policyResource({
+    payload: policyPayload({ requestApprovalSettings: { ...policyPayload().requestApprovalSettings, stages: [stage] } }),
+    references: [...POLICY_REFS, { field: 'requestApprovalSettings.stages[0].approverInformationVisibility', symbol: 'directoryRoleAccessReviewPolicy:directoryRoleAccessReviewPolicy', required: true }],
+  });
+  const graph = entitlementGraph();
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', withRefs(context(POLICY_TARGETS), { mode: 'enforce', approvedContentEffects: approved(resource) }));
+  assert.equal(result.skipped, undefined, result.skipped?.reason);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const [post] = writes(graph);
+  assert.equal(post.body.requestApprovalSettings.stages[0].approverInformationVisibility, 'default', 'the value is written as it is');
+  assert.equal(post.body.specificAllowedTargets[0].groupId, TARGET_GROUP);
+});
+
 test('an approver who cannot be matched holds the whole policy as a manual step that names them', async () => {
   const graph = entitlementGraph();
   const resource = policyResource();

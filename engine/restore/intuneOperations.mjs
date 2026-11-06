@@ -1303,6 +1303,10 @@ async function intuneAssignmentUpdateGuard(io, { payload, targetId }) {
 }
 
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard, beforeDelete: removeChosenAssignments };
+// A deleted settings catalog policy reads back as 400 ResourceNotFound, not 404 (issue #1056).
+const DELETED_ON_400 = Object.freeze({
+  configurationPolicy: (result) => result?.ok === false && result.status === 400 && result.body?.error?.code === 'ResourceNotFound',
+});
 
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
 const SCRIPT_SERVER_FIELDS = Object.freeze([
@@ -1892,7 +1896,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
     resourceType: entry.resourceType, version: entry.version, collection: entry.collection, operations: ['delete'],
-    permission: entry.permission, ...DELETE_POLICY,
+    permission: entry.permission, ...DELETE_POLICY, goneWhen: DELETED_ON_400[entry.resourceType] ?? null,
   })])),
   managedAppPolicy: defineRecord({
     resourceType: 'managedAppPolicy', version: 'v1.0', odataType: 'required', operations: ['create', 'update', 'delete'],

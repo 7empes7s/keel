@@ -1,19 +1,19 @@
 {
-  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "deviceShellScript:c5ac9778-c68a-800b-8c82-34b89d6be34c",
+    "naturalKey": "deviceShellScript:e1d2c801-986e-8fb1-bc46-4de2a3597c7e",
     "resourceType": "deviceShellScript",
     "operation": "create",
-    "targetId": "c35246d1-7c93-81d4-87a1-57f8081aa12f",
+    "targetId": "42c07949-1841-830b-8444-be3a9e74eb6d",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:10:22.545Z",
+    "recordedAt": "2026-11-06T15:00:13.042Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-236.sh",
+      "fileName": "keel-rt-1031-device-shell-script-c.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-shell",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-shell-script-c",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -23,20 +23,20 @@
       "blockExecutionNotifications": true
     },
     "postState": {
-      "id": "c35246d1-7c93-81d4-87a1-57f8081aa12f",
-      "fileName": "keel-rt-236.sh",
+      "id": "42c07949-1841-830b-8444-be3a9e74eb6d",
+      "fileName": "keel-rt-1031-device-shell-script-c.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-shell",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-shell-script-c",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
-      "createdDateTime": "2026-10-30T01:10:22.5996592Z",
+      "createdDateTime": "2026-11-06T15:00:13.0960519Z",
       "roleScopeTagIds": [
         "0"
       ],
       "executionFrequency": "PT0S",
-      "lastModifiedDateTime": "2026-10-30T01:10:22.5996592Z",
+      "lastModifiedDateTime": "2026-11-06T15:00:13.0960519Z",
       "blockExecutionNotifications": true
     }
   }

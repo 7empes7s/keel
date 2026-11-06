@@ -1,26 +1,25 @@
 {
-  "restoreRef": "7445524e-ea82-8829-ac9b-1cf6d095a26d",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-268-intune-role",
+    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1031-device-management-role-definition-u",
     "resourceType": "deviceManagementRoleDefinition",
     "operation": "update",
-    "targetId": "9b135be6-6564-80dc-af25-7a4ff9ae256b",
+    "targetId": "ffad58c7-7c6f-8037-9c88-fb97d2b7711a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-04T04:08:38.414Z",
+    "recordedAt": "2026-11-06T14:49:17.240Z",
     "priorState": {
-      "id": "9b135be6-6564-80dc-af25-7a4ff9ae256b",
+      "id": "ffad58c7-7c6f-8037-9c88-fb97d2b7711a",
       "isBuiltIn": false,
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "Keel test fixture (Q268), assigned to nobody",
-      "displayName": "KEEL-RT-268-intune-role",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-device-management-role-definition-u",
       "rolePermissions": [
         {
           "resourceActions": [
             {
               "allowedResourceActions": [
-                "Microsoft.Intune_Organization_Read",
-                "Microsoft.Intune_Audit_Read"
+                "Microsoft.Intune_Organization_Read"
               ],
               "notAllowedResourceActions": []
             }
@@ -30,8 +29,8 @@
     },
     "intendedState": {
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "Keel test fixture (Q268), assigned to nobody",
-      "displayName": "KEEL-RT-268-intune-role",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-management-role-definition-u",
       "rolePermissions": [
         {
           "resourceActions": [
@@ -46,11 +45,11 @@
       ]
     },
     "postState": {
-      "id": "9b135be6-6564-80dc-af25-7a4ff9ae256b",
+      "id": "ffad58c7-7c6f-8037-9c88-fb97d2b7711a",
       "isBuiltIn": false,
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "Keel test fixture (Q268), assigned to nobody",
-      "displayName": "KEEL-RT-268-intune-role",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-management-role-definition-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/roleDefinitions/$entity",
       "rolePermissions": [
         {

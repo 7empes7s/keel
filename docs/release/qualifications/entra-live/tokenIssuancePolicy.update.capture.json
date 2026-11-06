@@ -1,37 +1,37 @@
 {
-  "restoreRef": "e4176fac-b702-8771-be59-6ec884076ae5",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "tokenIssuancePolicy:185e665c-618c-8ba4-99b8-c735300c3355",
+    "naturalKey": "tokenIssuancePolicy:ef291774-ca95-80ed-bca6-0206a7f95f92",
     "resourceType": "tokenIssuancePolicy",
     "operation": "update",
-    "targetId": "185e665c-618c-8ba4-99b8-c735300c3355",
+    "targetId": "ef291774-ca95-80ed-bca6-0206a7f95f92",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:38:03.716Z",
+    "recordedAt": "2026-11-06T14:49:26.141Z",
     "priorState": {
-      "id": "185e665c-618c-8ba4-99b8-c735300c3355",
+      "id": "ef291774-ca95-80ed-bca6-0206a7f95f92",
       "definition": [
         "{\"TokenIssuancePolicy\":{\"Version\":1,\"SigningAlgorithm\":\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\",\"TokenResponseSigningPolicy\":\"TokenOnly\",\"SamlTokenVersion\":\"2.0\"}}"
       ],
-      "displayName": "KEEL-RT-248-issuance-drifted",
+      "displayName": "KEEL-RT-1031-token-issuance-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "185e665c-618c-8ba4-99b8-c735300c3355",
+      "id": "ef291774-ca95-80ed-bca6-0206a7f95f92",
       "definition": [
         "{\"TokenIssuancePolicy\":{\"Version\":1,\"SigningAlgorithm\":\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\",\"TokenResponseSigningPolicy\":\"TokenOnly\",\"SamlTokenVersion\":\"2.0\"}}"
       ],
-      "displayName": "KEEL-RT-248-issuance",
+      "displayName": "KEEL-RT-1031-token-issuance-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "185e665c-618c-8ba4-99b8-c735300c3355",
+      "id": "ef291774-ca95-80ed-bca6-0206a7f95f92",
       "definition": [
         "{\"TokenIssuancePolicy\":{\"Version\":1,\"SigningAlgorithm\":\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\",\"TokenResponseSigningPolicy\":\"TokenOnly\",\"SamlTokenVersion\":\"2.0\"}}"
       ],
-      "displayName": "KEEL-RT-248-issuance",
+      "displayName": "KEEL-RT-1031-token-issuance-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/tokenIssuancePolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

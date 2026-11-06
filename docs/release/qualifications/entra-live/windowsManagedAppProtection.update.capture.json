@@ -1,38 +1,29 @@
 {
-  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "windowsManagedAppProtection:I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
+    "naturalKey": "windowsManagedAppProtection:I_5fe5867b-dc07-808a-89df-3068abbde803",
     "resourceType": "windowsManagedAppProtection",
     "operation": "update",
-    "targetId": "I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
+    "targetId": "I_5fe5867b-dc07-808a-89df-3068abbde803",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:05:22.162Z",
+    "recordedAt": "2026-11-06T15:00:14.216Z",
     "priorState": {
-      "id": "I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
-      "apps": [
-        {
-          "id": "com.microsoft.edge.windows",
-          "version": "-1558151929",
-          "mobileAppIdentifier": {
-            "@odata.type": "#microsoft.graph.windowsAppIdentifier",
-            "windowsAppId": "com.microsoft.edge"
-          }
-        }
-      ],
-      "version": "\"4daa8838-01f3-8733-85a0-1b5372d42da3\"",
+      "id": "I_5fe5867b-dc07-808a-89df-3068abbde803",
+      "apps": [],
+      "version": "\"d17c758c-905c-8520-8e54-4f1a8f19b1e7\"",
       "isAssigned": false,
-      "description": "KEEL-RT drifted",
-      "displayName": "KEEL-RT-236-win-mam",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-windows-managed-app-protection-u",
       "printBlocked": true,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections(apps())/$entity",
-      "createdDateTime": "2026-10-30T00:55:08.4701407Z",
+      "createdDateTime": "2026-11-06T14:27:15.8747077Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "deployedAppCount": 1,
-      "apps@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections('I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6')/apps",
-      "lastModifiedDateTime": "2026-10-30T01:02:12Z",
+      "deployedAppCount": 0,
+      "apps@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections('I_5fe5867b-dc07-808a-89df-3068abbde803')/apps",
+      "lastModifiedDateTime": "2026-11-06T14:42:54Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,
@@ -56,9 +47,9 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-win-mam",
-      "printBlocked": false,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-windows-managed-app-protection-u",
+      "printBlocked": true,
       "roleScopeTagIds": [
         "0"
       ],
@@ -85,19 +76,19 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "postState": {
-      "id": "I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
-      "version": "\"0cf2bafe-6c70-842a-8e49-ca30715046e3\"",
+      "id": "I_5fe5867b-dc07-808a-89df-3068abbde803",
+      "version": "\"279838fd-9da8-80b6-9e48-fecbae7ad6bd\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-win-mam",
-      "printBlocked": false,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-windows-managed-app-protection-u",
+      "printBlocked": true,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections/$entity",
-      "createdDateTime": "2026-10-30T00:55:08.4701407Z",
+      "createdDateTime": "2026-11-06T14:27:15.8747077Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "deployedAppCount": 1,
-      "lastModifiedDateTime": "2026-10-30T01:05:22Z",
+      "deployedAppCount": 0,
+      "lastModifiedDateTime": "2026-11-06T15:00:14Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,

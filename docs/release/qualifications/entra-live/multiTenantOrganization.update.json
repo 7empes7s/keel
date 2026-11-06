@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "multiTenantOrganization",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "failed",
+  "ok": false,
+  "outcome": "failed",
+  "outcomeDetail": "status 400",
+  "readBackVerified": false,
+  "observedAt": "2026-11-06T15:38:27.678Z",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
+  "naturalKey": "multiTenantOrganization:multiTenantOrganization",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "06399cc8a75d473c0f88858824081f4ccdd6d64baa27b96791ed14ae3c6f568d",
+  "proofRef": "docs/release/qualifications/entra-live/multiTenantOrganization.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "9daff62813a8e6db5ade4d7c6719f5f33445eee7c5f53e1d308ee713c91a4a49"
+    }
+  }
+}

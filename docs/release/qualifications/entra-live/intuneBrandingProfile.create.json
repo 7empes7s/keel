@@ -7,23 +7,23 @@
   "resourceType": "intuneBrandingProfile",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-30T01:10:22.545Z",
-  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
-  "naturalKey": "intuneBrandingProfile:82e900d1-a179-87e2-b526-6c7c4c44bbf3",
+  "observedAt": "2026-11-06T15:00:13.162Z",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "naturalKey": "intuneBrandingProfile:58ce2a95-aafc-8e3b-acdb-e1c296b74189",
   "fixtureKind": "named-object",
-  "captureSha256": "edaa9da6f57d1537cfd1c8b919dce577168f69cb9b3bec7484b9a303d18ba446",
+  "captureSha256": "80cf0493a91de1649c3a4f0cdf23595dbf7968e1f014a5756c4883d747431ca4",
   "proofRef": "docs/release/qualifications/entra-live/intuneBrandingProfile.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "0517b5f34cd8219549771ee40fec14699d30f0151c20b32c11aed57e18b03e0c"
+      "signature": "c6c5a70bd981eec7f5e35422222100e68bde7b2baee39cc940cd4d446807fa90"
     }
   }
 }

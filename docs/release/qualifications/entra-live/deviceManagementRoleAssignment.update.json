@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceManagementRoleAssignment",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T15:00:12.724Z",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "naturalKey": "deviceManagementRoleAssignment:e012a33b-1ca1-80ed-a998-f87317ab4021",
+  "fixtureKind": "named-object",
+  "captureSha256": "1ec5ac6605a6a031e3b2f11c6852d5db4ec5ed846a9a4b7469048138d6bec977",
+  "proofRef": "docs/release/qualifications/entra-live/deviceManagementRoleAssignment.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "98733543edf57acbc48076ee6917425442c99ff02c0eebd090ab4f08ab86d8b6"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "entry": {
+    "naturalKey": "microsoft365AppsInstallationOptions:microsoft365AppsInstallationOptions",
+    "resourceType": "microsoft365AppsInstallationOptions",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:34:38.980Z",
+    "priorState": {
+      "appsForMac": {
+        "isMicrosoft365AppsEnabled": true,
+        "isSkypeForBusinessEnabled": true
+      },
+      "updateChannel": "current",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/microsoft365Apps/installationOptions/$entity",
+      "appsForWindows": {
+        "isVisioEnabled": false,
+        "isProjectEnabled": true,
+        "isMicrosoft365AppsEnabled": true,
+        "isSkypeForBusinessEnabled": true
+      }
+    },
+    "intendedState": {
+      "appsForMac": {
+        "isMicrosoft365AppsEnabled": true,
+        "isSkypeForBusinessEnabled": true
+      },
+      "updateChannel": "current",
+      "appsForWindows": {
+        "isVisioEnabled": true,
+        "isProjectEnabled": true,
+        "isMicrosoft365AppsEnabled": true,
+        "isSkypeForBusinessEnabled": true
+      }
+    },
+    "postState": {
+      "appsForMac": {
+        "isMicrosoft365AppsEnabled": true,
+        "isSkypeForBusinessEnabled": true
+      },
+      "updateChannel": "current",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/microsoft365Apps/installationOptions/$entity",
+      "appsForWindows": {
+        "isVisioEnabled": true,
+        "isProjectEnabled": true,
+        "isMicrosoft365AppsEnabled": true,
+        "isSkypeForBusinessEnabled": true
+      }
+    }
+  }
+}

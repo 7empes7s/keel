@@ -1,22 +1,22 @@
 {
-  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "deviceCategory:1dc8506b-e0f0-851b-93c3-58cc7bcf8913",
+    "naturalKey": "deviceCategory:afc7f105-0632-8c2e-b77a-3d9bd986b6b2",
     "resourceType": "deviceCategory",
     "operation": "create",
-    "targetId": "556d9795-7f72-888e-84c0-980cb17f0c1a",
+    "targetId": "9f58c9b3-7208-80f2-9889-b114b2274106",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:25:20.526Z",
+    "recordedAt": "2026-11-06T14:49:15.647Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-237-category"
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-category-c"
     },
     "postState": {
-      "id": "556d9795-7f72-888e-84c0-980cb17f0c1a",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-237-category",
+      "id": "9f58c9b3-7208-80f2-9889-b114b2274106",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-category-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCategories/$entity"
     }
   }

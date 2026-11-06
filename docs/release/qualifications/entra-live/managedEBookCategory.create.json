@@ -7,23 +7,23 @@
   "resourceType": "managedEBookCategory",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-30T01:25:20.527Z",
-  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
-  "naturalKey": "managedEBookCategory:d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
+  "observedAt": "2026-11-06T14:49:20.826Z",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "naturalKey": "managedEBookCategory:8e7ace7e-1de4-8f17-92a1-b49ef94c2672",
   "fixtureKind": "named-object",
-  "captureSha256": "67cedf88d8538168c6945341ed553d73bc5d8018a4b8d5abedfb809fa4143b91",
+  "captureSha256": "33fcdec48fa2ab150cb12420ef656e2a624735a343f88b3f6160e19c12447a59",
   "proofRef": "docs/release/qualifications/entra-live/managedEBookCategory.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "d31c469a0313859889060d602f984fc22a99f78408632a22d5610e0bff0f00c7"
+      "signature": "535b8d3e2da870232dc8de1482a153cb07173339ed6e24921e07c5a00ede1d0e"
     }
   }
 }

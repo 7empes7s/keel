@@ -1,17 +1,17 @@
 {
-  "restoreRef": "ecfc55d5-62d3-886f-b130-38f6c2c29778",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "defenderRoleDefinition:8efb55dc-4e35-8ab5-bed7-4a4faa3ac449",
+    "naturalKey": "defenderRoleDefinition:de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
     "resourceType": "defenderRoleDefinition",
     "operation": "update",
-    "targetId": "d8183185-461f-8a39-bc76-b0d81ba401e5",
+    "targetId": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-04T01:54:24.937Z",
+    "recordedAt": "2026-11-06T14:49:14.270Z",
     "priorState": {
-      "id": "d8183185-461f-8a39-bc76-b0d81ba401e5",
-      "description": "KEEL-RT drifted (Q258)",
-      "displayName": "KEEL-RT-258-defender-role",
+      "id": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-defender-role-definition-u",
       "rolePermissions": [
         {
           "allowedResourceActions": [
@@ -21,8 +21,8 @@
       ]
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (Q258)",
-      "displayName": "KEEL-RT-258-defender-role",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-defender-role-definition-u",
       "rolePermissions": [
         {
           "allowedResourceActions": [
@@ -32,9 +32,9 @@
       ]
     },
     "postState": {
-      "id": "d8183185-461f-8a39-bc76-b0d81ba401e5",
-      "description": "KEEL-RT test fixture (Q258)",
-      "displayName": "KEEL-RT-258-defender-role",
+      "id": "de2bbaed-ee5f-8e94-91ca-b34d22af0d5a",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-defender-role-definition-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleDefinitions/$entity",
       "rolePermissions": [
         {

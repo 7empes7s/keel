@@ -1,0 +1,60 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "accessPackage:dd85ea9e-510c-83c8-ad76-966d70413cb2",
+    "resourceType": "accessPackage",
+    "operation": "update",
+    "targetId": "dd85ea9e-510c-83c8-ad76-966d70413cb2",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:10.065Z",
+    "priorState": {
+      "id": "dd85ea9e-510c-83c8-ad76-966d70413cb2",
+      "catalog": {
+        "id": "63f0bf51-16ee-805e-b4f5-cfe6ef5eae02",
+        "state": "published",
+        "uniqueName": null,
+        "catalogType": "userManaged",
+        "description": "KEEL-RT test fixture (#1031)",
+        "displayName": "KEEL-RT-1031-access-package-catalog-u",
+        "createdDateTime": "2026-11-06T14:28:01.837Z",
+        "modifiedDateTime": "2026-11-06T14:49:13.707Z",
+        "isExternallyVisible": false,
+        "serviceManagementReference": null
+      },
+      "isHidden": true,
+      "uniqueName": null,
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-package-u",
+      "createdDateTime": "2026-11-06T14:30:23.797Z",
+      "modifiedDateTime": "2026-11-06T14:43:37.573Z"
+    },
+    "intendedState": {
+      "isHidden": true,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-package-u"
+    },
+    "postState": {
+      "id": "dd85ea9e-510c-83c8-ad76-966d70413cb2",
+      "catalog": {
+        "id": "63f0bf51-16ee-805e-b4f5-cfe6ef5eae02",
+        "state": "published",
+        "uniqueName": null,
+        "catalogType": "userManaged",
+        "description": "KEEL-RT test fixture (#1031)",
+        "displayName": "KEEL-RT-1031-access-package-catalog-u",
+        "createdDateTime": "2026-11-06T14:28:01.837Z",
+        "modifiedDateTime": "2026-11-06T14:49:13.707Z",
+        "isExternallyVisible": false,
+        "serviceManagementReference": null
+      },
+      "isHidden": true,
+      "uniqueName": null,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-package-u",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/accessPackages(catalog())/$entity",
+      "createdDateTime": "2026-11-06T14:30:23.797Z",
+      "modifiedDateTime": "2026-11-06T15:00:10.123Z"
+    }
+  }
+}

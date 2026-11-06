@@ -1,17 +1,17 @@
 {
-  "restoreRef": "f78c3f8f-db7e-830c-a11e-8ad5a9d55075",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "windowsFeatureUpdateProfile:91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+    "naturalKey": "windowsFeatureUpdateProfile:7f629363-6491-867b-8bdb-39ed0cfff93e",
     "resourceType": "windowsFeatureUpdateProfile",
     "operation": "create",
-    "targetId": "96e25412-96fe-8cc5-ac01-72798c16877d",
+    "targetId": "80aefd70-afc7-8af6-b348-67cc49a5ef60",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T22:50:33.041Z",
+    "recordedAt": "2026-11-06T15:00:14.051Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-feature",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-windows-feature-update-profile-c",
       "roleScopeTagIds": [
         "0"
       ],
@@ -25,11 +25,11 @@
       "installLatestWindows10OnWindows11IneligibleDevice": false
     },
     "postState": {
-      "id": "96e25412-96fe-8cc5-ac01-72798c16877d",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-feature",
+      "id": "80aefd70-afc7-8af6-b348-67cc49a5ef60",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-windows-feature-update-profile-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/windowsFeatureUpdateProfiles/$entity",
-      "createdDateTime": "2026-10-29T22:50:33.1405173Z",
+      "createdDateTime": "2026-11-06T15:00:14.1582093Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -40,7 +40,7 @@
       },
       "endOfSupportDate": "2027-10-12T00:00:00Z",
       "featureUpdateVersion": "Windows 11, version 24H2",
-      "lastModifiedDateTime": "2026-10-29T22:50:33.1405173Z",
+      "lastModifiedDateTime": "2026-11-06T15:00:14.1582093Z",
       "deployableContentDisplayName": "Windows 11, version 24H2",
       "installFeatureUpdatesOptional": false,
       "installLatestWindows10OnWindows11IneligibleDevice": false

@@ -1,17 +1,17 @@
 {
-  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "deviceManagementReusablePolicySetting:410bce07-50e1-8c19-b8fe-4c199419f1eb",
+    "naturalKey": "deviceManagementReusablePolicySetting:3c211424-0208-8385-9474-e38bc630d004",
     "resourceType": "deviceManagementReusablePolicySetting",
     "operation": "create",
-    "targetId": "bf0e29a6-06ed-835f-9396-cbff26faf4c6",
+    "targetId": "49a22d46-fe9f-8d46-9e98-62b600b6adb2",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:10:20.419Z",
+    "recordedAt": "2026-11-06T14:49:16.994Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-addresses",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-management-reusable-policy-setting-c",
       "settingInstance": {
         "@odata.type": "#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance",
         "settingDefinitionId": "vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}",
@@ -22,7 +22,7 @@
               {
                 "@odata.type": "#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance",
                 "simpleSettingValue": {
-                  "value": "{1c56bb2e-a1b5-8629-9e24-05526ba96c38}",
+                  "value": "{f90e8e56-1e59-8b7a-b87b-acadf28b69ea}",
                   "@odata.type": "#microsoft.graph.deviceManagementConfigurationStringSettingValue",
                   "settingValueTemplateReference": null
                 },
@@ -33,7 +33,7 @@
               {
                 "@odata.type": "#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance",
                 "simpleSettingValue": {
-                  "value": "KEEL-RT-236-addresses",
+                  "value": "KEEL-RT-1031-device-management-reusable-policy-setting-c",
                   "@odata.type": "#microsoft.graph.deviceManagementConfigurationStringSettingValue",
                   "settingValueTemplateReference": null
                 },
@@ -75,9 +75,9 @@
       "settingDefinitionId": "vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}"
     },
     "postState": {
-      "id": "bf0e29a6-06ed-835f-9396-cbff26faf4c6",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-addresses",
+      "id": "49a22d46-fe9f-8d46-9e98-62b600b6adb2",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-management-reusable-policy-setting-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/reusablePolicySettings(id,displayName,description,settingDefinitionId,settingInstance,lastModifiedDateTime)/$entity",
       "settingInstance": {
         "@odata.type": "#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance",
@@ -89,7 +89,7 @@
               {
                 "@odata.type": "#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance",
                 "simpleSettingValue": {
-                  "value": "{3d3fa447-f2f7-8301-be73-6da415369d1a}",
+                  "value": "{bd6846d8-91c3-8603-9646-f7401870b65f}",
                   "@odata.type": "#microsoft.graph.deviceManagementConfigurationStringSettingValue",
                   "settingValueTemplateReference": null
                 },
@@ -100,7 +100,7 @@
               {
                 "@odata.type": "#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance",
                 "simpleSettingValue": {
-                  "value": "KEEL-RT-236-addresses",
+                  "value": "KEEL-RT-1031-device-management-reusable-policy-setting-c",
                   "@odata.type": "#microsoft.graph.deviceManagementConfigurationStringSettingValue",
                   "settingValueTemplateReference": null
                 },
@@ -140,7 +140,7 @@
         "settingInstanceTemplateReference": null
       },
       "settingDefinitionId": "vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}",
-      "lastModifiedDateTime": "2026-10-30T01:10:20Z"
+      "lastModifiedDateTime": "2026-11-06T14:49:17Z"
     }
   }
 }

@@ -1,21 +1,21 @@
 {
-  "restoreRef": "6dba1dd8-38e1-8ff1-b4f7-23efac8abb41",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "application:30659b31-ea5f-866e-8684-9bc50e1d7114",
+    "naturalKey": "application:654b14f4-f302-8f8c-91b4-33300c43ce60",
     "resourceType": "application",
     "operation": "restore-soft-deleted",
-    "targetId": "960d90d7-2365-847d-a9d2-b46cd9a51b77",
+    "targetId": "c080afad-3a11-807c-9353-ce4b282063e7",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:08:50.033Z",
+    "recordedAt": "2026-11-06T15:00:10.066Z",
     "priorState": {
-      "id": "960d90d7-2365-847d-a9d2-b46cd9a51b77",
-      "appId": "30659b31-ea5f-866e-8684-9bc50e1d7114",
-      "displayName": "KEEL-RT-246-app",
-      "deletedDateTime": "2026-10-30T00:05:34Z"
+      "id": "c080afad-3a11-807c-9353-ce4b282063e7",
+      "appId": "654b14f4-f302-8f8c-91b4-33300c43ce60",
+      "displayName": "KEEL-RT-1031-app-s",
+      "deletedDateTime": "2026-11-06T14:43:37Z"
     },
     "intendedState": {
-      "id": "960d90d7-2365-847d-a9d2-b46cd9a51b77",
+      "id": "c080afad-3a11-807c-9353-ce4b282063e7",
       "api": {
         "acceptMappedClaims": null,
         "oauth2PermissionScopes": [],
@@ -44,14 +44,14 @@
         "privacyStatementUrl": null
       },
       "tags": [],
-      "appId": "30659b31-ea5f-866e-8684-9bc50e1d7114",
+      "appId": "654b14f4-f302-8f8c-91b4-33300c43ce60",
       "notes": null,
       "addIns": [],
       "appRoles": [],
       "isDisabled": null,
       "uniqueName": null,
-      "description": null,
-      "displayName": "KEEL-RT-246-app",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-app-s",
       "publicClient": {
         "redirectUris": []
       },
@@ -60,8 +60,7 @@
       "identifierUris": [],
       "keyCredentials": [],
       "optionalClaims": null,
-      "signInAudience": "AzureADMyOrg",
-      "createdDateTime": "2026-10-29T23:48:03Z",
+      "createdDateTime": "2026-11-06T14:30:10Z",
       "deletedDateTime": null,
       "publisherDomain": "t42987720ee3.example",
       "samlMetadataUrl": null,
@@ -96,7 +95,7 @@
       }
     },
     "postState": {
-      "id": "960d90d7-2365-847d-a9d2-b46cd9a51b77",
+      "id": "c080afad-3a11-807c-9353-ce4b282063e7",
       "api": {
         "acceptMappedClaims": null,
         "oauth2PermissionScopes": [],
@@ -125,14 +124,14 @@
         "privacyStatementUrl": null
       },
       "tags": [],
-      "appId": "30659b31-ea5f-866e-8684-9bc50e1d7114",
+      "appId": "654b14f4-f302-8f8c-91b4-33300c43ce60",
       "notes": null,
       "addIns": [],
       "appRoles": [],
       "isDisabled": null,
       "uniqueName": null,
-      "description": null,
-      "displayName": "KEEL-RT-246-app",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-app-s",
       "publicClient": {
         "redirectUris": []
       },
@@ -143,7 +142,7 @@
       "keyCredentials": [],
       "optionalClaims": null,
       "signInAudience": "AzureADMyOrg",
-      "createdDateTime": "2026-10-29T23:48:03Z",
+      "createdDateTime": "2026-11-06T14:30:10Z",
       "deletedDateTime": null,
       "publisherDomain": "t42987720ee3.example",
       "samlMetadataUrl": null,

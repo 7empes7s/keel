@@ -7,23 +7,23 @@
   "resourceType": "group",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "cc350ab5b615716c3220e922ffd17a3dcf067fc9",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-30T00:14:45.971Z",
-  "restoreRef": "bf94a888-c413-8c6c-b0d5-b66fb7c1dc06",
-  "naturalKey": "group:KEEL-RT-246-group",
+  "observedAt": "2026-11-06T15:42:57.500Z",
+  "restoreRef": "07db8f47-f26e-8d79-a3c5-0a70780920c2",
+  "naturalKey": "group:KEEL-RT-1031-group-c",
   "fixtureKind": "named-object",
-  "captureSha256": "a23640ded0278192d328040998738770190464d490d5dfa9c141ec2db8389538",
+  "captureSha256": "9d78de289b79fb323197c52614efbad63978056b7e981da1642adbe8ad5c675b",
   "proofRef": "docs/release/qualifications/entra-live/group.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "fc7755c4257265305aaf2f3a5a787e1d895e6c031d235b105929d2404bdcc749"
+      "signature": "a2443c3cda652aa5d4f16c42de8c7eccf5d1297fd0c323c1e1751709fe9748eb"
     }
   }
 }

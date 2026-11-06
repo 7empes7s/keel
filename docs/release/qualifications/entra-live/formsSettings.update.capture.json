@@ -1,0 +1,47 @@
+{
+  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "entry": {
+    "naturalKey": "formsSettings:formsSettings",
+    "resourceType": "formsSettings",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:34:38.979Z",
+    "priorState": {
+      "settings": {
+        "isBingImageSearchEnabled": false,
+        "isExternalSendFormEnabled": true,
+        "isExternalShareResultEnabled": true,
+        "isExternalShareTemplateEnabled": true,
+        "isInOrgFormsPhishingScanEnabled": true,
+        "isRecordIdentityByDefaultEnabled": true,
+        "isExternalShareCollaborationEnabled": true
+      },
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#admin/forms/$entity"
+    },
+    "intendedState": {
+      "settings": {
+        "isBingImageSearchEnabled": true,
+        "isExternalSendFormEnabled": true,
+        "isExternalShareResultEnabled": true,
+        "isExternalShareTemplateEnabled": true,
+        "isInOrgFormsPhishingScanEnabled": true,
+        "isRecordIdentityByDefaultEnabled": true,
+        "isExternalShareCollaborationEnabled": true
+      }
+    },
+    "postState": {
+      "settings": {
+        "isBingImageSearchEnabled": true,
+        "isExternalSendFormEnabled": true,
+        "isExternalShareResultEnabled": true,
+        "isExternalShareTemplateEnabled": true,
+        "isInOrgFormsPhishingScanEnabled": true,
+        "isRecordIdentityByDefaultEnabled": true,
+        "isExternalShareCollaborationEnabled": true
+      },
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#admin/forms/$entity"
+    }
+  }
+}

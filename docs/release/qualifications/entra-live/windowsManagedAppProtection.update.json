@@ -7,23 +7,23 @@
   "resourceType": "windowsManagedAppProtection",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-30T01:05:22.162Z",
-  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
-  "naturalKey": "windowsManagedAppProtection:I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
+  "observedAt": "2026-11-06T15:00:14.216Z",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "naturalKey": "windowsManagedAppProtection:I_5fe5867b-dc07-808a-89df-3068abbde803",
   "fixtureKind": "named-object",
-  "captureSha256": "e46dbcc736cfd46c61b85e1adb32ca188587cc60475ed7c7338b9dd007e3c6b1",
+  "captureSha256": "fb0a0dea6ba24900a9baddebe47d0a6c53c77ac685681786e8b0e7e85fbfd962",
   "proofRef": "docs/release/qualifications/entra-live/windowsManagedAppProtection.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "54a2a2e84690f0cec0c43d4ea774d752591ef89822d798e87b6e37235432d4a8"
+      "signature": "7ba3e02002e103cec8c49e48dce134ad8fc84b3c3fb30df24b0f8cbeaf82ae21"
     }
   }
 }

@@ -1,0 +1,214 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "accessPackageAssignmentPolicy:311230c4-fe50-8b3e-96a9-49cb3e29c28b",
+    "resourceType": "accessPackageAssignmentPolicy",
+    "operation": "update",
+    "targetId": "311230c4-fe50-8b3e-96a9-49cb3e29c28b",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:21.524Z",
+    "priorState": {
+      "id": "311230c4-fe50-8b3e-96a9-49cb3e29c28b",
+      "questions": [],
+      "expiration": {
+        "type": "afterDuration",
+        "duration": "P30D",
+        "endDateTime": null
+      },
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-policy-u",
+      "accessPackage": {
+        "id": "dd85ea9e-510c-83c8-ad76-966d70413cb2",
+        "isHidden": true,
+        "uniqueName": null,
+        "description": "KEEL-RT test fixture (#1031) drifted",
+        "displayName": "KEEL-RT-1031-package-u",
+        "createdDateTime": "2026-11-06T14:30:23.797Z",
+        "modifiedDateTime": "2026-11-06T14:43:37.573Z"
+      },
+      "reviewSettings": null,
+      "createdDateTime": "2026-11-06T14:30:25.083Z",
+      "modifiedDateTime": "2026-11-06T14:43:31.55Z",
+      "requestorSettings": {
+        "onBehalfRequestors": [],
+        "enableTargetsToSelfAddAccess": true,
+        "allowCustomAssignmentSchedule": false,
+        "enableTargetsToSelfRemoveAccess": true,
+        "enableTargetsToSelfUpdateAccess": false,
+        "enableOnBehalfRequestorsToAddAccess": false,
+        "enableOnBehalfRequestorsToRemoveAccess": false,
+        "enableOnBehalfRequestorsToUpdateAccess": false
+      },
+      "allowedTargetScope": "specificDirectoryUsers",
+      "notificationSettings": {
+        "isAssignmentNotificationDisabled": false
+      },
+      "specificAllowedTargets": [
+        {
+          "groupId": "0d3e5fca-8d48-84d7-a899-7513ba50c9f6",
+          "@odata.type": "#microsoft.graph.groupMembers",
+          "description": "KEEL-RT-1031-group-u"
+        }
+      ],
+      "questions@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies('311230c4-fe50-8b3e-96a9-49cb3e29c28b')/questions",
+      "requestApprovalSettings": {
+        "stages": [
+          {
+            "primaryApprovers": [
+              {
+                "userId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+                "@odata.type": "#microsoft.graph.singleUser",
+                "description": "KEEL-RT-20260908 Carla Nguyen"
+              }
+            ],
+            "escalationApprovers": [],
+            "isEscalationEnabled": false,
+            "durationBeforeEscalation": null,
+            "fallbackPrimaryApprovers": [],
+            "fallbackEscalationApprovers": [],
+            "approverInformationVisibility": "default",
+            "durationBeforeAutomaticDenial": "P7D",
+            "isApproverJustificationRequired": false
+          }
+        ],
+        "isApprovalRequiredForAdd": true,
+        "isApprovalRequiredForUpdate": false,
+        "isRequestorJustificationRequired": false
+      },
+      "automaticRequestSettings": null
+    },
+    "intendedState": {
+      "questions": [],
+      "expiration": {
+        "type": "afterDuration",
+        "duration": "P30D",
+        "endDateTime": null
+      },
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-policy-u",
+      "accessPackage": {
+        "id": "dd85ea9e-510c-83c8-ad76-966d70413cb2"
+      },
+      "reviewSettings": null,
+      "requestorSettings": {
+        "onBehalfRequestors": [],
+        "enableTargetsToSelfAddAccess": true,
+        "allowCustomAssignmentSchedule": false,
+        "enableTargetsToSelfRemoveAccess": true,
+        "enableTargetsToSelfUpdateAccess": false,
+        "enableOnBehalfRequestorsToAddAccess": false,
+        "enableOnBehalfRequestorsToRemoveAccess": false,
+        "enableOnBehalfRequestorsToUpdateAccess": false
+      },
+      "allowedTargetScope": "specificDirectoryUsers",
+      "notificationSettings": {
+        "isAssignmentNotificationDisabled": false
+      },
+      "specificAllowedTargets": [
+        {
+          "groupId": "0d3e5fca-8d48-84d7-a899-7513ba50c9f6",
+          "@odata.type": "#microsoft.graph.groupMembers",
+          "description": "KEEL-RT-1031-group-u"
+        }
+      ],
+      "requestApprovalSettings": {
+        "stages": [
+          {
+            "primaryApprovers": [
+              {
+                "userId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+                "@odata.type": "#microsoft.graph.singleUser",
+                "description": "KEEL-RT-20260908 Carla Nguyen"
+              }
+            ],
+            "escalationApprovers": [],
+            "isEscalationEnabled": false,
+            "durationBeforeEscalation": null,
+            "fallbackPrimaryApprovers": [],
+            "fallbackEscalationApprovers": [],
+            "approverInformationVisibility": "default",
+            "durationBeforeAutomaticDenial": "P7D",
+            "isApproverJustificationRequired": false
+          }
+        ],
+        "isApprovalRequiredForAdd": true,
+        "isApprovalRequiredForUpdate": false,
+        "isRequestorJustificationRequired": false
+      },
+      "automaticRequestSettings": null
+    },
+    "postState": {
+      "id": "311230c4-fe50-8b3e-96a9-49cb3e29c28b",
+      "questions": [],
+      "expiration": {
+        "type": "afterDuration",
+        "duration": "P30D",
+        "endDateTime": null
+      },
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-policy-u",
+      "accessPackage": {
+        "id": "dd85ea9e-510c-83c8-ad76-966d70413cb2",
+        "isHidden": true,
+        "uniqueName": null,
+        "description": "KEEL-RT test fixture (#1031) drifted",
+        "displayName": "KEEL-RT-1031-package-u",
+        "createdDateTime": "2026-11-06T14:30:23.797Z",
+        "modifiedDateTime": "2026-11-06T14:43:37.573Z"
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies(accessPackage())/$entity",
+      "reviewSettings": null,
+      "createdDateTime": "2026-11-06T14:30:25.083Z",
+      "modifiedDateTime": "2026-11-06T15:00:21.857Z",
+      "requestorSettings": {
+        "onBehalfRequestors": [],
+        "enableTargetsToSelfAddAccess": true,
+        "allowCustomAssignmentSchedule": false,
+        "enableTargetsToSelfRemoveAccess": true,
+        "enableTargetsToSelfUpdateAccess": false,
+        "enableOnBehalfRequestorsToAddAccess": false,
+        "enableOnBehalfRequestorsToRemoveAccess": false,
+        "enableOnBehalfRequestorsToUpdateAccess": false
+      },
+      "allowedTargetScope": "specificDirectoryUsers",
+      "notificationSettings": {
+        "isAssignmentNotificationDisabled": false
+      },
+      "specificAllowedTargets": [
+        {
+          "groupId": "0d3e5fca-8d48-84d7-a899-7513ba50c9f6",
+          "@odata.type": "#microsoft.graph.groupMembers",
+          "description": "KEEL-RT-1031-group-u"
+        }
+      ],
+      "questions@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies('311230c4-fe50-8b3e-96a9-49cb3e29c28b')/questions",
+      "requestApprovalSettings": {
+        "stages": [
+          {
+            "primaryApprovers": [
+              {
+                "userId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+                "@odata.type": "#microsoft.graph.singleUser",
+                "description": "KEEL-RT-20260908 Carla Nguyen"
+              }
+            ],
+            "escalationApprovers": [],
+            "isEscalationEnabled": false,
+            "durationBeforeEscalation": null,
+            "fallbackPrimaryApprovers": [],
+            "fallbackEscalationApprovers": [],
+            "approverInformationVisibility": "default",
+            "durationBeforeAutomaticDenial": "P7D",
+            "isApproverJustificationRequired": false
+          }
+        ],
+        "isApprovalRequiredForAdd": true,
+        "isApprovalRequiredForUpdate": false,
+        "isRequestorJustificationRequired": false
+      },
+      "automaticRequestSettings": null,
+      "customExtensionStageSettings": []
+    }
+  }
+}

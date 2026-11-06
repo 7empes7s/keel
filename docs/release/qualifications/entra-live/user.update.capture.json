@@ -1,5 +1,5 @@
 {
-  "restoreRef": "e836c92c-5798-86f9-8dfe-2aca83983558",
+  "restoreRef": "07db8f47-f26e-8d79-a3c5-0a70780920c2",
   "entry": {
     "naturalKey": "user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
     "resourceType": "user",
@@ -7,7 +7,7 @@
     "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T23:05:27.212Z",
+    "recordedAt": "2026-11-06T15:42:57.503Z",
     "priorState": {
       "id": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
       "city": "Seattle",
@@ -17,7 +17,7 @@
       "jobTitle": "QA Automation Lead",
       "userType": "Member",
       "givenName": null,
-      "department": "KEEL-RT drifted",
+      "department": "Engineering-drifted",
       "employeeId": "KRT260908003",
       "postalCode": null,
       "companyName": "KEEL Enterprise Test Co",

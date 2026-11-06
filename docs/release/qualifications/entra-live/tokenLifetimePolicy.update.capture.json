@@ -1,37 +1,37 @@
 {
-  "restoreRef": "e4176fac-b702-8771-be59-6ec884076ae5",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "tokenLifetimePolicy:563fb372-00ca-8419-96b3-892ab6c5e481",
+    "naturalKey": "tokenLifetimePolicy:ca108717-8277-8cd5-9f06-a7e0656e9d40",
     "resourceType": "tokenLifetimePolicy",
     "operation": "update",
-    "targetId": "563fb372-00ca-8419-96b3-892ab6c5e481",
+    "targetId": "ca108717-8277-8cd5-9f06-a7e0656e9d40",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:38:03.719Z",
+    "recordedAt": "2026-11-06T14:49:26.323Z",
     "priorState": {
-      "id": "563fb372-00ca-8419-96b3-892ab6c5e481",
+      "id": "ca108717-8277-8cd5-9f06-a7e0656e9d40",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-248-lifetime-drifted",
+      "displayName": "KEEL-RT-1031-token-lifetime-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "563fb372-00ca-8419-96b3-892ab6c5e481",
+      "id": "ca108717-8277-8cd5-9f06-a7e0656e9d40",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-248-lifetime",
+      "displayName": "KEEL-RT-1031-token-lifetime-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "563fb372-00ca-8419-96b3-892ab6c5e481",
+      "id": "ca108717-8277-8cd5-9f06-a7e0656e9d40",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-248-lifetime",
+      "displayName": "KEEL-RT-1031-token-lifetime-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/tokenLifetimePolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

@@ -1,37 +1,37 @@
 {
-  "restoreRef": "c137ce4d-a5bd-8484-9261-c16106820d67",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "activityBasedTimeoutPolicy:32489f18-a655-8678-bc93-13098c644081",
+    "naturalKey": "activityBasedTimeoutPolicy:e0283044-f067-80f1-b85f-cdb68d9e4ede",
     "resourceType": "activityBasedTimeoutPolicy",
     "operation": "update",
-    "targetId": "32489f18-a655-8678-bc93-13098c644081",
+    "targetId": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T13:55:12.143Z",
+    "recordedAt": "2026-11-06T14:49:13.632Z",
     "priorState": {
-      "id": "32489f18-a655-8678-bc93-13098c644081",
+      "id": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
       "definition": [
-        "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"02:00:00\"}]}}"
+        "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1025-idle",
+      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "32489f18-a655-8678-bc93-13098c644081",
+      "id": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1025-idle",
+      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "32489f18-a655-8678-bc93-13098c644081",
+      "id": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1025-idle",
+      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/activityBasedTimeoutPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

@@ -17,17 +17,17 @@
         "liveEventsConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:01:04.957Z"
+      "at": "2026-11-06T14:54:51.660Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsCallingPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-641f6bfa",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-2551ebc1",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:01:45.300Z"
+      "at": "2026-11-06T14:55:32.505Z"
     },
     {
       "credential": "collector",
@@ -36,7 +36,7 @@
         "callingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:01:50.430Z"
+      "at": "2026-11-06T14:55:38.653Z"
     },
     {
       "credential": "collector",
@@ -45,17 +45,17 @@
         "callingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:01:54.021Z"
+      "at": "2026-11-06T14:55:42.217Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsCallingPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-d9b285e2",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-1b614cd4",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:01:57.795Z"
+      "at": "2026-11-06T14:55:46.002Z"
     },
     {
       "credential": "collector",
@@ -64,17 +64,17 @@
         "callingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:02.396Z"
+      "at": "2026-11-06T14:55:50.269Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsCallingPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-d9b285e2",
-        "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
+        "Identity": "Tag:KEEL-RT-capture-1b614cd4",
+        "Description": "KEEL capture 2026-11-06T14:48:36.841Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:02:06.576Z"
+      "at": "2026-11-06T14:55:53.968Z"
     },
     {
       "credential": "collector",
@@ -83,17 +83,17 @@
         "callingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:11.720Z"
+      "at": "2026-11-06T14:55:58.547Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsOnlineVoiceRoutingPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-32404297",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-01708c0d",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:02:15.224Z"
+      "at": "2026-11-06T14:56:02.311Z"
     },
     {
       "credential": "collector",
@@ -102,7 +102,7 @@
         "voiceRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:19.887Z"
+      "at": "2026-11-06T14:56:06.805Z"
     },
     {
       "credential": "collector",
@@ -111,17 +111,17 @@
         "voiceRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:23.704Z"
+      "at": "2026-11-06T14:56:10.440Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsOnlineVoiceRoutingPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-33419ac9",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-194ead79",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:02:27.288Z"
+      "at": "2026-11-06T14:56:14.102Z"
     },
     {
       "credential": "collector",
@@ -130,17 +130,17 @@
         "voiceRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:31.204Z"
+      "at": "2026-11-06T14:56:20.502Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsOnlineVoiceRoutingPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-33419ac9",
-        "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        "Identity": "Tag:KEEL-RT-capture-194ead79",
+        "Description": "KEEL capture 2026-11-06T14:48:36.841Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:02:34.633Z"
+      "at": "2026-11-06T14:56:24.163Z"
     },
     {
       "credential": "collector",
@@ -149,17 +149,17 @@
         "voiceRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:38.304Z"
+      "at": "2026-11-06T14:56:31.938Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTenantDialPlan",
       "parameters": {
-        "Identity": "KEEL-RT-capture-320658b8",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-3009c013",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:02:41.852Z"
+      "at": "2026-11-06T14:56:35.952Z"
     },
     {
       "credential": "collector",
@@ -168,7 +168,7 @@
         "dialPlan"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:46.223Z"
+      "at": "2026-11-06T14:56:40.179Z"
     },
     {
       "credential": "collector",
@@ -177,17 +177,17 @@
         "dialPlan"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:49.821Z"
+      "at": "2026-11-06T14:56:44.079Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTenantDialPlan",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-35ff3e72",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-320658b8",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:02:53.735Z"
+      "at": "2026-11-06T14:56:47.877Z"
     },
     {
       "credential": "collector",
@@ -196,17 +196,17 @@
         "dialPlan"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:02:57.602Z"
+      "at": "2026-11-06T14:56:51.974Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTenantDialPlan",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-35ff3e72",
-        "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
+        "Identity": "Tag:KEEL-RT-capture-320658b8",
+        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:01.286Z"
+      "at": "2026-11-06T14:56:55.540Z"
     },
     {
       "credential": "collector",
@@ -215,17 +215,17 @@
         "dialPlan"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:05.116Z"
+      "at": "2026-11-06T14:57:01.344Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsEmergencyCallingPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-5fb765d8",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-b5c6b6e1",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:08.907Z"
+      "at": "2026-11-06T14:57:05.371Z"
     },
     {
       "credential": "collector",
@@ -234,7 +234,7 @@
         "emergencyCallingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:13.013Z"
+      "at": "2026-11-06T14:57:10.337Z"
     },
     {
       "credential": "collector",
@@ -243,17 +243,17 @@
         "emergencyCallingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:16.824Z"
+      "at": "2026-11-06T14:57:13.905Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsEmergencyCallingPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-6947985b",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-32c76178",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:21.142Z"
+      "at": "2026-11-06T14:57:17.436Z"
     },
     {
       "credential": "collector",
@@ -262,17 +262,17 @@
         "emergencyCallingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:25.415Z"
+      "at": "2026-11-06T14:57:22.031Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsEmergencyCallingPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-6947985b",
-        "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        "Identity": "Tag:KEEL-RT-capture-32c76178",
+        "Description": "KEEL capture 2026-11-06T14:19:52.579Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:29.135Z"
+      "at": "2026-11-06T14:57:25.948Z"
     },
     {
       "credential": "collector",
@@ -281,17 +281,17 @@
         "emergencyCallingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:32.964Z"
+      "at": "2026-11-06T14:57:31.995Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsEmergencyCallRoutingPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-b369d357",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-8c206cd5",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:36.621Z"
+      "at": "2026-11-06T14:57:35.507Z"
     },
     {
       "credential": "collector",
@@ -300,7 +300,7 @@
         "emergencyCallRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:40.980Z"
+      "at": "2026-11-06T14:57:43.174Z"
     },
     {
       "credential": "collector",
@@ -309,17 +309,17 @@
         "emergencyCallRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:45.084Z"
+      "at": "2026-11-06T14:57:46.914Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsEmergencyCallRoutingPolicy",
       "parameters": {
         "Identity": "Tag:KEEL-RT-capture-5c2b9362",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:48.711Z"
+      "at": "2026-11-06T14:57:50.536Z"
     },
     {
       "credential": "collector",
@@ -328,7 +328,7 @@
         "emergencyCallRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:03:52.785Z"
+      "at": "2026-11-06T14:57:56.421Z"
     },
     {
       "credential": "restorer",
@@ -338,7 +338,7 @@
         "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:03:56.340Z"
+      "at": "2026-11-06T14:58:00.583Z"
     },
     {
       "credential": "collector",
@@ -347,17 +347,17 @@
         "emergencyCallRoutingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:00.190Z"
+      "at": "2026-11-06T14:58:04.831Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsCallParkPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-87098ac7",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-873c26ba",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:04:04.235Z"
+      "at": "2026-11-06T14:58:08.458Z"
     },
     {
       "credential": "collector",
@@ -366,7 +366,7 @@
         "callParkPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:09.782Z"
+      "at": "2026-11-06T14:58:14.271Z"
     },
     {
       "credential": "collector",
@@ -375,17 +375,17 @@
         "callParkPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:13.812Z"
+      "at": "2026-11-06T14:58:18.058Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsCallParkPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-c20a5ffb",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-349c0203",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:04:17.295Z"
+      "at": "2026-11-06T14:58:21.977Z"
     },
     {
       "credential": "collector",
@@ -394,17 +394,17 @@
         "callParkPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:21.922Z"
+      "at": "2026-11-06T14:58:26.319Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsCallParkPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-c20a5ffb",
-        "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
+        "Identity": "Tag:KEEL-RT-capture-349c0203",
+        "Description": "KEEL capture 2026-11-06T14:19:52.579Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:04:25.688Z"
+      "at": "2026-11-06T14:58:30.015Z"
     },
     {
       "credential": "collector",
@@ -413,17 +413,17 @@
         "callParkPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:30.124Z"
+      "at": "2026-11-06T14:58:35.706Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsCallingLineIdentity",
       "parameters": {
-        "Identity": "KEEL-RT-capture-c93455b7",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-53740a75",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:04:33.988Z"
+      "at": "2026-11-06T14:58:39.242Z"
     },
     {
       "credential": "collector",
@@ -432,7 +432,7 @@
         "callerIdPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:38.459Z"
+      "at": "2026-11-06T14:58:44.246Z"
     },
     {
       "credential": "collector",
@@ -441,17 +441,17 @@
         "callerIdPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:41.953Z"
+      "at": "2026-11-06T14:58:47.698Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsCallingLineIdentity",
       "parameters": {
         "Identity": "Tag:KEEL-RT-capture-b698554a",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:04:45.589Z"
+      "at": "2026-11-06T14:58:51.166Z"
     },
     {
       "credential": "collector",
@@ -460,7 +460,7 @@
         "callerIdPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:49.414Z"
+      "at": "2026-11-06T14:58:55.255Z"
     },
     {
       "credential": "restorer",
@@ -470,7 +470,7 @@
         "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:04:53.034Z"
+      "at": "2026-11-06T14:58:58.924Z"
     },
     {
       "credential": "collector",
@@ -479,17 +479,17 @@
         "callerIdPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:04:56.607Z"
+      "at": "2026-11-06T14:59:02.907Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsOnlineVoicemailPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-179c529d",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-dae33747",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:00.421Z"
+      "at": "2026-11-06T14:59:06.734Z"
     },
     {
       "credential": "collector",
@@ -498,7 +498,7 @@
         "voicemailPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:04.997Z"
+      "at": "2026-11-06T14:59:10.951Z"
     },
     {
       "credential": "collector",
@@ -507,17 +507,17 @@
         "voicemailPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:08.571Z"
+      "at": "2026-11-06T14:59:14.399Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsOnlineVoicemailPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-08c842b5",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-083b65c5",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:12.494Z"
+      "at": "2026-11-06T14:59:17.994Z"
     },
     {
       "credential": "collector",
@@ -526,17 +526,17 @@
         "voicemailPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:17.950Z"
+      "at": "2026-11-06T14:59:24.781Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsOnlineVoicemailPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-08c842b5",
-        "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
+        "Identity": "Tag:KEEL-RT-capture-083b65c5",
+        "Description": "KEEL capture 2026-11-06T14:48:36.841Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:21.839Z"
+      "at": "2026-11-06T14:59:28.280Z"
     },
     {
       "credential": "collector",
@@ -545,17 +545,17 @@
         "voicemailPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:26.505Z"
+      "at": "2026-11-06T14:59:36.259Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsMeetingBroadcastPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-0c685898",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-6f0da266",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:30.222Z"
+      "at": "2026-11-06T14:59:40.219Z"
     },
     {
       "credential": "collector",
@@ -564,7 +564,7 @@
         "liveEventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:35.185Z"
+      "at": "2026-11-06T14:59:45.473Z"
     },
     {
       "credential": "collector",
@@ -573,17 +573,17 @@
         "liveEventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:38.872Z"
+      "at": "2026-11-06T14:59:48.995Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsMeetingBroadcastPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-60e87c9a",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-0c685898",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:42.406Z"
+      "at": "2026-11-06T14:59:52.651Z"
     },
     {
       "credential": "collector",
@@ -592,17 +592,17 @@
         "liveEventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:47.705Z"
+      "at": "2026-11-06T14:59:56.944Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsMeetingBroadcastPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-60e87c9a",
-        "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        "Identity": "Tag:KEEL-RT-capture-0c685898",
+        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:51.491Z"
+      "at": "2026-11-06T15:00:00.817Z"
     },
     {
       "credential": "collector",
@@ -611,17 +611,17 @@
         "liveEventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:05:55.910Z"
+      "at": "2026-11-06T15:00:06.342Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsEventsPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-f9715004",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "KEEL-RT-capture-6ad8a619",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:05:59.422Z"
+      "at": "2026-11-06T15:00:10.168Z"
     },
     {
       "credential": "collector",
@@ -630,7 +630,7 @@
         "eventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:06:03.362Z"
+      "at": "2026-11-06T15:00:15.407Z"
     },
     {
       "credential": "collector",
@@ -639,17 +639,17 @@
         "eventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:06:07.138Z"
+      "at": "2026-11-06T15:00:19.079Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsEventsPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-6aba9f2c",
-        "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+        "Identity": "Tag:KEEL-RT-capture-146b0bdc",
+        "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:06:11.031Z"
+      "at": "2026-11-06T15:00:23.027Z"
     },
     {
       "credential": "collector",
@@ -658,17 +658,17 @@
         "eventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:06:16.155Z"
+      "at": "2026-11-06T15:00:27.983Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsEventsPolicy",
       "parameters": {
-        "Identity": "Tag:KEEL-RT-capture-6aba9f2c",
-        "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
+        "Identity": "Tag:KEEL-RT-capture-146b0bdc",
+        "Description": "KEEL capture 2026-11-06T14:19:52.579Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T01:06:19.760Z"
+      "at": "2026-11-06T15:00:32.259Z"
     },
     {
       "credential": "collector",
@@ -677,7 +677,7 @@
         "eventsPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T01:06:23.870Z"
+      "at": "2026-11-06T15:00:37.535Z"
     }
   ],
   "values": {

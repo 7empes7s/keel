@@ -1,0 +1,95 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-11-06T14:33:45.078Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "power-platform-settings",
+    "execution": {
+      "transport": "rest-read-only"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "partial",
+    "reads": [
+      {
+        "operationId": "powerplatform.environments",
+        "family": "environment",
+        "version": "2020-10-01",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "powerplatform.dlp-policies",
+        "family": "dlpPolicy",
+        "version": "v2",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "powerplatform.connectors",
+        "family": "connector",
+        "version": "2016-11-01",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "powerplatform.tenant-settings",
+        "family": "tenantSettings",
+        "version": "2020-10-01",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "powerplatform.tenant-isolation",
+        "family": "tenantIsolation",
+        "version": "2020-06-01",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "powerbi.tenant-settings",
+        "family": "powerBiSetting",
+        "version": "v1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "ok": true,
+        "status": "read",
+        "objects": 184,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "d5fdd28c56983330c3d7c3f764d4f2daa146cd25870a4ca98b01afe05bde1b4a"
+    }
+  }
+}

@@ -6,7 +6,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-28T07:20:04.785Z"
+      "at": "2026-11-06T14:29:57.548Z"
     },
     {
       "credential": "collector",
@@ -14,7 +14,7 @@
       "version": "v1.0",
       "path": "/sites/getAllSites",
       "status": 200,
-      "at": "2026-10-28T07:20:04.950Z"
+      "at": "2026-11-06T14:29:57.728Z"
     },
     {
       "credential": "collector",
@@ -22,7 +22,7 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c",
       "status": 200,
-      "at": "2026-10-28T07:20:05.040Z"
+      "at": "2026-11-06T14:29:57.812Z"
     },
     {
       "credential": "collector",
@@ -30,7 +30,7 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
       "status": 200,
-      "at": "2026-10-28T07:20:05.118Z"
+      "at": "2026-11-06T14:29:57.903Z"
     },
     {
       "credential": "restorer",
@@ -38,7 +38,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-28T07:20:05.238Z"
+      "at": "2026-11-06T14:29:57.994Z"
     },
     {
       "credential": "restorer",
@@ -46,7 +46,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-28T07:20:05.567Z"
+      "at": "2026-11-06T14:30:02.448Z"
     },
     {
       "credential": "restorer",
@@ -54,7 +54,23 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-28T07:20:05.651Z"
+      "at": "2026-11-06T14:30:02.522Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-11-06T14:30:04.599Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-11-06T14:30:06.717Z"
     },
     {
       "credential": "restorer",
@@ -62,7 +78,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-28T07:20:05.758Z"
+      "at": "2026-11-06T14:30:07.215Z"
     },
     {
       "credential": "restorer",
@@ -70,11 +86,11 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-28T07:20:05.831Z"
+      "at": "2026-11-06T14:30:07.312Z"
     }
   ],
   "values": {
-    "discoveredSites": 44,
+    "discoveredSites": 46,
     "original": false,
     "wrote": true
   }

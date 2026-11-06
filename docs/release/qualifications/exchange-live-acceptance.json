@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "exchange-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "operation": "exchange.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-28T07:21:57.546Z",
+  "observedAt": "2026-11-06T14:32:29.612Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "teamsQualification": {
       "gate": "teams-live-acceptance",
       "evidence": "teams-live-acceptance.json",
-      "captureLogSha256": "f256dc702f2d9f21b348f5b893c3322fc5f62629e914a84009f9bac9fcfefbdc"
+      "captureLogSha256": "f2c785d28e1823d4b40b3d6435a32e034efe21059553f3db5932ee283ebd8727"
     },
     "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
     "organization": {
@@ -41,20 +41,132 @@
     "grants": {
       "collector": {
         "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
           "Exchange.ManageAsApp",
-          "MailboxSettings.Read"
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
+          "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
         ],
         "roles": [
-          "Exchange Administrator"
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
         ]
       },
       "restorer": {
         "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
           "Exchange.ManageAsApp",
-          "MailboxSettings.ReadWrite"
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
         ],
         "roles": [
-          "Exchange Administrator"
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
         ]
       }
     },
@@ -62,28 +174,28 @@
       {
         "operationId": "exchange.mailbox-settings",
         "version": "v1.0",
-        "capturedAt": "2026-10-28T07:20:57.782Z",
+        "capturedAt": "2026-11-06T14:31:27.970Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "exchange.organization-config",
         "version": "3.10.1",
-        "capturedAt": "2026-10-28T07:21:02.358Z",
+        "capturedAt": "2026-11-06T14:31:31.442Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "exchange.mailbox-hold",
         "version": "3.10.1",
-        "capturedAt": "2026-10-28T07:21:05.731Z",
+        "capturedAt": "2026-11-06T14:31:34.975Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "exchange.client-access",
         "version": "3.10.1",
-        "capturedAt": "2026-10-28T07:21:09.105Z",
+        "capturedAt": "2026-11-06T14:31:38.334Z",
         "ok": true,
         "synthetic": false
       }
@@ -140,9 +252,9 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "preFingerprint": "4e3e304496e21f62aa77653f1599cba954613b4b69e003bd4852d7fa2cd3e11b",
-        "finalFingerprint": "4e3e304496e21f62aa77653f1599cba954613b4b69e003bd4852d7fa2cd3e11b",
-        "capturedAt": "2026-10-28T07:21:13.253Z"
+        "preFingerprint": "c9b6caf73b62efcf461d83d3e3cc919d14d9284b17c0d5675764984cbaec826c",
+        "finalFingerprint": "c9b6caf73b62efcf461d83d3e3cc919d14d9284b17c0d5675764984cbaec826c",
+        "capturedAt": "2026-11-06T14:31:42.116Z"
       },
       "clientAccess": {
         "operationId": "exchange.client-access.update",
@@ -155,7 +267,7 @@
         "restoredToOriginal": true,
         "preFingerprint": "b1fb15afc1522e78bd300fcfd2f85314e35c3ee50bb480afd67f2a2e0f839a48",
         "finalFingerprint": "b1fb15afc1522e78bd300fcfd2f85314e35c3ee50bb480afd67f2a2e0f839a48",
-        "capturedAt": "2026-10-28T07:21:30.603Z"
+        "capturedAt": "2026-11-06T14:32:00.766Z"
       },
       "retention": {
         "operationId": "exchange.mailbox-retention.update",
@@ -169,17 +281,17 @@
           "LitigationHoldEnabled": false,
           "RetentionHoldEnabled": false,
           "SingleItemRecoveryEnabled": true,
-          "RetainDeletedItemsFor": "23.00:00:00"
+          "RetainDeletedItemsFor": "25.00:00:00"
         },
         "after": {
           "LitigationHoldEnabled": false,
           "RetentionHoldEnabled": false,
           "SingleItemRecoveryEnabled": true,
-          "RetainDeletedItemsFor": "24.00:00:00"
+          "RetainDeletedItemsFor": "26.00:00:00"
         },
         "complianceHoldsFingerprint": "cf4196e3e26e0fd624955dc958f42107de5d9ebbf96d706801bb3d7287b4dffe",
         "finalComplianceHoldsFingerprint": "cf4196e3e26e0fd624955dc958f42107de5d9ebbf96d706801bb3d7287b4dffe",
-        "capturedAt": "2026-10-28T07:21:40.635Z"
+        "capturedAt": "2026-11-06T14:32:11.782Z"
       },
       "organization": {
         "operationId": "exchange.organization-config.update",
@@ -195,7 +307,7 @@
         "final": 25,
         "preFingerprint": "a1be119c38ea2df610e237f15472f6d0b85bb378c505c709e067075d7df4d079",
         "finalFingerprint": "a1be119c38ea2df610e237f15472f6d0b85bb378c505c709e067075d7df4d079",
-        "capturedAt": "2026-10-28T07:21:57.546Z"
+        "capturedAt": "2026-11-06T14:32:29.612Z"
       }
     },
     "refusals": {
@@ -214,13 +326,13 @@
       }
     },
     "platformError": {
-      "identity": "keel-rt-u09cd682f187b@t42987720ee3.example",
+      "identity": "keel-rt-ub4cd6f088f0b@t42987720ee3.example",
       "status": "failed",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "[],Write-ErrorMessage",
         "category": "NotSpecified",
-        "message": "||The operation couldn't be performed because object 'keel-rt-u09cd682f187b@t42987720ee3.example' couldn't be found on 'ZRXPR04A12DC003.EURPR04A012.PROD.OUTLOOK.COM'."
+        "message": "||The operation couldn't be performed because object 'keel-rt-ub4cd6f088f0b@t42987720ee3.example' couldn't be found on 'ZRXPR04A12DC003.EURPR04A012.PROD.OUTLOOK.COM'."
       }
     },
     "requests": [
@@ -262,7 +374,7 @@
         "transport": "powershell-cmdlet-job",
         "cmdlet": "Get-Mailbox",
         "parameters": {
-          "Identity": "keel-rt-u09cd682f187b@t42987720ee3.example"
+          "Identity": "keel-rt-ub4cd6f088f0b@t42987720ee3.example"
         },
         "outcome": "failed",
         "error": {
@@ -372,7 +484,7 @@
         "cmdlet": "Set-Mailbox",
         "parameters": {
           "Identity": "keel-rt-u751f32126065@t42987720ee3.example",
-          "RetainDeletedItemsFor": "24.00:00:00"
+          "RetainDeletedItemsFor": "26.00:00:00"
         },
         "outcome": "ok"
       },
@@ -431,47 +543,47 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/user-get-mailboxsettings",
-        "retrievedAt": "2026-10-28T07:20:54.015Z"
+        "retrievedAt": "2026-11-06T14:29:51.010Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-casmailbox",
-        "retrievedAt": "2026-10-28T07:20:54.572Z"
+        "retrievedAt": "2026-11-06T14:29:51.223Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-mailbox",
-        "retrievedAt": "2026-10-28T07:20:55.011Z"
+        "retrievedAt": "2026-11-06T14:29:51.409Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-organizationconfig",
-        "retrievedAt": "2026-10-28T07:20:55.472Z"
+        "retrievedAt": "2026-11-06T14:29:51.586Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/user-update-mailboxsettings?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-28T07:20:55.604Z"
+        "retrievedAt": "2026-11-06T14:29:51.729Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-casmailbox",
-        "retrievedAt": "2026-10-28T07:20:56.186Z"
+        "retrievedAt": "2026-11-06T14:29:51.927Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-mailbox",
-        "retrievedAt": "2026-10-28T07:20:56.539Z"
+        "retrievedAt": "2026-11-06T14:29:52.166Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-organizationconfig",
-        "retrievedAt": "2026-10-28T07:20:57.110Z"
+        "retrievedAt": "2026-11-06T14:29:52.417Z"
       }
     ],
-    "captureLogSha256": "cacd16e6c7bb43fd237cc514cd36675727fd6c47c579bcf755bf21011ef9a9ca"
+    "captureLogSha256": "9d1413cd2d107438883b8df99ffc1f503b13aa4c9643bb8f6e64d7781eaa77b1"
   },
   "proof": {
     "artifact": {
       "path": "exchange-live-acceptance.capture.json",
-      "sha256": "cacd16e6c7bb43fd237cc514cd36675727fd6c47c579bcf755bf21011ef9a9ca"
+      "sha256": "9d1413cd2d107438883b8df99ffc1f503b13aa4c9643bb8f6e64d7781eaa77b1"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "68d0d38247cddb96e3dc15e6ea656b6b76618d1cb2818afc4f3b881107a7c32c"
+      "signature": "df15076b92a4b5d940bb11fd0bad2d889c62653321edbcf624979c23e7ba192e"
     }
   }
 }

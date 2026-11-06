@@ -1,0 +1,152 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-11-06T14:26:40.533Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-org-config",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "exchange-org-config.admin-audit-log",
+        "family": "adminAuditLog",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.irm",
+        "family": "irm",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.message-encryption",
+        "family": "messageEncryption",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.perimeter",
+        "family": "perimeter",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.availability",
+        "family": "availability",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.availability-address-spaces",
+        "family": "availabilityAddressSpace",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.message-classifications",
+        "family": "messageClassification",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.policy-tips",
+        "family": "policyTip",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.resource-config",
+        "family": "resourceConfig",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.partner-applications",
+        "family": "partnerApplication",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-config.on-premises-organizations",
+        "family": "onPremisesOrganization",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:26:40.533Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "fd50faba5bb54909584b8c983a4cb4f6b1854059c979c3db3529cb5ea1a33604"
+    }
+  }
+}

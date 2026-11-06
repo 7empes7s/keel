@@ -271,8 +271,9 @@ test('a mechanism that changes after review invalidates promotion; the reviewed 
 
   // The deleted original is purged before promotion: the same diff would now
   // recreate. The target fingerprint is unchanged — only the mechanism moved.
+  // Issue #1036: the refusal names the write the reviewed plan did not list.
   graph.deleted.clear();
-  await assert.rejects(promote(first, graph), /no longer matches the dry-run artifact/);
+  await assert.rejects(promote(first, graph), /would write what the approved plan did not list: group:hr create \(dry run: restore-soft-deleted\)/);
   assert.equal(graph.writes.length, 0, 'a changed mechanism never writes');
 
   // Reviewed and unchanged: promotion restores from deleted items, keeping the id.

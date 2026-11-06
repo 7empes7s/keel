@@ -67,3 +67,17 @@ export function withoutScriptBodies(resourceType, payload) {
   }
   return copy;
 }
+
+// A Win32 app's detection and requirement scripts are base64 inside its rules (each of
+// the three lists Graph may return), shown by size and full sha256 (contentEffects.mjs).
+function appRuleScriptText(payload) {
+  const lists = ['rules', 'detectionRules', 'requirementRules'].map((field) => (Array.isArray(payload?.[field]) ? payload[field] : []));
+  const first = lists.find((list) => list.some((item) => typeof item?.scriptContent === 'string' && item.scriptContent.length > 0)) ?? [];
+  const scripts = first.map((item) => item?.scriptContent).filter((value) => typeof value === 'string' && value.length > 0);
+  return scripts.length > 0 ? scripts.map((value) => scriptText(value)).join('\n\n') : null;
+}
+export const appRuleScripts = (payload) => {
+  const text = appRuleScriptText(payload);
+  return text === null ? null : `${text.length} characters, sha256 ${scriptFingerprint(text, { full: true })}`;
+};
+export const appRuleScriptDetail = (before, after) => ({ before: appRuleScriptText(before), after: appRuleScriptText(after) });

@@ -41,7 +41,7 @@ import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/resto
 import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
-import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
+import { SCRIPT_BODY_FIELDS, appRuleScriptDetail, appRuleScripts, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
 import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
 
@@ -500,17 +500,6 @@ const userFlowRules = () => APPROVAL_HELD_FIELDS.b2xIdentityUserFlow.map((field)
 // three lists Graph may return), compared by their full sha256.
 const commandLine = (field) => (payload) => (typeof payload?.[field] === 'string' && payload[field].length > 0 ? payload[field] : null);
 const commandDetail = (field) => (before, after) => ({ before: before?.[field] ?? null, after: after?.[field] ?? null });
-function appRuleScriptText(payload) {
-  const lists = ['rules', 'detectionRules', 'requirementRules'].map((field) => (Array.isArray(payload?.[field]) ? payload[field] : []));
-  const first = lists.find((list) => list.some((item) => typeof item?.scriptContent === 'string' && item.scriptContent.length > 0)) ?? [];
-  const scripts = first.map((item) => item?.scriptContent).filter((value) => typeof value === 'string' && value.length > 0);
-  return scripts.length > 0 ? scripts.map((value) => scriptText(value)).join('\n\n') : null;
-}
-const appRuleScripts = (payload) => {
-  const text = appRuleScriptText(payload);
-  return text === null ? null : `${text.length} characters, sha256 ${scriptFingerprint(text, { full: true })}`;
-};
-const appRuleScriptDetail = (before, after) => ({ before: appRuleScriptText(before), after: appRuleScriptText(after) });
 
 /**
  * Reviewed types and their dangerous transitions. Field names follow Microsoft

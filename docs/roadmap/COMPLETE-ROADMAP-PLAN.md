@@ -1,3 +1,5 @@
+> Superseded by [docs/roadmap/PENDING.md](PENDING.md) (2026-11-06); kept for history.
+
 # KEEL complete roadmap — executable implementation plan
 
 Date: 2026-09-15 UTC. Status: reviewed and queued at operator request.

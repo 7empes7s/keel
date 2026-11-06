@@ -1,0 +1,85 @@
+{
+  "restoreRef": "c137ce4d-a5bd-8484-9261-c16106820d67",
+  "entry": {
+    "naturalKey": "servicePrincipal:539d6598-7018-8961-bdf8-acfafe945f02",
+    "resourceType": "servicePrincipal",
+    "operation": "update",
+    "targetId": "00e5b4f0-7507-81a6-b51c-e67c4136db34",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T13:55:24.786Z",
+    "priorState": {
+      "id": "00e5b4f0-7507-81a6-b51c-e67c4136db34",
+      "tags": [],
+      "appId": "539d6598-7018-8961-bdf8-acfafe945f02",
+      "notes": "KEEL live gate 1025 fixture drifted",
+      "appRoles": [],
+      "description": null,
+      "displayName": "KEEL-RT-1025-app",
+      "accountEnabled": true,
+      "signInAudience": "AzureADMyOrg",
+      "servicePrincipalType": "Application",
+      "oauth2PermissionScopes": [],
+      "appRoleAssignmentRequired": false
+    },
+    "intendedState": {
+      "tags": [],
+      "notes": "KEEL live gate 1025 fixture",
+      "description": null,
+      "appRoleAssignmentRequired": false
+    },
+    "postState": {
+      "id": "00e5b4f0-7507-81a6-b51c-e67c4136db34",
+      "info": {
+        "logoUrl": null,
+        "supportUrl": null,
+        "marketingUrl": null,
+        "termsOfServiceUrl": null,
+        "privacyStatementUrl": null
+      },
+      "tags": [],
+      "appId": "539d6598-7018-8961-bdf8-acfafe945f02",
+      "notes": "KEEL live gate 1025 fixture",
+      "addIns": [],
+      "appRoles": [],
+      "homepage": null,
+      "loginUrl": null,
+      "logoutUrl": null,
+      "replyUrls": [],
+      "isDisabled": null,
+      "description": null,
+      "displayName": "KEEL-RT-1025-app",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals/$entity",
+      "accountEnabled": true,
+      "appDescription": null,
+      "appDisplayName": "KEEL-RT-1025-app",
+      "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
+      "keyCredentials": [],
+      "signInAudience": "AzureADMyOrg",
+      "createdDateTime": "2026-11-06T13:47:29Z",
+      "deletedDateTime": null,
+      "alternativeNames": [],
+      "verifiedPublisher": {
+        "displayName": null,
+        "addedDateTime": null,
+        "verifiedPublisherId": null
+      },
+      "passwordCredentials": [],
+      "servicePrincipalType": "Application",
+      "tokenEncryptionKeyId": null,
+      "applicationTemplateId": null,
+      "servicePrincipalNames": [
+        "539d6598-7018-8961-bdf8-acfafe945f02"
+      ],
+      "appOwnerOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+      "oauth2PermissionScopes": [],
+      "samlSingleSignOnSettings": null,
+      "appRoleAssignmentRequired": false,
+      "disabledByMicrosoftStatus": null,
+      "preferredSingleSignOnMode": null,
+      "notificationEmailAddresses": [],
+      "preferredTokenSigningKeyThumbprint": null,
+      "resourceSpecificApplicationPermissions": []
+    }
+  }
+}

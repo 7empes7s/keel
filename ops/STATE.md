@@ -143,9 +143,9 @@ On 2026-11-06, for the master head `01d7b3a84e` (run in the repo without the key
   against its 7-day limit; ScubaGear, 40 days; storage, ServiceNow and NIST at the 30-day limit) and 22 have
   no record (19 Wave 2 read workloads, the onedrive-site-settings writer, the Exchange role and Purview
   unpublish writers). Sentinel (117) is an accepted gap.
-- Entra (#148): 223 registered writes; 124 have a record from another build, 98 have none, and 1 is demoted
-  (`tenantAppManagementPolicy.update`: fixed in code, recapture). `defenderRoleAssignment.update` was
-  recaptured (#988).
+- Entra (#148): 223 registered writes. Batch 1 (#1025, 2026-11-06) captured 12 at the live build `01d7b3a84e`,
+  including the demoted `tenantAppManagementPolicy.update` (now proven); 118 have a record from another build and
+  93 have none. The PR for #1025 lists what is left and why.
 - User flows (#995, fixture-tested only): capture `b2xIdentityUserFlow` create/update and
   `identityUserFlowAttribute` create/update on a `B2X_1_KEEL-RT-148-flow` flow that asks for one custom
   attribute `KEEL-RT-148Attr` (`FIXTURE_GUIDANCE` in `tools/qualification/live-gate-plan.mjs`). Check the

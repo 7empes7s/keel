@@ -1,13 +1,13 @@
 {
-  "restoreRef": "ab1ac713-ddcc-851f-a99f-260fd039b330",
+  "restoreRef": "c137ce4d-a5bd-8484-9261-c16106820d67",
   "entry": {
     "naturalKey": "tenantAppManagementPolicy:tenantAppManagementPolicy",
     "resourceType": "tenantAppManagementPolicy",
     "operation": "update",
     "targetId": null,
-    "outcome": "uncertain",
-    "outcomeDetail": "post-state did not verify",
-    "recordedAt": "2026-11-04T04:16:54.595Z",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T13:55:12.149Z",
     "priorState": {
       "id": "a9898e7c-cb8e-8c97-8d6e-3a6540d66839",
       "isEnabled": false,
@@ -43,7 +43,6 @@
             "state": "enabled",
             "excludeSaml": true,
             "excludeActors": null,
-            "isStateSetByMicrosoft": true,
             "excludeAppsReceivingV2Tokens": true,
             "restrictForAppsCreatedAfterDateTime": "0001-01-01T00:00:00Z"
           }

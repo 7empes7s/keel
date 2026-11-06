@@ -1,30 +1,29 @@
 {
-  "restoreRef": "bee2b98f-efe9-8651-abd4-1ada249a9cff",
+  "restoreRef": "5fc75ec8-4489-805d-8c5c-651f9d5fa896",
   "entry": {
-    "naturalKey": "servicePrincipal:9eb0e7ba-92ec-8f07-a98f-430a141723ce",
+    "naturalKey": "servicePrincipal:539d6598-7018-8961-bdf8-acfafe945f02",
     "resourceType": "servicePrincipal",
     "operation": "create",
-    "targetId": "f34fe90f-f3f1-8be4-9558-2a47d289f8fa",
+    "targetId": "6d0f2985-9786-8b24-8b43-0a6daeaa4c80",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T00:25:37.508Z",
+    "recordedAt": "2026-11-06T13:59:30.691Z",
     "priorState": null,
     "intendedState": {
-      "id": "4eaf6284-570d-8524-8d2d-33a345f36169",
+      "id": "00e5b4f0-7507-81a6-b51c-e67c4136db34",
       "tags": [],
-      "appId": "9eb0e7ba-92ec-8f07-a98f-430a141723ce",
-      "notes": null,
+      "appId": "539d6598-7018-8961-bdf8-acfafe945f02",
+      "notes": "KEEL live gate 1025 fixture",
       "appRoles": [],
       "description": null,
-      "displayName": "KEEL-RT-246-app",
+      "displayName": "KEEL-RT-1025-app",
       "accountEnabled": true,
-      "signInAudience": "AzureADMyOrg",
       "servicePrincipalType": "Application",
       "oauth2PermissionScopes": [],
       "appRoleAssignmentRequired": false
     },
     "postState": {
-      "id": "f34fe90f-f3f1-8be4-9558-2a47d289f8fa",
+      "id": "6d0f2985-9786-8b24-8b43-0a6daeaa4c80",
       "info": {
         "logoUrl": null,
         "supportUrl": null,
@@ -33,8 +32,8 @@
         "privacyStatementUrl": null
       },
       "tags": [],
-      "appId": "9eb0e7ba-92ec-8f07-a98f-430a141723ce",
-      "notes": null,
+      "appId": "539d6598-7018-8961-bdf8-acfafe945f02",
+      "notes": "KEEL live gate 1025 fixture",
       "addIns": [],
       "appRoles": [],
       "homepage": null,
@@ -43,15 +42,15 @@
       "replyUrls": [],
       "isDisabled": null,
       "description": null,
-      "displayName": "KEEL-RT-246-app",
+      "displayName": "KEEL-RT-1025-app",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals/$entity",
       "accountEnabled": true,
       "appDescription": null,
-      "appDisplayName": "KEEL-RT-246-app",
+      "appDisplayName": "KEEL-RT-1025-app",
       "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
       "keyCredentials": [],
       "signInAudience": "AzureADMyOrg",
-      "createdDateTime": "2026-10-30T00:25:37Z",
+      "createdDateTime": "2026-11-06T13:59:30Z",
       "deletedDateTime": null,
       "alternativeNames": [],
       "verifiedPublisher": {
@@ -64,7 +63,7 @@
       "tokenEncryptionKeyId": null,
       "applicationTemplateId": null,
       "servicePrincipalNames": [
-        "9eb0e7ba-92ec-8f07-a98f-430a141723ce"
+        "539d6598-7018-8961-bdf8-acfafe945f02"
       ],
       "appOwnerOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
       "oauth2PermissionScopes": [],

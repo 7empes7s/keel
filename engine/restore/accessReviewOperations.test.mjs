@@ -73,9 +73,15 @@ function reviewsGraph({ definitions = [] } = {}) {
   const calls = [];
   let next = 0;
   const ok = (status, body) => ({ ok: true, status, body: structuredClone(body) });
-  // What Graph adds to a series it stores: reviewers' queryRoot, a pattern's unused parts, a day.
+  // What Graph adds to a series it stores: reviewers' queryRoot, a pattern's unused parts, a day,
+  // and for a group's members query the group to enumerate and a users-only cast (#1033, live).
   const stored = (body, id) => {
     const out = structuredClone({ ...body, id, status: 'NotStarted', createdDateTime: '2026-11-05T09:30:01Z' });
+    const group = /^\/groups\/([^/]+)\/transitiveMembers$/.exec(out.scope?.query ?? '')?.[1];
+    if (group) {
+      out.scope.query = `/groups/${group}/transitiveMembers/microsoft.graph.user`;
+      out.instanceEnumerationScope = { '@odata.type': '#microsoft.graph.accessReviewQueryScope', query: `/v1.0/groups/${group}`, queryType: 'MicrosoftGraph' };
+    }
     out.reviewers = (out.reviewers ?? []).map((reviewer) => ({ queryRoot: 'decisions', ...reviewer }));
     const recurrence = out.settings?.recurrence;
     if (recurrence?.pattern) recurrence.pattern = { month: 0, dayOfMonth: 0, daysOfWeek: [], firstDayOfWeek: 'sunday', index: 'first', ...recurrence.pattern };
@@ -96,6 +102,10 @@ function reviewsGraph({ definitions = [] } = {}) {
     async write(_version, path, { method, body }) {
       calls.push({ method, path, body: structuredClone(body) });
       if (method === 'POST' && path === DEFINITIONS) {
+        // The test tenant refuses what Graph derives itself (#1033, restore 46a7c604).
+        if (body.instanceEnumerationScope?.query || /\/microsoft\.graph\.user$/.test(body.scope?.query ?? '')) {
+          return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'Tenant is not authorized for Custom Scoping Conditions Feature' } } };
+        }
         next += 1;
         const created = stored(body, `cccccccc-0000-4000-8000-00000000000${next}`);
         state.set(created.id, created);
@@ -146,6 +156,44 @@ test('a missing series is created with its group and reviewer matched in the tar
   for (const field of ['id', 'status', 'createdBy', 'createdDateTime', 'lastModifiedDateTime']) assert.equal(field in post.body, false, field);
   assert.match(stepOf(result, 'startDate').description, /started on 2026-01-05, which has passed, so the recreated series starts on the restore day, 2026-11-05/);
   noTrustField(graph);
+});
+
+/** A series as Graph read it back on the test tenant (#1033): the group to enumerate, and a users-only cast. */
+const graphReadBack = () => backupPayload({
+  scope: { '@odata.type': '#microsoft.graph.accessReviewQueryScope', query: `/groups/${SOURCE_GROUP}/transitiveMembers/microsoft.graph.user`, queryType: 'MicrosoftGraph' },
+  instanceEnumerationScope: { '@odata.type': '#microsoft.graph.accessReviewQueryScope', query: `/v1.0/groups/${SOURCE_GROUP}`, queryType: 'MicrosoftGraph' },
+});
+const READ_BACK_REFS = [
+  { field: 'scope.query', symbol: GROUP_KEY, required: true },
+  { field: 'instanceEnumerationScope.query', symbol: GROUP_KEY, required: true },
+  REFS[1],
+];
+
+test('a series backed up as Graph reads it is created without the scope parts Graph derives, and is not made twice (#1033)', async () => {
+  const graph = reviewsGraph();
+  const resource = reviewResource({ payload: graphReadBack(), references: READ_BACK_REFS });
+  const ctx = withRefs({ approvedContentEffects: approved(resource) });
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', ctx);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.skipped, undefined, result.skipped?.reason);
+  const [post] = writes(graph);
+  assert.equal(post.body.scope.query, `/groups/${TARGET_GROUP}/transitiveMembers`);
+  assert.equal('instanceEnumerationScope' in post.body, false);
+  const [written] = graph.state.values();
+  assert.equal(written.instanceEnumerationScope.query, `/v1.0/groups/${TARGET_GROUP}`);
+
+  const again = await applyIdentityObjectWrite(reviewsGraph({ definitions: [written] }), resource, 'create', ctx);
+  assert.match(again.skipped?.reason ?? '', /the access review is already there with the backup's access/);
+});
+
+test('an instanceEnumerationScope naming another group than the scope is kept', async () => {
+  const graph = reviewsGraph();
+  const other = 'aaaaaaaa-0000-4000-8000-000000000105';
+  const payload = { ...graphReadBack(), instanceEnumerationScope: { query: `/v1.0/groups/${other}`, queryType: 'MicrosoftGraph' } };
+  const resource = reviewResource({ payload, references: READ_BACK_REFS.map((ref) => (ref.field === 'instanceEnumerationScope.query' ? { ...ref, symbol: 'group:KEEL-RT-1033-other' } : ref)) });
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', withRefs({ approvedContentEffects: approved(resource) }));
+  assert.match(result.skipped?.reason ?? '', /names the group KEEL-RT-1033-other \(which groups are reviewed\), which is not in the target/);
+  assert.equal(graph.calls.length, 0);
 });
 
 test('the start date is never in the past, and a future one is kept as the backup holds it', async () => {
@@ -289,7 +337,7 @@ test('applyWave: an approved series lands pointed at the target; an unapproved o
   assert.deepEqual(outcome.failed, [], JSON.stringify(outcome.failed));
   assert.deepEqual(outcome.skipped, [], JSON.stringify(outcome.skipped));
   const [written] = graph.state.values();
-  assert.equal(written.scope.query, `/groups/${TARGET_GROUP}/transitiveMembers`);
+  assert.equal(written.scope.query, `/groups/${TARGET_GROUP}/transitiveMembers/microsoft.graph.user`);
   noTrustField(graph);
 
   const held = reviewsGraph();

@@ -17,6 +17,10 @@ Keep it current: update it in the same PR as any change to the facts below, and 
     `failure` says "rolled back to …".
   - On the box: `git -c safe.directory=/opt/keel-live -C /opt/keel-live rev-parse --short HEAD`.
   - Health: `curl -s http://127.0.0.1:3600/api/health` returns `{"status":"ok"}`.
+- **Deploys back on since 2026-11-06** (`keel-deploy.timer` was off from 2026-11-04 to 2026-11-06); first
+  deploy after: `f057e29 -> b9905c2`, health ok. vps-deployer and keelops-deployer are off on purpose, so
+  deploy events are only logged (`WARN: vps-deployer not running`).
+- **Database watchdog installed 2026-11-06** (`keel-db-watchdog.timer`, every minute; #1018).
 - Cloud sessions cannot open portal pages (Access). Check pages with the Playwright harness
   (`portal`, `npm run test:ui`) on fixtures, and live data through a queue item.
 
@@ -92,8 +96,7 @@ so queue edits never deploy.
 
 ## Operator steps waiting
 
-**Database watchdog (#1010).** Once the PR is live (`/opt/keel-live` holds `ops/keel-db-watchdog.sh`), as
-root on Mulinux (keel-operator):
+**Database watchdog (#1010): done 2026-11-06 (#1018).** Kept for a reinstall. As root on Mulinux:
 
 ```sh
 cd /opt/keel-live

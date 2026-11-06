@@ -7,7 +7,7 @@
  *
  * Identity objects: service principal update and delete, recreate of a deleted
  * user (disabled, credentials checklist), the Entra governance types the backup
- * holds in full (attribute sets and custom security attributes: update only), and add-only owner and app role grant edges. Intune: app
+ * holds in full (attribute sets and custom security attributes: a create only once its "can't be undone" effect is approved), partner user sync settings, and add-only owner and app role grant edges. Intune: app
  * protection, app configuration, update profiles, filters, scope tags and
  * notification templates, plus delete of an unassigned policy.
  */
@@ -21,6 +21,7 @@ const POLICY_PROOF = 'engine/restore/entitlementPolicyOperations.test.mjs';
 const ACCESS_REVIEW_PROOF = 'engine/restore/accessReviewOperations.test.mjs';
 const AGREEMENT_PROOF = 'engine/restore/agreementOperations.test.mjs';
 const SYNC_JOB_PROOF = 'engine/restore/synchronizationJobOperations.test.mjs';
+const PERMANENT_PROOF = 'engine/roadmap/permanent-writes.test.mjs';
 
 export default [
   { resourceType: 'servicePrincipal', operation: 'update', path: '/servicePrincipals', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
@@ -31,6 +32,11 @@ export default [
   { resourceType: 'lifecycleManagementSettings', operation: 'update', path: '/identityGovernance/lifecycleWorkflows/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'attributeSet', operation: 'update', path: '/directory/attributeSets', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'customSecurityAttributeDefinition', operation: 'update', path: '/directory/customSecurityAttributeDefinitions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Issue #1015: writes that cannot be undone, behind their "can't be undone" approval.
+  { resourceType: 'attributeSet', operation: 'create', path: '/directory/attributeSets', handler: IDENTITY, idOutcome: 'preserved', proofRef: PERMANENT_PROOF },
+  { resourceType: 'customSecurityAttributeDefinition', operation: 'create', path: '/directory/customSecurityAttributeDefinitions', handler: IDENTITY, idOutcome: 'preserved', proofRef: PERMANENT_PROOF },
+  { resourceType: 'crossTenantIdentitySyncPolicyPartner', operation: 'create', path: '/policies/crossTenantAccessPolicy/partners', handler: IDENTITY, idOutcome: 'preserved', proofRef: PERMANENT_PROOF },
+  { resourceType: 'crossTenantIdentitySyncPolicyPartner', operation: 'update', path: '/policies/crossTenantAccessPolicy/partners', handler: IDENTITY, idOutcome: 'preserved', proofRef: PERMANENT_PROOF },
   { resourceType: 'accessPackageCatalog', operation: 'create', path: '/identityGovernance/entitlementManagement/catalogs', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'accessPackageCatalog', operation: 'update', path: '/identityGovernance/entitlementManagement/catalogs', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Issue #992: access packages and the resource roles they grant.

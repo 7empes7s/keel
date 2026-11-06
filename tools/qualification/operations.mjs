@@ -225,6 +225,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     attributeSet: 'Fixture', name: 'Project', description: 'Fixture attribute', isCollection: false, isSearchable: true,
     status: 'Available', type: 'String', usePreDefinedValuesOnly: false,
   },
+  crossTenantIdentitySyncPolicyPartner: { tenantId: 'fixture-partner-tenant', displayName: 'Fixture partner', userSyncInbound: { isSyncAllowed: true } },
   // Issue #995: a guest sign-up user flow with its parts, and a custom attribute.
   b2xIdentityUserFlow: {
     id: 'B2X_1_Fixture', userFlowType: 'signUpOrSignIn', userFlowTypeVersion: 1,
@@ -617,6 +618,7 @@ const FIXTURE_SEEDS = Object.freeze({
     graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [{ id: 'fixture-catalog-group', originId: 'fixture-group', originSystem: 'AadGroup' }] });
     graph.objects.set(`${EM}/accessPackages/fixture-package`, { id: 'fixture-package', catalog: { id: 'fixture-catalog' }, resourceRoleScopes: [] });
   },
+  crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
 
 // Collections a record lists before it creates, to find one an earlier restore made.
@@ -906,6 +908,12 @@ export function fakeGraph() {
         next += 1;
         const created = { ...body, id: `fixture-${next}` };
         objects.set(roleScopes[1], { ...pkg, resourceRoleScopes: [...(pkg.resourceRoleScopes ?? []), created] });
+        return { ok: true, status: 201, body: created };
+      }
+      // Issue #1015: an attribute set's id is the name it is given; an attribute's is its set and name.
+      if (method === 'POST' && /^\/directory\/(attributeSets|customSecurityAttributeDefinitions)$/.test(path)) {
+        const created = { ...body, id: body.attributeSet ? `${body.attributeSet}_${body.name}` : body.id };
+        objects.set(`${path}/${created.id}`, created);
         return { ok: true, status: 201, body: created };
       }
       if (method === 'PUT' && objects.has(path)) {

@@ -155,8 +155,8 @@ export const COMPLETENESS = Object.freeze({
   lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only')] },
   lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route'), part('Which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person', 'not-written')] },
   lifecycleManagementSettings: {},
-  attributeSet: { missing: [part('An attribute set that no longer exists, which needs a review before it is created', 'not-written')] },
-  customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route'), part('An attribute that no longer exists, which needs a review before it is created', 'not-written')] },
+  attributeSet: {},
+  customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route')] },
   accessPackageCatalog: { missing: [part('The groups, apps and sites in the catalog, which are backed up separately', 'not-written')] },
   accessPackageCatalogResource: { whole: 'not-written', missing: [part('A SharePoint site, or a group or app no access package grants, which is added to the catalog by hand', 'not-written')] },
   accessPackageAssignmentPolicy: { missing: [part('Approval and request history', 'read-only'), part('Custom extensions (Logic Apps) the policy calls', 'not-written')] },
@@ -204,7 +204,7 @@ export const COMPLETENESS = Object.freeze({
   appManagementPolicy: { missing: [part('Which apps the policy is assigned to', 'other-route')] },
   tenantAppManagementPolicy: {},
   multiTenantOrganization: { missing: [part('Each member tenant\'s acceptance', 'read-only')] },
-  crossTenantIdentitySyncPolicyPartner: { whole: 'not-written' },
+  crossTenantIdentitySyncPolicyPartner: { missing: [part('Sync settings for a partner whose cross-tenant access settings are not in the target', 'not-written')] },
 
   // ---- Intune device management
   deviceConfiguration: { missing: [part('Passwords, keys and certificates in Wi-Fi, VPN, certificate and email profiles', 'secret', credentialProfile)] },

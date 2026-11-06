@@ -27,7 +27,8 @@ export type ContentEffectName =
   | "acts-on-accounts"
   | "blocks-sign-in"
   | "access-changing"
-  | "changes-sign-in";
+  | "changes-sign-in"
+  | "permanent";
 
 export interface ContentEffect {
   naturalKey: string;
@@ -54,6 +55,7 @@ const EFFECT_LABELS: Record<ContentEffectName, string> = {
   "blocks-sign-in": "Blocks sign-in",
   "access-changing": "Changes admin access",
   "changes-sign-in": "Changes sign-in",
+  permanent: "Can't be undone",
 };
 
 export function contentEffectLabel(effect: ContentEffectName): string {
@@ -71,6 +73,7 @@ const EFFECT_ICONS: Record<ContentEffectName, IconName> = {
   "blocks-sign-in": "pause",
   "access-changing": "person",
   "changes-sign-in": "service-entra",
+  permanent: "alert",
 };
 
 const show = (value: unknown) => (value === null || value === undefined ? "—" : typeof value === "string" ? value : JSON.stringify(value));
@@ -79,7 +82,7 @@ export function ContentEffectList({ effects, names }: { effects: ContentEffect[]
   return (
     <ul className="content-effect-list">
       {effects.map((effect) => (
-        <li className={`content-effect content-effect-${effect.effect}`} key={`${effect.naturalKey}|${effect.field}`}>
+        <li className={`content-effect content-effect-${effect.effect}`} key={`${effect.naturalKey}|${effect.field}|${effect.effect}`}>
           <div className="content-effect-head">
             <span aria-hidden="true" className="content-effect-kind"><Icon name={EFFECT_ICONS[effect.effect] ?? "alert"} /></span>
             <strong className="resource-name">{names ? namedResource(effect.naturalKey, names, effect.resourceType) : resourceLabel(effect.naturalKey)}</strong>

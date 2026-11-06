@@ -17,7 +17,7 @@ changes.
 | Graph client and catalog | `tools/tenant-probe/` (`graph.mjs`, `auth.mjs`, `catalog.mjs`, `catalog.d/`) | imported by the engine |
 | Qualification tools | `tools/qualification/`, `tools/release/`, `tools/coverage-doc.mjs` | run by hand or by the operator |
 | Status page | `status/` | `keel-status-generate.timer` |
-| Host units | `ops/*.service`, `ops/*.timer` | systemd on Mulinux |
+| Host units | `ops/*.service`, `ops/*.timer`, `ops/keel-deploy/` (the deploy script) | systemd on Mulinux |
 
 ## Data flow
 

@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 49 are full, 127 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 118 at least in part and 9 hold nothing to restore; the other 58 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 50 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 119 at least in part and 9 hold nothing to restore; the other 57 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -45,8 +45,8 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflow settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Custom security attribute sets | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
-| Custom security attributes | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Custom security attribute sets | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Custom security attributes | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Access package catalogs | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Groups, apps and sites in access package catalogs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -131,12 +131,11 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet); which Logic App it calls and how it signs in, and recreating a missing extension, which a restore leaves to a person (in the backup, but KEEL does not write it yet).
   - *You do:* Recreate a missing extension by hand. Check which Logic App each extension calls and how it signs in, and that the Logic App still exists in its Azure subscription.
 - **Lifecycle workflow settings.** Puts the settings back.
-- **Custom security attribute sets.** Puts the description and size limit of an existing set back.
-  - *Not brought back:* an attribute set that no longer exists, which needs a review before it is created (in the backup, but KEEL does not write it yet).
-  - *You do:* An attribute set can never be deleted once it exists, so a missing one is recreated by hand after a review, in the Entra admin center.
-- **Custom security attributes.** Puts the description and status of an existing attribute back, and adds or turns off its allowed values.
-  - *Not brought back:* the values assigned to users and apps (stored separately and not in the backup yet); an attribute that no longer exists, which needs a review before it is created (in the backup, but KEEL does not write it yet).
-  - *You do:* An attribute can never be deleted once it exists, so a missing one is recreated by hand after a review, inside its attribute set. Values assigned to users and apps are not backed up.
+- **Custom security attribute sets.** Recreates a missing set, and puts the description and size limit of an existing set back.
+  - *You do:* An attribute set can never be deleted once it exists, so a restore recreates a missing one only after a second approver approves "Can't be undone", while restore approvals are on for Entra ID.
+- **Custom security attributes.** Recreates a missing attribute with its allowed values, puts the description and status of an existing attribute back, and adds or turns off its allowed values.
+  - *Not brought back:* the values assigned to users and apps (stored separately and not in the backup yet).
+  - *You do:* An attribute can never be deleted once it exists, so a restore recreates a missing one only after a second approver approves "Can't be undone", while restore approvals are on for Entra ID. Values assigned to users and apps are not backed up.
 - **Access package catalogs.** Recreates catalogs and puts their settings back.
   - *Not brought back:* the groups, apps and sites in the catalog, which are backed up separately (in the backup, but KEEL does not write it yet).
   - *You do:* The groups, apps and sites a catalog holds are backed up separately. A restore adds back the groups and apps an access package grants.
@@ -239,7 +238,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Default app credential rules | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-11-04, fix in progress |
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
-| Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | External user leave settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | App creation policies | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -312,8 +311,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Multitenant organization.** Puts the name and description back.
   - *Not brought back:* each member tenant's acceptance (no tool can write it).
   - *You do:* Member tenants and their acceptance are set by each tenant, so add or re-invite them by hand.
-- **Cross-tenant sync per organization** (not built yet). These settings let a partner tenant sync its users into yours, so KEEL will not write them without a review step, which is not built yet.
-  - *You do:* Set the partner's sync settings again in the Entra admin center under cross-tenant access settings, using the backup.
+- **Cross-tenant sync per organization.** Puts back whether each partner organization may sync its users into yours, for a partner that is still set up in cross-tenant access settings.
+  - *Not brought back:* sync settings for a partner whose cross-tenant access settings are not in the target (in the backup, but KEEL does not write it yet).
+  - *You do:* Users a partner syncs in stay when sync is turned off again, so a restore turns sync on only after a second approver approves "Changes admin access" and "Can't be undone", while restore approvals are on for Entra ID. Add a missing partner organization by hand first.
 - **External user leave settings.** Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.
 - **Guest invitation domain restrictions** (KEEL choice). KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.
   - *You do:* Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.

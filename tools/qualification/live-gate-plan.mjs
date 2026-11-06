@@ -158,6 +158,12 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the partner tenant id (pseudonymized in the evidence)', drift: 'change its tenantRestrictions; never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them)',
     note: 'Graph refuses a tenantId that does not exist. Remove the partner entry afterwards.',
   },
+  // Issue #1015: never turn sync on for a live run: users synced in would stay.
+  crossTenantIdentitySyncPolicyPartner: {
+    kind: 'tenant-setting', fixture: 'the sync settings of the same partner entry (decision D-148b), with user sync off',
+    select: 'the partner tenant id (pseudonymized in the evidence)', drift: 'change its displayName only; keep userSyncInbound.isSyncAllowed false',
+    note: 'Never turn sync on in a live run: users synced in from the partner would stay. Check a dry run of a backup with sync on lists "Changes admin access" and "Can\'t be undone", and that the enforce run without that approval writes nothing. Remove the partner entry afterwards.',
+  },
   adminConsentRequestPolicy: {
     kind: 'tenant-setting', fixture: 'the tenant admin consent request policy', select: 'adminConsentRequestPolicy',
     drift: 'change requestDurationInDays',
@@ -365,12 +371,12 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   attributeSet: {
     kind: 'named-object', fixture: 'custom security attribute set KEELRTSet (description Fixture)',
     select: 'KEELRTSet', drift: 'change its description: the restore puts it back',
-    note: 'Update only. An attribute set can never be deleted: create it once and reuse it. Never change its maximum number of attributes.',
+    note: 'An attribute set can never be deleted: reuse it for updates, and never change its maximum number of attributes. Create is not run live (each run would leave a set for good): check its dry run lists "Can\'t be undone" and that the enforce run without that approval writes nothing.',
   },
   customSecurityAttributeDefinition: {
     kind: 'named-object', fixture: 'custom security attribute KEELRTAttr (String, single value, description Fixture) in the set KEELRTSet, assigned to nobody',
     select: 'KEELRTSet_KEELRTAttr', drift: 'change its description: the restore puts it back',
-    note: 'Update only. An attribute can never be deleted, only deactivated: create it once and reuse it. Never assign it to a user or app.',
+    note: 'An attribute can never be deleted, only deactivated: reuse it for updates, and never assign it to a user or app. Create is not run live (each run would leave an attribute for good): check its dry run lists "Can\'t be undone" and that the enforce run without that approval writes nothing.',
   },
   engageCommunity: {
     kind: 'named-object', fixture: `private Viva Engage community ${FIXTURE_PREFIX}-community (description Fixture), owned by a test user`,

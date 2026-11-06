@@ -19,9 +19,12 @@
  *  - the Entra governance types from wave 1 (CAT-ENTRA, PR #259) and the
  *    can be written in full from the backup. A lifecycle workflow is always
  *    created switched off, and a restore never switches one on: that stays a
- *    follow-up step. Attribute sets and custom security attributes are only
- *    updated: one can never be deleted once created, so a create waits for a
- *    review step (IDENTITY_NEEDS_REVIEW).
+ *    follow-up step. Attribute sets and custom security attributes can never be
+ *    deleted once created, so a create is written only once its "can't be
+ *    undone" effect is approved (issue #1015, approvalHeld.mjs
+ *    permanentWriteRefusal); an update is written as before.
+ *  - each partner tenant's user sync settings (issue #1015,
+ *    crossTenantSyncOperations.mjs).
  *
  * Types the backup cannot drive in full (access package assignments, catalog
  * resources on their own) have no record here; IDENTITY_BEST_EFFORT names them
@@ -42,13 +45,14 @@ import {
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects, withoutMicrosoftSet } from '../safety/contentEffects.mjs';
-import { createdOnce, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
+import { createdOnce, permanentWriteRefusal, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import { USER_FLOW_RECORDS } from './userFlowOperations.mjs';
 import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from './accessPackageOperations.mjs';
 import { ASSIGNMENT_POLICY_RECORD, CONNECTED_ORGANIZATION_RECORD, entitlementPolicyDispatch } from './entitlementPolicyOperations.mjs';
 import { ACCESS_REVIEW_RECORD, accessReviewDispatch } from './accessReviewOperations.mjs';
 import { AGREEMENT_RECORD, agreementDispatch } from './agreementOperations.mjs';
 import { SYNCHRONIZATION_JOB_RECORD } from './synchronizationJobOperations.mjs';
+import { IDENTITY_SYNC_RECORD, identitySyncDispatch } from './crossTenantSyncOperations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -785,13 +789,17 @@ export const IDENTITY_RECORDS = Object.freeze({
     resourceType: 'lifecycleManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/settings',
     singleton: true, operations: ['update'], permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecyclemanagementsettings-update'),
   }),
+  // Issue #1015: neither can be deleted once created, so a create waits for its "can't be undone" approval.
   attributeSet: defineRecord({
     resourceType: 'attributeSet', version: 'v1.0', collection: '/directory/attributeSets',
-    operations: ['update'], permission: 'CustomSecAttributeDefinition.ReadWrite.All', docs: v1('directory-post-attributesets'),
+    operations: ['create', 'update'], refusal: permanentWriteRefusal,
+    // A set's id is its name, chosen on create (Graph makes no id for it).
+    transform: (body, { verb, payload }) => (verb === 'create' ? { id: payload.id, ...body } : body),
+    permission: 'CustomSecAttributeDefinition.ReadWrite.All', docs: v1('directory-post-attributesets'),
   }),
   customSecurityAttributeDefinition: defineRecord({
     resourceType: 'customSecurityAttributeDefinition', version: 'v1.0', collection: '/directory/customSecurityAttributeDefinitions',
-    operations: ['update'], readQuery: '$expand=allowedValues',
+    operations: ['create', 'update'], readQuery: '$expand=allowedValues', refusal: permanentWriteRefusal,
     createOnly: ['attributeSet', 'name', 'isCollection', 'isSearchable', 'type', 'allowedValues'],
     afterWrite: allowedValuesAfterWrite, permission: 'CustomSecAttributeDefinition.ReadWrite.All', docs: v1('directory-post-customsecurityattributedefinitions'),
   }),
@@ -816,6 +824,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Issue #1016 (synchronizationJobOperations.mjs): a provisioning job's schema
   // put back, or a missing job created stopped, behind the restore approval.
   synchronizationJob: SYNCHRONIZATION_JOB_RECORD,
+  // Issue #1015 (crossTenantSyncOperations.mjs): user sync from a partner tenant.
+  crossTenantIdentitySyncPolicyPartner: IDENTITY_SYNC_RECORD,
   entitlementManagementSettings: defineRecord({
     resourceType: 'entitlementManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
     singleton: true, operations: ['update'], permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagementsettings-update'),
@@ -1016,16 +1026,6 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Issue #995: guest sign-up user flows (behind the restore approval) and their
   // custom attributes (restore/userFlowOperations.mjs).
   ...USER_FLOW_RECORDS,
-});
-
-/**
- * Types whose write is safe to build but was decided to need a person's review
- * first; they stay manual until an approval step exists for them.
- */
-export const IDENTITY_NEEDS_REVIEW = Object.freeze({
-  attributeSet: 'create only: an attribute set can never be deleted once created (update is written)',
-  customSecurityAttributeDefinition: 'create only: a definition can never be deleted once created (update is written)',
-  crossTenantIdentitySyncPolicyPartner: 'it lets a partner tenant sync its users into this one',
 });
 
 /** Types read in wave 1 that no record here can write in full, and why. */
@@ -1335,7 +1335,7 @@ export async function applyIdentityEdges(writer, operations, ctx = {}) {
 export async function applyIdentityObjectWrite(writer, resource, verb, ctx = {}) {
   if (resource.resourceType === 'user') return applyUserRecreate(writer, resource, verb, ctx);
   const routed = accessPackageDispatch(resource, verb, ctx) ?? entitlementPolicyDispatch(resource, verb, ctx) ?? accessReviewDispatch(resource, verb, ctx)
-    ?? agreementDispatch(resource, verb, ctx);
+    ?? agreementDispatch(resource, verb, ctx) ?? identitySyncDispatch(resource);
   if (routed?.done) return routed.done;
   if (routed) return applyRecordWrite(writer, routed.record, routed.resource, verb, ctx);
   const record = IDENTITY_RECORDS[resource.resourceType];

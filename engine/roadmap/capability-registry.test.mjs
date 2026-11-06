@@ -75,8 +75,10 @@ const REGISTERED = Object.freeze({
   lifecycleWorkflow: ['create', 'update'],
   lifecycleWorkflowCustomTaskExtension: ['update'],
   lifecycleManagementSettings: ['update'],
-  attributeSet: ['update'],
-  customSecurityAttributeDefinition: ['update'],
+  // Issue #1015: a create only behind its "can't be undone" approval.
+  attributeSet: ['create', 'update'],
+  customSecurityAttributeDefinition: ['create', 'update'],
+  crossTenantIdentitySyncPolicyPartner: ['create', 'update'],
   accessPackageCatalog: ['create', 'update'],
   // Issue #992: access packages and the resource roles they grant.
   accessPackage: ['create', 'update'],
@@ -195,7 +197,9 @@ const REGISTERED = Object.freeze({
   featureRolloutPolicy: ['create', 'update'],
 });
 
-const UPSERT_TYPES = new Set(['authenticationContextClassReference']);
+// Issue #1015: an attribute set is created under the backup's name, an attribute
+// under its set and name, and partner sync settings under the partner's tenant id.
+const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner']);
 
 function governor() {
   return new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });

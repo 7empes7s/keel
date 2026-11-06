@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
-  APP_SCOPE_ASSIGNMENT_READS, FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
+  APP_SCOPE_ASSIGNMENT_READS, FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
   buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, userCreateBody,
 } from './identityObjectOperations.mjs';
 import { defineRecord } from './recordWriter.mjs';
@@ -934,7 +934,7 @@ test('a reference that would be remapped to another id is refused', async () => 
   assert.equal(graph.calls.length, 0);
 });
 
-test('an attribute set is only updated: a create waits for a review step', async () => {
+test('an attribute set update is written; a create waits for its "can\'t be undone" approval', async () => {
   const path = '/directory/attributeSets/KEELRTSet';
   const live = { id: 'KEELRTSet', description: 'Old', maxAttributesPerSet: 5 };
   const graph = idoFakeGraph({ seed: { [path]: live } });
@@ -942,13 +942,12 @@ test('an attribute set is only updated: a create waits for a review step', async
   const updated = await applyIdentityObjectWrite(graph, resourceOf('attributeSet', desired, { live: { state: 'present', targetId: 'KEELRTSet', payload: live } }), 'update', FAST);
   assert.equal(updated.failed, undefined, updated.failed?.error);
   assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture set', maxAttributesPerSet: 10 });
-  const created = await applyIdentityObjectWrite(idoFakeGraph(), resourceOf('attributeSet', desired), 'create', FAST);
-  assert.match(created.failed.error, /unsupported operation/);
-  for (const type of ['attributeSet', 'customSecurityAttributeDefinition']) assert.deepEqual(IDENTITY_RECORDS[type].operations, ['update']);
-  assert.equal(IDENTITY_RECORDS.crossTenantIdentitySyncPolicyPartner, undefined);
-  // The default app credential rules moved behind the restore approval (approvalHeld.mjs).
-  assert.equal(IDENTITY_NEEDS_REVIEW.tenantAppManagementPolicy, undefined);
-  assert.ok(Object.keys(IDENTITY_NEEDS_REVIEW).length === 3);
+  // Issue #1015 (roadmap/permanent-writes.test.mjs): a create is held, never sent, without the approval.
+  const createGraph = idoFakeGraph();
+  const created = await applyIdentityObjectWrite(createGraph, resourceOf('attributeSet', desired), 'create', FAST);
+  assert.match(created.skipped.reason, /cannot be undone/);
+  assert.deepEqual(writesOfAll(createGraph), []);
+  for (const type of ['attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner']) assert.deepEqual(IDENTITY_RECORDS[type].operations, ['create', 'update']);
 });
 
 test('every record operation is in the ledger, and best-effort types have no record', () => {

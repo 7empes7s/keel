@@ -479,11 +479,11 @@ export class CmdletError extends Error {
   }
 }
 
-function parameterValueProblem(name, value) {
+function parameterValueProblem(name, value, maxLength = MAX_PARAMETER_LENGTH) {
   if (value === null || typeof value === 'boolean') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? null : `${name} is not a finite number`;
   if (typeof value === 'string') {
-    if (value.length > MAX_PARAMETER_LENGTH) return `${name} is longer than ${MAX_PARAMETER_LENGTH} characters`;
+    if (value.length > maxLength) return `${name} is longer than ${maxLength} characters`;
     // eslint-disable-next-line no-control-regex
     if (/[\u0000-\u001f\u007f]/.test(value)) return `${name} contains a control character`;
     return null;
@@ -501,10 +501,12 @@ function parameterValueProblem(name, value) {
 
 /**
  * The job descriptor for one cmdlet call. Throws on a cmdlet outside
- * `allowedCmdlets`, an invalid parameter name or a non-scalar value. The
- * descriptor never contains PowerShell source.
+ * `allowedCmdlets`, an invalid parameter name or a non-scalar value. A string
+ * longer than MAX_PARAMETER_LENGTH is refused unless `maxParameterLengths`
+ * names that parameter with its own limit (a site template's TemplateGzip).
+ * The descriptor never contains PowerShell source.
  */
-export function cmdletJob({ module, cmdlet, parameters = {}, tenantConfigPath = null }, { allowedCmdlets }) {
+export function cmdletJob({ module, cmdlet, parameters = {}, tenantConfigPath = null }, { allowedCmdlets, maxParameterLengths = {} }) {
   if (!(allowedCmdlets instanceof Set) || allowedCmdlets.size === 0) throw new TypeError('a cmdlet job needs an explicit allowlist');
   if (typeof cmdlet !== 'string' || !CMDLET_NAME.test(cmdlet) || !allowedCmdlets.has(cmdlet)) {
     throw new TypeError(`${cmdlet} is not an allowed cmdlet`);
@@ -514,7 +516,8 @@ export function cmdletJob({ module, cmdlet, parameters = {}, tenantConfigPath = 
   const clean = {};
   for (const [name, value] of Object.entries(parameters)) {
     if (!PARAMETER_NAME.test(name)) throw new TypeError(`${name} is not a parameter name`);
-    const problem = parameterValueProblem(name, value);
+    const maxLength = typeof value === 'string' && Object.hasOwn(maxParameterLengths, name) ? maxParameterLengths[name] : MAX_PARAMETER_LENGTH;
+    const problem = parameterValueProblem(name, value, maxLength);
     if (problem) throw new TypeError(problem);
     clean[name] = Array.isArray(value) ? [...value] : value;
   }
@@ -545,8 +548,8 @@ function envelopeOf(stdout) {
  *   { code, cmdlet, message, category, errorId, exitCode, stderr, jobId }
  * for a cmdlet error, a non-zero exit, a timeout or a malformed answer.
  */
-export async function runCmdlet(call, { allowedCmdlets, ...options } = {}) {
-  const job = cmdletJob(call, { allowedCmdlets });
+export async function runCmdlet(call, { allowedCmdlets, maxParameterLengths, ...options } = {}) {
+  const job = cmdletJob(call, { allowedCmdlets, maxParameterLengths });
   const fail = (code, message, extra = {}) => new CmdletError(`${call.cmdlet}: ${message}`, {
     code, cmdlet: call.cmdlet, message: clip(message), category: null, errorId: null, exitCode: null, stderr: null, jobId: null, ...extra,
   });

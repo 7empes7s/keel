@@ -64,6 +64,10 @@
  *  - `planCompletion(step)`: in a dry run, the completion steps the record's
  *    `afterWrite` would add (a step for a person), so the plan lists the same
  *    outstanding work as the enforce run;
+ *  - `readBack`: { attempts, delayMs } for the reads after a write, for a
+ *    route whose replicas trail its writes longer than the default window
+ *    (an Exchange app scope created on one Exchange DC answers 404 on another,
+ *    #1058); `ctx.readAfterWriteOptions` still overrides it;
  *  - `tenantWide`: the object is one setting for the whole tenant and cannot
  *    carry a KEEL-RT- fixture name. On the test tenant it is planned and
  *    written only with the separate tenant-wide option (`ctx.allowTenantWide`),
@@ -160,6 +164,7 @@ export function defineRecord(spec) {
     collectionNamesType: false,
     tenantWide: false,
     checkedAfterWrite: [],
+    readBack: null,
     ...spec,
     operations: Object.freeze([...(spec.operations ?? [])]),
     excluded: Object.freeze([...(spec.excluded ?? [])]),
@@ -696,7 +701,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   const io = {
     writer,
     retryOperation: ctx.retryOperation ?? ((operation) => operation()),
-    readOptions: ctx.readAfterWriteOptions ?? {},
+    readOptions: { ...record.readBack, ...ctx.readAfterWriteOptions },
   };
   if (!record.operations.includes(verb)) {
     return { failed: { naturalKey, error: `unsupported operation: ${resource.resourceType} ${verb} has no operation record` } };

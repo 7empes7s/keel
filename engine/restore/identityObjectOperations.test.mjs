@@ -705,6 +705,37 @@ test('restore gaps batch 9: an Exchange app access scope is recreated with its f
   assert.deepEqual(patch.body, { customAttributes: backup.customAttributes });
 });
 
+test('an Exchange app access scope that reads back 404 from another Exchange DC after its create is re-read until it shows (#1058)', async () => {
+  const run = async (misses) => {
+    const graph = idoFakeGraph();
+    const read = graph.read.bind(graph);
+    const reads = [];
+    graph.read = async (version, path) => {
+      if (!path.startsWith(`${APP_SCOPES}/`)) return read(version, path);
+      reads.push(path);
+      if (reads.length > misses) return read(version, path);
+      // The live answer (Recheck 1, restore 0631fa34): the scope was created on another DC.
+      const id = path.slice(APP_SCOPES.length + 1);
+      return { ok: false, status: 404, body: { error: { code: 'NotFound', message: `The operation couldn't be performed because object '${id}' couldn't be found on 'DC-FIXTURE01.PROD.OUTLOOK.COM'.` } } };
+    };
+    const result = await applyIdentityObjectWrite(graph, {
+      naturalKey: 'scope-src', resourceType: 'exchangeCustomAppScope', payload: appScope("PrimarySmtpAddress -like 'keel-rt-scope-none*'"), references: [],
+    }, 'create', { ...FAST, readAfterWriteOptions: { delayMs: 0 } });
+    return { result, reads, posts: graph.calls.filter((call) => call.method === 'POST').length };
+  };
+
+  // Lag past the default six reads: the scope still verifies, created once.
+  const lagged = await run(7);
+  assert.equal(lagged.result.failed, undefined, lagged.result.failed?.error);
+  assert.equal(lagged.reads.length, 8);
+  assert.equal(lagged.posts, 1);
+  // A scope that never shows stops at the bound and is not created again.
+  const missing = await run(99);
+  assert.match(missing.result.failed?.error ?? '', /couldn't be found on/);
+  assert.equal(missing.reads.length, 12);
+  assert.equal(missing.posts, 1);
+});
+
 test('an Exchange app access scope an app role assignment uses never has its filter changed by a restore', async () => {
   const live = { ...appScope("PrimarySmtpAddress -like 'keel-rt-scope-mail*'"), id: 'scope-1' };
   const broader = { ...live, customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like '*'" } };

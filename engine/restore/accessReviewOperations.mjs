@@ -22,6 +22,10 @@
  *    left for a person.
  *  - past instances, decisions and history are never recreated: every create
  *    lists that as a manual step.
+ *  - what Graph derives from a group's members query is left out of a create:
+ *    it reads such a series back with the group as instanceEnumerationScope and
+ *    "/microsoft.graph.user" on the query, and refuses both in a create ("Tenant
+ *    is not authorized for Custom Scoping Conditions Feature", issue #1033).
  *
  * Every write sits behind the restore approval (approvalHeld.mjs; the effects
  * show each principal by name, safety/contentEffects.mjs). Routes follow the
@@ -82,6 +86,32 @@ function holdsSent(live, sent) {
   return sent === live;
 }
 
+// A group's members query as Graph reads it back: the users-only cast is its own.
+const DERIVED_USERS = /^(\/groups\/[^/]+\/transitiveMembers)\/microsoft\.graph\.user$/i;
+const SCOPE_GROUP = /^\/groups\/([^/?]+)\//i;
+const INSTANCE_GROUP = /^\/(?:v1\.0\/)?groups\/([^/?]+)$/i;
+
+/** A scope without the users-only cast Graph adds to a group's members query. */
+function withoutDerivedUsers(scope) {
+  const derived = typeof scope?.query === 'string' && DERIVED_USERS.exec(scope.query);
+  return derived ? { ...scope, query: derived[1] } : scope;
+}
+
+/**
+ * A series without what Graph derives from a group's members query (#1033): the
+ * users-only cast, and an instanceEnumerationScope naming the same group.
+ * Graph puts both back, and refuses them in a create.
+ */
+function withoutDerivedScope(payload) {
+  const scope = withoutDerivedUsers(payload.scope);
+  const group = SCOPE_GROUP.exec(String(scope?.query ?? ''))?.[1];
+  const instances = INSTANCE_GROUP.exec(String(payload.instanceEnumerationScope?.query ?? ''))?.[1];
+  const derivedInstances = Boolean(group) && lower(group) === lower(instances);
+  if (scope === payload.scope && !derivedInstances) return payload;
+  const { instanceEnumerationScope: _derived, ...rest } = payload;
+  return { ...(derivedInstances ? rest : payload), scope };
+}
+
 /** Who a query decides, in plain words, from where it sits. */
 function roleOf(path) {
   const top = String(path).split(/[.[]/)[0];
@@ -138,9 +168,10 @@ function targetAccessReview(resource, verb, ctx = {}) {
     return { failed: { naturalKey, error: `the backup does not say what this access review covers (its scope), so it cannot be recreated; set it up by hand in ${PORTAL}` } };
   }
   const references = resource.references ?? [];
-  let rewritten = payload;
+  const sendable = withoutDerivedScope(payload);
+  let rewritten = sendable;
   const missing = [];
-  for (const { path, query } of queryStrings(Object.fromEntries(WRITABLE.map((field) => [field, payload[field]])))) {
+  for (const { path, query } of queryStrings(Object.fromEntries(WRITABLE.map((field) => [field, sendable[field]])))) {
     const guids = query.match(QUERY_GUIDS) ?? [];
     if (guids.length === 0) continue;
     const match = QUERY_PRINCIPAL.exec(query);
@@ -165,7 +196,7 @@ function targetAccessReview(resource, verb, ctx = {}) {
       + `Restore or create ${missing.length === 1 ? 'it' : 'them'} first and run the restore again, or set up the review by hand in ${PORTAL}.`;
     return { skipped: heldStep(naturalKey, description, 'reviewPrincipals', [...new Set(missing.map(({ path }) => path.split(/[.[]/)[0]))]) };
   }
-  if (rewritten !== payload && !remappingFor(TYPE, verb).qualified) {
+  if (rewritten !== sendable && !remappingFor(TYPE, verb).qualified) {
     return { failed: { naturalKey, error: `unqualified-remapping: ${TYPE} ${verb} would point at different ids, and reference remapping is not proven for this operation` } };
   }
 
@@ -208,13 +239,16 @@ function withoutStart(settings) {
 export const ACCESS_REVIEW_RECORD = defineRecord({
   resourceType: TYPE, version: 'v1.0', collection: ACCESS_REVIEW_DEFINITIONS,
   operations: ['create'], writable: WRITABLE,
-  sameField: (_field, desired, live) => holdsSent(live, desired),
+  sameField: (field, desired, live) => (field === 'scope'
+    ? holdsSent(withoutDerivedUsers(live), withoutDerivedUsers(desired))
+    : holdsSent(live, desired)),
   refusal: withApprovalGate(),
   // Graph gives a series a new id on every create: a second restore from the same
   // backup finds the first one's by name and scope, and never makes a second.
   preflight: createdOnce({
     version: 'v1.0', path: ACCESS_REVIEW_DEFINITIONS, label: 'access review',
-    matches: (row, payload) => lower(row?.displayName) === lower(payload.displayName) && holdsSent(row?.scope, payload.scope),
+    matches: (row, payload) => lower(row?.displayName) === lower(payload.displayName)
+      && holdsSent(withoutDerivedUsers(row?.scope), withoutDerivedUsers(payload.scope)),
     same: (row, payload) => ACCESS_FIELDS.every((field) => (field === 'settings'
       ? holdsSent(withoutStart(row?.settings), withoutStart(payload.settings))
       : holdsSent(row?.[field], payload[field]))),

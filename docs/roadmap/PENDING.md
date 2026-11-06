@@ -82,12 +82,8 @@ Shipped and dropped from the old lists: A9 names instead of ids (#965/#970: ever
 
 ## O3: the live portal stays healthy
 
-All four are in #1024 (on Mulinux, no deletes).
-
-- Install the repo `deploy.sh` and `notify-agent.sh` (`ops/keel-deploy/`, #1019) into `/opt/keel-deploy`; the timer is already on, so the box still runs the older copy without the database probe. O3 · S · live
-- Nightly KEEL database dump outside Keel overwrites its file in place (`/usr/local/bin/mimule-backup.sh`, not in the repo): make it dated, keep 7, put the script in `ops/` with a test. O3 · S · code + live
-- Prune review: `keel-prune.timer` stays off; a dry run only, reporting what it would delete against the retention policy (`cli/keel-prune.mjs`). Enabling it is the owner's call. O3 · S · live, then owner
-- Offsite backup: `keel-offsite.timer` (`ops/keel-offsite.sh`) is off since its Hostinger SSH timed out; find the cause, propose the fix. O3 · S · live, then owner
+- Prune: the #1024 dry run (2026-11-06) would delete 10 tier1 hourly snapshots, in line with the policy. Repoint `ExecStart` in `ops/keel-prune.service` from the stopped `/opt/keel` checkout to `/opt/keel-live`, then decide whether to enable `keel-prune.timer`. O3 · S · code, then owner
+- Second, remote offsite copy: the Hostinger host (187.124.7.67) does not answer Mulinux on any port (#1024); once it does, decide whether to set `KEEL_OFFSITE_REMOTE` in `/etc/keel/offsite.env`. Offsite to the vol2 volume runs nightly. O3 · S · owner
 - Terms of use PDFs in `agreement_file_blob` are never pruned (`engine/store/agreementFiles.mjs`; `cli/keel-prune.mjs` does not name the table). O3 · S · code
 - Release readiness JSON (`docs/release/readiness.json`, task-45) is from 2026-09-15 and needs a server run (`release-signoff.md` "Limitations"). O3 · S · live
 

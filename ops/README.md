@@ -74,7 +74,7 @@ database only, and are safe to run freely for that reason.
 ## Offsite database replication
 
 `keel-offsite.sh` ships the most recent `/opt/backups/<YYYY-MM-DD>/keel-db.sql.gz` (produced
-nightly by `/opt/mimoun/backup.sh`) off the VPS root disk, to `/mnt/keel-copy/keel-offsite/` on
+nightly by `ops/mimule-backup.sh`, installed as `/usr/local/bin/mimule-backup.sh`) off the VPS root disk, to `/mnt/keel-copy/keel-offsite/` on
 "vol2": the persistent Hetzner volume (`/dev/disk/by-id/scsi-0HC_Volume_107029601`) mounted at
 `/mnt/keel-copy`. The volume outlives the server, so a rebuilt or deleted VPS doesn't take the only
 copy of the backup with it. The earlier target, a Hostinger VPS at `187.124.7.67`, stopped answering

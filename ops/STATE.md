@@ -21,6 +21,11 @@ Keep it current: update it in the same PR as any change to the facts below, and 
   deploy after: `f057e29 -> b9905c2`, health ok. vps-deployer and keelops-deployer are off on purpose, so
   deploy events are only logged (`WARN: vps-deployer not running`).
 - **Database watchdog installed 2026-11-06** (`keel-db-watchdog.timer`, every minute; #1018).
+- **Host housekeeping 2026-11-06 (#1024):** `/opt/keel-deploy` holds the repo copies of `deploy.sh` and
+  `notify-agent.sh` (database probe and quiet notify; old copies `*.bak-20261106`). The nightly backup
+  (`mimule-backup.timer`, 04:00 UTC) runs the repo's `ops/mimule-backup.sh` from `/usr/local/bin`: it keeps
+  the newest 7 dated folders `/opt/backups/<YYYY-MM-DD>/` (was 3), deletes nothing else, and moves the
+  KEEL dump into place only once verified, so a failed run never overwrites that day's good dump.
 - Cloud sessions cannot open portal pages (Access). Check pages with the Playwright harness
   (`portal`, `npm run test:ui`) on fixtures, and live data through a queue item.
 
@@ -110,13 +115,12 @@ systemctl list-timers keel-db-watchdog.timer --no-pager                         
 `keel-scheduler.service` gains only `StateDirectory=keel-scheduler`. For an alert to reach a person, a
 channel needs a rule that takes alerts (`*`, or `database.*`, at warning or above) on the Notifications page.
 
-**Deploy script in the repo (#1017, merged as #1019): install pending (#1024).** `deploy.sh` and
-`notify-agent.sh` now live in `ops/keel-deploy/` (vps-deployer, which owned them, is off). The repo copy adds
-the database probe to `healthy()` (a release whose database does not answer rolls back; a tree from before
-#1010 has no probe and skips it) and makes `notify-agent.sh` a silent no-op when the agent session it wakes is
-not running. `keel-deploy.timer` is on again (2026-11-06), but it runs the host copy in `/opt/keel-deploy`,
-which a deploy never replaces: until these steps run, the box deploys with the older script (no database
-probe). As root on Mulinux:
+**Deploy script in the repo (#1017, merged as #1019): installed 2026-11-06 (#1024).** Kept for a reinstall.
+`deploy.sh` and `notify-agent.sh` now live in `ops/keel-deploy/` (vps-deployer, which owned them, is off). The
+repo copy adds the database probe to `healthy()` (a release whose database does not answer rolls back; a tree
+from before #1010 has no probe and skips it) and makes `notify-agent.sh` a silent no-op when the agent session
+it wakes is not running. `keel-deploy.timer` runs the host copy in `/opt/keel-deploy`, which a deploy never
+replaces, so a change to these scripts needs these steps again. As root on Mulinux:
 
 ```sh
 D=$(mktemp -d); git -C /opt/keel-live fetch -q origin master
@@ -202,8 +206,17 @@ are closed.
 The list of parked items, and of everything still pending, is `docs/roadmap/PENDING.md`.
 
 - **Redesign Track A (Insights):** A1 to A10 shipped (A9 names-not-ids in #970, A10 alerts from flags in #966 / PR #978).
-- **Host:** the prune schedule is not enabled (needs review first); the nightly database dump outside Keel
-  overwrites its file in place. Both are in #1024.
+- **Host (owner decisions, #1024):**
+  - **Prune** (`keel-prune.timer` off): the 2026-11-06 dry run (one tenant, 653 snapshots) would delete 10,
+    all tier1 hourly snapshots from that day that are neither the day's newest nor referenced; tier2 and
+    tier3 lose none, no content versions go. That matches the default policy (14 daily, 8 weekly,
+    12 monthly, 7 yearly). Before enabling: point `ExecStart` in `ops/keel-prune.service` and the installed
+    unit at `/opt/keel-live` (both still run the stopped `/opt/keel` checkout), then decide.
+  - **Offsite** (`keel-offsite.timer`): on and green, shipping each night's encrypted dump to the vol2
+    volume (`/mnt/keel-copy`, separate disk). The old Hostinger target (187.124.7.67) does not answer
+    from Mulinux at all (no ping, port 22 times out; key `/root/.ssh/playground_vps` and its known_hosts
+    entry are present), so the cause is that host or its firewall, not the key. A second, remote target
+    needs that host fixed first (Hostinger panel), then `KEEL_OFFSITE_REMOTE` in `/etc/keel/offsite.env`.
 
 ## Shared notes for threads
 

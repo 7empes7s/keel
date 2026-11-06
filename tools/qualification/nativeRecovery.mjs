@@ -53,7 +53,7 @@ export const OFFLINE_FIXTURE = Object.freeze({
   name: 'KEEL-RT-native-recovery-fixture',
   resourceType: 'group',
 });
-/** Bounded attempts for reads that trail a directory write (Entra replication lag). */
+/** Bounded attempts for reads and restores that trail a directory write (Entra replication lag). */
 const LAGGED_READ_ATTEMPTS = 5;
 
 /** In-process Graph honouring read, DELETE (to deleted items) and restore. Offline only. */
@@ -111,18 +111,19 @@ export async function captureRoundTrip({ graph, resourceType, objectId, now = ()
     exchanges.push({ step, method: want.method, path: want.path, status: res.status, body: reduce(res.body, route.nameField), ...extra });
     return res;
   };
-  // Re-reads with linear backoff until the object shows up or the bound is
+  // Re-sends with linear backoff while `retry` holds or until the bound is
   // hit; the exchange records the last response plus every attempt's status.
-  const laggedRead = async (step) => {
+  const lagged = async (step, send, retry) => {
     const want = steps.find((s) => s.step === step);
     const attempts = [];
     for (let attempt = 1; ; attempt += 1) {
-      const res = await graph.read('v1.0', want.path);
+      const res = await send(want);
       attempts.push(res.status);
-      if (res.ok || attempt === LAGGED_READ_ATTEMPTS) return call(step, async () => res, { attempts });
+      if (!retry(res) || attempt === LAGGED_READ_ATTEMPTS) return call(step, async () => res, { attempts });
       await sleep(2000 * attempt);
     }
   };
+  const laggedRead = (step) => lagged(step, (w) => graph.read('v1.0', w.path), (res) => !res.ok);
 
   const liveRead = await call('read-live', (w) => graph.read('v1.0', w.path));
   if (!liveRead.ok || liveRead.body?.id !== objectId) throw new Error(`refused: object ${objectId} could not be read (status ${liveRead.status})`);
@@ -139,7 +140,9 @@ export async function captureRoundTrip({ graph, resourceType, objectId, now = ()
   if (del.status !== 204) return stop(`delete returned ${del.status}`);
   const deletedRead = await laggedRead('read-deleted');
   if (!deletedRead.ok) return stop(`deleted-items read returned ${deletedRead.status}; the object is deleted and must be restored manually within retention`);
-  const restore = await call('restore', (w) => graph.write('v1.0', w.path, { method: 'POST', body: {} }));
+  // A 404 here is replication lag: the deleted-items read hit a replica that
+  // has the object and the restore one that does not yet (#1045).
+  const restore = await lagged('restore', (w) => graph.write('v1.0', w.path, { method: 'POST', body: {} }), (res) => res.status === 404);
   if (restore.status !== 200) return stop(`restore returned ${restore.status}; restore manually within retention`);
   const restoredAt = now();
   const readBack = await laggedRead('read-back');

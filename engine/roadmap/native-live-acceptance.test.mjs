@@ -41,10 +41,11 @@ function clock(start = '2026-10-01T10:00:00.000Z') {
 }
 
 /** A Microsoft-shaped directory: GET/DELETE /users/{id}, deleted items and restore. */
-function microsoftFake({ name = FIXTURE_UPN, now, restoreStatus = 200, restoredId = OBJECT_ID, readBackMisses = 0 } = {}) {
+function microsoftFake({ name = FIXTURE_UPN, now, restoreStatus = 200, restoredId = OBJECT_ID, readBackMisses = 0, restoreMisses = 0 } = {}) {
   const writes = [];
   const reads = [];
   let misses = readBackMisses;
+  let restoreLag = restoreMisses;
   let state = 'live';
   let deletedDateTime = null;
   let restored = false;
@@ -67,6 +68,11 @@ function microsoftFake({ name = FIXTURE_UPN, now, restoreStatus = 200, restoredI
         return { ok: true, status: 204, body: null };
       }
       if (method === 'POST' && path === `/directory/deletedItems/${OBJECT_ID}/restore` && state === 'deleted') {
+        // Replication lag (#1045): the restore lands on a replica that has not seen the delete yet.
+        if (restoreLag > 0) {
+          restoreLag -= 1;
+          return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound', message: `Resource '${OBJECT_ID}' does not exist or one of its queried reference-property objects are not present.` } } };
+        }
         if (restoreStatus !== 200) return { ok: false, status: restoreStatus, body: { error: { code: 'Authorization_RequestDenied' } } };
         state = 'live'; restored = true;
         return { ok: true, status: 200, body: body() };
@@ -310,10 +316,40 @@ test('a restore that returns a different object id is not a preserved-id recover
   failsWith(run.file, /object id was not preserved/);
 });
 
-function readBackExchange(run) {
+function exchange(run, step) {
   const artifact = JSON.parse(readFileSync(join(run.dir, `${NATIVE_LIVE_GATE}.artifact.json`), 'utf8'));
-  return artifact.operations[0].exchanges.find((e) => e.step === 'read-back');
+  return artifact.operations[0].exchanges.find((e) => e.step === step);
 }
+const readBackExchange = (run) => exchange(run, 'read-back');
+
+test('a restore that 404s once just after the delete is retried and the capture verifies (#1045)', async () => {
+  const sleeps = [];
+  const run = await runnerCapture({ graphOptions: { restoreMisses: 1 }, sleep: async (ms) => { sleeps.push(ms); } });
+  assert.equal(run.code, 0, run.errors.join(' | '));
+  assert.deepEqual(sleeps, [2000]);
+  const restore = exchange(run, 'restore');
+  assert.equal(restore.status, 200);
+  assert.deepEqual(restore.attempts, [404, 200]);
+  assert.equal(run.graph.writes.filter((w) => w === `POST /directory/deletedItems/${OBJECT_ID}/restore`).length, 2);
+  assert.equal(run.evidence.subject.operations[0].outcome, 'automated');
+  assert.equal(run.evidence.subject.operations[0].idPreserved, true);
+  assert.equal(verifyEvidenceFile(run.file, verifyOpts).ok, true);
+});
+
+test('a restore that keeps returning 404 stops after the bound; other refusals are not retried', async () => {
+  const sleeps = [];
+  const run = await runnerCapture({ graphOptions: { restoreMisses: 99 }, sleep: async (ms) => { sleeps.push(ms); } });
+  assert.equal(run.code, 1);
+  assert.match(run.errors.join(' '), /restore returned 404; restore manually within retention/);
+  assert.equal(sleeps.length, 4);
+  assert.deepEqual(exchange(run, 'restore').attempts, [404, 404, 404, 404, 404]);
+  assert.equal(run.evidence.subject.operations[0].outcome, 'failed');
+  failsWith(run.file, /not a qualified recovery/);
+
+  const denied = await runnerCapture({ graphOptions: { restoreStatus: 403 }, sleep: async () => { throw new Error('a 403 must not be retried'); } });
+  assert.equal(denied.code, 1);
+  assert.deepEqual(exchange(denied, 'restore').attempts, [403]);
+});
 
 test('a read-back that 404s once after restore is retried and the capture verifies', async () => {
   const sleeps = [];

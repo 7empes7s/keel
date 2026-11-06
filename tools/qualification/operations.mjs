@@ -224,6 +224,8 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     attributeSet: 'Fixture', name: 'Project', description: 'Fixture attribute', isCollection: false, isSearchable: true,
     status: 'Available', type: 'String', usePreDefinedValuesOnly: false,
   },
+  // Issue #1015: user sync from a partner tenant, as Graph returns it.
+  crossTenantIdentitySyncPolicyPartner: { tenantId: 'fixture-partner-tenant', displayName: 'Fixture partner', userSyncInbound: { isSyncAllowed: true } },
   // Issue #995: a guest sign-up user flow with its parts, and a custom attribute.
   b2xIdentityUserFlow: {
     id: 'B2X_1_Fixture', userFlowType: 'signUpOrSignIn', userFlowTypeVersion: 1,
@@ -614,6 +616,8 @@ const FIXTURE_SEEDS = Object.freeze({
     graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [{ id: 'fixture-catalog-group', originId: 'fixture-group', originSystem: 'AadGroup' }] });
     graph.objects.set(`${EM}/accessPackages/fixture-package`, { id: 'fixture-package', catalog: { id: 'fixture-catalog' }, resourceRoleScopes: [] });
   },
+  // Issue #1015: sync settings are taken only for a partner the target has.
+  crossTenantIdentitySyncPolicyPartner: (graph) => graph.objects.set('/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant', { tenantId: 'fixture-partner-tenant' }),
 });
 
 // Collections a record lists before it creates, to find one an earlier restore made.
@@ -904,6 +908,19 @@ export function fakeGraph() {
         const created = { ...body, id: `fixture-${next}` };
         objects.set(roleScopes[1], { ...pkg, resourceRoleScopes: [...(pkg.resourceRoleScopes ?? []), created] });
         return { ok: true, status: 201, body: created };
+      }
+      // Issue #1015: an attribute set's id is the name it is given; an attribute's
+      // is its set and name. A partner's sync settings are put for a known partner only.
+      if (method === 'POST' && (path === '/directory/attributeSets' || path === '/directory/customSecurityAttributeDefinitions')) {
+        const created = { ...body, id: path === '/directory/attributeSets' ? body.id : `${body.attributeSet}_${body.name}` };
+        objects.set(`${path}/${created.id}`, created);
+        return { ok: true, status: 201, body: created };
+      }
+      const identitySync = /^(\/policies\/crossTenantAccessPolicy\/partners\/([^/]+))\/identitySynchronization$/.exec(path);
+      if (identitySync && method === 'PUT') {
+        if (!objects.has(identitySync[1])) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
+        objects.set(path, { tenantId: decodeURIComponent(identitySync[2]), ...body });
+        return { ok: true, status: 204, body: null };
       }
       if (method === 'PUT' && objects.has(path)) {
         objects.set(path, { ...body });

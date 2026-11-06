@@ -164,12 +164,12 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts the settings back.',
   }),
   attributeSet: auto('Custom security attribute sets', {
-    keeps: 'Puts the description and size limit of an existing set back.',
-    todo: 'An attribute set can never be deleted once it exists, so a missing one is recreated by hand after a review, in the Entra admin center.',
+    keeps: 'Recreates a missing set, and puts the description and size limit of an existing set back.',
+    todo: 'An attribute set can never be deleted once it exists, so a restore recreates a missing one only after a second approver approves "Can\'t be undone", while restore approvals are on for Entra ID.',
   }),
   customSecurityAttributeDefinition: auto('Custom security attributes', {
-    keeps: 'Puts the description and status of an existing attribute back, and adds or turns off its allowed values.',
-    todo: 'An attribute can never be deleted once it exists, so a missing one is recreated by hand after a review, inside its attribute set. Values assigned to users and apps are not backed up.',
+    keeps: 'Recreates a missing attribute with its allowed values, puts the description and status of an existing attribute back, and adds or turns off its allowed values.',
+    todo: 'An attribute can never be deleted once it exists, so a restore recreates a missing one only after a second approver approves "Can\'t be undone", while restore approvals are on for Entra ID. Values assigned to users and apps are not backed up.',
   }),
   accessPackageCatalog: auto('Access package catalogs', {
     keeps: 'Recreates catalogs and puts their settings back.',
@@ -299,9 +299,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts the name and description back.',
     todo: 'Member tenants and their acceptance are set by each tenant, so add or re-invite them by hand.',
   }),
-  crossTenantIdentitySyncPolicyPartner: manual('Cross-tenant sync per organization', NOT_BUILT,
-    'These settings let a partner tenant sync its users into yours, so KEEL will not write them without a review step, which is not built yet.',
-    'Set the partner\'s sync settings again in the Entra admin center under cross-tenant access settings, using the backup.'),
+  crossTenantIdentitySyncPolicyPartner: auto('Cross-tenant sync per organization', {
+    keeps: 'Puts back whether each partner organization may sync its users into yours, for a partner that is still set up in cross-tenant access settings.',
+    todo: 'Users a partner syncs in stay when sync is turned off again, so a restore turns sync on only after a second approver approves "Changes admin access" and "Can\'t be undone", while restore approvals are on for Entra ID. Add a missing partner organization by hand first.',
+  }),
 
   // ---- Intune device management
   deviceConfiguration: auto('Device configuration profiles', {

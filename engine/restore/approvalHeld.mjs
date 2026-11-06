@@ -15,6 +15,7 @@
  * before and after), so a write the reviewed dry run did not show is refused.
  */
 import { APPROVAL_HELD_FIELDS, classifyContentEffects } from '../safety/contentEffects.mjs';
+import { PERMANENT_EFFECT } from '../safety/permanentEffects.mjs';
 import { outcomeDetail, sameValue, undoesCreate } from './recordWriter.mjs';
 
 export const APPROVAL_HELD_KINDS = Object.freeze(Object.keys(APPROVAL_HELD_FIELDS));
@@ -27,16 +28,19 @@ const sameEffect = (approved, effect) => approved?.effect === effect.effect
   && JSON.stringify(approved.before ?? null) === JSON.stringify(effect.before ?? null)
   && JSON.stringify(approved.after ?? null) === JSON.stringify(effect.after ?? null);
 
-/** The access-changing effects of this write that the promotion did not approve. */
-export function unapprovedAccessEffects(resource, verb, approvedContentEffects = []) {
+/** The effects of this write of the given kinds that the promotion did not approve. */
+function unapprovedEffects(resource, verb, approvedContentEffects, kinds) {
   // A writer that rewrote the backup's ids to the target's (a role assignment's
   // members) keeps the backup as `backupPayload`: the effects are judged on it, as
   // the dry run judged them, and name each principal (contentEffects.mjs).
   const payload = resource.backupPayload ?? resource.payload;
   const { effects } = classifyContentEffects([{ ...resource, payload, verb }]);
-  return effects.filter((effect) => effect.effect === 'access-changing'
+  return effects.filter((effect) => kinds.includes(effect.effect)
     && !(approvedContentEffects ?? []).some((approved) => sameEffect(approved, effect)));
 }
+
+/** The access-changing effects of this write that the promotion did not approve. */
+export const unapprovedAccessEffects = (resource, verb, approvedContentEffects = []) => unapprovedEffects(resource, verb, approvedContentEffects, ['access-changing']);
 
 /**
  * A record `refusal` for an approval-held kind: null when the write may go ahead,
@@ -61,6 +65,30 @@ export function approvalHeldRefusal(resource, verb, ctx = {}) {
     outcome: 'skipped',
     reason: `manual: ${description}`,
     completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'accessApproval', fields: Object.freeze(fields), description })]),
+  });
+}
+
+/**
+ * Issue #1015: a record `refusal` for writes that cannot be undone (a custom
+ * security attribute set or attribute created, user sync from a partner tenant
+ * turned on; safety/permanentEffects.mjs). The write is made only once each of
+ * its "can't be undone" and "changes admin access" effects was approved, or the
+ * customer's setting waived them. A write that carries neither (an update of an
+ * attribute's description, sync turned off) goes ahead. A dry run is never refused.
+ */
+export function permanentWriteRefusal(resource, verb, ctx = {}) {
+  if (verb === 'delete' || ctx.mode === 'dry-run') return null;
+  const open = unapprovedEffects(resource, verb, ctx.approvedContentEffects, [PERMANENT_EFFECT, 'access-changing']);
+  if (open.length === 0) return null;
+  const fields = [...new Set(open.map((effect) => effect.field))];
+  const labels = [...new Set(open.map((effect) => (effect.effect === PERMANENT_EFFECT ? '"Can\'t be undone"' : '"Changes admin access"')))];
+  const description = `This write cannot be undone (${fields.join(', ')}), so it is written only once the restore's dry run is approved. `
+    + `The dry run says what stays in place for good. Run the restore as a dry run, have someone other than you approve ${labels.join(' and ')} in Approvals, then run it again. `
+    + 'If restore approvals are turned off for this service, running the reviewed dry run again writes it.';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'permanentApproval', fields: Object.freeze(fields), description })]),
   });
 }
 

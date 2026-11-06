@@ -3,7 +3,7 @@
 Read this first if you are a new session. It says where the live system, the queues and the open work stand.
 Keep it current: update it in the same PR as any change to the facts below, and refresh the date.
 
-- **Last updated:** 2026-11-05
+- **Last updated:** 2026-11-06
 - **Older history:** an earlier version of this file (to 2026-10-09) lives on branch `claude/operator-queue`.
   It is out of date; use it only for history.
 
@@ -164,6 +164,10 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   create and update are fixture-tested with no live record yet. Capture needs KEEL-RT-idle (never the
   organization default) and KEEL-RT-connector on no user flow (steps in the #1008 PR body); the connector
   write and any write into the live organization default idle sign-out policy are approval-held.
+- Permanent writes (#1015): `attributeSet` and `customSecurityAttributeDefinition` create, and
+  `crossTenantIdentitySyncPolicyPartner` create and update, are fixture-tested with no live record yet. Never
+  run a create or turn sync on live (each leaves something for good): capture the sync update on the D-148b
+  partner with sync off, and check the dry runs list "Can't be undone" (steps in the #1015 PR body).
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

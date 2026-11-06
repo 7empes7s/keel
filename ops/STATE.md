@@ -164,6 +164,11 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   create and update are fixture-tested with no live record yet. Capture needs KEEL-RT-idle (never the
   organization default) and KEEL-RT-connector on no user flow (steps in the #1008 PR body); the connector
   write and any write into the live organization default idle sign-out policy are approval-held.
+- App provisioning (#1016): `synchronizationJob` schema update and create of a stopped job are fixture-tested
+  with no live record yet. The backup now reads each job's schema: check the Collector holds
+  `Synchronization.Read.All` (a 403 on the jobs read means it does not) and the Restorer
+  `Synchronization.ReadWrite.All`. Capture needs KEEL-RT-1016-scim (steps in the #1016 PR body); the schema
+  write is approval-held and the job is never started.
 - What to run: `node tools/release/readiness.mjs recapture-plan --build <candidate>` lists every capture and
   verify command (the operator runs it; builders never do). Whether the existing records verify, and which
   build is live, **needs the operator** (the key and the live tree are on the server).

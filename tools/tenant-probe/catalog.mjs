@@ -15,11 +15,12 @@
  * filled from `parent.key` of each object in the list at
  * `parent.path` (with `parent.select`/`parent.query`). Parents without
  * `parent.requires` are skipped, each object read is tagged with the key as
- * `parent.as`, and `childField` takes the objects from that field of each
- * response. `childReads` reads one more collection per child of each object
+ * `parent.as`, `childField` takes the objects from that field of each
+ * response, and `fields` keeps only those fields of each object (and the tag). `childReads` reads one more collection per child of each object
  * (`field` holds the children; `path` holds `{item}` and `{child}`; the result
  * lands in each child's `as`). `itemReads` reads one more collection per object
- * (`path`, or `byType[@odata.type]` for a list of mixed kinds, holds `{item}`;
+ * (`path`, or `byType[@odata.type]` for a list of mixed kinds, holds `{item}`, and
+ * for a kind read per parent `{parent}`, filled from the object's `parent.as`;
  * the result lands in the object's `as`, sorted by `sortBy` when set, left out when empty with `omitEmpty`; kinds not
  * in `byType` are left as they are; with `single` the path names one related object, kept
  * as an object with only its `fields`; with `single` and `field` it keeps that one field of the

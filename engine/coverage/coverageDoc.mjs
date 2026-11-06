@@ -207,9 +207,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Adds back the group and app roles an access package grants, for groups and apps that exist in your tenant, and adds them to the catalog first if they are missing there.',
     todo: 'Adding a role changes who can get access, so a restore adds it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A role on a SharePoint site that is not in the catalog, or on a group or app that no longer exists, is added by hand.',
   }),
-  synchronizationJob: manual('Provisioning and cross-tenant sync jobs', NOT_BUILT,
-    'A job\'s attribute mappings are stored separately, its sign-in details can never be read back, and a running job changes accounts in another directory.',
-    'Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.'),
+  synchronizationJob: auto('Provisioning and cross-tenant sync jobs', {
+    keeps: 'Puts a job\'s attribute mappings and scoping filters back, and recreates a missing job from its template, stopped (tested against a simulated tenant only).',
+    todo: 'After the mappings change, the job\'s next cycle checks every user and group again and can create, update or disable accounts in the other system, so a restore waits for a second approver while restore approvals are on. A job\'s sign-in details can never be read back: enter them again, test the connection, then start a recreated job yourself. KEEL never starts, stops or deletes a job.',
+  }),
 
   // ---- sign-in and security policies
   conditionalAccessPolicy: auto('Conditional Access policies', {

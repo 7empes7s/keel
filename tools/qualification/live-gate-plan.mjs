@@ -597,6 +597,13 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the terms of use id KEEL shows for the fixture', drift: 'change its name; for create, delete the terms of use (no policy requires them, so no one is asked to accept)',
     note: 'First check the backup holds the PDF (fileData shows a sha256, not null): the Graph reference shows fileData null, and the live read decides it. The write is approval-held: run the dry run, check it says everyone will be asked to accept again, have a second person approve "Changes admin access", then enforce. Delete the terms at the end.',
   },
+  // Issue #1016.
+  synchronizationJob: {
+    kind: 'named-object', fixture: `non-gallery enterprise app ${FIXTURE_PREFIX}-1016-scim with SCIM provisioning to https://keel-rt.invalid/scim and a throwaway secret token, scoped to assigned users only, with no users or groups assigned, and never started`,
+    select: `the provisioning job of ${FIXTURE_PREFIX}-1016-scim`, drift: 'add a scoping filter (department EQUALS KEEL-RT) to the user mapping; for create, delete the provisioning configuration of the app',
+    breakGlass: 'The fixture app has nobody assigned, provisions to an address that does not exist, and is never started, so it writes no account anywhere.',
+    note: 'Check the backup holds the job\'s schema and no credential; the dry run lists the mapping under "Changes access" and says the next cycle re-evaluates everyone in scope; the enforce run writes only after that is approved. After a create, check the job reads back stopped and the restore lists entering credentials and starting it as steps. Never start the job.',
+  },
   // Issue #1007: an access review series of an empty group, reviewed by one fixture user.
   accessReviewScheduleDefinition: {
     kind: 'named-object', fixture: `an access review series KEEL-RT-1007-review of the members of ${FIXTURE_PREFIX}-group (no members), reviewed by keel-rt-20260908-carla, weekly, no default decision, auto-apply off`,

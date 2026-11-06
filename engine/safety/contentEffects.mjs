@@ -69,7 +69,9 @@ const DISCLOSURES = Object.freeze({
   // them back changes who has admin access, who may join devices, or which secrets
   // and certificates apps may add.
   'access-changing': 'This puts back settings that decide who has admin access, who may join or register devices, '
-    + 'which secrets and certificates apps may add, or how guests sign themselves up (a user flow\'s identity providers, questions and API connectors). If the backup was changed after it was taken, that changed access is granted. '
+    + 'which secrets and certificates apps may add, how guests sign themselves up (a user flow\'s identity providers, questions and API connectors), '
+    + 'or which accounts a provisioning job creates, updates or disables in another directory (its next cycle checks every user and group in scope again). '
+    + 'If the backup was changed after it was taken, that changed access is granted. '
     + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
   // Issue #994: an authentication context that something uses, or a staged rollout.
   [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
@@ -267,6 +269,9 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // Issue #1008: an API connector's name (which a user flow binds it by) and the
   // URL it sends what guests enter at sign-up to.
   identityApiConnector: Object.freeze(['displayName', 'targetUrl']),
+  // Issue #1016: a provisioning job's schema (attribute mappings and scoping
+  // filters) decides whose accounts it makes, changes or disables elsewhere.
+  synchronizationJob: Object.freeze(['schema']),
   // Issue #992: the group, app or site role an access package grants. Adding it
   // lets everyone who can request the package get that access.
   accessPackageResourceRoleScope: Object.freeze(['role', 'scope']),
@@ -758,6 +763,8 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   agreement: { reviewed: true, judgesCreates: true, rules: accessRules('agreement') },
   // Issue #1008: a recreated API connector is judged too: it names where sign-up data goes.
   identityApiConnector: { reviewed: true, judgesCreates: true, rules: accessRules('identityApiConnector') },
+  // Issue #1016: a recreated provisioning job is judged too: its schema is put on it.
+  synchronizationJob: { reviewed: true, judgesCreates: true, rules: accessRules('synchronizationJob') },
   // Issue #994: sign-in settings whose effects depend on more than the object
   // (signInSettingEffects.mjs): what uses an authentication context, and the
   // groups a staged rollout covers. Each is judged on create too.

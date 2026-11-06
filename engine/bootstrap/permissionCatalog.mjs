@@ -171,6 +171,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('APIConnectors.ReadWrite.All', 'entra', 'Policies', 'Change sign-up API connectors', 'Restore sign-up API connectors (their password or certificate is set by hand)'),
   write('RoleManagement.ReadWrite.Defender', 'entra', 'Roles', 'Change Defender admin roles', 'Restore custom Defender roles and who holds them'),
   write('Application.ReadWrite.All', 'entra', 'Apps', 'Change app registrations', 'Restore apps and enterprise apps'),
+  write('Synchronization.ReadWrite.All', 'entra', 'Apps', 'Change app provisioning', 'Restore provisioning mappings and scoping filters, and recreate a missing provisioning job (left stopped)'),
   write('DelegatedPermissionGrant.ReadWrite.All', 'entra', 'Apps', 'Change user consents to apps', 'Restore app consents'),
   write('Policy.ReadWrite.ConditionalAccess', 'entra', 'Policies', 'Change sign-in rules', 'Restore Conditional Access policies, named locations and authentication contexts'),
   write('Policy.ReadWrite.AuthenticationMethod', 'entra', 'Policies', 'Change sign-in methods', 'Restore which sign-in methods are allowed'),

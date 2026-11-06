@@ -1,15 +1,15 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "permissionGrantPreApprovalPolicy:65e40ce1-e77b-860d-898c-9366a9842c0f",
+    "naturalKey": "permissionGrantPreApprovalPolicy:b72ddf1c-a144-8916-9deb-4e4322440ae6",
     "resourceType": "permissionGrantPreApprovalPolicy",
     "operation": "update",
-    "targetId": "65e40ce1-e77b-860d-898c-9366a9842c0f",
+    "targetId": "b72ddf1c-a144-8916-9deb-4e4322440ae6",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:23.283Z",
+    "recordedAt": "2026-11-06T19:35:49.175Z",
     "priorState": {
-      "id": "65e40ce1-e77b-860d-898c-9366a9842c0f",
+      "id": "b72ddf1c-a144-8916-9deb-4e4322440ae6",
       "conditions": [
         {
           "scopeType": "team",
@@ -51,7 +51,7 @@
       ]
     },
     "postState": {
-      "id": "65e40ce1-e77b-860d-898c-9366a9842c0f",
+      "id": "b72ddf1c-a144-8916-9deb-4e4322440ae6",
       "conditions": [
         {
           "scopeType": "chat",

@@ -1,18 +1,18 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "appleUserInitiatedEnrollmentProfile:a96d9981-3ca0-88fe-af7b-e4bb882f4767",
+    "naturalKey": "appleUserInitiatedEnrollmentProfile:366a4878-a559-8237-a138-17fafd23d6f0",
     "resourceType": "appleUserInitiatedEnrollmentProfile",
     "operation": "create",
-    "targetId": "67b06b7a-1ea3-8696-9aed-0a72a4cbb640",
+    "targetId": "2ff9c156-b355-8f7c-91e9-ae489af62794",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:13.637Z",
+    "recordedAt": "2026-11-06T19:35:37.521Z",
     "priorState": null,
     "intendedState": {
       "platform": "iOS",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-apple-user-initiated-enrollment-profile-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-apple-user-initiated-enrollment-profile-c",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {
@@ -26,14 +26,14 @@
       ]
     },
     "postState": {
-      "id": "67b06b7a-1ea3-8696-9aed-0a72a4cbb640",
+      "id": "2ff9c156-b355-8f7c-91e9-ae489af62794",
       "platform": "iOS",
       "priority": 1,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-apple-user-initiated-enrollment-profile-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-apple-user-initiated-enrollment-profile-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/appleUserInitiatedEnrollmentProfiles/$entity",
-      "createdDateTime": "2026-11-06T14:49:13.8001137Z",
-      "lastModifiedDateTime": "2026-11-06T14:49:13Z",
+      "createdDateTime": "2026-11-06T19:35:37.6491298Z",
+      "lastModifiedDateTime": "2026-11-06T19:35:37Z",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {

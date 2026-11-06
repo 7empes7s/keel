@@ -1,38 +1,38 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "androidForWorkEnrollmentProfile:2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+    "naturalKey": "androidForWorkEnrollmentProfile:fab3bda3-d559-8f89-b443-4474dac5521f",
     "resourceType": "androidForWorkEnrollmentProfile",
     "operation": "update",
-    "targetId": "2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+    "targetId": "fab3bda3-d559-8f89-b443-4474dac5521f",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:10.063Z",
+    "recordedAt": "2026-11-06T19:44:04.207Z",
     "priorState": {
-      "id": "2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+      "id": "fab3bda3-d559-8f89-b443-4474dac5521f",
       "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
-      "description": "KEEL-RT test fixture (#1031) drifted",
-      "displayName": "KEEL-RT-1031-android-for-work-enrollment-profile-u",
-      "createdDateTime": "2026-11-06T14:27:34.8359919Z",
-      "lastModifiedDateTime": "2026-11-06T14:43:11Z",
+      "description": "KEEL-RT test fixture (#1049) drifted",
+      "displayName": "KEEL-RT-1049-android-for-work-enrollment-profile-u",
+      "createdDateTime": "2026-11-06T19:17:18.7218625Z",
+      "lastModifiedDateTime": "2026-11-06T19:24:07Z",
       "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-android-for-work-enrollment-profile-u"
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-android-for-work-enrollment-profile-u"
     },
     "postState": {
-      "id": "2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+      "id": "fab3bda3-d559-8f89-b443-4474dac5521f",
       "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
       "tokenValue": null,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-android-for-work-enrollment-profile-u",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-android-for-work-enrollment-profile-u",
       "qrCodeImage": null,
       "qrCodeContent": null,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/androidForWorkEnrollmentProfiles/$entity",
-      "createdDateTime": "2026-11-06T14:27:34.8359919Z",
+      "createdDateTime": "2026-11-06T19:17:18.7218625Z",
       "enrolledDeviceCount": 0,
-      "lastModifiedDateTime": "2026-11-06T15:00:10Z",
+      "lastModifiedDateTime": "2026-11-06T19:44:04Z",
       "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
     }
   }

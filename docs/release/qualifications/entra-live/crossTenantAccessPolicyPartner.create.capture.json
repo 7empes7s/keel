@@ -1,5 +1,5 @@
 {
-  "restoreRef": "bafd4c93-0332-87e3-ab5c-65f6b9bdb1b2",
+  "restoreRef": "8ee7bc1d-f258-83d0-98e4-b8399cb58d7a",
   "entry": {
     "naturalKey": "crossTenantAccessPolicyPartner:a4bee06e-98ee-8719-9a32-ebf8364cdbc4",
     "resourceType": "crossTenantAccessPolicyPartner",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:55:38.881Z",
+    "recordedAt": "2026-11-06T20:18:18.063Z",
     "priorState": null,
     "intendedState": {
       "tenantId": "a4bee06e-98ee-8719-9a32-ebf8364cdbc4",

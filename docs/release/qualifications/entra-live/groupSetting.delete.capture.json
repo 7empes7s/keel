@@ -1,15 +1,15 @@
 {
-  "restoreRef": "12c4197c-787b-82b9-885f-69eb6d27fa82",
+  "restoreRef": "ddd95e17-655b-80f0-b245-6b86243c3e03",
   "entry": {
     "naturalKey": "groupSetting:Group.Unified",
     "resourceType": "groupSetting",
     "operation": "delete",
-    "targetId": "fd7c4a84-3d44-87bc-97e8-1a926825da3c",
+    "targetId": "0faddd5a-8bde-894e-b893-77ff9fe2ae49",
     "outcome": "succeeded",
     "outcomeDetail": "absent",
-    "recordedAt": "2026-10-29T23:24:33.824Z",
+    "recordedAt": "2026-11-06T20:01:43.399Z",
     "priorState": {
-      "id": "fd7c4a84-3d44-87bc-97e8-1a926825da3c",
+      "id": "0faddd5a-8bde-894e-b893-77ff9fe2ae49",
       "values": [
         {
           "name": "NewUnifiedGroupWritebackDefault",

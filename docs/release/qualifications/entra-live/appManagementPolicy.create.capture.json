@@ -1,18 +1,18 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "appManagementPolicy:a677fd70-acf4-813d-a70a-1717fa3268a0",
+    "naturalKey": "appManagementPolicy:3bc6a79e-0637-862f-8c79-7ee9fe41adcc",
     "resourceType": "appManagementPolicy",
     "operation": "create",
-    "targetId": "62805a1a-1b50-8db4-b622-525c95e1a780",
+    "targetId": "edeccec0-8d68-84ba-85cf-926bb4e9e9d5",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:13.638Z",
+    "recordedAt": "2026-11-06T19:35:37.522Z",
     "priorState": null,
     "intendedState": {
       "isEnabled": true,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-app-management-policy-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-app-management-policy-c",
       "restrictions": {
         "keyCredentials": [],
         "passwordCredentials": [
@@ -30,10 +30,10 @@
       }
     },
     "postState": {
-      "id": "62805a1a-1b50-8db4-b622-525c95e1a780",
+      "id": "edeccec0-8d68-84ba-85cf-926bb4e9e9d5",
       "isEnabled": true,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-app-management-policy-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-app-management-policy-c",
       "restrictions": {
         "keyCredentials": [],
         "passwordCredentials": [

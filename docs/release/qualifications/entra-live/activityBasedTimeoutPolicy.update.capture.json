@@ -1,37 +1,37 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "activityBasedTimeoutPolicy:e0283044-f067-80f1-b85f-cdb68d9e4ede",
+    "naturalKey": "activityBasedTimeoutPolicy:31a366fd-f260-8e11-a866-3f8eb7a1e62e",
     "resourceType": "activityBasedTimeoutPolicy",
     "operation": "update",
-    "targetId": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
+    "targetId": "31a366fd-f260-8e11-a866-3f8eb7a1e62e",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:13.632Z",
+    "recordedAt": "2026-11-06T19:35:37.519Z",
     "priorState": {
-      "id": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
+      "id": "31a366fd-f260-8e11-a866-3f8eb7a1e62e",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-u-drifted",
+      "displayName": "KEEL-RT-1049-activity-based-timeout-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
+      "id": "31a366fd-f260-8e11-a866-3f8eb7a1e62e",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-u",
+      "displayName": "KEEL-RT-1049-activity-based-timeout-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "e0283044-f067-80f1-b85f-cdb68d9e4ede",
+      "id": "31a366fd-f260-8e11-a866-3f8eb7a1e62e",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-u",
+      "displayName": "KEEL-RT-1049-activity-based-timeout-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/activityBasedTimeoutPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

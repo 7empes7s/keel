@@ -1,18 +1,18 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "deviceCustomAttributeShellScript:6e863098-a779-8e33-9736-424a5de94644",
+    "naturalKey": "deviceCustomAttributeShellScript:3d324a88-24e8-85a0-a7f2-3ae56357d08c",
     "resourceType": "deviceCustomAttributeShellScript",
     "operation": "create",
-    "targetId": "f471973c-a1a3-8cf9-a800-663a49304080",
+    "targetId": "76c122ec-6944-880e-9477-23fe48d75136",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:11.739Z",
+    "recordedAt": "2026-11-06T19:44:05.161Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-1031-device-custom-attribute-shell-script-c.sh",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-custom-attribute-shell-script-c",
+      "fileName": "keel-rt-1049-device-custom-attribute-shell-script-c.sh",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-custom-attribute-shell-script-c",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -22,20 +22,20 @@
       "customAttributeType": "string"
     },
     "postState": {
-      "id": "f471973c-a1a3-8cf9-a800-663a49304080",
-      "fileName": "keel-rt-1031-device-custom-attribute-shell-script-c.sh",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-custom-attribute-shell-script-c",
+      "id": "76c122ec-6944-880e-9477-23fe48d75136",
+      "fileName": "keel-rt-1049-device-custom-attribute-shell-script-c.sh",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-custom-attribute-shell-script-c",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
-      "createdDateTime": "2026-11-06T15:00:11.8030459Z",
+      "createdDateTime": "2026-11-06T19:44:05.2636769Z",
       "roleScopeTagIds": [
         "0"
       ],
       "customAttributeName": null,
       "customAttributeType": "string",
-      "lastModifiedDateTime": "2026-11-06T15:00:11.8030459Z"
+      "lastModifiedDateTime": "2026-11-06T19:44:05.2636769Z"
     }
   }
 }

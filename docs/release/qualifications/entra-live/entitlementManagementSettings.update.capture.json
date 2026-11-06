@@ -1,0 +1,28 @@
+{
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "entry": {
+    "naturalKey": "entitlementManagementSettings:entitlementManagementSettings",
+    "resourceType": "entitlementManagementSettings",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T19:49:52.955Z",
+    "priorState": {
+      "id": "singleton",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/settings/$entity",
+      "externalUserLifecycleAction": "blockSignInAndDelete",
+      "durationUntilExternalUserDeletedAfterBlocked": "P29D"
+    },
+    "intendedState": {
+      "externalUserLifecycleAction": "blockSignInAndDelete",
+      "durationUntilExternalUserDeletedAfterBlocked": "P30D"
+    },
+    "postState": {
+      "id": "singleton",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/settings/$entity",
+      "externalUserLifecycleAction": "blockSignInAndDelete",
+      "durationUntilExternalUserDeletedAfterBlocked": "P30D"
+    }
+  }
+}

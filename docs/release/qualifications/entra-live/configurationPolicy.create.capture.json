@@ -1,17 +1,17 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "configurationPolicy:KEEL-RT-1031-configuration-policy-c",
+    "naturalKey": "configurationPolicy:KEEL-RT-1049-configuration-policy-c",
     "resourceType": "configurationPolicy",
     "operation": "create",
-    "targetId": "5dd18112-e884-8d7d-ad31-411aa7bac664",
+    "targetId": "27055e5f-d724-82b8-8d90-2b0ec29b30cf",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:10.582Z",
+    "recordedAt": "2026-11-06T19:44:04.645Z",
     "priorState": null,
     "intendedState": {
-      "id": "ff0141fc-2134-8de8-8a00-f6c4325735fc",
-      "name": "KEEL-RT-1031-configuration-policy-c",
+      "id": "1124f8b6-48fb-8404-b56d-c8d0e1f8a052",
+      "name": "KEEL-RT-1049-configuration-policy-c",
       "settings": [
         {
           "id": "0",
@@ -29,11 +29,11 @@
         }
       ],
       "platforms": "windows10",
-      "description": "KEEL-RT test fixture (#1031)",
+      "description": "KEEL-RT test fixture (#1049)",
       "settingCount": 1,
       "technologies": "mdm",
       "creationSource": null,
-      "createdDateTime": "2026-11-06T14:27:32.9141467Z",
+      "createdDateTime": "2026-11-06T19:17:11.7037232Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -44,12 +44,12 @@
         "templateDisplayName": null,
         "templateDisplayVersion": null
       },
-      "lastModifiedDateTime": "2026-11-06T14:27:32.9141467Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('ff0141fc-2134-8de8-8a00-f6c4325735fc')/settings"
+      "lastModifiedDateTime": "2026-11-06T19:17:11.7037232Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('1124f8b6-48fb-8404-b56d-c8d0e1f8a052')/settings"
     },
     "postState": {
-      "id": "5dd18112-e884-8d7d-ad31-411aa7bac664",
-      "name": "KEEL-RT-1031-configuration-policy-c",
+      "id": "27055e5f-d724-82b8-8d90-2b0ec29b30cf",
+      "name": "KEEL-RT-1049-configuration-policy-c",
       "settings": [
         {
           "id": "0",
@@ -67,12 +67,12 @@
         }
       ],
       "platforms": "windows10",
-      "description": "KEEL-RT test fixture (#1031)",
+      "description": "KEEL-RT test fixture (#1049)",
       "settingCount": 1,
       "technologies": "mdm",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies(settings())/$entity",
       "creationSource": null,
-      "createdDateTime": "2026-11-06T15:00:10.8756269Z",
+      "createdDateTime": "2026-11-06T19:44:05.1511925Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -83,8 +83,8 @@
         "templateDisplayName": null,
         "templateDisplayVersion": null
       },
-      "lastModifiedDateTime": "2026-11-06T15:00:10.8756269Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('5dd18112-e884-8d7d-ad31-411aa7bac664')/settings"
+      "lastModifiedDateTime": "2026-11-06T19:44:05.1511925Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('27055e5f-d724-82b8-8d90-2b0ec29b30cf')/settings"
     }
   }
 }

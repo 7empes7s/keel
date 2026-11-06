@@ -1,21 +1,21 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "appleUserInitiatedEnrollmentProfile:b63312ff-fa2e-8f0c-ac5f-391408266489",
+    "naturalKey": "appleUserInitiatedEnrollmentProfile:d5b602c8-33de-81f0-b4ee-eb31ac5a37af",
     "resourceType": "appleUserInitiatedEnrollmentProfile",
     "operation": "update",
-    "targetId": "b63312ff-fa2e-8f0c-ac5f-391408266489",
+    "targetId": "d5b602c8-33de-81f0-b4ee-eb31ac5a37af",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:13.636Z",
+    "recordedAt": "2026-11-06T19:35:37.522Z",
     "priorState": {
-      "id": "b63312ff-fa2e-8f0c-ac5f-391408266489",
+      "id": "d5b602c8-33de-81f0-b4ee-eb31ac5a37af",
       "platform": "iOS",
       "priority": 0,
-      "description": "KEEL-RT test fixture (#1031) drifted",
-      "displayName": "KEEL-RT-1031-apple-user-initiated-enrollment-profile-u",
-      "createdDateTime": "2026-11-06T14:27:34.3603533Z",
-      "lastModifiedDateTime": "2026-11-06T14:43:10Z",
+      "description": "KEEL-RT test fixture (#1049) drifted",
+      "displayName": "KEEL-RT-1049-apple-user-initiated-enrollment-profile-u",
+      "createdDateTime": "2026-11-06T19:17:17.8273952Z",
+      "lastModifiedDateTime": "2026-11-06T19:24:07Z",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {
@@ -29,8 +29,8 @@
       ]
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-apple-user-initiated-enrollment-profile-u",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-apple-user-initiated-enrollment-profile-u",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {
@@ -44,14 +44,14 @@
       ]
     },
     "postState": {
-      "id": "b63312ff-fa2e-8f0c-ac5f-391408266489",
+      "id": "d5b602c8-33de-81f0-b4ee-eb31ac5a37af",
       "platform": "iOS",
       "priority": 0,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-apple-user-initiated-enrollment-profile-u",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-apple-user-initiated-enrollment-profile-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/appleUserInitiatedEnrollmentProfiles/$entity",
-      "createdDateTime": "2026-11-06T14:27:34.3603533Z",
-      "lastModifiedDateTime": "2026-11-06T14:49:13Z",
+      "createdDateTime": "2026-11-06T19:17:17.8273952Z",
+      "lastModifiedDateTime": "2026-11-06T19:35:37Z",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {

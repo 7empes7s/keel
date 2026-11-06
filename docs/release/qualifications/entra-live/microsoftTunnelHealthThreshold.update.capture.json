@@ -1,0 +1,31 @@
+{
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "entry": {
+    "naturalKey": "microsoftTunnelHealthThreshold:cpuUsage",
+    "resourceType": "microsoftTunnelHealthThreshold",
+    "operation": "update",
+    "targetId": "cpuUsage",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T19:49:53.198Z",
+    "priorState": {
+      "id": "cpuUsage",
+      "healthyThreshold": 55,
+      "unhealthyThreshold": 75,
+      "defaultHealthyThreshold": 50,
+      "defaultUnhealthyThreshold": 75
+    },
+    "intendedState": {
+      "healthyThreshold": 50,
+      "unhealthyThreshold": 75
+    },
+    "postState": {
+      "id": "cpuUsage",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/microsoftTunnelHealthThresholds/$entity",
+      "healthyThreshold": 50,
+      "unhealthyThreshold": 75,
+      "defaultHealthyThreshold": 50,
+      "defaultUnhealthyThreshold": 75
+    }
+  }
+}

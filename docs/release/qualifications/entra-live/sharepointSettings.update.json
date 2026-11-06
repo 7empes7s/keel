@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "sharepointSettings",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T20:41:56.239Z",
+  "restoreRef": "333a8695-2a86-8efc-b384-f07a2edef626",
+  "naturalKey": "sharepointSettings:sharepointSettings",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "ac0832e79df9fa597563893cbc78f8ef673d9dcd96893d113e2937ea68d73223",
+  "proofRef": "docs/release/qualifications/entra-live/sharepointSettings.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "2682137bf4c96f9c229742ad2f3d520393df4956183f6f349138b699999d7977"
+    }
+  }
+}

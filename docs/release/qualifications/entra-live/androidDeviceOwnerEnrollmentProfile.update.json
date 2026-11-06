@@ -7,23 +7,23 @@
   "resourceType": "androidDeviceOwnerEnrollmentProfile",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T15:00:10.057Z",
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
-  "naturalKey": "androidDeviceOwnerEnrollmentProfile:ee662bd5-d556-8b59-aa94-3175769f91d0",
+  "observedAt": "2026-11-06T19:44:04.201Z",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "naturalKey": "androidDeviceOwnerEnrollmentProfile:228520b2-77e0-84c4-bafe-ddafdcff9a73",
   "fixtureKind": "named-object",
-  "captureSha256": "2db917d83acd726f10368b3333bea18b6a49c158a948e13a989448339573c04e",
+  "captureSha256": "8428d9b015a723bd51d4c85c665c41faac3929a938b26debedb28f0671412ace",
   "proofRef": "docs/release/qualifications/entra-live/androidDeviceOwnerEnrollmentProfile.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "1f6db3f05c837b34a21570ab6b86f0de9c3d115c29a62f58b48ec5e2fd41d9f6"
+      "signature": "96593c1c40e9d14af6c7cbad88a713a4baead388578bb2a3a0321cde1c4bb905"
     }
   }
 }

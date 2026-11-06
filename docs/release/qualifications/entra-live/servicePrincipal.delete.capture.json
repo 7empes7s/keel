@@ -1,0 +1,28 @@
+{
+  "restoreRef": "ddd95e17-655b-80f0-b245-6b86243c3e03",
+  "entry": {
+    "naturalKey": "servicePrincipal:a2a40569-27ab-848b-a4dd-c643116c68ff",
+    "resourceType": "servicePrincipal",
+    "operation": "delete",
+    "targetId": "a18fae8f-7566-80a4-83d8-b792ab6cb1e2",
+    "outcome": "succeeded",
+    "outcomeDetail": "absent",
+    "recordedAt": "2026-11-06T20:01:43.401Z",
+    "priorState": {
+      "id": "a18fae8f-7566-80a4-83d8-b792ab6cb1e2",
+      "tags": [],
+      "appId": "a2a40569-27ab-848b-a4dd-c643116c68ff",
+      "notes": "KEEL-RT test fixture (#1049)",
+      "appRoles": [],
+      "description": null,
+      "displayName": "KEEL-RT-1049-app-d",
+      "accountEnabled": true,
+      "signInAudience": "AzureADMyOrg",
+      "servicePrincipalType": "Application",
+      "oauth2PermissionScopes": [],
+      "appRoleAssignmentRequired": false
+    },
+    "intendedState": null,
+    "postState": null
+  }
+}

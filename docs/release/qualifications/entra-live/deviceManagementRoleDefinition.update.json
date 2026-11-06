@@ -7,23 +7,23 @@
   "resourceType": "deviceManagementRoleDefinition",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T14:49:17.240Z",
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
-  "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1031-device-management-role-definition-u",
+  "observedAt": "2026-11-06T19:35:44.370Z",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1049-device-management-role-definition-u",
   "fixtureKind": "named-object",
-  "captureSha256": "cbb6f602c1c3472f1fbce0bd74099898160c1d789efd6a126b264ac5084b2118",
+  "captureSha256": "dcbc177555959c73a73a1b44c420b83de2ab1a8870e37bae690591e8344827fd",
   "proofRef": "docs/release/qualifications/entra-live/deviceManagementRoleDefinition.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "c87fbc3b4e0d4659fe6ad2828702009c9e3dde86d5490040d8082165244e2b77"
+      "signature": "c519d107dc294aa95b5719ddaf37b1777773d095f476fec99f0f89ec30aeeb4d"
     }
   }
 }

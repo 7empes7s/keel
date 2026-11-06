@@ -1,27 +1,27 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "groupPolicyConfiguration:4aef178f-3e6b-8363-bf73-fa79bbf4c321",
+    "naturalKey": "groupPolicyConfiguration:7fa741e8-78f5-8114-a39f-f472933cb93e",
     "resourceType": "groupPolicyConfiguration",
     "operation": "create",
-    "targetId": "4a3ad859-1099-8c61-b4d8-3b6320d21c4d",
+    "targetId": "b431cd95-862e-8f6e-800f-658bbbcef066",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:17.692Z",
+    "recordedAt": "2026-11-06T19:35:45.821Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-group-policy-configuration-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-group-policy-configuration-c",
       "roleScopeTagIds": []
     },
     "postState": {
-      "id": "4a3ad859-1099-8c61-b4d8-3b6320d21c4d",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-group-policy-configuration-c",
+      "id": "b431cd95-862e-8f6e-800f-658bbbcef066",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-group-policy-configuration-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/groupPolicyConfigurations/$entity",
-      "createdDateTime": "2026-11-06T14:49:17.8088221Z",
+      "createdDateTime": "2026-11-06T19:35:45.9502023Z",
       "roleScopeTagIds": [],
-      "lastModifiedDateTime": "2026-11-06T14:49:17.8083602Z",
+      "lastModifiedDateTime": "2026-11-06T19:35:45.9502023Z",
       "policyConfigurationIngestionType": "unknown"
     }
   }

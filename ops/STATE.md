@@ -145,12 +145,13 @@ another build, 3 are stale and 1 has no record. The one-build rule can't be met 
   refuses the stored admin login, 401), storage and the drill (host recovery-set work for the operator), native
   recovery (restore 404 from replication lag, #1045), the site grant, site permission and distribution-list writers
   (hand prep first), and the Defender indicators read (403, `Ti.Read.All`). Sentinel (117) is an accepted gap.
-- Entra (#148): 223 registered writes. Batch 1b (#1031, 2026-11-06) captured 116 at the live build `f1521256`:
-  114 proven (batch 1's 12 among them, `tenantAppManagementPolicy.update` no longer demoted) and 2 demoted
-  (`accessReviewScheduleDefinition.create` #1033, fixed by #1039; `multiTenantOrganization.update` #1034, fixed by #1040). 37 have a record from
-  another build and 70 have none, mostly lockout-sensitive, missing Restorer permissions, or blocked by #1035
-  (deletes), #1036 and #1037. Left on the test tenant: the MTO description `KEEL-RT drift (#1031)` (Graph can't
-  clear it) and one KEEL-RT-1031 administrative unit in deleted items (app-only purge 404; ages out in 30 days).
+- Entra (#148): 223 registered writes. Recheck 1 (#1049, 2026-11-06) proved 127 at the frozen build `128b0e3b`
+  (`multiTenantOrganization.update`, the deletes, SharePoint Loop, entitlement settings and the Tunnel limit among
+  them). `accessReviewScheduleDefinition.create` failed again (#1039's scope match misses Graph's `/v1.0/` prefix)
+  and `configurationPolicy.delete` failed (Graph answers 400 ResourceNotFound after the delete). 35 have a record
+  from another build and 60 have none, mostly lockout-sensitive or missing Restorer permissions. Left on the test
+  tenant: the MTO description `KEEL-RT drift (#1031)` (Graph can't clear it) and the KEEL-RT-1031 and KEEL-RT-1049
+  administrative units in deleted items (app-only purge 404; they age out in 30 days).
 - User flows (#995, fixture-tested only): capture `b2xIdentityUserFlow` create/update and
   `identityUserFlowAttribute` create/update on a `B2X_1_KEEL-RT-148-flow` flow that asks for one custom
   attribute `KEEL-RT-148Attr` (`FIXTURE_GUIDANCE` in `tools/qualification/live-gate-plan.mjs`). Check the

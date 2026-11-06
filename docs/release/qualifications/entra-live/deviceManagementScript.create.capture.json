@@ -1,19 +1,19 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "deviceManagementScript:9e139402-4d3f-8368-8c5e-1c9d94e09c68",
+    "naturalKey": "deviceManagementScript:d3dd7470-0788-89e9-97fd-d22dd6fa6057",
     "resourceType": "deviceManagementScript",
     "operation": "create",
-    "targetId": "1e81365f-1427-82b6-87e9-6fe7a3d725ab",
+    "targetId": "6357d1cb-6078-895f-a944-8062292234db",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:12.781Z",
+    "recordedAt": "2026-11-06T19:44:05.793Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-1031-device-management-script-c.ps1",
+      "fileName": "keel-rt-1049-device-management-script-c.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-management-script-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-management-script-c",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "roleScopeTagIds": [
@@ -22,19 +22,19 @@
       "enforceSignatureCheck": false
     },
     "postState": {
-      "id": "1e81365f-1427-82b6-87e9-6fe7a3d725ab",
-      "fileName": "keel-rt-1031-device-management-script-c.ps1",
+      "id": "6357d1cb-6078-895f-a944-8062292234db",
+      "fileName": "keel-rt-1049-device-management-script-c.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-management-script-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-management-script-c",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
-      "createdDateTime": "2026-11-06T15:00:12.8725945Z",
+      "createdDateTime": "2026-11-06T19:44:05.8923688Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T15:00:12.8725945Z",
+      "lastModifiedDateTime": "2026-11-06T19:44:05.8923688Z",
       "enforceSignatureCheck": false
     }
   }

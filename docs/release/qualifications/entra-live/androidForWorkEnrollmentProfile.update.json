@@ -7,23 +7,23 @@
   "resourceType": "androidForWorkEnrollmentProfile",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T15:00:10.063Z",
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
-  "naturalKey": "androidForWorkEnrollmentProfile:2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+  "observedAt": "2026-11-06T19:44:04.207Z",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "naturalKey": "androidForWorkEnrollmentProfile:fab3bda3-d559-8f89-b443-4474dac5521f",
   "fixtureKind": "named-object",
-  "captureSha256": "dabf1b551ed8c8b0d773c3b4c0f11c99301b0697649501811ff1a15ad866bfb1",
+  "captureSha256": "a56d523d8d08acebbcde8dc71bdb377124ffbcb4383cb0c9a3e3087458f18323",
   "proofRef": "docs/release/qualifications/entra-live/androidForWorkEnrollmentProfile.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "57ff5211f365b1efc14a08a22be090ec52458351a63ae7a1e4a9b732f739cf9f"
+      "signature": "1865fdb5859d14256e49b4de68efe906ba196533edc80f928331fcb922cf2e51"
     }
   }
 }

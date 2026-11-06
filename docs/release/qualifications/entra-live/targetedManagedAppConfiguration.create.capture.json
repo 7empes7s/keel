@@ -1,17 +1,17 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "targetedManagedAppConfiguration:A_4d477516-f085-8fea-b4b5-b80b2956158a",
+    "naturalKey": "targetedManagedAppConfiguration:A_1f238bed-6f71-8b2e-9935-d0d41db43079",
     "resourceType": "targetedManagedAppConfiguration",
     "operation": "create",
-    "targetId": "A_4f9192c0-6c3b-8228-afa9-6f962943cf5d",
+    "targetId": "A_a061babb-993e-8323-8c1d-80d0f9f9bd83",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:23.735Z",
+    "recordedAt": "2026-11-06T19:35:51.081Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-targeted-managed-app-configuration-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-targeted-managed-app-configuration-c",
       "customSettings": [
         {
           "name": "com.microsoft.outlook.Mail.FocusedInbox",
@@ -20,11 +20,11 @@
       ]
     },
     "postState": {
-      "id": "A_4f9192c0-6c3b-8228-afa9-6f962943cf5d",
-      "version": "\"88a590a7-5076-8b44-a8c0-9635db60ebf2\"",
+      "id": "A_a061babb-993e-8323-8c1d-80d0f9f9bd83",
+      "version": "\"837f68e2-08c4-8501-8266-e3df6dd7141d\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-targeted-managed-app-configuration-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-targeted-managed-app-configuration-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/targetedManagedAppConfigurations/$entity",
       "customSettings": [
         {
@@ -32,9 +32,9 @@
           "value": "false"
         }
       ],
-      "createdDateTime": "2026-11-06T14:49:23.8560398Z",
+      "createdDateTime": "2026-11-06T19:35:51.2529326Z",
       "deployedAppCount": 0,
-      "lastModifiedDateTime": "2026-11-06T14:49:23Z"
+      "lastModifiedDateTime": "2026-11-06T19:35:51Z"
     }
   }
 }

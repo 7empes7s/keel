@@ -1,0 +1,30 @@
+{
+  "restoreRef": "ddd95e17-655b-80f0-b245-6b86243c3e03",
+  "entry": {
+    "naturalKey": "targetedManagedAppConfiguration:A_b8d659f8-18f1-8619-9d14-e74796de3ab9",
+    "resourceType": "targetedManagedAppConfiguration",
+    "operation": "delete",
+    "targetId": "A_b8d659f8-18f1-8619-9d14-e74796de3ab9",
+    "outcome": "succeeded",
+    "outcomeDetail": "absent",
+    "recordedAt": "2026-11-06T20:01:43.940Z",
+    "priorState": {
+      "id": "A_b8d659f8-18f1-8619-9d14-e74796de3ab9",
+      "version": "\"cacfcfc5-5527-8823-8712-1dd4260ac9aa\"",
+      "isAssigned": false,
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-targeted-managed-app-configuration-d",
+      "customSettings": [
+        {
+          "name": "com.microsoft.outlook.Mail.FocusedInbox",
+          "value": "false"
+        }
+      ],
+      "createdDateTime": "2026-11-06T19:26:37.3464591Z",
+      "deployedAppCount": 1,
+      "lastModifiedDateTime": "2026-11-06T19:26:37.3464591Z"
+    },
+    "intendedState": null,
+    "postState": null
+  }
+}

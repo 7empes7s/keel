@@ -1,26 +1,26 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "managedEBookCategory:0786f8a0-9c6e-8ed0-9080-e2a932b4f45c",
+    "naturalKey": "managedEBookCategory:8bbd4854-08e0-875a-ba21-66548d1b8d9d",
     "resourceType": "managedEBookCategory",
     "operation": "update",
-    "targetId": "0786f8a0-9c6e-8ed0-9080-e2a932b4f45c",
+    "targetId": "8bbd4854-08e0-875a-ba21-66548d1b8d9d",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:20.310Z",
+    "recordedAt": "2026-11-06T19:35:47.821Z",
     "priorState": {
-      "id": "0786f8a0-9c6e-8ed0-9080-e2a932b4f45c",
-      "displayName": "KEEL-RT-1031-managed-e-book-category-u-drifted",
-      "lastModifiedDateTime": "2026-11-06T14:48:58.2361644Z"
+      "id": "8bbd4854-08e0-875a-ba21-66548d1b8d9d",
+      "displayName": "KEEL-RT-1049-managed-e-book-category-u-drifted",
+      "lastModifiedDateTime": "2026-11-06T19:35:28.8025276Z"
     },
     "intendedState": {
-      "displayName": "KEEL-RT-1031-managed-e-book-category-u"
+      "displayName": "KEEL-RT-1049-managed-e-book-category-u"
     },
     "postState": {
-      "id": "0786f8a0-9c6e-8ed0-9080-e2a932b4f45c",
-      "displayName": "KEEL-RT-1031-managed-e-book-category-u",
+      "id": "8bbd4854-08e0-875a-ba21-66548d1b8d9d",
+      "displayName": "KEEL-RT-1049-managed-e-book-category-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/managedEBookCategories/$entity",
-      "lastModifiedDateTime": "2026-11-06T14:49:21Z"
+      "lastModifiedDateTime": "2026-11-06T19:35:48Z"
     }
   }
 }

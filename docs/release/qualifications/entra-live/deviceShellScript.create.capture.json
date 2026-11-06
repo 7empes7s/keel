@@ -1,19 +1,19 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "deviceShellScript:e1d2c801-986e-8fb1-bc46-4de2a3597c7e",
+    "naturalKey": "deviceShellScript:c76aa5f4-f156-81c6-805f-850e70d7a279",
     "resourceType": "deviceShellScript",
     "operation": "create",
-    "targetId": "42c07949-1841-830b-8444-be3a9e74eb6d",
+    "targetId": "592da309-8cd2-8a27-8185-73bce40def70",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:13.042Z",
+    "recordedAt": "2026-11-06T19:44:06.014Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-1031-device-shell-script-c.sh",
+      "fileName": "keel-rt-1049-device-shell-script-c.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-shell-script-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-shell-script-c",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -23,20 +23,20 @@
       "blockExecutionNotifications": true
     },
     "postState": {
-      "id": "42c07949-1841-830b-8444-be3a9e74eb6d",
-      "fileName": "keel-rt-1031-device-shell-script-c.sh",
+      "id": "592da309-8cd2-8a27-8185-73bce40def70",
+      "fileName": "keel-rt-1049-device-shell-script-c.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-shell-script-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-shell-script-c",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
-      "createdDateTime": "2026-11-06T15:00:13.0960519Z",
+      "createdDateTime": "2026-11-06T19:44:06.0588848Z",
       "roleScopeTagIds": [
         "0"
       ],
       "executionFrequency": "PT0S",
-      "lastModifiedDateTime": "2026-11-06T15:00:13.0960519Z",
+      "lastModifiedDateTime": "2026-11-06T19:44:06.0588848Z",
       "blockExecutionNotifications": true
     }
   }

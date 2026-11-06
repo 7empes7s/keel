@@ -1,5 +1,5 @@
 {
-  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
   "entry": {
     "naturalKey": "pronounsSettings:pronounsSettings",
     "resourceType": "pronounsSettings",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:34:38.981Z",
+    "recordedAt": "2026-11-06T19:49:53.613Z",
     "priorState": {
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/people/pronouns/$entity",
       "isEnabledInOrganization": true

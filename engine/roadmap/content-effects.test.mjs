@@ -210,6 +210,41 @@ test('issue #700: the Q228 plan, a credential policy and a catalog created toget
   assert.deepEqual(effects, [], 'restoring a catalog that is not externally visible exposes nothing');
 });
 
+// ------------------- guest deletion settings and Tunnel health limits (issue #1037)
+
+// The shapes Graph returned in the #1031 dry run (93f835df), where both were refused.
+const entitlementSettings = (durationUntilExternalUserDeletedAfterBlocked, externalUserLifecycleAction = 'blockSignInAndDelete') => ({
+  '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/settings/$entity',
+  durationUntilExternalUserDeletedAfterBlocked, externalUserLifecycleAction,
+});
+const tunnelThreshold = (healthyThreshold) => ({ id: 'cpuUsage', healthyThreshold, unhealthyThreshold: 90, defaultHealthyThreshold: 50, defaultUnhealthyThreshold: 75 });
+
+test('issue #1037: a Tunnel health limit and a longer guest deletion wait are classified and pass the guard', () => {
+  const { effects, refusals } = classifyContentEffects([
+    update('microsoftTunnelHealthThreshold', tunnelThreshold(60), tunnelThreshold(70), 'microsoftTunnelHealthThreshold:cpuUsage'),
+    update('entitlementManagementSettings', entitlementSettings('P10D'), entitlementSettings('P30D'), 'entitlementManagementSettings:settings'),
+    update('entitlementManagementSettings', entitlementSettings('P30D', 'blockSignInAndDelete'), entitlementSettings('P30D', 'blockSignIn'), 'entitlementManagementSettings:narrowed'),
+  ]);
+  assert.deepEqual(refusals, [], 'neither is an unclassified content effect');
+  assert.deepEqual(effects, [], 'a health limit, a longer wait or a milder action deletes no one sooner');
+});
+
+test('issue #1037: a shorter, new or unreadable guest deletion wait, or deleting guests at all, acts on accounts', () => {
+  const { effects, refusals } = classifyContentEffects([
+    update('entitlementManagementSettings', entitlementSettings('P30D'), entitlementSettings('P7D'), 'entitlementManagementSettings:shorter'),
+    update('entitlementManagementSettings', entitlementSettings(null), entitlementSettings('P30D'), 'entitlementManagementSettings:new'),
+    update('entitlementManagementSettings', entitlementSettings('P30D'), entitlementSettings('30 days'), 'entitlementManagementSettings:unreadable'),
+    update('entitlementManagementSettings', entitlementSettings('P30D', 'none'), entitlementSettings('P30D'), 'entitlementManagementSettings:deletes'),
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects.map((e) => `${e.naturalKey.split(':')[1]}:${e.field}:${e.effect}`), [
+    'deletes:externalUserLifecycleAction:acts-on-accounts',
+    'new:durationUntilExternalUserDeletedAfterBlocked:acts-on-accounts',
+    'shorter:durationUntilExternalUserDeletedAfterBlocked:acts-on-accounts',
+    'unreadable:durationUntilExternalUserDeletedAfterBlocked:acts-on-accounts',
+  ]);
+});
+
 // ------------------------------------- iOS and Android app protection (issue #705)
 
 // The live Q229 fixture: Graph's defaults, no wipe settings chosen by us.

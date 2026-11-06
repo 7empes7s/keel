@@ -80,60 +80,60 @@ decision on the eleven objective gaps; they stay listed as unsupported.
 
 ## Generated report
 
-Generated 2026-11-04 by `node tools/release/readiness.mjs signoff` for candidate build `1da75ee488` (verification key absent, tenant absent). **Verdict: pending.**
+Generated 2026-11-06 by `node tools/release/readiness.mjs signoff` for candidate build `90fdca849c` (verification key supplied, tenant supplied). **Verdict: pending.**
 
 | Gate | Task | State | Build | Age | Record |
 |---|---|---|---|---|---|
-| `deployed-acceptance` | task-113 | stale | `fb1493ea6a` | 27 d | yes |
-| `storage-live-acceptance` | task-114 | other-build | `fb1493ea6a` | 27 d | yes |
-| `native-live-acceptance` | task-115 | other-build | `e86afa9` | 7 d | yes |
-| `drill-live-acceptance` | task-116 | other-build | `da3f9d7fa4` | 6 d | yes |
+| `deployed-acceptance` | task-113 | stale | `fb1493ea6a` | 30 d | yes |
+| `storage-live-acceptance` | task-114 | stale | `fb1493ea6a` | 30 d | yes |
+| `native-live-acceptance` | task-115 | other-build | `e86afa9` | 9 d | yes |
+| `drill-live-acceptance` | task-116 | other-build | `da3f9d7fa4` | 8 d | yes |
 | `sentinel-live-acceptance` | task-117 | placeholder (accepted gap) | — | — | yes |
-| `servicenow-live-acceptance` | task-118 | other-build | `fb1493ea6a` | 27 d | yes |
-| `nist-benchmark-acceptance` | task-119 | other-build | `fb1493ea6a` | 27 d | yes |
-| `sharepoint-live-acceptance` | task-120 | other-build | `e86afa9865` | 7 d | yes |
-| `teams-live-acceptance` | task-121 | other-build | `e86afa9865` | 7 d | yes |
-| `exchange-live-acceptance` | task-122 | other-build | `e86afa9865` | 7 d | yes |
-| `onedrive-purview-live-acceptance` | task-123 | other-build | `e86afa9865` | 7 d | yes |
-| `workload-writers-live-acceptance:exchange-mail-flow` | WKLD | other-build | `05a930b58a` | 5 d | yes |
-| `workload-writers-live-acceptance:exchange-extended` | WKLD | other-build | `05a930b58a` | 5 d | yes |
-| `workload-writers-live-acceptance:teams-org-policies` | WKLD | other-build | `05a930b58a` | 5 d | yes |
-| `workload-writers-live-acceptance:teams-voice-policies` | WKLD | other-build | `05a930b58a` | 5 d | yes |
-| `workload-writers-live-acceptance:purview-retention-dlp` | WKLD | other-build | `dd50b39d47` | 5 d | yes |
-| `workload-writers-live-acceptance:purview-governance` | WKLD | other-build | `05a930b58a` | 5 d | yes |
-| `workload-writers-live-acceptance:onedrive-site-settings` | WKLD | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-mail-flow` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-extended` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-role-groups` | WKLD-R | other-build | `05a930b58a` | 5 d | yes |
-| `workload-reads-live-acceptance:exchange-distribution-groups` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-recipients` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-org-access` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-org-defaults` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:exchange-org-config` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:teams-org-policies` | WKLD-R | other-build | `05a930b58a` | 5 d | yes |
-| `workload-reads-live-acceptance:teams-voice-policies` | WKLD-R | other-build | `05a930b58a` | 5 d | yes |
-| `workload-reads-live-acceptance:teams-voice-network` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:teams-device-policies` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:teams-collaboration-policies` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:teams-meeting-settings` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:purview-retention-dlp` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:purview-governance` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:purview-classifiers` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:purview-audit-retention` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:sharepoint-site-settings` | WKLD-R | other-build | `05a930b58a` | 5 d | yes |
-| `workload-reads-live-acceptance:sharepoint-structure` | WKLD-R | other-build | `57f36441ab` | 6 d | yes |
-| `workload-reads-live-acceptance:power-platform-settings` | WKLD-R | missing | — | — | none |
+| `servicenow-live-acceptance` | task-118 | stale | `fb1493ea6a` | 30 d | yes |
+| `nist-benchmark-acceptance` | task-119 | other-build | `f152125662` | 0 d | yes |
+| `sharepoint-live-acceptance` | task-120 | other-build | `f152125662` | 0 d | yes |
+| `teams-live-acceptance` | task-121 | other-build | `f152125662` | 0 d | yes |
+| `exchange-live-acceptance` | task-122 | other-build | `f152125662` | 0 d | yes |
+| `onedrive-purview-live-acceptance` | task-123 | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:exchange-mail-flow` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:exchange-extended` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:teams-org-policies` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:teams-voice-policies` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:purview-retention-dlp` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:purview-governance` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-writers-live-acceptance:onedrive-site-settings` | WKLD | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-mail-flow` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-extended` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-role-groups` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-distribution-groups` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-recipients` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-org-access` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-org-defaults` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:exchange-org-config` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:teams-org-policies` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:teams-voice-policies` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:teams-voice-network` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:teams-device-policies` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:teams-collaboration-policies` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:teams-meeting-settings` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:purview-retention-dlp` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:purview-governance` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:purview-classifiers` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:purview-audit-retention` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:sharepoint-site-settings` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:sharepoint-structure` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:power-platform-settings` | WKLD-R | other-build | `f152125662` | 0 d | yes |
 | `workload-reads-live-acceptance:defender-endpoint-indicators` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:sharepoint-tenant` | WKLD-R | missing | — | — | none |
-| `workload-reads-live-acceptance:defender-email-protection` | WKLD-R | missing | — | — | none |
-| `sharepoint-site-grants-live-acceptance` | writer | other-build | `76e1c71268` | 7 d | yes |
-| `sharepoint-site-permissions-live-acceptance` | writer | other-build | `76e1c71268` | 7 d | yes |
-| `sharepoint-structure-writes-live-acceptance` | writer | other-build | `39129d8a16` | 6 d | yes |
-| `dsc-distribution-groups-writes-live-acceptance` | writer | other-build | `57f36441ab` | 6 d | yes |
-| `exchange-role-definitions-writes-live-acceptance` | writer | missing | — | — | none |
-| `purview-label-unpublish-live-acceptance` | writer | missing | — | — | none |
-| `scubagear-benchmark-acceptance` | task-126 | stale | `d6aa539b80` | 38 d | yes |
-| `entra-live-acceptance` | issue-148 | demoted | per write | per write | 197 registered writes: 2 demoted, 72 missing, 123 other-build |
+| `workload-reads-live-acceptance:sharepoint-tenant` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `workload-reads-live-acceptance:defender-email-protection` | WKLD-R | other-build | `f152125662` | 0 d | yes |
+| `sharepoint-site-grants-live-acceptance` | writer | other-build | `76e1c71268` | 9 d | yes |
+| `sharepoint-site-permissions-live-acceptance` | writer | other-build | `76e1c71268` | 9 d | yes |
+| `sharepoint-structure-writes-live-acceptance` | writer | other-build | `f152125662` | 0 d | yes |
+| `dsc-distribution-groups-writes-live-acceptance` | writer | other-build | `57f36441ab` | 8 d | yes |
+| `exchange-role-definitions-writes-live-acceptance` | writer | other-build | `f152125662` | 0 d | yes |
+| `purview-label-unpublish-live-acceptance` | writer | other-build | `f152125662` | 0 d | yes |
+| `scubagear-benchmark-acceptance` | task-126 | other-build | `f152125662` | 0 d | yes |
+| `entra-live-acceptance` | issue-148 | demoted | per write | per write | 223 registered writes: 2 demoted, 70 missing, 151 other-build |
 
 **Objectives** (implemented / live-qualified / manual or unsupported / deferred):
 
@@ -158,69 +158,68 @@ Generated 2026-11-04 by `node tools/release/readiness.mjs signoff` for candidate
 | G7 | implemented | no-live-gate | unsupported: G7 (accepted gap) | — |
 | G8 | implemented | not-live-qualified | — | — |
 
-**Recapture at the candidate build** (48 gates, 197 Entra writes):
+**Recapture at the candidate build** (48 gates, 223 Entra writes):
 
 | Gate | State | Build | Age | Why |
 |---|---|---|---|---|
-| `workload-writers-live-acceptance:onedrive-site-settings` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-mail-flow` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-extended` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-distribution-groups` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-recipients` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-org-access` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-org-defaults` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:exchange-org-config` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:teams-voice-network` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:teams-device-policies` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:teams-collaboration-policies` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:teams-meeting-settings` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:purview-retention-dlp` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:purview-governance` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:purview-classifiers` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:purview-audit-retention` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:power-platform-settings` | missing | — | — | no record has been captured |
 | `workload-reads-live-acceptance:defender-endpoint-indicators` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:sharepoint-tenant` | missing | — | — | no record has been captured |
-| `workload-reads-live-acceptance:defender-email-protection` | missing | — | — | no record has been captured |
-| `exchange-role-definitions-writes-live-acceptance` | missing | — | — | no record has been captured |
-| `purview-label-unpublish-live-acceptance` | missing | — | — | no record has been captured |
-| `deployed-acceptance` | stale | `fb1493ea6a` | 27 d | 27 days old; the limit is 7 days; captured at build fb1493ea6a, not the candidate 1da75ee488 |
-| `scubagear-benchmark-acceptance` | stale | `d6aa539b80` | 38 d | 38 days old; the limit is 30 days; captured at build d6aa539b80, not the candidate 1da75ee488 |
-| `storage-live-acceptance` | other-build | `fb1493ea6a` | 27 d | captured at build fb1493ea6a, not the candidate 1da75ee488 |
-| `native-live-acceptance` | other-build | `e86afa9` | 7 d | captured at build e86afa9, not the candidate 1da75ee488 |
-| `drill-live-acceptance` | other-build | `da3f9d7fa4` | 6 d | captured at build da3f9d7fa4, not the candidate 1da75ee488 |
-| `servicenow-live-acceptance` | other-build | `fb1493ea6a` | 27 d | captured at build fb1493ea6a, not the candidate 1da75ee488 |
-| `nist-benchmark-acceptance` | other-build | `fb1493ea6a` | 27 d | captured at build fb1493ea6a, not the candidate 1da75ee488 |
-| `sharepoint-live-acceptance` | other-build | `e86afa9865` | 7 d | captured at build e86afa9865, not the candidate 1da75ee488 |
-| `teams-live-acceptance` | other-build | `e86afa9865` | 7 d | captured at build e86afa9865, not the candidate 1da75ee488 |
-| `exchange-live-acceptance` | other-build | `e86afa9865` | 7 d | captured at build e86afa9865, not the candidate 1da75ee488 |
-| `onedrive-purview-live-acceptance` | other-build | `e86afa9865` | 7 d | captured at build e86afa9865, not the candidate 1da75ee488 |
-| `workload-writers-live-acceptance:exchange-mail-flow` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-writers-live-acceptance:exchange-extended` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-writers-live-acceptance:teams-org-policies` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-writers-live-acceptance:teams-voice-policies` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-writers-live-acceptance:purview-retention-dlp` | other-build | `dd50b39d47` | 5 d | captured at build dd50b39d47, not the candidate 1da75ee488 |
-| `workload-writers-live-acceptance:purview-governance` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-reads-live-acceptance:exchange-role-groups` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-reads-live-acceptance:teams-org-policies` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-reads-live-acceptance:teams-voice-policies` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-reads-live-acceptance:sharepoint-site-settings` | other-build | `05a930b58a` | 5 d | captured at build 05a930b58a, not the candidate 1da75ee488 |
-| `workload-reads-live-acceptance:sharepoint-structure` | other-build | `57f36441ab` | 6 d | captured at build 57f36441ab, not the candidate 1da75ee488 |
-| `sharepoint-site-grants-live-acceptance` | other-build | `76e1c71268` | 7 d | captured at build 76e1c71268, not the candidate 1da75ee488 |
-| `sharepoint-site-permissions-live-acceptance` | other-build | `76e1c71268` | 7 d | captured at build 76e1c71268, not the candidate 1da75ee488 |
-| `sharepoint-structure-writes-live-acceptance` | other-build | `39129d8a16` | 6 d | captured at build 39129d8a16, not the candidate 1da75ee488 |
-| `dsc-distribution-groups-writes-live-acceptance` | other-build | `57f36441ab` | 6 d | captured at build 57f36441ab, not the candidate 1da75ee488 |
+| `deployed-acceptance` | stale | `fb1493ea6a` | 30 d | 30 days old; the limit is 7 days; captured at build fb1493ea6a, not the candidate 90fdca849c |
+| `storage-live-acceptance` | stale | `fb1493ea6a` | 30 d | 30 days old; the limit is 30 days; captured at build fb1493ea6a, not the candidate 90fdca849c |
+| `servicenow-live-acceptance` | stale | `fb1493ea6a` | 30 d | 30 days old; the limit is 30 days; captured at build fb1493ea6a, not the candidate 90fdca849c |
+| `native-live-acceptance` | other-build | `e86afa9` | 9 d | captured at build e86afa9, not the candidate 90fdca849c |
+| `drill-live-acceptance` | other-build | `da3f9d7fa4` | 8 d | captured at build da3f9d7fa4, not the candidate 90fdca849c |
+| `nist-benchmark-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `sharepoint-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `teams-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `exchange-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `onedrive-purview-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:exchange-mail-flow` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:exchange-extended` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:teams-org-policies` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:teams-voice-policies` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:purview-retention-dlp` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:purview-governance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-writers-live-acceptance:onedrive-site-settings` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-mail-flow` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-extended` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-role-groups` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-distribution-groups` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-recipients` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-org-access` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-org-defaults` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:exchange-org-config` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:teams-org-policies` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:teams-voice-policies` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:teams-voice-network` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:teams-device-policies` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:teams-collaboration-policies` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:teams-meeting-settings` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:purview-retention-dlp` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:purview-governance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:purview-classifiers` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:purview-audit-retention` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:sharepoint-site-settings` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:sharepoint-structure` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:power-platform-settings` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:sharepoint-tenant` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `workload-reads-live-acceptance:defender-email-protection` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `sharepoint-site-grants-live-acceptance` | other-build | `76e1c71268` | 9 d | captured at build 76e1c71268, not the candidate 90fdca849c |
+| `sharepoint-site-permissions-live-acceptance` | other-build | `76e1c71268` | 9 d | captured at build 76e1c71268, not the candidate 90fdca849c |
+| `sharepoint-structure-writes-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `dsc-distribution-groups-writes-live-acceptance` | other-build | `57f36441ab` | 8 d | captured at build 57f36441ab, not the candidate 90fdca849c |
+| `exchange-role-definitions-writes-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `purview-label-unpublish-live-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
+| `scubagear-benchmark-acceptance` | other-build | `f152125662` | 0 d | captured at build f152125662, not the candidate 90fdca849c |
 
 Entra writes that failed live (fix, then recapture):
 
-- `tenantAppManagementPolicy.update`: failed live on 2026-11-04: post-state: applicationRestrictions did not read back as written (Graph sets identifierUris.uriAdditionWithoutUniqueTenantIdentifier.isStateSetByMicrosoft itself; the write sent false, read back differs)
-- `defenderRoleAssignment.update`: failed live on 2026-11-04: Graph 400 on PATCH with only principalIds: "AppScopeIds must be provided; DisplayName was not provided; RoleDefinitionId was not provided". The Defender assignment PATCH needs the full body (displayName, roleDefinitionId, principalIds, directoryScopeIds, appScopeIds).
+- `accessReviewScheduleDefinition.create`: failed live on 2026-11-06: POST /identityGovernance/accessReviews/definitions returned 400 "Tenant is not authorized for Custom Scoping Conditions Feature": the create body carries the backed-up instanceEnumerationScope and a scope query ending in /transitiveMembers/microsoft.graph.user, which the tenant has no licence for
+- `multiTenantOrganization.update`: failed live on 2026-11-06: PATCH /tenantRelationships/multiTenantOrganization returned 400 "Invalid value specified for property description": the backup has description null and Graph refuses null (and an empty string) for it
 
 Writer families with registered writes no writer record proves yet (writes that gates 120-123 prove, such as the SharePoint tenant toggle, Teams team settings and members and Purview labels, are in those gates' own records):
 
-- `exchange-extended`: 2 of 21 proven; missing `exchange-extended.outbound-spam-policy.update`, `exchange-extended.outbound-spam-rule.update`, `exchange-extended.anti-spam-rule.update`, `exchange-extended.anti-phish-rule.update`, `exchange-extended.anti-malware-rule.update`, `exchange-extended.quarantine-policy.update`, `exchange-extended.journal-rule.update`, `exchange-extended.mobile-device-policy.update`, `exchange-extended.device-access-rule.update`, `exchange-extended.activesync-settings.update`, `exchange-extended.address-list.update`, `exchange-extended.global-address-list.update`, `exchange-extended.offline-address-book.update`, `exchange-extended.address-book-policy.update`, `exchange-extended.retention-policy-tag.update`, `exchange-extended.retention-policy.update`, `exchange-extended.safe-links-rule.update`, `exchange-extended.safe-attachment-rule.update`, `exchange-extended.defender-office-apps.update`
-- `mailflow`: 6 of 7 proven; missing `mailflow.outbound-connector.update`
-- `purview`: 5 of 8 proven; missing `purview.label.update`, `purview.label-policy.update`, `purview.label-policy.remove-labels`
+- `exchange-extended`: 12 of 21 proven; missing `exchange-extended.journal-rule.update`, `exchange-extended.device-access-rule.update`, `exchange-extended.activesync-settings.update`, `exchange-extended.address-list.update`, `exchange-extended.global-address-list.update`, `exchange-extended.offline-address-book.update`, `exchange-extended.address-book-policy.update`, `exchange-extended.retention-policy.update`, `exchange-extended.defender-office-apps.update`
+- `purview`: 6 of 8 proven; missing `purview.label.update`, `purview.label-policy.update`
 - `sharepoint`: 7 of 8 proven; missing `sharepoint.tenant-settings.update`
-- `sharepoint-structure`: 2 of 7 proven; missing `sharepoint-structure.site-template.update`, `sharepoint-structure.site-script.add`, `sharepoint-structure.site-script.update`, `sharepoint-structure.site-design.add`, `sharepoint-structure.site-design.update`
+- `sharepoint-structure`: 5 of 7 proven; missing `sharepoint-structure.site-template.update`, `sharepoint-structure.hub-site.add`
 - `teams`: 26 of 32 proven; missing `teams.settings.update`, `teams.membership.add`, `teams.membership.update`, `teams.membership.remove`, `teams.federation-configuration.update`, `teams.live-events-configuration.update`

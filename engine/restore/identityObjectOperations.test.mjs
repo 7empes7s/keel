@@ -436,6 +436,50 @@ test('governance singletons are updated in place and verified', async () => {
   }
 });
 
+test('#1034: a multitenant organization backed up with no description is restored without clearing it, and the description is a step', async () => {
+  const path = '/tenantRelationships/multiTenantOrganization';
+  // The shape Graph returned live (#1031): the backup holds description null.
+  const mto = (displayName, description) => ({ id: 'mto-0001', displayName, description, state: 'active', createdDateTime: '2026-10-20T00:00:00Z' });
+  // Graph refuses a null or empty description: 400 "Invalid value specified for property 'description'".
+  const failWrites = ({ method, body }) => (method === 'PATCH' && body && 'description' in body && (body.description === null || body.description === '')
+    ? { ok: false, status: 400, body: { error: { code: 'Request_BadRequest', message: "Invalid value specified for property 'description'." } } }
+    : null);
+  const run = async (desired, live, ctx = FAST) => {
+    const graph = idoFakeGraph({ seed: { [path]: live }, failWrites });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'multiTenantOrganization:multiTenantOrganization', resourceType: 'multiTenantOrganization', payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', ctx);
+    return { result, writes: writesOfAll(graph) };
+  };
+
+  // Name and description both drifted: the name is written, the description is left out and listed as a step.
+  let { result, writes } = await run(mto('KEEL-RT-MTO', null), mto('KEEL-RT-MTO drift', 'KEEL-RT drift (#1031)'));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ displayName: 'KEEL-RT-MTO' }]);
+  assert.deepEqual(result.applied.completion.map((step) => [step.requirement, step.fields]), [['multiTenantOrganizationDescription', ['description']]]);
+
+  // An empty string is refused the same way.
+  ({ result, writes } = await run(mto('KEEL-RT-MTO', ''), mto('KEEL-RT-MTO drift', 'KEEL-RT drift (#1031)')));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ displayName: 'KEEL-RT-MTO' }]);
+
+  // Only the description drifted: nothing is written and the restore says why.
+  ({ result, writes } = await run(mto('KEEL-RT-MTO', null), mto('KEEL-RT-MTO', 'KEEL-RT drift (#1031)')));
+  assert.equal(writes.length, 0);
+  assert.match(result.skipped?.reason ?? '', /^manual: .*cannot clear a description/);
+  assert.equal(result.skipped.completion.requirement, 'multiTenantOrganizationDescription');
+
+  // The dry run lists the same step.
+  ({ result, writes } = await run(mto('KEEL-RT-MTO', null), mto('KEEL-RT-MTO drift', 'KEEL-RT drift (#1031)'), { ...FAST, mode: 'dry-run' }));
+  assert.equal(writes.length, 0);
+  assert.deepEqual(result.applied.changes.fields, ['displayName']);
+  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['multiTenantOrganizationDescription']);
+
+  // A description the backup does hold is still written, with no step.
+  ({ result, writes } = await run(mto('KEEL-RT-MTO', 'KEEL-RT original'), mto('KEEL-RT-MTO', 'KEEL-RT drift (#1031)')));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ description: 'KEEL-RT original' }]);
+  assert.equal(result.applied.completion, undefined);
+});
+
 test('restore gaps batch 2: Entra ID tenant singletons write only their settings, in place, and read back', async () => {
   const MTO = '/policies/crossTenantAccessPolicy/templates';
   const name = { id: 'policy', displayName: 'Microsoft name', description: 'Microsoft description' };

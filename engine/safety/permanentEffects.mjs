@@ -35,7 +35,7 @@ export function attributeCreateEffects(resource) {
   return [{ field: '(object created)', effect: PERMANENT_EFFECT, before: null, after: name ?? null, why: attributeCreateWhy(resource) }];
 }
 
-export const SYNC_FIELD = 'userSyncInbound.isSyncAllowed';
+const SYNC_FIELD = 'userSyncInbound.isSyncAllowed';
 
 /** Turning sync on: changes access, and is permanent. Turning it off or keeping it carries none. */
 export function identitySyncEffects(resource) {

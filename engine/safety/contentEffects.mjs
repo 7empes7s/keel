@@ -43,8 +43,9 @@ import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
+import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
 
-export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing', SIGN_IN_EFFECT]);
+export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing', SIGN_IN_EFFECT, PERMANENT_EFFECT]);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
 
 const NOT_BACKED_UP = 'KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.';
@@ -77,6 +78,8 @@ const DISCLOSURES = Object.freeze({
     + 'or how long everyone can stay idle before being signed out (the organization default idle sign-out policy). '
     + 'People may be asked for other sign-in methods, may stop being asked, or may not be able to sign in until it is set right. '
     + `Check the change with the person who owns sign-in before approving. ${NOT_BACKED_UP}`,
+  [PERMANENT_EFFECT]: 'This write cannot be undone: once it is made, neither Keel nor an admin can take it back, so undoing the restore leaves it in place. '
+    + `Check the backup still holds what you want for good before approving. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {
@@ -765,6 +768,9 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   featureRolloutPolicy: { reviewed: true, effectsOf: featureRolloutEffects },
   // Issue #1008: a write into the organization default idle sign-out policy signs out everyone.
   activityBasedTimeoutPolicy: { reviewed: true, effectsOf: idleSignOutDefaultEffects },
+  // Issue #1015 (permanentEffects.mjs): an attribute set or attribute created, or partner user sync turned on, cannot be undone (`why`, said first, names what stays).
+  attributeSet: { reviewed: true, effectsOf: attributeCreateEffects }, customSecurityAttributeDefinition: { reviewed: true, effectsOf: attributeCreateEffects },
+  crossTenantIdentitySyncPolicyPartner: { reviewed: true, effectsOf: identitySyncEffects },
   // Issue #991: an active time-bound Entra role assignment gives admin access back
   // from the moment it is created, so who, which role and where are each a
   // "changes admin access" effect, shown by name. Its writer (adminRoleOperations.mjs)
@@ -981,7 +987,7 @@ export function classifyContentEffects(resources) {
     effects.push(...protectionEffects(resource));
     const review = CONTENT_EFFECT_RULES[resourceType];
     if (review?.effectsOf) {
-      for (const item of review.effectsOf(resource)) effects.push({ naturalKey, resourceType, ...item, disclosure: disclosureFor(item.effect) });
+      for (const { why, ...item } of review.effectsOf(resource)) effects.push({ naturalKey, resourceType, ...item, disclosure: [why, disclosureFor(item.effect)].filter(Boolean).join(' ') });
       continue;
     }
     if (review?.reviewed) {

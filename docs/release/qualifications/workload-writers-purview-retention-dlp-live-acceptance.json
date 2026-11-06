@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "dd50b39d4737e6379dd90b0330a8c420287f367f",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-30T07:47:55.879Z",
+  "observedAt": "2026-11-06T14:46:18.869Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
+        "target": "KEEL capture 2026-11-06T14:37:41.633Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T07:44:53.304Z",
+        "capturedAt": "2026-11-06T14:44:06.215Z",
         "error": null
       },
       {
@@ -213,13 +213,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
+        "target": "KEEL capture 2026-11-06T14:37:41.633Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T07:45:48.287Z",
+        "capturedAt": "2026-11-06T14:44:42.350Z",
         "error": null
       },
       {
@@ -234,13 +234,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
+        "target": "KEEL capture 2026-11-06T14:37:41.633Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T07:46:44.993Z",
+        "capturedAt": "2026-11-06T14:45:27.171Z",
         "error": null
       },
       {
@@ -255,13 +255,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-30T07:38:07.524Z",
+        "target": "KEEL capture 2026-11-06T14:37:41.633Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-30T07:47:55.879Z",
+        "capturedAt": "2026-11-06T14:46:18.869Z",
         "error": null
       }
     ],
@@ -292,12 +292,13 @@
         "cmdlet": "Set-RetentionCompliancePolicy",
         "parameters": {
           "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
-          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+          "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
         },
         "outcome": "failed",
         "error": {
           "code": "CMDLET_ERROR",
-          "errorId": "[],Write-ErrorMessage"
+          "errorId": "[],Write-ErrorMessage",
+          "message": "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
         }
       },
       {
@@ -318,7 +319,8 @@
         "outcome": "failed",
         "error": {
           "code": "CMDLET_ERROR",
-          "errorId": "[],Write-ErrorMessage"
+          "errorId": "[],Write-ErrorMessage",
+          "message": "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyLockConflictException|Previous changes to the policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' are being deployed. Once deployed, additional actions can be performed. Please refer to 'https://go.microsoft.com/fwlink/?linkid=2225070' to learn more."
         }
       },
       {
@@ -331,7 +333,8 @@
         "outcome": "failed",
         "error": {
           "code": "CMDLET_ERROR",
-          "errorId": "[],Write-ErrorMessage"
+          "errorId": "[],Write-ErrorMessage",
+          "message": "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
         }
       },
       {
@@ -355,7 +358,7 @@
         "cmdlet": "Set-RetentionComplianceRule",
         "parameters": {
           "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
-          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+          "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
         },
         "outcome": "ok"
       },
@@ -397,7 +400,7 @@
         "cmdlet": "Set-DlpCompliancePolicy",
         "parameters": {
           "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
-          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+          "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
         },
         "outcome": "ok"
       },
@@ -439,7 +442,7 @@
         "cmdlet": "Set-DlpComplianceRule",
         "parameters": {
           "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
-          "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+          "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
         },
         "outcome": "ok"
       },
@@ -469,16 +472,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "dd64c8749a83f75b9eb522546e11d5d8195e9f530d026f542fe7efcdfaef85f8"
+    "captureLogSha256": "09a6812080d8dcde8fc5ba88956e8cfd2d5801c05314ebf4f115434a71018d35"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-purview-retention-dlp-live-acceptance.capture.json",
-      "sha256": "dd64c8749a83f75b9eb522546e11d5d8195e9f530d026f542fe7efcdfaef85f8"
+      "sha256": "09a6812080d8dcde8fc5ba88956e8cfd2d5801c05314ebf4f115434a71018d35"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "91c41f97b2c3e40546cd65d48deaf8257b3d80affee6e3023142a0179d898e0d"
+      "signature": "5067e12ca9d74c7d0df111545fdbe5755427fdc32aa7011f03a7f65e18215226"
     }
   }
 }

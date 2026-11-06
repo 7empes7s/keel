@@ -1,0 +1,119 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-11-06T14:25:45.397Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-org-access",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "exchange-org-access.authentication-policies",
+        "family": "authenticationPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.sharing-policies",
+        "family": "sharingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 3,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.organization-relationships",
+        "family": "organizationRelationship",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.intra-organization-connectors",
+        "family": "intraOrganizationConnector",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.owa-mailbox-policies",
+        "family": "owaMailboxPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.role-assignment-policies",
+        "family": "roleAssignmentPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.application-access-policies",
+        "family": "applicationAccessPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-access.external-in-outlook",
+        "family": "externalInOutlook",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-11-06T14:25:45.397Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "bcd4dd1ff7411f038a0208a0d9e77e215cdc9f88cfc77cc45681d35ffa5a3659"
+    }
+  }
+}

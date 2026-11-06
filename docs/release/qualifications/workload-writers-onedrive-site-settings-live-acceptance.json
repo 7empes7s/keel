@@ -1,0 +1,261 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-writers-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "operation": "workload.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-11-06T14:29:35.821Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "onedrive-site-settings",
+    "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "organization": null,
+    "tenantWide": false,
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "PnP.PowerShell",
+      "moduleVersion": "3.4.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
+          "Exchange.ManageAsApp",
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
+          "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
+          "Exchange.ManageAsApp",
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-PnPTenantSite",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-PnPTenantSite is not a workload write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-PnPTenantSite",
+        "parameter": "Force",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-PnPTenantSite does not take Force from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "onedrive.site-settings.update",
+        "kind": "update",
+        "method": "Set-PnPTenantSite",
+        "version": "3.4.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+        "identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+        "field": "DefaultLinkPermission",
+        "type": "narrowing",
+        "before": 2,
+        "target": 1,
+        "final": 2,
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-11-06T14:29:35.821Z",
+        "error": null
+      }
+    ],
+    "skipped": [],
+    "created": [],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-PnPTenantSite",
+        "parameters": {
+          "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+          "DefaultLinkPermission": 1
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-PnPTenantSite",
+        "parameters": {
+          "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example",
+          "DefaultLinkPermission": 2
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "onedrive-site-settings",
+        "families": [
+          "onedriveSite"
+        ],
+        "outcome": "ok"
+      }
+    ],
+    "captureLogSha256": "cd2045ab33039d82f81ce7c535812b683a0c151f42da049e0f8c86d982787b83"
+  },
+  "proof": {
+    "artifact": {
+      "path": "workload-writers-onedrive-site-settings-live-acceptance.capture.json",
+      "sha256": "cd2045ab33039d82f81ce7c535812b683a0c151f42da049e0f8c86d982787b83"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "3a8ded9a6c75ee3978893aeb31e1ed7ca3012463f25ea2cd3d520c867b3f6e66"
+    }
+  }
+}

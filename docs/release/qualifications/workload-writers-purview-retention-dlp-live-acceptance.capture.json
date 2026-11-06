@@ -10,7 +10,7 @@
         "dlpRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:38:07.524Z"
+      "at": "2026-11-06T14:37:41.633Z"
     },
     {
       "credential": "collector",
@@ -19,20 +19,21 @@
         "retentionPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:38:41.372Z"
+      "at": "2026-11-06T14:38:10.475Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-RetentionCompliancePolicy",
       "parameters": {
         "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
-        "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+        "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
       },
       "outcome": "failed",
-      "at": "2026-10-30T07:38:54.710Z",
+      "at": "2026-11-06T14:38:17.794Z",
       "error": {
         "code": "CMDLET_ERROR",
-        "errorId": "[],Write-ErrorMessage"
+        "errorId": "[],Write-ErrorMessage",
+        "message": "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
       }
     },
     {
@@ -42,21 +43,7 @@
         "retentionPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:39:07.801Z"
-    },
-    {
-      "credential": "restorer",
-      "cmdlet": "Set-RetentionCompliancePolicy",
-      "parameters": {
-        "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
-        "Comment": "KEEL test fixture"
-      },
-      "outcome": "failed",
-      "at": "2026-10-30T07:39:17.256Z",
-      "error": {
-        "code": "CMDLET_ERROR",
-        "errorId": "[],Write-ErrorMessage"
-      }
+      "at": "2026-11-06T14:38:28.977Z"
     },
     {
       "credential": "restorer",
@@ -66,10 +53,26 @@
         "Comment": "KEEL test fixture"
       },
       "outcome": "failed",
-      "at": "2026-10-30T07:44:29.807Z",
+      "at": "2026-11-06T14:38:35.165Z",
       "error": {
         "code": "CMDLET_ERROR",
-        "errorId": "[],Write-ErrorMessage"
+        "errorId": "[],Write-ErrorMessage",
+        "message": "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyLockConflictException|Previous changes to the policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' are being deployed. Once deployed, additional actions can be performed. Please refer to 'https://go.microsoft.com/fwlink/?linkid=2225070' to learn more."
+      }
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-RetentionCompliancePolicy",
+      "parameters": {
+        "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
+        "Comment": "KEEL test fixture"
+      },
+      "outcome": "failed",
+      "at": "2026-11-06T14:43:46.040Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "[],Write-ErrorMessage",
+        "message": "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
       }
     },
     {
@@ -79,7 +82,7 @@
         "retentionPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:44:44.154Z"
+      "at": "2026-11-06T14:43:58.282Z"
     },
     {
       "credential": "collector",
@@ -88,17 +91,17 @@
         "retentionRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:44:53.304Z"
+      "at": "2026-11-06T14:44:06.215Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-RetentionComplianceRule",
       "parameters": {
         "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
-        "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+        "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T07:45:00.909Z"
+      "at": "2026-11-06T14:44:13.025Z"
     },
     {
       "credential": "collector",
@@ -107,7 +110,7 @@
         "retentionRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:45:07.161Z"
+      "at": "2026-11-06T14:44:21.711Z"
     },
     {
       "credential": "restorer",
@@ -117,7 +120,7 @@
         "Comment": "KEEL test fixture"
       },
       "outcome": "ok",
-      "at": "2026-10-30T07:45:17.676Z"
+      "at": "2026-11-06T14:44:26.662Z"
     },
     {
       "credential": "collector",
@@ -126,7 +129,7 @@
         "retentionRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:45:40.409Z"
+      "at": "2026-11-06T14:44:34.135Z"
     },
     {
       "credential": "collector",
@@ -135,17 +138,17 @@
         "dlpPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:45:48.287Z"
+      "at": "2026-11-06T14:44:42.350Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-DlpCompliancePolicy",
       "parameters": {
         "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
-        "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+        "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T07:45:57.827Z"
+      "at": "2026-11-06T14:44:51.518Z"
     },
     {
       "credential": "collector",
@@ -154,7 +157,7 @@
         "dlpPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:46:11.894Z"
+      "at": "2026-11-06T14:45:00.418Z"
     },
     {
       "credential": "restorer",
@@ -164,7 +167,7 @@
         "Comment": "KEEL test fixture"
       },
       "outcome": "ok",
-      "at": "2026-10-30T07:46:19.142Z"
+      "at": "2026-11-06T14:45:08.129Z"
     },
     {
       "credential": "collector",
@@ -173,7 +176,7 @@
         "dlpPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:46:34.947Z"
+      "at": "2026-11-06T14:45:19.535Z"
     },
     {
       "credential": "collector",
@@ -182,17 +185,17 @@
         "dlpRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:46:44.993Z"
+      "at": "2026-11-06T14:45:27.171Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-DlpComplianceRule",
       "parameters": {
         "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
-        "Comment": "KEEL capture 2026-10-30T07:38:07.524Z"
+        "Comment": "KEEL capture 2026-11-06T14:37:41.633Z"
       },
       "outcome": "ok",
-      "at": "2026-10-30T07:46:58.218Z"
+      "at": "2026-11-06T14:45:36.382Z"
     },
     {
       "credential": "collector",
@@ -201,7 +204,7 @@
         "dlpRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:47:22.310Z"
+      "at": "2026-11-06T14:45:46.567Z"
     },
     {
       "credential": "restorer",
@@ -211,7 +214,7 @@
         "Comment": "KEEL test fixture"
       },
       "outcome": "ok",
-      "at": "2026-10-30T07:47:33.515Z"
+      "at": "2026-11-06T14:45:56.686Z"
     },
     {
       "credential": "collector",
@@ -220,7 +223,7 @@
         "dlpRule"
       ],
       "outcome": "ok",
-      "at": "2026-10-30T07:47:44.665Z"
+      "at": "2026-11-06T14:46:07.023Z"
     }
   ],
   "values": {

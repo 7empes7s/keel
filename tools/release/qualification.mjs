@@ -43,8 +43,8 @@ import { pseudonymizer, unpseudonymizedIds } from '../qualification/pseudonymize
 import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 const SCUBAGEAR_PIN_PATH = new URL('../../docs/roadmap/benchmark-content/scubagear-pin.json', import.meta.url).pathname;
@@ -315,6 +315,43 @@ function validateScubaGearBenchmarkAcceptanceSubject(evidence, { build } = {}) {
 }
 
 /**
+ * Issue #1044: committing records makes a new commit that green master then
+ * deploys, so the build the records name is never the deployed one. A commit
+ * range that touches only these paths (evidence and docs) leaves the code as
+ * it was: a record from one end counts at the other, reported as 'same-code'.
+ */
+export const RECORDS_ONLY_PATHS = Object.freeze(['docs/', 'lessons/', 'ops/STATE.md']);
+/** Under docs/ but read at runtime (benchmark pins), so a change there is a code change. */
+export const RUNTIME_DOC_PATHS = Object.freeze(['docs/roadmap/benchmark-content/']);
+const COMMIT_ID = /^[0-9a-f]{7,40}$/i;
+const matchesPath = (file, prefixes) => prefixes.some((prefix) => (prefix.endsWith('/') ? file.startsWith(prefix) : file === prefix));
+const isRecordsOnlyPath = (file) => matchesPath(file, RECORDS_ONLY_PATHS) && !matchesPath(file, RUNTIME_DOC_PATHS);
+const REPO_DIR = join(fileURLToPath(import.meta.url), '..', '..', '..');
+
+/** Paths that differ between two commits (renames as both sides), or null when git cannot tell. */
+export function gitChangedPaths(from, to, { cwd = REPO_DIR } = {}) {
+  try {
+    return execFileSync('git', ['-C', cwd, 'diff', '--name-only', '--no-renames', from, to, '--'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How a record's build relates to the candidate: 'candidate' (the same commit),
+ * 'same-code' (only records-only paths differ; `range` names the commits) or
+ * 'other-build' (code differs, or git cannot tell).
+ */
+export function buildRelation(recordBuild, candidateBuild, { changedPaths = gitChangedPaths } = {}) {
+  if (recordBuild === candidateBuild) return { relation: 'candidate', range: null };
+  if (!COMMIT_ID.test(String(recordBuild)) || !COMMIT_ID.test(String(candidateBuild))) return { relation: 'other-build', range: null };
+  const paths = changedPaths(recordBuild, candidateBuild);
+  if (!Array.isArray(paths) || !paths.every(isRecordsOnlyPath)) return { relation: 'other-build', range: null };
+  return { relation: 'same-code', range: `${recordBuild.slice(0, 10)}..${candidateBuild.slice(0, 10)}` };
+}
+
+/**
  * Task-113: authenticated deployed release acceptance. The evidence is an
  * imported record from tools/release/deployed-acceptance.mjs, captured by the
  * operator against the deployed candidate with an authenticated session:
@@ -396,7 +433,7 @@ function readCaptureArtifact(artifact, evidenceDir) {
 
 /** Gate validator for the task-113 deployed-acceptance record. */
 function validateDeployedAcceptanceSubject(evidence, {
-  tenantRef, build, now = new Date(), hmacKey, evidenceDir = process.cwd(), trustedRunners = TRUSTED_RUNNERS,
+  tenantRef, build, now = new Date(), hmacKey, evidenceDir = process.cwd(), trustedRunners = TRUSTED_RUNNERS, sameCode = null,
 } = {}) {
   const failures = [];
   if (!tenantRef) failures.push('deployed acceptance requires the expected tenant identity');
@@ -434,7 +471,10 @@ function validateDeployedAcceptanceSubject(evidence, {
   if (!deployment || typeof deployment.revision !== 'string' || !deployment.revision) {
     failures.push('missing prerequisite: deployed revision identity');
   } else {
-    if (deployment.revision !== evidence.build) failures.push('deployed revision does not match the candidate build');
+    // A deployed checkout that differs from the build only in records-only commits runs the same code (issue #1044).
+    if (deployment.revision !== evidence.build && sameCode?.(deployment.revision, evidence.build) !== true) {
+      failures.push('deployed revision does not match the candidate build');
+    }
     if (deployment.dirty !== false) failures.push('deployed checkout is not clean (or unknown)');
   }
 
@@ -793,6 +833,8 @@ export function verifyEvidence(evidence, {
   trustedRunners = TRUSTED_RUNNERS,
   // The test tenant list, for gates that allow some writes there only (tests pass their own).
   testTenantRefs = undefined,
+  // (a, b) => true when commits a and b run the same code (buildRelation); null keeps exact matching.
+  sameCode = null,
 } = {}) {
   const failures = [];
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
@@ -903,7 +945,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence, { tenantRef, build, artifact, now, maxAgeHours, hmacKey, evidenceDir, trustedRunners, testTenantRefs }));
+  else failures.push(...validator(evidence, { tenantRef, build, artifact, now, maxAgeHours, hmacKey, evidenceDir, trustedRunners, testTenantRefs, sameCode }));
 
   return { ok: failures.length === 0, failures };
 }
@@ -1027,6 +1069,7 @@ function main() {
     build,
     requireLive: process.argv.includes('--require-live'),
     maxAgeHours: Number(arg('max-age-hours', DEFAULT_MAX_AGE_HOURS)),
+    sameCode: (a, b) => buildRelation(a, b).relation === 'same-code',
   });
   // No build to check against fails closed, as it did before; a gate that needs the expected
   // identity says which one was missing, so the fix is one flag away.

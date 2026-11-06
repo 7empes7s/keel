@@ -190,6 +190,15 @@ test('wrong tenant, build or operation fails; tenant and build identity are requ
   cleanup(c, d, e);
 });
 
+test('a deployed checkout that differs from the build only in records-only commits passes (issue #1044)', async () => {
+  const deployed = 'c'.repeat(40);
+  const d = await capture({ git: { deployedRevision: deployed } });
+  const sameCode = (a, b) => a === deployed && b === BUILD;
+  assert.deepEqual(verdict(d.path, { sameCode }).failures, []);
+  assert.match(verdict(d.path, { sameCode: () => false }).failures.join('\n'), /deployed revision does not match/);
+  cleanup(d);
+});
+
 test('stale evidence fails', async () => {
   const c = await capture();
   assert.match(verdict(c.path, { now: new Date(T0 + 8 * 24 * 60 * 60 * 1000) }).failures.join('\n'), /stale/);

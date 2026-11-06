@@ -39,6 +39,7 @@ import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.m
 import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
+import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
 // it made before; the fake answers them with their direct children.
@@ -235,40 +236,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Fixture connector', targetUrl: 'https://fixture.example/api/signup',
     authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
   },
-  // Issue #1016: a SCIM provisioning job as the backup holds it: the job's
-  // template and schedule, and its schema in the shape Graph returns
-  // (synchronization-synchronizationschema-get): one rule mapping users with
-  // a scoping filter on department.
-  synchronizationJob: {
-    id: 'scim.fixture0000000000000000000000000.fixture-tenant', templateId: 'scim',
-    schedule: { expiration: null, interval: 'PT40M', state: 'Active' }, servicePrincipalId: 'fixture-sp',
-    schema: {
-      directories: [
-        { id: 'fixture-directory-aad', name: 'Azure Active Directory', objects: [{ name: 'User', attributes: [
-          { anchor: false, caseExact: false, defaultValue: null, metadata: [], multivalued: false, mutability: 'ReadWrite', name: 'userPrincipalName', required: false, type: 'String' },
-          { anchor: false, caseExact: false, defaultValue: null, metadata: [], multivalued: false, mutability: 'ReadWrite', name: 'department', required: false, type: 'String' },
-        ] }] },
-        { id: 'fixture-directory-scim', name: 'customappsso', objects: [{ name: 'User', attributes: [
-          { anchor: true, caseExact: false, defaultValue: null, metadata: [], multivalued: false, mutability: 'ReadWrite', name: 'userName', required: true, type: 'String' },
-        ] }] },
-      ],
-      synchronizationRules: [{
-        editable: true, id: 'scim', metadata: [], name: 'USER_OUTBOUND_USER', priority: 1,
-        sourceDirectoryName: 'Azure Active Directory', targetDirectoryName: 'customappsso',
-        objectMappings: [{
-          enabled: true, flowTypes: 'Add, Update, Delete', metadata: [], name: 'Provision Azure Active Directory Users',
-          sourceObjectName: 'User', targetObjectName: 'User',
-          attributeMappings: [{
-            defaultValue: '', exportMissingReferences: false, flowBehavior: 'FlowWhenChanged', flowType: 'Always', matchingPriority: 1,
-            source: { expression: '[userPrincipalName]', name: 'userPrincipalName', parameters: [], type: 'Attribute' }, targetAttributeName: 'userName',
-          }],
-          scope: { categoryFilterGroups: [], inputFilterGroups: [], groups: [{ clauses: [
-            { operatorName: 'EQUALS', sourceOperandName: 'department', targetOperand: { values: ['Sales'] } },
-          ] }] },
-        }],
-      }],
-    },
-  },
+  synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -585,12 +553,7 @@ const FIXTURE_DRIFT = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: () => ({ templateApplicationLevel: 'none' }),
   // Restore gaps, batch 3: each drifts the setting its restore puts back.
   permissionGrantPreApprovalPolicy: (payload) => ({ conditions: payload.conditions.map((condition) => ({ ...condition, scopeType: 'group' })) }),
-  // Issue #1016: someone widened the job's scoping filter to every department.
-  synchronizationJob: (payload) => ({
-    schema: { ...payload.schema, synchronizationRules: payload.schema.synchronizationRules.map((rule) => ({
-      ...rule, objectMappings: rule.objectMappings.map((mapping) => ({ ...mapping, scope: null })),
-    })) },
-  }),
+  synchronizationJob: syncJobDrift,
   // A federation's sign-in endpoints are never restored, so its name drifts.
   externalDomainFederation: () => ({ displayName: 'Fixture federation (drifted)' }),
 });
@@ -739,10 +702,6 @@ function userFlowRead(objects, requested) {
   const { identityProviders, userAttributeAssignments, languages, apiConnectorConfiguration, ...own } = flow;
   return { ok: true, status: 200, body: query.includes('apiConnectorConfiguration') ? { ...own, apiConnectorConfiguration } : own };
 }
-// Issue #1016: an app's provisioning jobs, and one job (with its schema route).
-const SYNC_JOBS = /^\/servicePrincipals\/[^/]+\/synchronization\/jobs$/;
-const SYNC_JOB = /^(\/servicePrincipals\/[^/]+\/synchronization\/jobs\/[^/]+)(\/schema)?$/;
-
 // Issue #994: an authentication context is written under its own id, so the
 // fixture's live object has that id too.
 const FIXTURE_OBJECT_IDS = Object.freeze({ authenticationContextClassReference: 'c7' });
@@ -759,7 +718,7 @@ export function fakeGraph() {
     writes,
     async write(version, path, { method, body }) {
       writes.push({ method, path });
-      const flowWrite = userFlowWrite(objects, path, method, body);
+      const flowWrite = userFlowWrite(objects, path, method, body) ?? syncJobWrite(objects, path, method, body, () => { next += 1; return next; });
       if (flowWrite) return flowWrite;
       // Issue #1008: Graph needs an authentication to create an API connector, and returns its password masked.
       if (method === 'POST' && path === '/identity/apiConnectors') {
@@ -768,21 +727,6 @@ export function fakeGraph() {
         const created = { ...body, id: `fixture-connector-${next}`, authenticationConfiguration: { ...body.authenticationConfiguration, password: '******' } };
         objects.set(`${path}/${created.id}`, created);
         return { ok: true, status: 201, body: created };
-      }
-      // Issue #1016: a provisioning job is created from its template, stopped,
-      // with an empty schema; its schema is replaced whole at .../schema.
-      if (method === 'POST' && SYNC_JOBS.test(path)) {
-        if (typeof body?.templateId !== 'string') return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'templateId is required' } } };
-        next += 1;
-        const job = { id: `${body.templateId}.fixture${next}`, templateId: body.templateId, schedule: { expiration: null, interval: 'PT40M', state: 'Disabled' } };
-        objects.set(`${path}/${job.id}`, { ...job, schema: { directories: [], synchronizationRules: [] } });
-        return { ok: true, status: 201, body: job };
-      }
-      const schemaOf = SYNC_JOB.exec(path);
-      if (schemaOf?.[2] && method === 'PUT') {
-        if (!objects.has(schemaOf[1])) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
-        objects.set(schemaOf[1], { ...objects.get(schemaOf[1]), schema: body });
-        return { ok: true, status: 204, body: null };
       }
       // Roadmap task-152: a Conditional Access policy is restored from its own
       // deleted-items container; the fake keeps one deleted map for both.
@@ -997,20 +941,8 @@ export function fakeGraph() {
       if (flowRead) return flowRead;
       // A $select narrows nothing here: the fake returns the whole object.
       const path = requested.split('?')[0];
-      // Issue #1016: an app lists its provisioning jobs; a job reads without its
-      // schema, which is read on its own.
-      if (SYNC_JOBS.test(path)) {
-        const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/'))
-          .map(([, { schema: _schema, ...job }]) => job);
-        return { ok: true, status: 200, body: { value } };
-      }
-      const syncJob = SYNC_JOB.exec(path);
-      if (syncJob) {
-        const job = objects.get(syncJob[1]);
-        if (!job) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
-        const { schema, ...own } = job;
-        return { ok: true, status: 200, body: syncJob[2] ? { ...schema, version: 'Date:2026-11-06T00:00:00Z' } : own };
-      }
+      const syncRead = syncJobRead(objects, path);
+      if (syncRead) return syncRead;
       // Approval-held batch 2: an Intune role assignment's role is the one its create bound.
       // Q271: like Graph, there is no route for an assignment's own role; each role
       // lists its assignments, and the roles are the ones some assignment holds.

@@ -37,7 +37,7 @@ const jobsPath = (servicePrincipalId) => `/servicePrincipals/${encodeURIComponen
 const jobPath = (servicePrincipalId, jobId) => `${jobsPath(servicePrincipalId)}/${encodeURIComponent(jobId)}`;
 
 /** The schema as a PUT sends it: its directories and rules, without annotations. */
-export function schemaBody(schema) {
+function schemaBody(schema) {
   if (!schema || typeof schema !== 'object') return null;
   return withoutAnnotations(Object.fromEntries(SCHEMA_PARTS.filter((part) => schema[part] !== undefined).map((part) => [part, schema[part]])));
 }

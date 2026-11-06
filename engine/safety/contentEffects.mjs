@@ -269,8 +269,7 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // Issue #1008: an API connector's name (which a user flow binds it by) and the
   // URL it sends what guests enter at sign-up to.
   identityApiConnector: Object.freeze(['displayName', 'targetUrl']),
-  // Issue #1016: a provisioning job's schema (attribute mappings and scoping
-  // filters) decides whose accounts it makes, changes or disables elsewhere.
+  // Issue #1016: a provisioning job's schema decides whose accounts it makes, changes or disables elsewhere.
   synchronizationJob: Object.freeze(['schema']),
   // Issue #992: the group, app or site role an access package grants. Adding it
   // lets everyone who can request the package get that access.

@@ -598,9 +598,10 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     note: 'First check the backup holds the PDF (fileData shows a sha256, not null): the Graph reference shows fileData null, and the live read decides it. The write is approval-held: run the dry run, check it says everyone will be asked to accept again, have a second person approve "Changes admin access", then enforce. Delete the terms at the end.',
   },
   // Issue #1016.
+  // A job has no name of its own: it is the fixture app's job, so it is captured by reference.
   synchronizationJob: {
-    kind: 'named-object', fixture: `non-gallery enterprise app ${FIXTURE_PREFIX}-1016-scim with SCIM provisioning to https://keel-rt.invalid/scim and a throwaway secret token, scoped to assigned users only, with no users or groups assigned, and never started`,
-    select: `the provisioning job of ${FIXTURE_PREFIX}-1016-scim`, drift: 'add a scoping filter (department EQUALS KEEL-RT) to the user mapping; for create, delete the provisioning configuration of the app',
+    kind: 'by-reference', fixture: `non-gallery enterprise app ${FIXTURE_PREFIX}-1016-scim with SCIM provisioning to https://keel-rt.invalid/scim and a throwaway secret token, scoped to assigned users only, with no users or groups assigned, and never started`,
+    select: `the provisioning job id KEEL shows for ${FIXTURE_PREFIX}-1016-scim`, drift: 'add a scoping filter (department EQUALS KEEL-RT) to the user mapping; for create, delete the provisioning configuration of the app',
     breakGlass: 'The fixture app has nobody assigned, provisions to an address that does not exist, and is never started, so it writes no account anywhere.',
     note: 'Check the backup holds the job\'s schema and no credential; the dry run lists the mapping under "Changes access" and says the next cycle re-evaluates everyone in scope; the enforce run writes only after that is approved. After a create, check the job reads back stopped and the restore lists entering credentials and starting it as steps. Never start the job.',
   },

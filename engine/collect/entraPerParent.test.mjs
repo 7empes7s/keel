@@ -36,7 +36,9 @@ const ROUTES = {
   [`${G}/servicePrincipals?$select=id,applicationTemplateId&$top=999`]: () => respond({ value: [
     { id: SP, applicationTemplateId: '518e5f48-1fc8-4c48-9387-9fdf28b0dfe7' }, { id: MS_SP, applicationTemplateId: null },
   ] }),
-  [`${G}/servicePrincipals/${SP}/synchronization/jobs`]: () => respond({ value: [{ id: JOB, templateId: 'Azure2Azure', schedule: { state: 'Active' } }] }),
+  [`${G}/servicePrincipals/${SP}/synchronization/jobs`]: () => respond({ value: [{ id: JOB, templateId: 'Azure2Azure', schedule: { state: 'Active' }, status: { code: 'Active' } }] }),
+  // Issue #1016: each job's schema is read under it.
+  [`${G}/servicePrincipals/${SP}/synchronization/jobs/${encodeURIComponent(JOB)}/schema`]: () => respond({ id: JOB, version: 'Date:2026-11-01', directories: [], synchronizationRules: [{ name: 'USER_OUTBOUND_USER', objectMappings: [] }] }),
   [`${G}/identityGovernance/entitlementManagement/accessPackages?$select=id`]: () => respond({ value: [{ id: PACKAGE }] }),
   [`${G}/identityGovernance/entitlementManagement/accessPackages/${PACKAGE}?$expand=resourceRoleScopes($expand=role,scope)`]: () => respond({
     id: PACKAGE, displayName: 'KEEL-RT-package',
@@ -73,8 +75,14 @@ test('each partner\'s sync settings are read under it; a partner without them is
 
 test('sync jobs are read only for service principals made from an app template, tagged with their service principal', async () => {
   const { result, urls } = await withRoutes(ROUTES, () => get('synchronizationJob').adapter.collect(reader()));
-  assert.deepEqual(urls, [`${G}/servicePrincipals?$select=id,applicationTemplateId&$top=999`, `${G}/servicePrincipals/${SP}/synchronization/jobs`]);
-  assert.deepEqual(result, [{ id: JOB, templateId: 'Azure2Azure', schedule: { state: 'Active' }, servicePrincipalId: SP }]);
+  assert.deepEqual(urls, [
+    `${G}/servicePrincipals?$select=id,applicationTemplateId&$top=999`, `${G}/servicePrincipals/${SP}/synchronization/jobs`,
+    `${G}/servicePrincipals/${SP}/synchronization/jobs/${encodeURIComponent(JOB)}/schema`,
+  ]);
+  assert.deepEqual(result, [{
+    id: JOB, templateId: 'Azure2Azure', schedule: { state: 'Active' }, servicePrincipalId: SP,
+    schema: { directories: [], synchronizationRules: [{ name: 'USER_OUTBOUND_USER', objectMappings: [] }] },
+  }]);
   const [resource] = canonicalizeAll([['synchronizationJob', result]]);
   assert.equal(resource.naturalKey, `synchronizationJob:${JOB}`);
 });
@@ -118,6 +126,12 @@ test('a denied read of the parents or of any child fails the type, never an empt
     assert.equal(raw.error.status, 403, deniedUrl);
     assert.equal(raw.pages, 0, `${deniedUrl}: nothing under a parent was read, so the outcome is failed`);
   }
+  // Issue #1016: a job whose schema cannot be read fails the type, never a job without its schema.
+  const routes = { ...ROUTES, [`${G}/servicePrincipals/${SP}/synchronization/jobs/${encodeURIComponent(JOB)}/schema`]: denied };
+  await withRoutes(routes, () => assert.rejects(get('synchronizationJob').adapter.collect(reader()), /fixture denied/));
+  const { result: raw } = await withRoutes(routes, () => get('synchronizationJob').adapter.collectRaw(reader()));
+  assert.equal(raw.error.status, 403);
+  assert.deepEqual(raw.items, []);
 });
 
 test('a 404 on a child is an absence only where the type allows it', async () => {

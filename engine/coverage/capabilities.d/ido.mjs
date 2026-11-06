@@ -20,6 +20,7 @@ const ACCESS_PACKAGE_PROOF = 'engine/restore/accessPackageOperations.test.mjs';
 const POLICY_PROOF = 'engine/restore/entitlementPolicyOperations.test.mjs';
 const ACCESS_REVIEW_PROOF = 'engine/restore/accessReviewOperations.test.mjs';
 const AGREEMENT_PROOF = 'engine/restore/agreementOperations.test.mjs';
+const SYNC_JOB_PROOF = 'engine/restore/synchronizationJobOperations.test.mjs';
 const PERMANENT_PROOF = 'engine/roadmap/permanent-writes.test.mjs';
 
 export default [
@@ -52,6 +53,9 @@ export default [
   // Issue #1007: terms of use with their files.
   { resourceType: 'agreement', operation: 'create', path: '/identityGovernance/termsOfUse/agreements', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: AGREEMENT_PROOF },
   { resourceType: 'agreement', operation: 'update', path: '/identityGovernance/termsOfUse/agreements', handler: IDENTITY, idOutcome: 'preserved', proofRef: AGREEMENT_PROOF },
+  // Issue #1016: a provisioning job's schema, behind the restore approval; a created job is left stopped. Never deleted.
+  { resourceType: 'synchronizationJob', operation: 'create', path: '/servicePrincipals/{id}/synchronization/jobs', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: SYNC_JOB_PROOF },
+  { resourceType: 'synchronizationJob', operation: 'update', path: '/servicePrincipals/{id}/synchronization/jobs', handler: IDENTITY, idOutcome: 'preserved', proofRef: SYNC_JOB_PROOF },
   { resourceType: 'entitlementManagementSettings', operation: 'update', path: '/identityGovernance/entitlementManagement/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'create', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'update', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

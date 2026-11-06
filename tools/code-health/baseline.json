@@ -403,7 +403,7 @@
     },
     "tools/qualification/operations.mjs": {
       "@typescript-eslint/no-floating-promises": 1,
-      "no-unused-vars": 4
+      "no-unused-vars": 1
     },
     "tools/qualification/sharepointLive.mjs": {
       "no-unused-vars": 1
@@ -862,7 +862,7 @@
       "exports": 1
     },
     "engine/restore/recordWriter.mjs": {
-      "exports": 8
+      "exports": 7
     },
     "engine/restore/recoveryMechanism.mjs": {
       "exports": 1
@@ -1377,7 +1377,7 @@
     "engine/reports/value.mjs": 1017,
     "engine/restore/applyEngine.mjs": 2344,
     "engine/restore/identityObjectOperations.mjs": 1360,
-    "engine/restore/identityObjectOperations.test.mjs": 1580,
+    "engine/restore/identityObjectOperations.test.mjs": 1579,
     "engine/restore/intuneExtended.test.mjs": 2428,
     "engine/restore/intuneOperations.mjs": 2902,
     "engine/restore/recordWriter.mjs": 944,

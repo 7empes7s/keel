@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 50 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 118 at least in part and 9 hold nothing to restore; the other 58 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 50 are full, 126 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 119 at least in part and 9 hold nothing to restore; the other 57 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -55,7 +55,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Terms of use | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access review settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -158,9 +158,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **API connectors for user flows.** Recreates a missing connector and puts its name and the address it calls back (tested against a simulated tenant only).
   - *Not brought back:* password or certificate (Microsoft never returns it).
   - *You do:* A restore that changes a connector waits for a second approver while restore approvals are on. Its password or certificate can never be read back: a recreated connector gets a placeholder password nobody knows, so it does not work until you enter the real password or certificate by hand.
-- **Provisioning and cross-tenant sync jobs** (not built yet). A job's attribute mappings are stored separately, its sign-in details can never be read back, and a running job changes accounts in another directory.
-  - *Not brought back:* its attribute mappings (the sync schema) (stored separately and not in the backup yet); the sign-in details for the target app, if it uses any (Microsoft never returns it); run history and current status (no tool can write it).
-  - *You do:* Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.
+- **Provisioning and cross-tenant sync jobs.** Puts a job's attribute mappings and scoping filters back, and recreates a missing job from its template, stopped (tested against a simulated tenant only).
+  - *Not brought back:* the sign-in details for the target app, if it uses any (Microsoft never returns it); run history and current status (no tool can write it).
+  - *You do:* After the mappings change, the job's next cycle checks every user and group again and can create, update or disable accounts in the other system, so a restore waits for a second approver while restore approvals are on. A job's sign-in details can never be read back: enter them again, test the connection, then start a recreated job yourself. KEEL never starts, stops or deletes a job.
 - **Access package resource roles.** Adds back the group and app roles an access package grants, for groups and apps that exist in your tenant, and adds them to the catalog first if they are missing there.
   - *Not brought back:* a role on a SharePoint site that is not in the catalog, or on a group or app that does not exist in the target (in the backup, but KEEL does not write it yet).
   - *You do:* Adding a role changes who can get access, so a restore adds it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A role on a SharePoint site that is not in the catalog, or on a group or app that no longer exists, is added by hand.

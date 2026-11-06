@@ -224,7 +224,8 @@ export async function collectPerParent(reader, entry) {
     for (const found of result.items) {
       const children = entry.childField ? found?.[entry.childField] : [found];
       if (!Array.isArray(children)) return stop({ error: `reading ${entry.type} under ${key} returned no ${entry.childField}` });
-      for (const child of children) items.push({ ...child, [parent.as]: key });
+      // Issue #1016: `fields` keeps only those fields (a sync job's template and schedule).
+      for (const child of children) items.push({ ...onlyFields(child, entry.fields), [parent.as]: key });
     }
   }
   return { items, pages, status, capped: false, error: null };
@@ -302,7 +303,10 @@ async function withItemRead(reader, entry, read, items, { dropWhenNotFound = fal
     const template = byType ? byType[item?.['@odata.type']] : path;
     if (!template) continue;
     if (typeof item?.id !== 'string' || item.id.length === 0) return { error: { error: `reading ${entry.type}: an object has no id` } };
-    const result = await reader.collect(entry.version, template.replace('{item}', encodeURIComponent(item.id)), { pageCap: Infinity });
+    // Issue #1016: an object read per parent names its parent in the path too (a sync job's schema).
+    const filled = template.replace('{item}', encodeURIComponent(item.id));
+    const itemPath = entry.parent ? filled.replace('{parent}', encodeURIComponent(item[entry.parent.as] ?? '')) : filled;
+    const result = await reader.collect(entry.version, itemPath, { pageCap: Infinity });
     if (dropWhenNotFound && result?.error?.status === 404 && !(result.pages > 0)) {
       items.splice(items.indexOf(item), 1);
       continue;

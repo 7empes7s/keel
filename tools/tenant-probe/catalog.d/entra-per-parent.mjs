@@ -14,9 +14,14 @@ export default [
   // an app template (gallery apps, cross-tenant sync) are read, so a tenant
   // with thousands of Microsoft service principals costs one read each for
   // the few that can sync, not thousands.
+  // Issue #1016: a job keeps its template and schedule only (never its run
+  // status or settings, and Graph never returns its credentials), and its
+  // schema (attribute mappings, scoping filters, directories) is read under it.
   { type: 'synchronizationJob', path: '/servicePrincipals/{parent}/synchronization/jobs', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     parent: { path: '/servicePrincipals', select: 'id,applicationTemplateId', query: '$top=999', key: 'id', as: 'servicePrincipalId', requires: 'applicationTemplateId' },
-    absentWhenNotFound: true,
+    absentWhenNotFound: true, fields: ['id', 'templateId', 'schedule'],
+    itemReads: { as: 'schema', path: '/servicePrincipals/{parent}/synchronization/jobs/{item}/schema', single: true, fields: ['directories', 'synchronizationRules'] },
+    liveItemReads: true,
     note: 'A running job creates and updates accounts in another directory.' },
   // The groups, apps and sites roles an access package grants. Graph lists
   // them only when one package is read with this expand.

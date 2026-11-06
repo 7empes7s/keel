@@ -41,7 +41,7 @@ import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/resto
 import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approvalMode.mjs';
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
-import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
+import { SCRIPT_BODY_FIELDS, appRuleScriptDetail, appRuleScripts, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
 import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
 
@@ -70,7 +70,9 @@ const DISCLOSURES = Object.freeze({
   // them back changes who has admin access, who may join devices, or which secrets
   // and certificates apps may add.
   'access-changing': 'This puts back settings that decide who has admin access, who may join or register devices, '
-    + 'which secrets and certificates apps may add, or how guests sign themselves up (a user flow\'s identity providers, questions and API connectors). If the backup was changed after it was taken, that changed access is granted. '
+    + 'which secrets and certificates apps may add, how guests sign themselves up (a user flow\'s identity providers, questions and API connectors), '
+    + 'or which accounts a provisioning job creates, updates or disables in another directory (its next cycle checks every user and group in scope again). '
+    + 'If the backup was changed after it was taken, that changed access is granted. '
     + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
   // Issue #994: an authentication context that something uses, or a staged rollout.
   [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
@@ -270,6 +272,8 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // Issue #1008: an API connector's name (which a user flow binds it by) and the
   // URL it sends what guests enter at sign-up to.
   identityApiConnector: Object.freeze(['displayName', 'targetUrl']),
+  // Issue #1016: a provisioning job's schema decides whose accounts it makes, changes or disables elsewhere.
+  synchronizationJob: Object.freeze(['schema']),
   // Issue #992: the group, app or site role an access package grants. Adding it
   // lets everyone who can request the package get that access.
   accessPackageResourceRoleScope: Object.freeze(['role', 'scope']),
@@ -496,17 +500,6 @@ const userFlowRules = () => APPROVAL_HELD_FIELDS.b2xIdentityUserFlow.map((field)
 // three lists Graph may return), compared by their full sha256.
 const commandLine = (field) => (payload) => (typeof payload?.[field] === 'string' && payload[field].length > 0 ? payload[field] : null);
 const commandDetail = (field) => (before, after) => ({ before: before?.[field] ?? null, after: after?.[field] ?? null });
-function appRuleScriptText(payload) {
-  const lists = ['rules', 'detectionRules', 'requirementRules'].map((field) => (Array.isArray(payload?.[field]) ? payload[field] : []));
-  const first = lists.find((list) => list.some((item) => typeof item?.scriptContent === 'string' && item.scriptContent.length > 0)) ?? [];
-  const scripts = first.map((item) => item?.scriptContent).filter((value) => typeof value === 'string' && value.length > 0);
-  return scripts.length > 0 ? scripts.map((value) => scriptText(value)).join('\n\n') : null;
-}
-const appRuleScripts = (payload) => {
-  const text = appRuleScriptText(payload);
-  return text === null ? null : `${text.length} characters, sha256 ${scriptFingerprint(text, { full: true })}`;
-};
-const appRuleScriptDetail = (before, after) => ({ before: appRuleScriptText(before), after: appRuleScriptText(after) });
 
 /**
  * Reviewed types and their dangerous transitions. Field names follow Microsoft
@@ -761,6 +754,8 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   agreement: { reviewed: true, judgesCreates: true, rules: accessRules('agreement') },
   // Issue #1008: a recreated API connector is judged too: it names where sign-up data goes.
   identityApiConnector: { reviewed: true, judgesCreates: true, rules: accessRules('identityApiConnector') },
+  // Issue #1016: a recreated provisioning job is judged too: its schema is put on it.
+  synchronizationJob: { reviewed: true, judgesCreates: true, rules: accessRules('synchronizationJob') },
   // Issue #994: sign-in settings whose effects depend on more than the object
   // (signInSettingEffects.mjs): what uses an authentication context, and the
   // groups a staged rollout covers. Each is judged on create too.

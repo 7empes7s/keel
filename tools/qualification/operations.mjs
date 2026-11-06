@@ -39,6 +39,8 @@ import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.m
 import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
+import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
+import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
 // it made before; the fake answers them with their direct children.
@@ -236,6 +238,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Fixture connector', targetUrl: 'https://fixture.example/api/signup',
     authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
   },
+  synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -552,6 +555,7 @@ const FIXTURE_DRIFT = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: () => ({ templateApplicationLevel: 'none' }),
   // Restore gaps, batch 3: each drifts the setting its restore puts back.
   permissionGrantPreApprovalPolicy: (payload) => ({ conditions: payload.conditions.map((condition) => ({ ...condition, scopeType: 'group' })) }),
+  synchronizationJob: syncJobDrift,
   // A federation's sign-in endpoints are never restored, so its name drifts.
   externalDomainFederation: () => ({ displayName: 'Fixture federation (drifted)' }),
 });
@@ -635,72 +639,6 @@ const LISTED_BEFORE_CREATE = new Set([
   '/policies/featureRolloutPolicies',
 ]);
 
-// Issue #995: a guest sign-up user flow keeps its parts on the flow object, each
-// written and read through its own route, as Graph does.
-const USER_FLOW = /^\/identity\/b2xUserFlows\/([^/]+)(?:\/(identityProviders|userAttributeAssignments|languages|apiConnectorConfiguration)(?:\/(.+))?)?$/;
-function userFlowWrite(objects, path, method, body) {
-  if (method === 'POST' && path === '/identity/b2xUserFlows') {
-    const id = `B2X_1_${body.id}`;
-    if (objects.has(`${path}/${id}`)) return { ok: false, status: 409, body: { error: { code: 'AADB2C', message: 'a user flow with this name exists' } } };
-    const created = { id, userFlowType: body.userFlowType, userFlowTypeVersion: body.userFlowTypeVersion };
-    objects.set(`${path}/${id}`, { ...created, identityProviders: [], userAttributeAssignments: [], languages: [{ id: 'en', isEnabled: true }, { id: 'fr', isEnabled: true }], apiConnectorConfiguration: {} });
-    return { ok: true, status: 201, body: created };
-  }
-  const match = USER_FLOW.exec(path);
-  if (!match || !match[2]) return null;
-  const flowPath = `/identity/b2xUserFlows/${match[1]}`;
-  const flow = objects.get(flowPath);
-  if (!flow) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
-  const [, , part, rest] = match;
-  const idOf = (bind) => decodeURIComponent(String(bind ?? '').split('/').pop());
-  const save = (changes) => { objects.set(flowPath, { ...flow, ...changes }); return { ok: true, status: 204, body: null }; };
-  if (part === 'identityProviders' && rest === '$ref' && method === 'POST') {
-    const id = idOf(body['@odata.id']);
-    if (!objects.has(`/identity/identityProviders/${id}`)) return { ok: false, status: 400, body: { error: { code: 'InvalidIdentityProvider' } } };
-    return save({ identityProviders: [...flow.identityProviders, { id, name: id, type: id }] });
-  }
-  if (part === 'userAttributeAssignments' && !rest && method === 'POST') {
-    const attribute = objects.get(`/identity/userFlowAttributes/${body.userAttribute?.id}`);
-    if (!attribute) return { ok: false, status: 400, body: { error: { code: 'InvalidAttribute' } } };
-    const assignment = { ...body, id: attribute.id, userAttribute: attribute };
-    objects.set(flowPath, { ...flow, userAttributeAssignments: [...flow.userAttributeAssignments, assignment] });
-    return { ok: true, status: 201, body: assignment };
-  }
-  if (part === 'userAttributeAssignments' && rest === 'setOrder' && method === 'POST') {
-    const order = body.newAssignmentOrder.order;
-    if (order.length !== flow.userAttributeAssignments.length) return { ok: false, status: 400, body: { error: { code: 'InvalidOrder' } } };
-    return save({ userAttributeAssignments: order.map((id) => flow.userAttributeAssignments.find((assignment) => assignment.id === id)) });
-  }
-  if (part === 'userAttributeAssignments' && rest && method === 'PATCH') {
-    const id = decodeURIComponent(rest);
-    if (!flow.userAttributeAssignments.some((assignment) => assignment.id === id)) return { ok: false, status: 404, body: null };
-    return save({ userAttributeAssignments: flow.userAttributeAssignments.map((assignment) => (assignment.id === id ? { ...assignment, ...body } : assignment)) });
-  }
-  if (part === 'languages' && rest && method === 'PATCH') {
-    const id = decodeURIComponent(rest);
-    if (!flow.languages.some((language) => language.id === id)) return { ok: false, status: 404, body: null };
-    return save({ languages: flow.languages.map((language) => (language.id === id ? { ...language, ...body } : language)) });
-  }
-  const step = /^(postFederationSignup|postAttributeCollection)\/\$ref$/.exec(rest ?? '');
-  if (part === 'apiConnectorConfiguration' && step && method === 'PUT') {
-    const connector = objects.get(`/identity/apiConnectors/${idOf(body['@odata.id'])}`);
-    if (!connector) return { ok: false, status: 400, body: { error: { code: 'InvalidApiConnector' } } };
-    return save({ apiConnectorConfiguration: { ...flow.apiConnectorConfiguration, [step[1]]: { id: connector.id, displayName: connector.displayName } } });
-  }
-  return { ok: false, status: 405, body: null };
-}
-function userFlowRead(objects, requested) {
-  const [path, query = ''] = requested.split('?');
-  const match = USER_FLOW.exec(path);
-  if (!match) return null;
-  const flow = objects.get(`/identity/b2xUserFlows/${match[1]}`);
-  if (!flow) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
-  if (match[2] && match[2] !== 'apiConnectorConfiguration' && !match[3]) return { ok: true, status: 200, body: { value: flow[match[2]] } };
-  if (match[2]) return null;
-  // The flow itself; its connector steps only when expanded, as Graph returns them.
-  const { identityProviders, userAttributeAssignments, languages, apiConnectorConfiguration, ...own } = flow;
-  return { ok: true, status: 200, body: query.includes('apiConnectorConfiguration') ? { ...own, apiConnectorConfiguration } : own };
-}
 // Issue #994: an authentication context is written under its own id, so the
 // fixture's live object has that id too.
 const FIXTURE_OBJECT_IDS = Object.freeze({ authenticationContextClassReference: 'c7' });
@@ -717,7 +655,7 @@ export function fakeGraph() {
     writes,
     async write(version, path, { method, body }) {
       writes.push({ method, path });
-      const flowWrite = userFlowWrite(objects, path, method, body);
+      const flowWrite = userFlowWrite(objects, path, method, body) ?? syncJobWrite(objects, path, method, body, () => { next += 1; return next; });
       if (flowWrite) return flowWrite;
       // Issue #1008: Graph needs an authentication to create an API connector, and returns its password masked.
       if (method === 'POST' && path === '/identity/apiConnectors') {
@@ -946,6 +884,8 @@ export function fakeGraph() {
       if (flowRead) return flowRead;
       // A $select narrows nothing here: the fake returns the whole object.
       const path = requested.split('?')[0];
+      const syncRead = syncJobRead(objects, path);
+      if (syncRead) return syncRead;
       // Approval-held batch 2: an Intune role assignment's role is the one its create bound.
       // Q271: like Graph, there is no route for an assignment's own role; each role
       // lists its assignments, and the roles are the ones some assignment holds.

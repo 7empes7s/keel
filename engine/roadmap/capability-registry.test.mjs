@@ -154,6 +154,8 @@ const REGISTERED = Object.freeze({
   identityUserFlowAttribute: ['create', 'update'],
   // Issue #1008: API connectors.
   identityApiConnector: ['create', 'update'],
+  // Issue #1016: provisioning jobs (schema put back, a missing job created stopped).
+  synchronizationJob: ['create', 'update'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],

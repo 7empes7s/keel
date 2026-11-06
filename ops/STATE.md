@@ -170,6 +170,11 @@ On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
   create and update are fixture-tested with no live record yet. Capture needs KEEL-RT-idle (never the
   organization default) and KEEL-RT-connector on no user flow (steps in the #1008 PR body); the connector
   write and any write into the live organization default idle sign-out policy are approval-held.
+- App provisioning (#1016): `synchronizationJob` schema update and create of a stopped job are fixture-tested
+  with no live record yet. The backup now reads each job's schema: check the Collector holds
+  `Synchronization.Read.All` (a 403 on the jobs read means it does not) and the Restorer
+  `Synchronization.ReadWrite.All`. Capture needs KEEL-RT-1016-scim (steps in the #1016 PR body); the schema
+  write is approval-held and the job is never started.
 - Permanent writes (#1015): `attributeSet` and `customSecurityAttributeDefinition` create, and
   `crossTenantIdentitySyncPolicyPartner` create and update, are fixture-tested with no live record yet. Never
   run a create or turn sync on live (each leaves something for good): capture the sync update on the D-148b

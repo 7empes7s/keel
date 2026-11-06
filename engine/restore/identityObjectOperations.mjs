@@ -26,14 +26,13 @@
  *  - each partner tenant's user sync settings (issue #1015,
  *    crossTenantSyncOperations.mjs).
  *
- * Types the backup cannot drive in full (an API
- * connector's password, access package
- * assignments, provisioning jobs, catalog resources on their own) have no
- * record here; IDENTITY_BEST_EFFORT names them and why. Access packages and
+ * Types the backup cannot drive in full (access package assignments, catalog
+ * resources on their own) have no record here; IDENTITY_BEST_EFFORT names them
+ * and why. Access packages and
  * their resource roles are in accessPackageOperations.mjs; connected
  * organizations and access package policies in entitlementPolicyOperations.mjs;
  * access review series in accessReviewOperations.mjs; terms of use in
- * agreementOperations.mjs.
+ * agreementOperations.mjs; provisioning jobs in synchronizationJobOperations.mjs.
  *
  * Routes follow the Graph v1.0 references and are fixture-tested, not
  * live-qualified.
@@ -52,6 +51,7 @@ import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from 
 import { ASSIGNMENT_POLICY_RECORD, CONNECTED_ORGANIZATION_RECORD, entitlementPolicyDispatch } from './entitlementPolicyOperations.mjs';
 import { ACCESS_REVIEW_RECORD, accessReviewDispatch } from './accessReviewOperations.mjs';
 import { AGREEMENT_RECORD, agreementDispatch } from './agreementOperations.mjs';
+import { SYNCHRONIZATION_JOB_RECORD } from './synchronizationJobOperations.mjs';
 import { IDENTITY_SYNC_RECORD, identitySyncDispatch } from './crossTenantSyncOperations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
@@ -821,6 +821,9 @@ export const IDENTITY_RECORDS = Object.freeze({
   accessReviewScheduleDefinition: ACCESS_REVIEW_RECORD,
   // Issue #1007 (agreementOperations.mjs): terms of use with their files.
   agreement: AGREEMENT_RECORD,
+  // Issue #1016 (synchronizationJobOperations.mjs): a provisioning job's schema
+  // put back, or a missing job created stopped, behind the restore approval.
+  synchronizationJob: SYNCHRONIZATION_JOB_RECORD,
   // Issue #1015 (crossTenantSyncOperations.mjs): user sync from a partner tenant.
   crossTenantIdentitySyncPolicyPartner: IDENTITY_SYNC_RECORD,
   entitlementManagementSettings: defineRecord({
@@ -1028,7 +1031,6 @@ export const IDENTITY_RECORDS = Object.freeze({
 /** Types read in wave 1 that no record here can write in full, and why. */
 export const IDENTITY_BEST_EFFORT = Object.freeze({
   accessPackageAssignment: 'an assignment is granted by a request through its policy, never copied',
-  synchronizationJob: 'a provisioning job needs its template, schema and the target system\'s credentials',
   accessPackageCatalogResource: 'a group or app is added to a catalog only by the resource role writer, when a package grants it and it exists in the target; a site is added by hand',
 });
 

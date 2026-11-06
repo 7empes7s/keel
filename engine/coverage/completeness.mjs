@@ -171,8 +171,8 @@ export const COMPLETENESS = Object.freeze({
   identityApiConnector: { missing: [part('Password or certificate', 'secret', always)] },
   // Read per parent object.
   accessPackageResourceRoleScope: { missing: [part('A role on a SharePoint site that is not in the catalog, or on a group or app that does not exist in the target', 'not-written')] },
-  synchronizationJob: { whole: 'not-written', missing: [
-    part('Its attribute mappings (the sync schema)', 'other-route'),
+  // Issue #1016: the schema is backed up and written; a recreated job is left stopped.
+  synchronizationJob: { missing: [
     part('The sign-in details for the target app, if it uses any', 'secret'),
     part('Run history and current status', 'read-only'),
   ] },

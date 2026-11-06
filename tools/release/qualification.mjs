@@ -43,8 +43,8 @@ import { pseudonymizer, unpseudonymizedIds } from '../qualification/pseudonymize
 import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 const SCUBAGEAR_PIN_PATH = new URL('../../docs/roadmap/benchmark-content/scubagear-pin.json', import.meta.url).pathname;
@@ -321,11 +321,15 @@ function validateScubaGearBenchmarkAcceptanceSubject(evidence, { build } = {}) {
  * it was: a record from one end counts at the other, reported as 'same-code'.
  */
 export const RECORDS_ONLY_PATHS = Object.freeze(['docs/', 'lessons/', 'ops/STATE.md']);
+/** Under docs/ but read at runtime (benchmark pins), so a change there is a code change. */
+export const RUNTIME_DOC_PATHS = Object.freeze(['docs/roadmap/benchmark-content/']);
 const COMMIT_ID = /^[0-9a-f]{7,40}$/i;
-const isRecordsOnlyPath = (file) => RECORDS_ONLY_PATHS.some((prefix) => (prefix.endsWith('/') ? file.startsWith(prefix) : file === prefix));
+const matchesPath = (file, prefixes) => prefixes.some((prefix) => (prefix.endsWith('/') ? file.startsWith(prefix) : file === prefix));
+const isRecordsOnlyPath = (file) => matchesPath(file, RECORDS_ONLY_PATHS) && !matchesPath(file, RUNTIME_DOC_PATHS);
+const REPO_DIR = join(fileURLToPath(import.meta.url), '..', '..', '..');
 
 /** Paths that differ between two commits (renames as both sides), or null when git cannot tell. */
-export function gitChangedPaths(from, to, { cwd = new URL('../../', import.meta.url).pathname } = {}) {
+export function gitChangedPaths(from, to, { cwd = REPO_DIR } = {}) {
   try {
     return execFileSync('git', ['-C', cwd, 'diff', '--name-only', '--no-renames', from, to, '--'],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);

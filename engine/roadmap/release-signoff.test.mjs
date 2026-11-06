@@ -128,7 +128,7 @@ test('a record from another build is recaptured, even if the verifier would acce
 
 // --- Issue #1044: records-only commits keep the build ----------------------
 
-/** A throwaway git repo: C (code), C' = C + records and docs only, C'' = C' + an engine change, R = C' + an engine file moved into docs. */
+/** A throwaway git repo: C (code), C' = C + records and docs only, C'' = C' + an engine change, R = C' + an engine file moved into docs, P = C' + a benchmark pin change. */
 function repoWithCommits() {
   const repo = mkdtempSync(join(tmpdir(), 'keel-signoff-git-'));
   dirs.push(repo);
@@ -148,7 +148,10 @@ function repoWithCommits() {
   git('reset', '-q', '--hard', recordsOnly);
   renameSync(join(repo, 'engine/restore/writer.mjs'), join(repo, 'docs/writer.mjs'));
   const moved = commit('engine file moved under docs');
-  return { C, recordsOnly, codeChange, moved, changedPaths: (from, to) => gitChangedPaths(from, to, { cwd: repo }) };
+  git('reset', '-q', '--hard', recordsOnly);
+  put('docs/roadmap/benchmark-content/scubagear-pin.json', '{"v":2}\n');
+  const pinChange = commit('benchmark pin read at runtime');
+  return { C, recordsOnly, codeChange, moved, pinChange, changedPaths: (from, to) => gitChangedPaths(from, to, { cwd: repo }) };
 }
 
 test('a record at C counts at C\' when C..C\' touches only docs, lessons and ops/STATE.md, reported as same-code', () => {
@@ -169,9 +172,9 @@ test('a record at C counts at C\' when C..C\' touches only docs, lessons and ops
   assert.match(renderSignoffMarkdown(report), new RegExp(`same code: ${C.slice(0, 10)}\\.\\.${recordsOnly.slice(0, 10)}`));
 });
 
-test('a record at C is other-build at a candidate whose range touches engine/, or moves code under docs/', () => {
-  const { C, codeChange, moved, changedPaths } = repoWithCommits();
-  for (const candidateBuild of [codeChange, moved]) {
+test('a record at C is other-build at a candidate whose range touches engine/, moves code under docs/ or changes a benchmark pin', () => {
+  const { C, codeChange, moved, pinChange, changedPaths } = repoWithCommits();
+  for (const candidateBuild of [codeChange, moved, pinChange]) {
     assert.equal(buildRelation(C, candidateBuild, { changedPaths }).relation, 'other-build');
     const report = signoff(fullDir((entry, value) => (entry.gate === 'teams-live-acceptance' ? { ...value, build: C } : { ...value, build: candidateBuild })),
       { candidateBuild, changedPaths });

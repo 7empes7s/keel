@@ -7,7 +7,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-u751f32126065%40t42987720ee3.example/mailboxSettings",
       "status": 200,
-      "at": "2026-11-06T14:31:27.970Z"
+      "at": "2026-11-06T19:36:15.008Z"
     },
     {
       "credential": "collector",
@@ -15,7 +15,7 @@
       "cmdlet": "Get-OrganizationConfig",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:31:27.970Z"
+      "at": "2026-11-06T19:36:15.009Z"
     },
     {
       "credential": "collector",
@@ -25,7 +25,7 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:31.442Z"
+      "at": "2026-11-06T19:36:18.664Z"
     },
     {
       "credential": "collector",
@@ -35,17 +35,17 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:34.975Z"
+      "at": "2026-11-06T19:36:21.915Z"
     },
     {
       "credential": "collector",
       "transport": "powershell-cmdlet-job",
       "cmdlet": "Get-Mailbox",
       "parameters": {
-        "Identity": "keel-rt-ub4cd6f088f0b@t42987720ee3.example"
+        "Identity": "keel-rt-u31267c2debd2@t42987720ee3.example"
       },
       "outcome": "failed",
-      "at": "2026-11-06T14:31:38.334Z",
+      "at": "2026-11-06T19:36:25.019Z",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "[],Write-ErrorMessage"
@@ -58,7 +58,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-u751f32126065%40t42987720ee3.example/mailboxSettings",
       "status": 200,
-      "at": "2026-11-06T14:31:41.816Z"
+      "at": "2026-11-06T19:36:28.361Z"
     },
     {
       "credential": "restorer",
@@ -67,7 +67,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-u751f32126065%40t42987720ee3.example/mailboxSettings",
       "status": 200,
-      "at": "2026-11-06T14:31:41.876Z"
+      "at": "2026-11-06T19:36:28.438Z"
     },
     {
       "credential": "restorer",
@@ -76,7 +76,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-u751f32126065%40t42987720ee3.example/mailboxSettings",
       "status": 200,
-      "at": "2026-11-06T14:31:41.957Z"
+      "at": "2026-11-06T19:36:28.518Z"
     },
     {
       "credential": "restorer",
@@ -85,7 +85,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-u751f32126065%40t42987720ee3.example/mailboxSettings",
       "status": 200,
-      "at": "2026-11-06T14:31:42.013Z"
+      "at": "2026-11-06T19:36:28.578Z"
     },
     {
       "credential": "restorer",
@@ -94,7 +94,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-u751f32126065%40t42987720ee3.example/mailboxSettings",
       "status": 200,
-      "at": "2026-11-06T14:31:42.116Z"
+      "at": "2026-11-06T19:36:28.655Z"
     },
     {
       "credential": "restorer",
@@ -104,7 +104,7 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:42.117Z"
+      "at": "2026-11-06T19:36:28.655Z"
     },
     {
       "credential": "restorer",
@@ -115,7 +115,7 @@
         "PopEnabled": false
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:45.424Z"
+      "at": "2026-11-06T19:36:32.898Z"
     },
     {
       "credential": "restorer",
@@ -125,7 +125,7 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:50.486Z"
+      "at": "2026-11-06T19:36:37.122Z"
     },
     {
       "credential": "restorer",
@@ -136,7 +136,7 @@
         "PopEnabled": true
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:53.772Z"
+      "at": "2026-11-06T19:36:40.087Z"
     },
     {
       "credential": "restorer",
@@ -146,7 +146,7 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:31:57.281Z"
+      "at": "2026-11-06T19:36:43.407Z"
     },
     {
       "credential": "restorer",
@@ -156,7 +156,7 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:32:00.766Z"
+      "at": "2026-11-06T19:36:46.360Z"
     },
     {
       "credential": "restorer",
@@ -164,10 +164,10 @@
       "cmdlet": "Set-Mailbox",
       "parameters": {
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example",
-        "RetainDeletedItemsFor": "26.00:00:00"
+        "RetainDeletedItemsFor": "27.00:00:00"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:32:04.100Z"
+      "at": "2026-11-06T19:36:49.418Z"
     },
     {
       "credential": "restorer",
@@ -177,7 +177,7 @@
         "Identity": "keel-rt-u751f32126065@t42987720ee3.example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:32:07.967Z"
+      "at": "2026-11-06T19:36:52.917Z"
     },
     {
       "credential": "collector",
@@ -185,7 +185,7 @@
       "cmdlet": "Get-OrganizationConfig",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:32:11.782Z"
+      "at": "2026-11-06T19:36:56.237Z"
     },
     {
       "credential": "restorer",
@@ -195,7 +195,7 @@
         "MailTipsLargeAudienceThreshold": 26
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:32:15.342Z"
+      "at": "2026-11-06T19:36:59.470Z"
     },
     {
       "credential": "collector",
@@ -203,7 +203,7 @@
       "cmdlet": "Get-OrganizationConfig",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:32:19.033Z"
+      "at": "2026-11-06T19:37:02.777Z"
     },
     {
       "credential": "restorer",
@@ -213,7 +213,7 @@
         "MailTipsLargeAudienceThreshold": 25
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:32:22.613Z"
+      "at": "2026-11-06T19:37:05.978Z"
     },
     {
       "credential": "collector",
@@ -221,7 +221,7 @@
       "cmdlet": "Get-OrganizationConfig",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:32:26.272Z"
+      "at": "2026-11-06T19:37:09.370Z"
     }
   ],
   "values": {

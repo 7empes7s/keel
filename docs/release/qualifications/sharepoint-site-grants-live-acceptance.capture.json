@@ -6,7 +6,7 @@
       "version": "v1.0",
       "path": "/sites/getAllSites",
       "status": 200,
-      "at": "2026-10-28T07:39:59.324Z"
+      "at": "2026-11-06T20:09:53.857Z"
     },
     {
       "credential": "collector",
@@ -14,7 +14,7 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
       "status": 200,
-      "at": "2026-10-28T07:39:59.419Z"
+      "at": "2026-11-06T20:09:53.954Z"
     },
     {
       "credential": "restorer",
@@ -22,7 +22,7 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
       "status": 201,
-      "at": "2026-10-28T07:39:59.615Z"
+      "at": "2026-11-06T20:09:54.138Z"
     },
     {
       "credential": "restorer",
@@ -30,7 +30,7 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
       "status": 200,
-      "at": "2026-10-28T07:39:59.939Z"
+      "at": "2026-11-06T20:09:54.256Z"
     },
     {
       "credential": "restorer",
@@ -38,7 +38,7 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions/aTowaS50fG1zLnNwLmV4dHxmN2U1OGRhMi1jYjNjLTg1MDUtOTEzMi0wZmExY2Y5ZGJmNDNAZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4",
       "status": 200,
-      "at": "2026-10-28T07:40:00.086Z"
+      "at": "2026-11-06T20:09:54.354Z"
     },
     {
       "credential": "restorer",
@@ -46,11 +46,11 @@
       "version": "v1.0",
       "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
       "status": 200,
-      "at": "2026-10-28T07:40:00.175Z"
+      "at": "2026-11-06T20:09:54.535Z"
     }
   ],
   "values": {
-    "discoveredSites": 44,
+    "discoveredSites": 46,
     "granted": true
   }
 }

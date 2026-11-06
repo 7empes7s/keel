@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T15:00:41.360Z",
+  "observedAt": "2026-11-06T20:08:04.425Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -177,18 +177,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-2551ebc1",
-        "identity": "KEEL-RT-capture-2551ebc1",
+        "fixture": "KEEL-RT-capture-992f5b41",
+        "identity": "KEEL-RT-capture-992f5b41",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:55:42.216Z",
+        "capturedAt": "2026-11-06T20:03:25.542Z",
         "error": null
       },
       {
@@ -198,18 +198,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-1b614cd4",
-        "identity": "Tag:KEEL-RT-capture-1b614cd4",
+        "fixture": "KEEL-RT-capture-2551ebc1",
+        "identity": "Tag:KEEL-RT-capture-2551ebc1",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-11-06T14:48:36.841Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:48:36.841Z",
+        "before": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:56:02.311Z",
+        "capturedAt": "2026-11-06T20:03:48.252Z",
         "error": null
       },
       {
@@ -219,18 +219,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-01708c0d",
-        "identity": "KEEL-RT-capture-01708c0d",
+        "fixture": "KEEL-RT-capture-56b3b557",
+        "identity": "KEEL-RT-capture-56b3b557",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:56:10.440Z",
+        "capturedAt": "2026-11-06T20:03:56.422Z",
         "error": null
       },
       {
@@ -240,18 +240,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-194ead79",
-        "identity": "Tag:KEEL-RT-capture-194ead79",
+        "fixture": "KEEL-RT-capture-01708c0d",
+        "identity": "Tag:KEEL-RT-capture-01708c0d",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-11-06T14:48:36.841Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:48:36.841Z",
+        "before": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:56:35.952Z",
+        "capturedAt": "2026-11-06T20:04:15.693Z",
         "error": null
       },
       {
@@ -261,18 +261,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-3009c013",
-        "identity": "KEEL-RT-capture-3009c013",
+        "fixture": "KEEL-RT-capture-a791e348",
+        "identity": "KEEL-RT-capture-a791e348",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:56:44.079Z",
+        "capturedAt": "2026-11-06T20:04:23.636Z",
         "error": null
       },
       {
@@ -282,18 +282,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-320658b8",
-        "identity": "Tag:KEEL-RT-capture-320658b8",
+        "fixture": "KEEL-RT-capture-3009c013",
+        "identity": "Tag:KEEL-RT-capture-3009c013",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-10-30T01:01:04.957Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-10-30T01:01:04.957Z",
+        "before": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:57:05.371Z",
+        "capturedAt": "2026-11-06T20:04:42.381Z",
         "error": null
       },
       {
@@ -303,18 +303,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-b5c6b6e1",
-        "identity": "KEEL-RT-capture-b5c6b6e1",
+        "fixture": "KEEL-RT-capture-0f7d0ba6",
+        "identity": "KEEL-RT-capture-0f7d0ba6",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:57:13.905Z",
+        "capturedAt": "2026-11-06T20:04:49.910Z",
         "error": null
       },
       {
@@ -324,18 +324,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-32c76178",
-        "identity": "Tag:KEEL-RT-capture-32c76178",
+        "fixture": "KEEL-RT-capture-5fb765d8",
+        "identity": "Tag:KEEL-RT-capture-5fb765d8",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-11-06T14:19:52.579Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:19:52.579Z",
+        "before": "KEEL capture 2026-10-30T01:01:04.957Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-10-30T01:01:04.957Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:57:35.507Z",
+        "capturedAt": "2026-11-06T20:05:09.388Z",
         "error": null
       },
       {
@@ -345,18 +345,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-8c206cd5",
-        "identity": "KEEL-RT-capture-8c206cd5",
+        "fixture": "KEEL-RT-capture-e7ca288e",
+        "identity": "KEEL-RT-capture-e7ca288e",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:57:46.914Z",
+        "capturedAt": "2026-11-06T20:05:18.810Z",
         "error": null
       },
       {
@@ -371,13 +371,13 @@
         "field": "Description",
         "type": "text",
         "before": "KEEL capture 2026-10-15T18:41:14.371Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
         "final": "KEEL capture 2026-10-15T18:41:14.371Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:58:08.458Z",
+        "capturedAt": "2026-11-06T20:05:41.028Z",
         "error": null
       },
       {
@@ -387,18 +387,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-873c26ba",
-        "identity": "KEEL-RT-capture-873c26ba",
+        "fixture": "KEEL-RT-capture-86efc934",
+        "identity": "KEEL-RT-capture-86efc934",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:58:18.058Z",
+        "capturedAt": "2026-11-06T20:05:50.663Z",
         "error": null
       },
       {
@@ -408,18 +408,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-349c0203",
-        "identity": "Tag:KEEL-RT-capture-349c0203",
+        "fixture": "KEEL-RT-capture-87098ac7",
+        "identity": "Tag:KEEL-RT-capture-87098ac7",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-11-06T14:19:52.579Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:19:52.579Z",
+        "before": "KEEL capture 2026-10-30T01:01:04.957Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-10-30T01:01:04.957Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:58:39.242Z",
+        "capturedAt": "2026-11-06T20:06:11.517Z",
         "error": null
       },
       {
@@ -429,18 +429,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-53740a75",
-        "identity": "KEEL-RT-capture-53740a75",
+        "fixture": "KEEL-RT-capture-d4383788",
+        "identity": "KEEL-RT-capture-d4383788",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:58:47.698Z",
+        "capturedAt": "2026-11-06T20:06:19.917Z",
         "error": null
       },
       {
@@ -450,18 +450,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-b698554a",
-        "identity": "Tag:KEEL-RT-capture-b698554a",
+        "fixture": "KEEL-RT-capture-53740a75",
+        "identity": "Tag:KEEL-RT-capture-53740a75",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-10-16T09:08:26.738Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-10-16T09:08:26.738Z",
+        "before": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:59:06.733Z",
+        "capturedAt": "2026-11-06T20:06:39.092Z",
         "error": null
       },
       {
@@ -471,18 +471,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-dae33747",
-        "identity": "KEEL-RT-capture-dae33747",
+        "fixture": "KEEL-RT-capture-78fa606f",
+        "identity": "KEEL-RT-capture-78fa606f",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:59:14.399Z",
+        "capturedAt": "2026-11-06T20:06:47.183Z",
         "error": null
       },
       {
@@ -492,18 +492,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-083b65c5",
-        "identity": "Tag:KEEL-RT-capture-083b65c5",
+        "fixture": "KEEL-RT-capture-08c842b5",
+        "identity": "Tag:KEEL-RT-capture-08c842b5",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-11-06T14:48:36.841Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:48:36.841Z",
+        "before": "KEEL capture 2026-10-16T09:08:26.738Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-10-16T09:08:26.738Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:59:40.218Z",
+        "capturedAt": "2026-11-06T20:07:08.387Z",
         "error": null
       },
       {
@@ -513,18 +513,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-6f0da266",
-        "identity": "KEEL-RT-capture-6f0da266",
+        "fixture": "KEEL-RT-capture-0b00287c",
+        "identity": "KEEL-RT-capture-0b00287c",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:59:48.995Z",
+        "capturedAt": "2026-11-06T20:07:17.085Z",
         "error": null
       },
       {
@@ -539,13 +539,13 @@
         "field": "Description",
         "type": "text",
         "before": "KEEL capture 2026-10-30T01:01:04.957Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
         "final": "KEEL capture 2026-10-30T01:01:04.957Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T15:00:10.168Z",
+        "capturedAt": "2026-11-06T20:07:37.580Z",
         "error": null
       },
       {
@@ -555,18 +555,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-6ad8a619",
-        "identity": "KEEL-RT-capture-6ad8a619",
+        "fixture": "KEEL-RT-capture-ee933d5b",
+        "identity": "KEEL-RT-capture-ee933d5b",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:54:51.660Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-11-06T20:02:32.326Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T15:00:19.079Z",
+        "capturedAt": "2026-11-06T20:07:45.285Z",
         "error": null
       },
       {
@@ -576,18 +576,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-146b0bdc",
-        "identity": "Tag:KEEL-RT-capture-146b0bdc",
+        "fixture": "KEEL-RT-capture-6aba9f2c",
+        "identity": "Tag:KEEL-RT-capture-6aba9f2c",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-11-06T14:19:52.579Z",
-        "target": "KEEL capture 2026-11-06T14:54:51.660Z",
-        "final": "KEEL capture 2026-11-06T14:19:52.579Z",
+        "before": "KEEL capture 2026-10-16T09:08:26.738Z",
+        "target": "KEEL capture 2026-11-06T20:02:32.326Z",
+        "final": "KEEL capture 2026-10-16T09:08:26.738Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T15:00:41.359Z",
+        "capturedAt": "2026-11-06T20:08:04.425Z",
         "error": null
       }
     ],
@@ -602,43 +602,43 @@
     "created": [
       {
         "family": "callingPolicy",
-        "name": "KEEL-RT-capture-2551ebc1"
+        "name": "KEEL-RT-capture-992f5b41"
       },
       {
         "family": "voiceRoutingPolicy",
-        "name": "KEEL-RT-capture-01708c0d"
+        "name": "KEEL-RT-capture-56b3b557"
       },
       {
         "family": "dialPlan",
-        "name": "KEEL-RT-capture-3009c013"
+        "name": "KEEL-RT-capture-a791e348"
       },
       {
         "family": "emergencyCallingPolicy",
-        "name": "KEEL-RT-capture-b5c6b6e1"
+        "name": "KEEL-RT-capture-0f7d0ba6"
       },
       {
         "family": "emergencyCallRoutingPolicy",
-        "name": "KEEL-RT-capture-8c206cd5"
+        "name": "KEEL-RT-capture-e7ca288e"
       },
       {
         "family": "callParkPolicy",
-        "name": "KEEL-RT-capture-873c26ba"
+        "name": "KEEL-RT-capture-86efc934"
       },
       {
         "family": "callerIdPolicy",
-        "name": "KEEL-RT-capture-53740a75"
+        "name": "KEEL-RT-capture-d4383788"
       },
       {
         "family": "voicemailPolicy",
-        "name": "KEEL-RT-capture-dae33747"
+        "name": "KEEL-RT-capture-78fa606f"
       },
       {
         "family": "liveEventsPolicy",
-        "name": "KEEL-RT-capture-6f0da266"
+        "name": "KEEL-RT-capture-0b00287c"
       },
       {
         "family": "eventsPolicy",
-        "name": "KEEL-RT-capture-6ad8a619"
+        "name": "KEEL-RT-capture-ee933d5b"
       }
     ],
     "requests": [
@@ -664,8 +664,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsCallingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-2551ebc1",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-992f5b41",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -689,8 +689,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsCallingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-1b614cd4",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-2551ebc1",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -706,8 +706,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsCallingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-1b614cd4",
-          "Description": "KEEL capture 2026-11-06T14:48:36.841Z"
+          "Identity": "Tag:KEEL-RT-capture-2551ebc1",
+          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
         },
         "outcome": "ok"
       },
@@ -723,8 +723,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsOnlineVoiceRoutingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-01708c0d",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-56b3b557",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -748,8 +748,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsOnlineVoiceRoutingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-194ead79",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-01708c0d",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -765,8 +765,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsOnlineVoiceRoutingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-194ead79",
-          "Description": "KEEL capture 2026-11-06T14:48:36.841Z"
+          "Identity": "Tag:KEEL-RT-capture-01708c0d",
+          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
         },
         "outcome": "ok"
       },
@@ -782,8 +782,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTenantDialPlan",
         "parameters": {
-          "Identity": "KEEL-RT-capture-3009c013",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-a791e348",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -807,8 +807,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTenantDialPlan",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-320658b8",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-3009c013",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -824,8 +824,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTenantDialPlan",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-320658b8",
-          "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
+          "Identity": "Tag:KEEL-RT-capture-3009c013",
+          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
         },
         "outcome": "ok"
       },
@@ -841,8 +841,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsEmergencyCallingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-b5c6b6e1",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-0f7d0ba6",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -866,8 +866,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsEmergencyCallingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-32c76178",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-5fb765d8",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -883,8 +883,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsEmergencyCallingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-32c76178",
-          "Description": "KEEL capture 2026-11-06T14:19:52.579Z"
+          "Identity": "Tag:KEEL-RT-capture-5fb765d8",
+          "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
         },
         "outcome": "ok"
       },
@@ -900,8 +900,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsEmergencyCallRoutingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-8c206cd5",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-e7ca288e",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -926,7 +926,7 @@
         "cmdlet": "Set-CsTeamsEmergencyCallRoutingPolicy",
         "parameters": {
           "Identity": "Tag:KEEL-RT-capture-5c2b9362",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -959,8 +959,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsCallParkPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-873c26ba",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-86efc934",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -984,8 +984,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsCallParkPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-349c0203",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-87098ac7",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1001,8 +1001,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsCallParkPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-349c0203",
-          "Description": "KEEL capture 2026-11-06T14:19:52.579Z"
+          "Identity": "Tag:KEEL-RT-capture-87098ac7",
+          "Description": "KEEL capture 2026-10-30T01:01:04.957Z"
         },
         "outcome": "ok"
       },
@@ -1018,8 +1018,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsCallingLineIdentity",
         "parameters": {
-          "Identity": "KEEL-RT-capture-53740a75",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-d4383788",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1043,8 +1043,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsCallingLineIdentity",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-b698554a",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-53740a75",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1060,8 +1060,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsCallingLineIdentity",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-b698554a",
-          "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
+          "Identity": "Tag:KEEL-RT-capture-53740a75",
+          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
         },
         "outcome": "ok"
       },
@@ -1077,8 +1077,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsOnlineVoicemailPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-dae33747",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-78fa606f",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1102,8 +1102,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsOnlineVoicemailPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-083b65c5",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-08c842b5",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1119,8 +1119,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsOnlineVoicemailPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-083b65c5",
-          "Description": "KEEL capture 2026-11-06T14:48:36.841Z"
+          "Identity": "Tag:KEEL-RT-capture-08c842b5",
+          "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
         },
         "outcome": "ok"
       },
@@ -1136,8 +1136,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsMeetingBroadcastPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-6f0da266",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-0b00287c",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1162,7 +1162,7 @@
         "cmdlet": "Set-CsTeamsMeetingBroadcastPolicy",
         "parameters": {
           "Identity": "Tag:KEEL-RT-capture-0c685898",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1195,8 +1195,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsEventsPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-6ad8a619",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "KEEL-RT-capture-ee933d5b",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1220,8 +1220,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsEventsPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-146b0bdc",
-          "Description": "KEEL capture 2026-11-06T14:54:51.660Z"
+          "Identity": "Tag:KEEL-RT-capture-6aba9f2c",
+          "Description": "KEEL capture 2026-11-06T20:02:32.326Z"
         },
         "outcome": "ok"
       },
@@ -1237,8 +1237,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsEventsPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-146b0bdc",
-          "Description": "KEEL capture 2026-11-06T14:19:52.579Z"
+          "Identity": "Tag:KEEL-RT-capture-6aba9f2c",
+          "Description": "KEEL capture 2026-10-16T09:08:26.738Z"
         },
         "outcome": "ok"
       },
@@ -1251,16 +1251,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "d6269fd081e7c46b3cedfb721812b93734598977626f312e81d2f1873bee5eb8"
+    "captureLogSha256": "ce03429382e9d2d2c53842800cf2bc45ee5c4cfff4e694f7f1c63e0d14a1ac5a"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-teams-voice-policies-live-acceptance.capture.json",
-      "sha256": "d6269fd081e7c46b3cedfb721812b93734598977626f312e81d2f1873bee5eb8"
+      "sha256": "ce03429382e9d2d2c53842800cf2bc45ee5c4cfff4e694f7f1c63e0d14a1ac5a"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "36ba4fd5e3b033bea6c1735e19a3391609838b5292610337f6a61ad4c040f8f5"
+      "signature": "71e9065d6e32202a34bb537ffc42f9e37fa07f2cae070963bf0184a63b08880f"
     }
   }
 }

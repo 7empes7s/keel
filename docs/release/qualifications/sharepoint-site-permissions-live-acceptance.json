@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "sharepoint-site-permissions-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "76e1c71268db6eb687765869f0637c589edeecd1",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "sharepoint.site-permissions-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-28T07:41:04.169Z",
+  "observedAt": "2026-11-06T20:10:06.637Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -17,7 +17,7 @@
       "level": "KEEL-RT-perm-1 level",
       "group": "KEEL-RT-perm-1 group",
       "member": "i:0#.f|membership|keel-rt-u3d1992e7d3d1@t42987720ee3.example",
-      "listId": "0c4d9637-6610-8de2-9c24-602ed100dd29"
+      "listId": "5e92784a-d179-85e2-9cdb-08ead683917c"
     },
     "credentials": {
       "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
@@ -49,7 +49,7 @@
         "ok": true,
         "readBackVerified": true,
         "subject": "KEEL-RT-perm-1 level",
-        "capturedAt": "2026-10-28T07:41:02.020Z"
+        "capturedAt": "2026-11-06T20:10:04.523Z"
       },
       {
         "operationId": "sharepoint.site-groups.add",
@@ -58,7 +58,7 @@
         "ok": true,
         "readBackVerified": true,
         "subject": "KEEL-RT-perm-1 group",
-        "capturedAt": "2026-10-28T07:41:02.343Z"
+        "capturedAt": "2026-11-06T20:10:04.900Z"
       },
       {
         "operationId": "sharepoint.site-group-members.add",
@@ -67,7 +67,7 @@
         "ok": true,
         "readBackVerified": true,
         "subject": "i:0#.f|membership|keel-rt-u3d1992e7d3d1@t42987720ee3.example",
-        "capturedAt": "2026-10-28T07:41:02.695Z"
+        "capturedAt": "2026-11-06T20:10:05.228Z"
       },
       {
         "operationId": "sharepoint.site-admins.add",
@@ -76,7 +76,7 @@
         "ok": true,
         "readBackVerified": true,
         "subject": "i:0#.f|membership|keel-rt-u3d1992e7d3d1@t42987720ee3.example",
-        "capturedAt": "2026-10-28T07:41:02.945Z"
+        "capturedAt": "2026-11-06T20:10:05.523Z"
       },
       {
         "operationId": "sharepoint.site-role-assignments.add",
@@ -86,7 +86,7 @@
         "readBackVerified": true,
         "subject": null,
         "scopes": 2,
-        "capturedAt": "2026-10-28T07:41:03.213Z"
+        "capturedAt": "2026-11-06T20:10:05.700Z"
       }
     ],
     "requests": [
@@ -153,7 +153,7 @@
       {
         "credential": "collector",
         "method": "GET",
-        "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'0c4d9637-6610-8de2-9c24-602ed100dd29')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+        "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'5e92784a-d179-85e2-9cdb-08ead683917c')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
         "status": 200
       },
       {
@@ -183,7 +183,7 @@
       {
         "credential": "restorer",
         "method": "POST",
-        "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/getbyid(14)/users",
+        "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/getbyid(15)/users",
         "status": 201
       },
       {
@@ -201,13 +201,13 @@
       {
         "credential": "restorer",
         "method": "POST",
-        "path": "/sites/KEEL-RT-20261004/_api/web/roleassignments/addroleassignment(principalid=14,roledefid=1073741926)",
+        "path": "/sites/KEEL-RT-20261004/_api/web/roleassignments/addroleassignment(principalid=15,roledefid=1073741927)",
         "status": 200
       },
       {
         "credential": "restorer",
         "method": "POST",
-        "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'0c4d9637-6610-8de2-9c24-602ed100dd29')/roleassignments/addroleassignment(principalid=14,roledefid=1073741926)",
+        "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'5e92784a-d179-85e2-9cdb-08ead683917c')/roleassignments/addroleassignment(principalid=15,roledefid=1073741927)",
         "status": 200
       },
       {
@@ -249,7 +249,7 @@
       {
         "credential": "collector",
         "method": "GET",
-        "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(14)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+        "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(15)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
         "status": 200
       },
       {
@@ -279,7 +279,7 @@
       {
         "credential": "collector",
         "method": "GET",
-        "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'0c4d9637-6610-8de2-9c24-602ed100dd29')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+        "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'5e92784a-d179-85e2-9cdb-08ead683917c')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
         "status": 200
       },
       {
@@ -301,23 +301,23 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/set-custom-permissions-on-a-list-by-using-the-rest-interface",
-        "retrievedAt": "2026-10-28T07:40:59.777Z"
+        "retrievedAt": "2026-11-06T19:31:28.689Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-rest-reference/dn531432(v=office.15)",
-        "retrievedAt": "2026-10-28T07:41:00.075Z"
+        "retrievedAt": "2026-11-06T19:31:28.833Z"
       }
     ],
-    "captureLogSha256": "c9bf9c7c6ae3410e6e7d2e5b1a7f50c95e6993f199765581e198ebed67428acf"
+    "captureLogSha256": "42dd3677ddbd337f1fc82ba7c96a498c2008605119a032b5a6788265a4ebf891"
   },
   "proof": {
     "artifact": {
       "path": "sharepoint-site-permissions-live-acceptance.capture.json",
-      "sha256": "c9bf9c7c6ae3410e6e7d2e5b1a7f50c95e6993f199765581e198ebed67428acf"
+      "sha256": "42dd3677ddbd337f1fc82ba7c96a498c2008605119a032b5a6788265a4ebf891"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "d0446530fed9ae5dcbd7b5bee489d60c958674cb5ca62a36c7516eefbf338d8f"
+      "signature": "70e66e316924d0f36ca81da6f556e1ab58874f3769f10757d3b9de7002a05621"
     }
   }
 }

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "sharepoint-structure-writes-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "sharepoint-structure.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T14:27:32.483Z",
+  "observedAt": "2026-11-06T20:14:09.524Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -47,40 +47,40 @@
         "operationId": "sharepoint-structure.site-script.add",
         "version": "3.4.1",
         "synthetic": false,
-        "fixture": "KEEL-RT-capture-2e274183",
+        "fixture": "KEEL-RT-capture-298abc55",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T14:24:23.346Z",
+        "capturedAt": "2026-11-06T20:13:44.532Z",
         "error": null
       },
       {
         "operationId": "sharepoint-structure.site-script.update",
         "version": "3.4.1",
         "synthetic": false,
-        "fixture": "KEEL-RT-capture-2e274183",
+        "fixture": "KEEL-RT-capture-298abc55",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T14:24:32.170Z",
+        "capturedAt": "2026-11-06T20:13:54.575Z",
         "error": null
       },
       {
         "operationId": "sharepoint-structure.site-design.add",
         "version": "3.4.1",
         "synthetic": false,
-        "fixture": "KEEL-RT-capture-8d886468",
+        "fixture": "KEEL-RT-capture-cf66fe0b",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T14:24:36.571Z",
+        "capturedAt": "2026-11-06T20:13:58.176Z",
         "error": null
       },
       {
         "operationId": "sharepoint-structure.site-design.update",
         "version": "3.4.1",
         "synthetic": false,
-        "fixture": "KEEL-RT-capture-8d886468",
+        "fixture": "KEEL-RT-capture-cf66fe0b",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T14:24:40.957Z",
+        "capturedAt": "2026-11-06T20:14:02.237Z",
         "error": null
       },
       {
@@ -90,7 +90,7 @@
         "fixture": "KEEL-RT-20261004",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T14:24:48.679Z",
+        "capturedAt": "2026-11-06T20:14:09.521Z",
         "error": null,
         "putBack": true,
         "restoredToOriginal": true
@@ -101,9 +101,9 @@
         "synthetic": false,
         "fixture": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
         "ok": false,
-        "readBackVerified": true,
-        "capturedAt": "2026-11-06T14:27:32.483Z",
-        "error": "PUTTING THE NAVIGATION BACK FAILED: remove the KEEL-RT-capture-807c2e88 link from https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004 by hand",
+        "readBackVerified": false,
+        "capturedAt": "2026-11-06T20:14:09.524Z",
+        "error": "TemplateGzip is longer than 1024 characters",
         "putBack": true,
         "elements": [
           "ContentType",
@@ -123,17 +123,15 @@
         ],
         "added": {
           "lists": [
-            "lists/keel-rt-capture-807c2e88"
+            "lists/keel-rt-capture-d696db0a"
           ],
           "siteColumns": [
-            "1cf70a62-4bde-866a-8ab8-44f71f78aeac"
+            "61b4b8c5-2113-8885-b029-74a56ddd0b94"
           ],
           "contentTypes": [
-            "0x0100ca06b68bd9eb696a9ce508010d4bdd87"
+            "0x0100f335c2614ffb3fcd3e5854cb802aba9b"
           ]
-        },
-        "navigation": true,
-        "restoredToOriginal": false
+        }
       }
     ],
     "skipped": [
@@ -145,23 +143,11 @@
     "created": [
       {
         "kind": "siteScript",
-        "name": "KEEL-RT-capture-2e274183"
+        "name": "KEEL-RT-capture-298abc55"
       },
       {
         "kind": "siteDesign",
-        "name": "KEEL-RT-capture-8d886468"
-      },
-      {
-        "kind": "siteTemplate",
-        "name": "Lists/KEEL-RT-capture-807c2e88"
-      },
-      {
-        "kind": "siteColumn",
-        "name": "KeelRtCapture807c2e88"
-      },
-      {
-        "kind": "contentType",
-        "name": "KEEL-RT-capture-807c2e88"
+        "name": "KEEL-RT-capture-cf66fe0b"
       }
     ],
     "requests": [
@@ -180,9 +166,9 @@
         "credential": "restorer",
         "cmdlet": "Add-PnPSiteScript",
         "parameters": {
-          "Title": "KEEL-RT-capture-2e274183",
-          "Description": "KEEL capture 2026-11-06T14:23:45.773Z",
-          "Content": "{\"$schema\":\"https://developer.microsoft.com/json-schemas/sp/site-design-script-actions.schema.json\",\"actions\":[{\"verb\":\"createSPList\",\"listName\":\"KEEL-RT-capture-2e274183\",\"templateType\":100,\"subactions\":[{\"verb\":\"setDescription\",\"description\":\"KEEL live proof fixture; safe to delete\"}]}],\"bindata\":{},\"version\":1}"
+          "Title": "KEEL-RT-capture-298abc55",
+          "Description": "KEEL capture 2026-11-06T20:13:06.387Z",
+          "Content": "{\"$schema\":\"https://developer.microsoft.com/json-schemas/sp/site-design-script-actions.schema.json\",\"actions\":[{\"verb\":\"createSPList\",\"listName\":\"KEEL-RT-capture-298abc55\",\"templateType\":100,\"subactions\":[{\"verb\":\"setDescription\",\"description\":\"KEEL live proof fixture; safe to delete\"}]}],\"bindata\":{},\"version\":1}"
         },
         "outcome": "ok"
       },
@@ -198,8 +184,8 @@
         "credential": "restorer",
         "cmdlet": "Set-PnPSiteScript",
         "parameters": {
-          "Identity": "21d608e5-1694-8887-84e0-4df2ec8899bf",
-          "Description": "KEEL capture 2026-11-06T14:23:45.773Z updated"
+          "Identity": "19805c84-afa7-87c6-8f01-2818b834aac8",
+          "Description": "KEEL capture 2026-11-06T20:13:06.387Z updated"
         },
         "outcome": "ok"
       },
@@ -215,11 +201,11 @@
         "credential": "restorer",
         "cmdlet": "Add-PnPSiteDesign",
         "parameters": {
-          "Title": "KEEL-RT-capture-8d886468",
-          "Description": "KEEL capture 2026-11-06T14:23:45.773Z",
+          "Title": "KEEL-RT-capture-cf66fe0b",
+          "Description": "KEEL capture 2026-11-06T20:13:06.387Z",
           "WebTemplate": "TeamSite",
           "SiteScriptIds": [
-            "21d608e5-1694-8887-84e0-4df2ec8899bf"
+            "19805c84-afa7-87c6-8f01-2818b834aac8"
           ],
           "IsDefault": false
         },
@@ -237,8 +223,8 @@
         "credential": "restorer",
         "cmdlet": "Set-PnPSiteDesign",
         "parameters": {
-          "Identity": "5e5701c2-7c35-8ad9-9c1d-d5c5ac23e46f",
-          "Description": "KEEL capture 2026-11-06T14:23:45.773Z updated"
+          "Identity": "37cc14d4-ef98-8308-b37b-efae82ae310b",
+          "Description": "KEEL capture 2026-11-06T20:13:06.387Z updated"
         },
         "outcome": "ok"
       },
@@ -255,7 +241,7 @@
         "cmdlet": "Set-PnPHubSite",
         "parameters": {
           "Identity": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
-          "Description": "KEEL capture 2026-11-06T14:23:45.773Z"
+          "Description": "KEEL capture 2026-11-06T20:13:06.387Z"
         },
         "outcome": "ok"
       },
@@ -283,92 +269,18 @@
           "hubSite"
         ],
         "outcome": "ok"
-      },
-      {
-        "credential": "restorer",
-        "cmdlet": "Invoke-PnPSiteTemplate",
-        "parameters": {
-          "Url": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
-          "TemplateGzipSha256": "294ca6e168f6a097192ac28f4d7ae9cfae00866c8fec968d70d6002c3451b045"
-        },
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "restorer",
-        "cmdlet": "Invoke-PnPSiteTemplate",
-        "parameters": {
-          "Url": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
-          "TemplateGzipSha256": "04b3c6c36b27ccf4179aef0c9cf685f680e8b5422496913832c47e55071d5a27"
-        },
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "sharepoint-structure",
-        "families": [
-          "siteTemplate"
-        ],
-        "outcome": "ok"
       }
     ],
-    "captureLogSha256": "ae1f1a95c4ecf8280bf6dcf84c1e1bf3af43184929661402392df772119187e0"
+    "captureLogSha256": "392d736ebeb04759742cce10b8969b05be54b805a27b37b758f2fcc471a7ddc8"
   },
   "proof": {
     "artifact": {
       "path": "sharepoint-structure-writes-live-acceptance.capture.json",
-      "sha256": "ae1f1a95c4ecf8280bf6dcf84c1e1bf3af43184929661402392df772119187e0"
+      "sha256": "392d736ebeb04759742cce10b8969b05be54b805a27b37b758f2fcc471a7ddc8"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "7a6642711981723312c1de850e6a9d14250f0fdc8eb7e69f90e6e37fcac0f399"
+      "signature": "b5f171004f47d8a35d86e3e3df27f6eff8fa8ef8674173177f6aa4e44b40f6f7"
     }
   }
 }

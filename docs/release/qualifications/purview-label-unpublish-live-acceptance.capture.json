@@ -65,14 +65,13 @@
         "Mode": "Enforce",
         "Priority": 1,
         "Labels": [
-          "KEEL-RT-20261104-site-label",
           "KEEL-RT-20261005-anchor",
+          "KEEL-RT-20261104-site-label",
+          "KEEL-RT-20261106-label4",
           "KEEL-RT-20261005-label2",
           "KEEL-RT-20261007-label",
           "KEEL-RT-20261005-label",
-          "KEEL-RT-20261005-label3",
-          "KEEL-RT-20261106-label1",
-          "KEEL-RT-20261106-label2"
+          "KEEL-RT-20261005-label3"
         ],
         "ExchangeLocation": [
           {
@@ -114,7 +113,7 @@
         "SharePointLocation": [],
         "OneDriveLocation": [],
         "Settings": null,
-        "WhenChangedUTC": "2026-11-06T14:23:18Z"
+        "WhenChangedUTC": "2026-11-06T20:11:24Z"
       }
     },
     "start": {
@@ -125,13 +124,12 @@
         "Priority": 1,
         "Labels": [
           "KEEL-RT-20261104-site-label",
+          "KEEL-RT-20261106-label4",
+          "KEEL-RT-20261005-anchor",
           "KEEL-RT-20261005-label2",
           "KEEL-RT-20261007-label",
-          "KEEL-RT-20261005-anchor",
           "KEEL-RT-20261005-label",
-          "KEEL-RT-20261005-label3",
-          "KEEL-RT-20261106-label1",
-          "KEEL-RT-20261106-label2"
+          "KEEL-RT-20261005-label3"
         ],
         "ExchangeLocation": [
           {
@@ -173,7 +171,7 @@
         "SharePointLocation": [],
         "OneDriveLocation": [],
         "Settings": null,
-        "WhenChangedUTC": "2026-11-06T14:19:46Z"
+        "WhenChangedUTC": "2026-11-06T19:40:53Z"
       },
       "label": "KEEL-RT-20261005-anchor",
       "published": true

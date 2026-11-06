@@ -343,7 +343,8 @@ export async function structureWriteCmdlet({ cmdlet, parameters = {} }, powershe
     if (bad.length) throw new SharePointStructureWriteScopeError(`the template carries ${bad.join(', ')}, which KEEL never sends`);
   }
   const { tenantConfigPath = null, ...options } = powershell;
-  return runCmdlet({ module: SHAREPOINT_STRUCTURE_MODULE, cmdlet, parameters, tenantConfigPath }, { ...options, allowedCmdlets: new Set([cmdlet]) });
+  const maxParameterLengths = cmdlet === 'Invoke-PnPSiteTemplate' ? { TemplateGzip: MAX_TEMPLATE_GZIP_CHARS } : {};
+  return runCmdlet({ module: SHAREPOINT_STRUCTURE_MODULE, cmdlet, parameters, tenantConfigPath }, { ...options, allowedCmdlets: new Set([cmdlet]), maxParameterLengths });
 }
 
 // ------------------------------------------------------------ source and live

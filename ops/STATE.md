@@ -137,9 +137,10 @@ Change these scripts in the repo from now on, never in `/opt/keel-deploy`.
 
 The release sign-off (task-124, #985) is generated: `node tools/release/readiness.mjs signoff --build <candidate>`.
 The full pending list, by objective, is `docs/roadmap/PENDING.md`; the live batches are #1025, #1026 and #1027.
-On 2026-11-06 (#1027, on Mulinux with the key), at the live build `90fdca849c` it says **pending**: 44 gates are from
-another build, 3 are stale and 1 has no record. The one-build rule can't be met while every merge deploys a new build
-(#1044). At `f1521256`, the batch build, 39 gates verify:
+On 2026-11-06 (#1051, on Mulinux with the key), at the frozen candidate `128b0e3b84` it says **pending**: 45 of 49
+gates and 127 of 223 Entra writes are live-qualified; deployed acceptance and ServiceNow are stale and the Defender
+indicators read has no record. The freeze is lifted and `/opt/keel-candidate` is removed. #1054 and #1062 changed
+engine code after the candidate, so the next sign-off needs a new frozen candidate:
 
 - Recheck 2 (#1050, 2026-11-06) recaptured every non-Entra gate it could at the frozen candidate `128b0e3b84`:
   storage, drill, native recovery, NIST, ScubaGear, gates 120–123, the 7 writer families, 22 reads and the 6

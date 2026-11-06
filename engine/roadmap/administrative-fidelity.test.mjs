@@ -392,9 +392,9 @@ test('the restore CLI reads delete evidence from the source snapshot of its own 
   assert.deepEqual(fromComplete.result.failed, []);
   assert.deepEqual(fromComplete.graph.bodies.map((write) => write.method), ['DELETE']);
 
-  // Without a governed delete in the plan, nothing is read.
+  // Without a delete in the plan, nothing is read.
   const untouched = { query: async () => { throw new Error('no query expected'); } };
-  assert.equal(await observedCoverageFor(untouched, { resources: [{ resourceType: 'group', verb: 'delete' }], snapshotId: complete, tenantRef: 'tenant-a' }), null);
+  assert.equal(await observedCoverageFor(untouched, { resources: [{ resourceType: 'groupSetting', verb: 'update' }], snapshotId: complete, tenantRef: 'tenant-a' }), null);
 });
 
 // ------------------------------------------------- integration: patches, batch runner and CLI

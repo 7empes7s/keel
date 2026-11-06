@@ -593,6 +593,62 @@ test('a delegated consent grant is checked by its client app and user, not a rol
   await assert.rejects(run({ consentType: 'AllPrincipals' }), /not for one user/);
 });
 
+test('an access package resource role is checked by its package, its group and the group\'s Member role (#1060)', async () => {
+  const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'accessPackageResourceRoleScope:create');
+  assert.equal(guidanceFor('accessPackageResourceRoleScope').kind, 'by-reference');
+  // As the collector reads it (accessPackages/{id}?$expand=resourceRoleScopes($expand=role,scope))
+  // and canonicalize stores it: keyed by its id, with typed package and group symbols and
+  // unresolvable child ids. No principal or directory role anywhere.
+  const scopeId = '33333333-4444-4555-8666-777777777777';
+  const groupId = '11111111-2222-4333-8444-555555555555';
+  const packageId = '22222222-3333-4444-8555-666666666666';
+  const own = `accessPackageResourceRoleScope:${scopeId}`;
+  const snapshot = ({ packageName = 'KEEL-RT-992-package', groupName = 'KEEL-RT-group', roleOrigin = `Member_${groupId}`, system = 'AadGroup' } = {}) => ({
+    naturalKey: own,
+    resourceType: 'accessPackageResourceRoleScope',
+    versions: [
+      { id: 'v-own', natural_key: own, payload: {
+        id: scopeId, createdDateTime: '2026-01-01T00:00:00Z', accessPackageId: packageId,
+        role: { id: '55555555-6666-4777-8888-999999999999', displayName: 'Member', originId: roleOrigin, originSystem: system },
+        scope: { id: '66666666-7777-4888-8999-aaaaaaaaaaaa', displayName: 'Root', originId: groupId, originSystem: system, isRootScope: true },
+      } },
+      { id: 'v-package', natural_key: `accessPackage:${packageId}`, payload: { id: packageId, displayName: packageName } },
+      { id: 'v-group', natural_key: 'group:keelrtgroup', payload: { id: groupId, displayName: groupName, mailNickname: 'keelrtgroup' } },
+    ],
+    references: [
+      { from_version: 'v-own', field_path: 'role.id', to_symbol: null },
+      { from_version: 'v-own', field_path: 'scope.id', to_symbol: null },
+      { from_version: 'v-own', field_path: 'scope.originId', to_symbol: 'group:keelrtgroup' },
+      { from_version: 'v-own', field_path: 'accessPackageId', to_symbol: `accessPackage:${packageId}` },
+    ],
+  });
+  assert.deepEqual(byReferenceProblems(snapshot()), []);
+  assert.deepEqual(byReferenceProblems(snapshot({ packageName: 'Finance access' })), ['the access package is not a KEEL-RT fixture']);
+  assert.deepEqual(byReferenceProblems(snapshot({ groupName: 'All staff' })), ['the group is not a KEEL-RT fixture']);
+  assert.deepEqual(byReferenceProblems(snapshot({ roleOrigin: `Owner_${groupId}` })), ['the role is not the group\'s Member role']);
+  assert.deepEqual(byReferenceProblems(snapshot({ system: 'SharePointOnline' })), ['the role is not the group\'s Member role']);
+  const noGroup = snapshot();
+  noGroup.references = noGroup.references.filter((ref) => ref.field_path !== 'scope.originId');
+  assert.deepEqual(byReferenceProblems(noGroup), ['no group reference']);
+
+  // Through the capture: the restore's snapshot holds the role scope, its package and its group.
+  const restore = fixtureRestore(step, { naturalKey: own });
+  const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+  journal[0].targetId = scopeId;
+  journal[0].priorState = null;
+  const run = (options = {}, allowByReference = true) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: own,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, allowByReference, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal,
+    getSnapshot: async () => { const rows = snapshot(options); return { versions: rows.versions, references: rows.references }; },
+  });
+  await assert.rejects(run({}, false), /checks that its access package and group are fixtures/);
+  const result = await run();
+  assert.equal(result.status, 'captured');
+  assert.equal(result.record.fixtureKind, 'by-reference');
+  await assert.rejects(run({ groupName: 'All staff' }), /the group is not a KEEL-RT fixture/);
+});
+
 test('an edge is captured by the checklist\'s fixture name although its key carries the typed parent (Q48)', async () => {
   // keel-restore journals an edge under its typed parent symbol: edge:group:<mail nickname>|...
   for (const id of ['group#member:edge-add', 'group#member:edge-remove', 'group#owner:edge-add', 'group#owner:edge-remove']) {

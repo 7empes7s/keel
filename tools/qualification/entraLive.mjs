@@ -248,7 +248,8 @@ export function composedKeyReferences(naturalKey) {
  * names of what it points at, read from the restore's snapshot: the principal
  * must be a fixture, the role must be a KEEL-RT custom role (never a built-in
  * role), and a scope, if any, must be a fixture. A delegated consent grant
- * (oauth2PermissionGrant) is checked by its client app and its one user instead.
+ * (oauth2PermissionGrant) is checked by its client app and its one user instead,
+ * and an access package resource role by its package and its group.
  */
 export function byReferenceProblems({ versions, references, naturalKey, deleted = false, resourceType = null }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
@@ -295,6 +296,23 @@ export function byReferenceProblems({ versions, references, naturalKey, deleted 
     const user = find(/^principalId$/i);
     if (!user) problems.push('no user reference');
     else if (!DISPOSABLE.test(nameOf(user.to_symbol))) problems.push('the user is not a KEEL-RT fixture');
+    return problems;
+  }
+  if (resourceType === 'accessPackageResourceRoleScope') {
+    // Issue #1060: a resource role on an access package points at no principal
+    // or directory role: its package and the group it grants must be fixtures,
+    // and the role must be that group's Member role (never Owner, an app or a site).
+    const pkg = find(/^accessPackageId$/i);
+    if (!pkg) problems.push('no access package reference');
+    else if (!DISPOSABLE.test(nameOf(pkg.to_symbol))) problems.push('the access package is not a KEEL-RT fixture');
+    const group = find(/^scope\.originId$/i);
+    if (!group) problems.push('no group reference');
+    else if (!DISPOSABLE.test(nameOf(group.to_symbol))) problems.push('the group is not a KEEL-RT fixture');
+    const { role, scope } = own?.payload ?? {};
+    if (role?.originSystem !== 'AadGroup' || scope?.originSystem !== 'AadGroup'
+      || String(role?.originId ?? '').toLowerCase() !== `member_${String(scope?.originId ?? '').toLowerCase()}`) {
+      problems.push('the role is not the group\'s Member role');
+    }
     return problems;
   }
   const principal = find(/principal/i);
@@ -430,7 +448,8 @@ export async function captureLive({
   };
   if (guidance.kind === 'by-reference') {
     if (!allowByReference) {
-      const checked = resourceType === 'oauth2PermissionGrant' ? 'its client app and user' : 'its principal and role';
+      const checked = resourceType === 'oauth2PermissionGrant' ? 'its client app and user'
+        : resourceType === 'accessPackageResourceRoleScope' ? 'its access package and group' : 'its principal and role';
       throw new LiveGateRefusal(`${resourceType} has no name of its own: pass --allow-by-reference; the capture then checks that ${checked} are fixtures`);
     }
     const problems = byReferenceProblems({ ...(await loadSnapshot()), naturalKey: entry.naturalKey, deleted: operation === 'delete', resourceType });

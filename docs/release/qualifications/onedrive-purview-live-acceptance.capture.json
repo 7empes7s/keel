@@ -9,7 +9,7 @@
         "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-u79f8ad45d041_t6229b404b59_example"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:33:18.308Z"
+      "at": "2026-11-06T19:38:40.215Z"
     },
     {
       "credential": "collector",
@@ -18,7 +18,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:33:37.029Z"
+      "at": "2026-11-06T19:39:03.260Z"
     },
     {
       "credential": "collector",
@@ -27,7 +27,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:33:37.029Z"
+      "at": "2026-11-06T19:39:03.260Z"
     },
     {
       "credential": "collector",
@@ -35,10 +35,10 @@
       "module": "PnP.PowerShell",
       "cmdlet": "Get-PnPTenantSite",
       "parameters": {
-        "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-f2344cab6df6"
+        "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-cc730d5d8c85"
       },
       "outcome": "failed",
-      "at": "2026-11-06T14:33:37.030Z",
+      "at": "2026-11-06T19:39:03.260Z",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "PnP.PowerShell.Commands.GetTenantSite"
@@ -51,7 +51,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:34:07.664Z"
+      "at": "2026-11-06T19:39:27.768Z"
     },
     {
       "credential": "restorer",
@@ -60,7 +60,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:34:07.664Z"
+      "at": "2026-11-06T19:39:27.768Z"
     },
     {
       "credential": "restorer",
@@ -68,11 +68,11 @@
       "module": "ExchangeOnlineManagement",
       "cmdlet": "Set-Label",
       "parameters": {
-        "Identity": "7fbbd03a-ee83-8f3f-a147-04b316fcc063",
-        "Comment": "KEEL-RT qualification 2026-11-06T14:33:41.557Z"
+        "Identity": "a31eadf8-1065-8351-8e30-787f5dc19995",
+        "Comment": "KEEL-RT qualification 2026-11-06T19:39:07.472Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:34:07.664Z"
+      "at": "2026-11-06T19:39:27.768Z"
     },
     {
       "credential": "restorer",
@@ -81,7 +81,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:34:34.710Z"
+      "at": "2026-11-06T19:39:56.437Z"
     },
     {
       "credential": "restorer",
@@ -90,7 +90,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:34:34.710Z"
+      "at": "2026-11-06T19:39:56.437Z"
     },
     {
       "credential": "restorer",
@@ -98,11 +98,11 @@
       "module": "ExchangeOnlineManagement",
       "cmdlet": "Set-Label",
       "parameters": {
-        "Identity": "7fbbd03a-ee83-8f3f-a147-04b316fcc063",
-        "Comment": ""
+        "Identity": "a31eadf8-1065-8351-8e30-787f5dc19995",
+        "Comment": "KEEL gate 123 fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:34:34.710Z"
+      "at": "2026-11-06T19:39:56.437Z"
     },
     {
       "credential": "restorer",
@@ -111,7 +111,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:35:03.967Z"
+      "at": "2026-11-06T19:40:29.731Z"
     },
     {
       "credential": "restorer",
@@ -120,7 +120,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:35:03.967Z"
+      "at": "2026-11-06T19:40:29.731Z"
     },
     {
       "credential": "restorer",
@@ -129,7 +129,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:35:25.166Z"
+      "at": "2026-11-06T19:40:46.204Z"
     },
     {
       "credential": "restorer",
@@ -138,7 +138,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:35:25.166Z"
+      "at": "2026-11-06T19:40:46.204Z"
     },
     {
       "credential": "restorer",
@@ -148,11 +148,11 @@
       "parameters": {
         "Identity": "92ca8095-9cc5-8acf-8c45-04d71b7037ad",
         "AddLabels": [
-          "KEEL-RT-20261106-label3"
+          "KEEL-RT-20261106-label4"
         ]
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:35:25.166Z"
+      "at": "2026-11-06T19:40:46.205Z"
     },
     {
       "credential": "restorer",
@@ -161,7 +161,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:35:51.524Z"
+      "at": "2026-11-06T19:41:10.420Z"
     },
     {
       "credential": "restorer",
@@ -170,11 +170,11 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-11-06T14:35:51.524Z"
+      "at": "2026-11-06T19:41:10.420Z"
     }
   ],
   "values": {
-    "originalComment": "",
+    "originalComment": "KEEL gate 123 fixture",
     "labelWritten": true
   }
 }

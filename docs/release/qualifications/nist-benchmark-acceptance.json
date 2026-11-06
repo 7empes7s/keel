@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "nist-benchmark-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "nist-benchmark-evaluate",
   "credentialMode": "collector",
-  "observedAt": "2026-11-06T17:57:29.989Z",
+  "observedAt": "2026-11-06T20:16:16.708Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -38,7 +38,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "af7aec837fa5dd8a7162cdec7b0b1078f48f0bea388572fea51ff62b045ae925"
+      "signature": "fd9b3726babb52d6ab567f344d14f11d9bbae768d892554cc483ec6dc29f74c3"
     }
   }
 }

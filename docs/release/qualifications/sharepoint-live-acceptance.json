@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "sharepoint-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "sharepoint.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T14:30:07.312Z",
+  "observedAt": "2026-11-06T19:34:41.358Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -159,7 +159,7 @@
       {
         "operationId": "sharepoint.tenant-settings",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T14:29:57.548Z",
+        "capturedAt": "2026-11-06T19:34:40.328Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -168,7 +168,7 @@
       {
         "operationId": "sharepoint.site-discovery",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T14:29:57.728Z",
+        "capturedAt": "2026-11-06T19:34:40.524Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -177,7 +177,7 @@
       {
         "operationId": "sharepoint.site-properties",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T14:29:57.812Z",
+        "capturedAt": "2026-11-06T19:34:40.603Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -186,7 +186,7 @@
       {
         "operationId": "sharepoint.site-permissions",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T14:29:57.903Z",
+        "capturedAt": "2026-11-06T19:34:40.691Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -211,7 +211,7 @@
       "restoredToOriginal": true,
       "preFingerprint": "3b576503bdf39630230d4cc385b9d7d8235403dbc5ab8f48fcad0274bc51b441",
       "finalFingerprint": "3b576503bdf39630230d4cc385b9d7d8235403dbc5ab8f48fcad0274bc51b441",
-      "capturedAt": "2026-11-06T14:30:07.312Z"
+      "capturedAt": "2026-11-06T19:34:41.358Z"
     },
     "requests": [
       {
@@ -265,20 +265,6 @@
       },
       {
         "credential": "restorer",
-        "method": "GET",
-        "version": "v1.0",
-        "path": "/admin/sharepoint/settings",
-        "status": 200
-      },
-      {
-        "credential": "restorer",
-        "method": "GET",
-        "version": "v1.0",
-        "path": "/admin/sharepoint/settings",
-        "status": 200
-      },
-      {
-        "credential": "restorer",
         "method": "PATCH",
         "version": "v1.0",
         "path": "/admin/sharepoint/settings",
@@ -298,35 +284,35 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/sharepointsettings-get?view=graph-rest-1.0",
-        "retrievedAt": "2026-11-06T14:29:48.315Z"
+        "retrievedAt": "2026-11-06T19:31:26.819Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-getallsites",
-        "retrievedAt": "2026-11-06T14:29:48.505Z"
+        "retrievedAt": "2026-11-06T19:31:27.195Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-get",
-        "retrievedAt": "2026-11-06T14:29:48.709Z"
+        "retrievedAt": "2026-11-06T19:31:27.551Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-list-permissions",
-        "retrievedAt": "2026-11-06T14:29:48.884Z"
+        "retrievedAt": "2026-11-06T19:31:28.024Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/sharepointsettings-update?view=graph-rest-1.0",
-        "retrievedAt": "2026-11-06T14:29:49.017Z"
+        "retrievedAt": "2026-11-06T19:31:28.157Z"
       }
     ],
-    "captureLogSha256": "686ae54b7ed2cfc09180d224d51f85f37fc62bc28c8026a8613abb96e8654175"
+    "captureLogSha256": "35cf64ad4280fc9668a4884e1c639721e63c455af89de895d3df549b79d087dd"
   },
   "proof": {
     "artifact": {
       "path": "sharepoint-live-acceptance.capture.json",
-      "sha256": "686ae54b7ed2cfc09180d224d51f85f37fc62bc28c8026a8613abb96e8654175"
+      "sha256": "35cf64ad4280fc9668a4884e1c639721e63c455af89de895d3df549b79d087dd"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2e5c892755bfe8082dd003020ab0c1a2a285a9a1c8e98f68d61807cfd2d5dc27"
+      "signature": "fade16e244947452202c2c814cd42680f6f0f53d1e5d5ad2ca7d8153cd3df7f6"
     }
   }
 }

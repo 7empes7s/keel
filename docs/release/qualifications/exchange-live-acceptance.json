@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "exchange-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "exchange.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T14:32:29.612Z",
+  "observedAt": "2026-11-06T19:37:12.709Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "teamsQualification": {
       "gate": "teams-live-acceptance",
       "evidence": "teams-live-acceptance.json",
-      "captureLogSha256": "f2c785d28e1823d4b40b3d6435a32e034efe21059553f3db5932ee283ebd8727"
+      "captureLogSha256": "b6aec21de5bc212cfee348f4a9ead97a04848d6b8cba3c6a7b234fbbde9f43f9"
     },
     "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
     "organization": {
@@ -174,28 +174,28 @@
       {
         "operationId": "exchange.mailbox-settings",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T14:31:27.970Z",
+        "capturedAt": "2026-11-06T19:36:15.009Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "exchange.organization-config",
         "version": "3.10.1",
-        "capturedAt": "2026-11-06T14:31:31.442Z",
+        "capturedAt": "2026-11-06T19:36:18.664Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "exchange.mailbox-hold",
         "version": "3.10.1",
-        "capturedAt": "2026-11-06T14:31:34.975Z",
+        "capturedAt": "2026-11-06T19:36:21.915Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "exchange.client-access",
         "version": "3.10.1",
-        "capturedAt": "2026-11-06T14:31:38.334Z",
+        "capturedAt": "2026-11-06T19:36:25.019Z",
         "ok": true,
         "synthetic": false
       }
@@ -252,9 +252,9 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "preFingerprint": "c9b6caf73b62efcf461d83d3e3cc919d14d9284b17c0d5675764984cbaec826c",
-        "finalFingerprint": "c9b6caf73b62efcf461d83d3e3cc919d14d9284b17c0d5675764984cbaec826c",
-        "capturedAt": "2026-11-06T14:31:42.116Z"
+        "preFingerprint": "9933254d6bd1d112e371242c43b03dd722ce49ce82cfb92c7cee68190de3e605",
+        "finalFingerprint": "9933254d6bd1d112e371242c43b03dd722ce49ce82cfb92c7cee68190de3e605",
+        "capturedAt": "2026-11-06T19:36:28.655Z"
       },
       "clientAccess": {
         "operationId": "exchange.client-access.update",
@@ -267,7 +267,7 @@
         "restoredToOriginal": true,
         "preFingerprint": "b1fb15afc1522e78bd300fcfd2f85314e35c3ee50bb480afd67f2a2e0f839a48",
         "finalFingerprint": "b1fb15afc1522e78bd300fcfd2f85314e35c3ee50bb480afd67f2a2e0f839a48",
-        "capturedAt": "2026-11-06T14:32:00.766Z"
+        "capturedAt": "2026-11-06T19:36:46.360Z"
       },
       "retention": {
         "operationId": "exchange.mailbox-retention.update",
@@ -281,17 +281,17 @@
           "LitigationHoldEnabled": false,
           "RetentionHoldEnabled": false,
           "SingleItemRecoveryEnabled": true,
-          "RetainDeletedItemsFor": "25.00:00:00"
+          "RetainDeletedItemsFor": "26.00:00:00"
         },
         "after": {
           "LitigationHoldEnabled": false,
           "RetentionHoldEnabled": false,
           "SingleItemRecoveryEnabled": true,
-          "RetainDeletedItemsFor": "26.00:00:00"
+          "RetainDeletedItemsFor": "27.00:00:00"
         },
         "complianceHoldsFingerprint": "cf4196e3e26e0fd624955dc958f42107de5d9ebbf96d706801bb3d7287b4dffe",
         "finalComplianceHoldsFingerprint": "cf4196e3e26e0fd624955dc958f42107de5d9ebbf96d706801bb3d7287b4dffe",
-        "capturedAt": "2026-11-06T14:32:11.782Z"
+        "capturedAt": "2026-11-06T19:36:56.236Z"
       },
       "organization": {
         "operationId": "exchange.organization-config.update",
@@ -307,7 +307,7 @@
         "final": 25,
         "preFingerprint": "a1be119c38ea2df610e237f15472f6d0b85bb378c505c709e067075d7df4d079",
         "finalFingerprint": "a1be119c38ea2df610e237f15472f6d0b85bb378c505c709e067075d7df4d079",
-        "capturedAt": "2026-11-06T14:32:29.612Z"
+        "capturedAt": "2026-11-06T19:37:12.709Z"
       }
     },
     "refusals": {
@@ -326,13 +326,13 @@
       }
     },
     "platformError": {
-      "identity": "keel-rt-ub4cd6f088f0b@t42987720ee3.example",
+      "identity": "keel-rt-u31267c2debd2@t42987720ee3.example",
       "status": "failed",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "[],Write-ErrorMessage",
         "category": "NotSpecified",
-        "message": "||The operation couldn't be performed because object 'keel-rt-ub4cd6f088f0b@t42987720ee3.example' couldn't be found on 'ZRXPR04A12DC003.EURPR04A012.PROD.OUTLOOK.COM'."
+        "message": "||The operation couldn't be performed because object 'keel-rt-u31267c2debd2@t42987720ee3.example' couldn't be found on 'ZRXPR04A12DC003.EURPR04A012.PROD.OUTLOOK.COM'."
       }
     },
     "requests": [
@@ -374,7 +374,7 @@
         "transport": "powershell-cmdlet-job",
         "cmdlet": "Get-Mailbox",
         "parameters": {
-          "Identity": "keel-rt-ub4cd6f088f0b@t42987720ee3.example"
+          "Identity": "keel-rt-u31267c2debd2@t42987720ee3.example"
         },
         "outcome": "failed",
         "error": {
@@ -484,7 +484,7 @@
         "cmdlet": "Set-Mailbox",
         "parameters": {
           "Identity": "keel-rt-u751f32126065@t42987720ee3.example",
-          "RetainDeletedItemsFor": "26.00:00:00"
+          "RetainDeletedItemsFor": "27.00:00:00"
         },
         "outcome": "ok"
       },
@@ -543,47 +543,47 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/user-get-mailboxsettings",
-        "retrievedAt": "2026-11-06T14:29:51.010Z"
+        "retrievedAt": "2026-11-06T19:31:20.799Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-casmailbox",
-        "retrievedAt": "2026-11-06T14:29:51.223Z"
+        "retrievedAt": "2026-11-06T19:31:21.252Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-mailbox",
-        "retrievedAt": "2026-11-06T14:29:51.409Z"
+        "retrievedAt": "2026-11-06T19:31:21.660Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-organizationconfig",
-        "retrievedAt": "2026-11-06T14:29:51.586Z"
+        "retrievedAt": "2026-11-06T19:31:22.193Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/user-update-mailboxsettings?view=graph-rest-1.0",
-        "retrievedAt": "2026-11-06T14:29:51.729Z"
+        "retrievedAt": "2026-11-06T19:31:22.333Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-casmailbox",
-        "retrievedAt": "2026-11-06T14:29:51.927Z"
+        "retrievedAt": "2026-11-06T19:31:23.438Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-mailbox",
-        "retrievedAt": "2026-11-06T14:29:52.166Z"
+        "retrievedAt": "2026-11-06T19:31:23.804Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-organizationconfig",
-        "retrievedAt": "2026-11-06T14:29:52.417Z"
+        "retrievedAt": "2026-11-06T19:31:24.261Z"
       }
     ],
-    "captureLogSha256": "9d1413cd2d107438883b8df99ffc1f503b13aa4c9643bb8f6e64d7781eaa77b1"
+    "captureLogSha256": "fb8d237b302dde475fc729a8ce2c4139f422bb3a9565e688bd6fb24de209983c"
   },
   "proof": {
     "artifact": {
       "path": "exchange-live-acceptance.capture.json",
-      "sha256": "9d1413cd2d107438883b8df99ffc1f503b13aa4c9643bb8f6e64d7781eaa77b1"
+      "sha256": "fb8d237b302dde475fc729a8ce2c4139f422bb3a9565e688bd6fb24de209983c"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "df15076b92a4b5d940bb11fd0bad2d889c62653321edbcf624979c23e7ba192e"
+      "signature": "bc19257adb38f665f896152375a624adb479dd5e2eeeac8b86f1b55ca4b3154a"
     }
   }
 }

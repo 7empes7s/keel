@@ -1,8 +1,8 @@
 {
   "gate": "native-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "e86afa9",
-  "capturedAt": "2026-10-28T07:15:17.536Z",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "capturedAt": "2026-11-06T19:34:05.094Z",
   "operations": [
     {
       "resourceType": "group",
@@ -34,7 +34,7 @@
           "body": {
             "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
-            "deletedDateTime": "2026-10-28T07:15:04Z"
+            "deletedDateTime": "2026-11-06T19:33:50Z"
           },
           "attempts": [
             404,
@@ -51,7 +51,12 @@
             "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
             "deletedDateTime": null
-          }
+          },
+          "attempts": [
+            404,
+            404,
+            200
+          ]
         },
         {
           "step": "read-back",
@@ -64,7 +69,6 @@
             "deletedDateTime": null
           },
           "attempts": [
-            404,
             404,
             200
           ]

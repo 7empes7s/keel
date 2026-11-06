@@ -18,6 +18,7 @@ REPO=7empes7s/keel
 LIVE=/opt/keel-live
 UNIT=keel-portal
 HEALTH_URL=http://127.0.0.1:3600/api/health
+DB_ENV=/etc/keel/db.env   # KEEL_DB_URL for the database probe in healthy()
 CONTEXT=keel/live-deploy
 STATE=/var/lib/keel-deploy
 LOG=/var/log/keel-deploy.log
@@ -110,9 +111,16 @@ build_at() {  # sha: check out, install, build
   (cd engine && npm ci --no-audit --no-fund --loglevel=error) &&
   (cd portal && npm ci --no-audit --no-fund --loglevel=error && npm run build)
 }
+# The portal answering is not enough: the database must too (#1010, the 2026-11-04 outage).
+# A tree from before #1010 has no probe, so a rollback to one skips the check.
+db_answers() {
+  [ -f "$LIVE/cli/keel-db-watchdog.mjs" ] || return 0
+  # shellcheck source=/dev/null
+  (set -a; . "$DB_ENV"; cd "$LIVE" && timeout 30 node cli/keel-db-watchdog.mjs probe) >> "$LOG" 2>&1
+}
 healthy() {
   for _ in $(seq 1 20); do
-    [ "$(curl -s -m 5 "$HEALTH_URL" 2>/dev/null)" = '{"status":"ok"}' ] && return 0
+    [ "$(curl -s -m 5 "$HEALTH_URL" 2>/dev/null)" = '{"status":"ok"}' ] && db_answers && return 0
     sleep 3
   done
   return 1

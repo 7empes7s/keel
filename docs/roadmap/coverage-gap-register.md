@@ -1,3 +1,5 @@
+> Superseded by [docs/roadmap/PENDING.md](PENDING.md) (2026-11-06); kept for history.
+
 # Coverage gap register: what is missing, blocked or skipped, and how each one closes
 
 Date: 2026-10-12. Build: `master` at `2269b50` (after #170). Live results: operator run Q43 on the

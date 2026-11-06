@@ -43,8 +43,8 @@ Keep it current: update it in the same PR as any change to the facts below, and 
    `.prev` and posts `keel/live-deploy` = failure. Log: `/var/log/keel-deploy.log`.
 6. A deploy event goes to vps-deployer and, through the host copy of `notify-agent.sh`, to keelops too.
 
-The deploy scripts are copied in `infra/deploy/` on branch `claude/deploy-rollback`; the host copies are the
-ones that run. `keel-worker` is long-running: after a deploy use `systemctl try-reload-or-restart keel-worker`,
+The deploy scripts live in `ops/keel-deploy/`; the host copies in `/opt/keel-deploy` are the ones that run
+(see "Operator steps waiting" until they match). `keel-worker` is long-running: after a deploy use `systemctl try-reload-or-restart keel-worker`,
 never `restart` (it would end a running backup, #448). Details in `ops/README.md`.
 
 ## Who does what
@@ -115,12 +115,12 @@ systemctl list-timers keel-db-watchdog.timer --no-pager                         
 `keel-scheduler.service` gains only `StateDirectory=keel-scheduler`. For an alert to reach a person, a
 channel needs a rule that takes alerts (`*`, or `database.*`, at warning or above) on the Notifications page.
 
-**Deploy script in the repo (#1017): installed 2026-11-06 (#1024).** Kept for a reinstall. `deploy.sh` and `notify-agent.sh` now live in `ops/keel-deploy/`
-(vps-deployer, which owned them, is off). The repo copy adds the database probe to `healthy()` (a release
-whose database does not answer rolls back; a tree from before #1010 has no probe and skips it) and makes
-`notify-agent.sh` a silent no-op when the agent session it wakes is not running. `keel-deploy.timer` is
-off (2026-11-06), so the files do not reach `/opt/keel-live` by themselves. Once the PR is merged, as root
-on Mulinux (keel-operator):
+**Deploy script in the repo (#1017, merged as #1019): installed 2026-11-06 (#1024).** Kept for a reinstall.
+`deploy.sh` and `notify-agent.sh` now live in `ops/keel-deploy/` (vps-deployer, which owned them, is off). The
+repo copy adds the database probe to `healthy()` (a release whose database does not answer rolls back; a tree
+from before #1010 has no probe and skips it) and makes `notify-agent.sh` a silent no-op when the agent session
+it wakes is not running. `keel-deploy.timer` runs the host copy in `/opt/keel-deploy`, which a deploy never
+replaces, so a change to these scripts needs these steps again. As root on Mulinux:
 
 ```sh
 D=$(mktemp -d); git -C /opt/keel-live fetch -q origin master
@@ -128,7 +128,7 @@ for f in deploy.sh notify-agent.sh; do git -C /opt/keel-live show "origin/master
 diff /opt/keel-deploy/deploy.sh "$D/deploy.sh"              # only the DB probe
 diff /opt/keel-deploy/notify-agent.sh "$D/notify-agent.sh"  # only the no-op
 install -m 755 "$D"/*.sh /opt/keel-deploy/
-systemctl enable --now keel-deploy.timer
+systemctl is-active keel-deploy.timer                       # already active since 2026-11-06
 ```
 
 Change these scripts in the repo from now on, never in `/opt/keel-deploy`.
@@ -136,14 +136,16 @@ Change these scripts in the repo from now on, never in `/opt/keel-deploy`.
 ## Open live gates
 
 The release sign-off (task-124, #985) is generated: `node tools/release/readiness.mjs signoff --build <candidate>`.
-On 2026-11-04, for the master head `1da75ee488`, it says **pending**:
+The full pending list, by objective, is `docs/roadmap/PENDING.md`; the live batches are #1025, #1026 and #1027.
+On 2026-11-06, for the master head `01d7b3a84e` (run in the repo without the key), it says **pending**:
 
-- 48 gates hold readiness: 24 have a record from another build, 2 are stale (deployed acceptance, 27 days
-  against its 7-day limit; ScubaGear, 38 days) and 22 have no record (19 Wave 2 read workloads, the
-  onedrive-site-settings writer, the Exchange role and Purview unpublish writers). Sentinel (117) is an
-  accepted gap.
-- Entra (#148): 197 registered writes; 123 have a record from another build, 72 have none, and 2 are demoted
-  (`defenderRoleAssignment.update`, `tenantAppManagementPolicy.update`): fix, then recapture.
+- 48 gates hold readiness: 21 have a record from another build, 5 are stale (deployed acceptance, 30 days
+  against its 7-day limit; ScubaGear, 40 days; storage, ServiceNow and NIST at the 30-day limit) and 22 have
+  no record (19 Wave 2 read workloads, the onedrive-site-settings writer, the Exchange role and Purview
+  unpublish writers). Sentinel (117) is an accepted gap.
+- Entra (#148): 223 registered writes; 124 have a record from another build, 98 have none, and 1 is demoted
+  (`tenantAppManagementPolicy.update`: fixed in code, recapture). `defenderRoleAssignment.update` was
+  recaptured (#988).
 - User flows (#995, fixture-tested only): capture `b2xIdentityUserFlow` create/update and
   `identityUserFlowAttribute` create/update on a `B2X_1_KEEL-RT-148-flow` flow that asks for one custom
   attribute `KEEL-RT-148Attr` (`FIXTURE_GUIDANCE` in `tools/qualification/live-gate-plan.mjs`). Check the
@@ -194,20 +196,16 @@ live on their own branches).
 
 ## Open issues
 
-Six open (2026-11-04), all feature or landing work: #985 (this sign-off), #983 and #982 (land open PRs), #981
-(Insights scoped to the admin's entities), #980 (weekly summary), #979 (act on a flagged change). #411, #294,
-#542 and #148 are closed (#411 and #294 fixed on 2026-10-27; #148's live proof continues under "Open live
-gates").
+Five open (2026-11-06): #1023 (this pending plan), #1024 (Mulinux ops: install the deploy script, dump
+rotation, prune and offsite review), #1025, #1026 and #1027 (live proof batches 1 to 3: Entra writes, workload
+writers and reads, deployed acceptance and the sign-off at one build). #985, #983, #982, #981, #980 and #979
+are closed.
 
 ## Parked work
 
-- **Backlog (after the redesign):** guided-setup browser extension, training center and page Companion;
-  permissions exposure (oversharing report, sharing-link drift, owner access review).
-- **Redesign Track A (Insights):** A1 taxonomy (#354), A3 anonymity, A4 change feed, A6 risk flags (#962)
-  and A7 and A8, the Insights page with "where to start" (#967), shipped. A9 names-not-ids remains open.
-  A10 alerts from flags is implemented in #966 / PR #978, pending independent QA and CI; Overview
-  excludes flagged changes already covered by an open alert, including audit rows linked by source id.
-- **Track E:** automation center. **Track F:** notifications. Both wait on the shell redesign and saved reports.
+The list of parked items, and of everything still pending, is `docs/roadmap/PENDING.md`.
+
+- **Redesign Track A (Insights):** A1 to A10 shipped (A9 names-not-ids in #970, A10 alerts from flags in #966 / PR #978).
 - **Host (owner decisions, #1024):**
   - **Prune** (`keel-prune.timer` off): the 2026-11-06 dry run (one tenant, 653 snapshots) would delete 10,
     all tier1 hourly snapshots from that day that are neither the day's newest nor referenced; tier2 and
@@ -223,4 +221,5 @@ gates").
 ## Shared notes for threads
 
 Briefs, handoff notes and screenshots live in the project's shared files under `handoff/<topic>/`. The ranked
-next-work list is `handoff/next-work/PLAN.md`; the keelops setup is `handoff/keelops/`.
+next-work list is `docs/roadmap/PENDING.md` in this repo (it replaces `handoff/next-work/PLAN.md`); the keelops
+setup is `handoff/keelops/`.

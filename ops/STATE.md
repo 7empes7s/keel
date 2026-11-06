@@ -3,7 +3,7 @@
 Read this first if you are a new session. It says where the live system, the queues and the open work stand.
 Keep it current: update it in the same PR as any change to the facts below, and refresh the date.
 
-- **Last updated:** 2026-11-05
+- **Last updated:** 2026-11-06
 - **Older history:** an earlier version of this file (to 2026-10-09) lives on branch `claude/operator-queue`.
   It is out of date; use it only for history.
 
@@ -24,8 +24,9 @@ Keep it current: update it in the same PR as any change to the facts below, and 
 
 1. A PR lands on `master` through the **Merge gate** workflow (`automerge` label, every check green,
    Portal passed on the head commit, no blocking review).
-2. `keel-deploy.timer` runs `/opt/keel-deploy/deploy.sh` 5 minutes after each run. It deploys only when
-   `origin/master` differs from the live tree and the `portal.yml` run on that exact commit succeeded.
+2. `keel-deploy.timer` runs `/opt/keel-deploy/deploy.sh` (source: `ops/keel-deploy/`) 5 minutes after
+   each run. It deploys only when `origin/master` differs from the live tree and the `portal.yml` run on
+   that exact commit succeeded.
 3. It refuses hand edits in the live tree and destructive schema (`DROP`, `TRUNCATE`, `DELETE FROM`).
 4. It saves the running tree to `/opt/keel-live.prev`, checks out the commit, builds, dumps the database if
    the schema changed, applies `schema.sql`, restarts `keel-portal`.
@@ -106,21 +107,23 @@ systemctl list-timers keel-db-watchdog.timer --no-pager                         
 `keel-scheduler.service` gains only `StateDirectory=keel-scheduler`. For an alert to reach a person, a
 channel needs a rule that takes alerts (`*`, or `database.*`, at warning or above) on the Notifications page.
 
-**Deploy health check (vps-deployer owns `deploy.sh`).** In `/opt/keel-deploy/deploy.sh`, `healthy()` must
-also prove the database answers. Replace its loop body with:
+**Deploy script in the repo (#1017).** `deploy.sh` and `notify-agent.sh` now live in `ops/keel-deploy/`
+(vps-deployer, which owned them, is off). The repo copy adds the database probe to `healthy()` (a release
+whose database does not answer rolls back; a tree from before #1010 has no probe and skips it) and makes
+`notify-agent.sh` a silent no-op when the agent session it wakes is not running. `keel-deploy.timer` is
+off (2026-11-06), so the files do not reach `/opt/keel-live` by themselves. Once the PR is merged, as root
+on Mulinux (keel-operator):
 
 ```sh
-    [ "$(curl -s -m 5 "$HEALTH_URL" 2>/dev/null)" = '{"status":"ok"}' ] && db_answers && return 0
+D=$(mktemp -d); git -C /opt/keel-live fetch -q origin master
+for f in deploy.sh notify-agent.sh; do git -C /opt/keel-live show "origin/master:ops/keel-deploy/$f" > "$D/$f"; done
+diff /opt/keel-deploy/deploy.sh "$D/deploy.sh"              # only the DB probe
+diff /opt/keel-deploy/notify-agent.sh "$D/notify-agent.sh"  # only the no-op
+install -m 755 "$D"/*.sh /opt/keel-deploy/
+systemctl enable --now keel-deploy.timer
 ```
 
-and add above it (a tree from before #1010 has no probe, so a rollback to one skips the check):
-
-```sh
-db_answers() {
-  [ -f "$LIVE/cli/keel-db-watchdog.mjs" ] || return 0
-  (set -a; . /etc/keel/db.env; cd "$LIVE" && timeout 30 node cli/keel-db-watchdog.mjs probe) >> "$LOG" 2>&1
-}
-```
+Change these scripts in the repo from now on, never in `/opt/keel-deploy`.
 
 ## Open live gates
 

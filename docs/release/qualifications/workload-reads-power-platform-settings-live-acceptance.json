@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T14:33:45.078Z",
+  "observedAt": "2026-11-06T19:30:05.829Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -23,7 +23,7 @@
         "family": "environment",
         "version": "2020-10-01",
         "synthetic": false,
-        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "capturedAt": "2026-11-06T19:30:05.829Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -34,7 +34,7 @@
         "family": "dlpPolicy",
         "version": "v2",
         "synthetic": false,
-        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "capturedAt": "2026-11-06T19:30:05.829Z",
         "ok": true,
         "status": "read",
         "objects": 0,
@@ -45,7 +45,7 @@
         "family": "connector",
         "version": "2016-11-01",
         "synthetic": false,
-        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "capturedAt": "2026-11-06T19:30:05.829Z",
         "ok": true,
         "status": "read",
         "objects": 0,
@@ -56,7 +56,7 @@
         "family": "tenantSettings",
         "version": "2020-10-01",
         "synthetic": false,
-        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "capturedAt": "2026-11-06T19:30:05.829Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -67,7 +67,7 @@
         "family": "tenantIsolation",
         "version": "2020-06-01",
         "synthetic": false,
-        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "capturedAt": "2026-11-06T19:30:05.829Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -78,7 +78,7 @@
         "family": "powerBiSetting",
         "version": "v1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T14:33:45.078Z",
+        "capturedAt": "2026-11-06T19:30:05.829Z",
         "ok": true,
         "status": "read",
         "objects": 184,
@@ -89,7 +89,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "d5fdd28c56983330c3d7c3f764d4f2daa146cd25870a4ca98b01afe05bde1b4a"
+      "signature": "f02d2333749a402f6a67741fb6385cc96fb671dcd006406a20816641cb3593d4"
     }
   }
 }

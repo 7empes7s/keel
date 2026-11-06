@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T14:48:35.916Z",
+  "observedAt": "2026-11-06T20:02:32.042Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -177,18 +177,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-80b55f72",
-        "identity": "KEEL-RT-capture-80b55f72",
+        "fixture": "KEEL-RT-capture-8a48c78e",
+        "identity": "KEEL-RT-capture-8a48c78e",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-11-06T14:46:19.611Z",
-        "final": "KEEL capture 2026-11-06T14:46:19.611Z",
+        "target": "KEEL capture 2026-11-06T20:00:24.264Z",
+        "final": "KEEL capture 2026-11-06T20:00:24.264Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-11-06T14:46:50.346Z",
+        "capturedAt": "2026-11-06T20:00:55.976Z",
         "error": null
       },
       {
@@ -203,13 +203,13 @@
         "field": "Description",
         "type": "text",
         "before": "KEEL capture 2026-10-16T14:52:37.523Z",
-        "target": "KEEL capture 2026-11-06T14:46:19.611Z",
+        "target": "KEEL capture 2026-11-06T20:00:24.264Z",
         "final": "KEEL capture 2026-10-16T14:52:37.523Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:47:13.696Z",
+        "capturedAt": "2026-11-06T20:01:16.841Z",
         "error": null
       },
       {
@@ -230,7 +230,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:47:34.670Z",
+        "capturedAt": "2026-11-06T20:01:35.194Z",
         "error": null
       },
       {
@@ -251,7 +251,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:47:54.194Z",
+        "capturedAt": "2026-11-06T20:01:53.757Z",
         "error": null
       },
       {
@@ -272,7 +272,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:48:13.433Z",
+        "capturedAt": "2026-11-06T20:02:13.012Z",
         "error": null
       },
       {
@@ -293,7 +293,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T14:48:35.916Z",
+        "capturedAt": "2026-11-06T20:02:32.042Z",
         "error": null
       }
     ],
@@ -308,7 +308,7 @@
     "created": [
       {
         "family": "messagingPolicy",
-        "name": "KEEL-RT-capture-80b55f72"
+        "name": "KEEL-RT-capture-8a48c78e"
       }
     ],
     "requests": [
@@ -329,8 +329,8 @@
         "credential": "restorer",
         "cmdlet": "New-CsTeamsMessagingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-80b55f72",
-          "Description": "KEEL capture 2026-11-06T14:46:19.611Z"
+          "Identity": "KEEL-RT-capture-8a48c78e",
+          "Description": "KEEL capture 2026-11-06T20:00:24.264Z"
         },
         "outcome": "ok"
       },
@@ -355,7 +355,7 @@
         "cmdlet": "Set-CsTeamsMessagingPolicy",
         "parameters": {
           "Identity": "Tag:KEEL-RT-capture-2f02c9da",
-          "Description": "KEEL capture 2026-11-06T14:46:19.611Z"
+          "Description": "KEEL capture 2026-11-06T20:00:24.264Z"
         },
         "outcome": "ok"
       },
@@ -553,16 +553,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "3cc1c45bfc70fe70f349941a593addb872f589eaa81efc93c84ae0f1899a4095"
+    "captureLogSha256": "b3e915ce9185759b8dbd263eea694f9abd6b7d00d6cb518bcc1b59502973a652"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-teams-org-policies-live-acceptance.capture.json",
-      "sha256": "3cc1c45bfc70fe70f349941a593addb872f589eaa81efc93c84ae0f1899a4095"
+      "sha256": "b3e915ce9185759b8dbd263eea694f9abd6b7d00d6cb518bcc1b59502973a652"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "847d5fee58dae0d0f5f7d9de7c6b4fc4bef4be6ba54111475968ad7e55a9e121"
+      "signature": "806bd318dfd18614ed4a9ae382f1f321f4c108cb10200ed7313c3b6f3bda348a"
     }
   }
 }

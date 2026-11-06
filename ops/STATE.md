@@ -141,10 +141,12 @@ On 2026-11-06 (#1027, on Mulinux with the key), at the live build `90fdca849c` i
 another build, 3 are stale and 1 has no record. The one-build rule can't be met while every merge deploys a new build
 (#1044). At `f1521256`, the batch build, 39 gates verify:
 
-- Held there: deployed acceptance (needs an operator `cloudflared access login`), ServiceNow (the dev instance
-  refuses the stored admin login, 401), storage and the drill (host recovery-set work for the operator), native
-  recovery (restore 404 from replication lag, #1045), the site grant, site permission and distribution-list writers
-  (hand prep first), and the Defender indicators read (403, `Ti.Read.All`). Sentinel (117) is an accepted gap.
+- Recheck 2 (#1050, 2026-11-06) recaptured every non-Entra gate it could at the frozen candidate `128b0e3b84`:
+  storage, drill, native recovery, NIST, ScubaGear, gates 120–123, the 7 writer families, 22 reads and the 6
+  separate writers. `sharepoint-structure.site-template.update` is refused before sending (#1052). Still held:
+  deployed acceptance (needs an operator `cloudflared access login`), ServiceNow (the dev instance refuses the
+  stored admin login, 401) and the Defender indicators read (403, `Ti.Read.All`). Sentinel (117) is an accepted gap.
+  The recovery set is `/opt/backups/2026-11-06/recovery-set-r1050`, copied to `/mnt/keel-copy/2026-11-06-r1050`.
 - Entra (#148): 223 registered writes. Batch 1b (#1031, 2026-11-06) captured 116 at the live build `f1521256`:
   114 proven (batch 1's 12 among them, `tenantAppManagementPolicy.update` no longer demoted) and 2 demoted
   (`accessReviewScheduleDefinition.create` #1033, fixed by #1039; `multiTenantOrganization.update` #1034, fixed by #1040). 37 have a record from
@@ -157,7 +159,7 @@ another build, 3 are stale and 1 has no record. The one-build rule can't be met 
   `$expand=apiConnectorConfiguration/...` read and `setOrder` against the live tenant.
 - `roleAssignmentSchedule.create` (#991, time-limited active admin roles) has no live record yet: capture it with
   a KEEL-RT- fixture (carla, the fixture role, the fixture unit, ending in 2 days), approved as "Changes admin access".
-- Writer families not fully proven: `sharepoint-structure` 2 of 7, `exchange-extended` 2 of 21, and others in
+- Writer families not fully proven: `sharepoint-structure` 5 of 7, `exchange-extended` 12 of 21, and others in
   `docs/roadmap/release-signoff.md`.
 - Sign-in settings (#994, fixture-tested only): authentication context upsert and staged rollout create and
   update need live captures. Contexts: a `KEEL-RT-994-context` in a slot nothing uses, left not available.

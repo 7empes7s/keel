@@ -1,10 +1,10 @@
 {
   "drillEvidence": {
-    "seq": 8,
-    "record_hash": "f8bf8c79264ccd057b15d90ad4d8856246b0d0c46c61de3cf7c112ecbfb311d3",
+    "seq": 12,
+    "record_hash": "e545ce62aa221a47b32a02deddcdca1e22449c83b2179e819dbd8db8d20b6699",
     "kind": "recovery-drill",
     "tenant_ref": "sha256:f7b3959300856957",
-    "occurred_at": "2026-10-28T22:46:21.765Z",
+    "occurred_at": "2026-11-06T20:33:14.203Z",
     "subject": {
       "mode": "live",
       "error": null,
@@ -13,30 +13,30 @@
         "maxWrites": 30,
         "maxElapsedMs": 900000
       },
-      "writes": 9,
+      "writes": 10,
       "cleanup": {
         "status": "complete",
         "residuals": [],
         "verifiedAbsent": [
           {
-            "objectId": "9e194a2d-5c3c-86b6-b881-7047509ca5d0",
-            "naturalKey": "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
+            "objectId": "da5fe3af-9f57-8c84-a088-832bfd7233fd",
+            "naturalKey": "group:keel-rehearsal-2026-11-06T20-29-37-617Z"
           }
         ]
       },
       "objects": [
-        "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
+        "group:keel-rehearsal-2026-11-06T20-29-37-617Z"
       ],
       "outcome": "passed",
-      "elapsedMs": 176781,
-      "startedAt": "2026-10-28T22:43:24.983Z",
+      "elapsedMs": 210330,
+      "startedAt": "2026-11-06T20:29:43.871Z",
       "tenantRef": "sha256:f7b3959300856957",
-      "finishedAt": "2026-10-28T22:46:21.764Z",
+      "finishedAt": "2026-11-06T20:33:14.201Z",
       "elapsedSource": "observed-clock",
       "createdObjects": [
         {
-          "objectId": "9e194a2d-5c3c-86b6-b881-7047509ca5d0",
-          "naturalKey": "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
+          "objectId": "da5fe3af-9f57-8c84-a088-832bfd7233fd",
+          "naturalKey": "group:keel-rehearsal-2026-11-06T20-29-37-617Z"
         }
       ],
       "manifestVersion": 1,
@@ -50,14 +50,14 @@
     "readOnly": true,
     "writersDisabled": true,
     "tenantRef": "sha256:f7b3959300856957",
-    "buildRevision": "da3f9d7fa47d89f082a63897d4a6b2494881cbd5",
+    "buildRevision": "128b0e3b844fe351f5493925478091f61f589796",
     "checkpoint": {
-      "headSeq": 353111,
-      "headHash": "a381789606eabd0ae930b73072bedc70e68dc5e09843f1a1a97c5dab854149ab",
-      "recordCount": 353111
+      "headSeq": 550034,
+      "headHash": "c27e82fd122f73bfa81972022f4780e4d344a6cf10b855c58099b4e25b6e333a",
+      "recordCount": 549153
     },
     "recoveryComplete": true,
     "incomplete": [],
-    "completedAt": "2026-10-28T22:43:12.368Z"
+    "completedAt": "2026-11-06T20:28:57.205Z"
   }
 }

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "exchange-role-definitions-writes-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "operation": "exchange-role-definitions.role-writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T14:22:01.968Z",
+  "observedAt": "2026-11-06T20:10:21.171Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -49,14 +49,14 @@
         "operationId": "exchange-role-definitions.role.add",
         "version": "3.10.1",
         "synthetic": false,
-        "fixture": "KEEL-RT-capture-role-c378be9c",
+        "fixture": "KEEL-RT-capture-role-9ae83fc0",
         "ok": true,
         "readBackVerified": true,
         "collateralUnchanged": true,
         "trimmedParameters": 1,
         "trimmedEntries": 0,
         "enabledCmdletsHonoured": true,
-        "capturedAt": "2026-11-06T14:22:01.968Z",
+        "capturedAt": "2026-11-06T20:10:21.171Z",
         "error": null
       }
     ],
@@ -64,7 +64,7 @@
     "created": [
       {
         "kind": "managementRole",
-        "name": "KEEL-RT-capture-role-c378be9c",
+        "name": "KEEL-RT-capture-role-9ae83fc0",
         "parent": "Address Lists"
       }
     ],
@@ -95,7 +95,7 @@
       {
         "credential": "restorer",
         "cmdlet": "New-ManagementRole",
-        "role": "KEEL-RT-capture-role-c378be9c",
+        "role": "KEEL-RT-capture-role-9ae83fc0",
         "parameters": [
           "Description",
           "EnabledCmdlets",
@@ -107,7 +107,7 @@
       {
         "credential": "restorer",
         "cmdlet": "Get-ManagementRoleEntry",
-        "role": "KEEL-RT-capture-role-c378be9c",
+        "role": "KEEL-RT-capture-role-9ae83fc0",
         "parameters": [
           "Identity"
         ],
@@ -116,7 +116,7 @@
       {
         "credential": "restorer",
         "cmdlet": "Set-ManagementRoleEntry",
-        "role": "KEEL-RT-capture-role-c378be9c",
+        "role": "KEEL-RT-capture-role-9ae83fc0",
         "parameters": [
           "Identity",
           "Parameters",
@@ -127,7 +127,7 @@
       {
         "credential": "restorer",
         "cmdlet": "Get-ManagementRoleEntry",
-        "role": "KEEL-RT-capture-role-c378be9c",
+        "role": "KEEL-RT-capture-role-9ae83fc0",
         "parameters": [
           "Identity"
         ],
@@ -143,7 +143,7 @@
       {
         "credential": "collector",
         "cmdlet": "Get-ManagementRoleEntry",
-        "role": "KEEL-RT-capture-role-c378be9c",
+        "role": "KEEL-RT-capture-role-9ae83fc0",
         "parameters": [
           "Identity"
         ],
@@ -166,16 +166,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "86dfb0a0e3fd7303f0d66058d74d5311d004510c65f2535089c968c042d31888"
+    "captureLogSha256": "fea4bb2aa957735bca655c17e989a655401db03dca5abadeac1a5c8d17ab9969"
   },
   "proof": {
     "artifact": {
       "path": "exchange-role-definitions-writes-live-acceptance.capture.json",
-      "sha256": "86dfb0a0e3fd7303f0d66058d74d5311d004510c65f2535089c968c042d31888"
+      "sha256": "fea4bb2aa957735bca655c17e989a655401db03dca5abadeac1a5c8d17ab9969"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2f08e45e27572aa112f0d11c32dd1aa81bd11a115bf9dfbbcd16606a735a891d"
+      "signature": "247d25848bda65d7980e533bfe323983d8f592a2bef01b6dc2c2fc8866dca18d"
     }
   }
 }

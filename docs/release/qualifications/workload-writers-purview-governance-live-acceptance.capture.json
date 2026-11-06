@@ -7,7 +7,7 @@
         "retentionLabel"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T14:36:50.564Z"
+      "at": "2026-11-06T19:58:51.352Z"
     },
     {
       "credential": "collector",
@@ -16,17 +16,17 @@
         "retentionLabel"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T14:36:57.472Z"
+      "at": "2026-11-06T19:58:58.327Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-ComplianceTag",
       "parameters": {
         "Identity": "7c28fd0e-98f6-811e-b725-f1605267ef23",
-        "Comment": "KEEL capture 2026-11-06T14:36:50.564Z"
+        "Comment": "KEEL capture 2026-11-06T19:58:51.352Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:37:04.258Z"
+      "at": "2026-11-06T19:59:11.164Z"
     },
     {
       "credential": "collector",
@@ -35,7 +35,7 @@
         "retentionLabel"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T14:37:12.524Z"
+      "at": "2026-11-06T19:59:32.189Z"
     },
     {
       "credential": "restorer",
@@ -45,7 +45,7 @@
         "Comment": "KEEL test fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T14:37:20.950Z"
+      "at": "2026-11-06T19:59:39.830Z"
     },
     {
       "credential": "collector",
@@ -54,7 +54,7 @@
         "retentionLabel"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T14:37:26.765Z"
+      "at": "2026-11-06T19:59:48.478Z"
     }
   ],
   "values": {

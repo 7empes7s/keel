@@ -186,6 +186,24 @@ test('a series backed up as Graph reads it is created without the scope parts Gr
   assert.match(again.skipped?.reason ?? '', /the access review is already there with the backup's access/);
 });
 
+test('a series backed up with the /v1.0/ prefix Graph reads back is created without the derived scope parts (#1055, restore 1d7946a7)', async () => {
+  const graph = reviewsGraph();
+  const payload = graphReadBack();
+  payload.scope.query = `/v1.0/groups/${SOURCE_GROUP}/transitiveMembers/microsoft.graph.user`;
+  const resource = reviewResource({ payload, references: READ_BACK_REFS });
+  const ctx = withRefs({ approvedContentEffects: approved(resource) });
+  const result = await applyIdentityObjectWrite(graph, resource, 'create', ctx);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.skipped, undefined, result.skipped?.reason);
+  const [post] = writes(graph);
+  assert.equal(post.body.scope.query, `/groups/${TARGET_GROUP}/transitiveMembers`);
+  assert.equal('instanceEnumerationScope' in post.body, false);
+
+  const [written] = graph.state.values();
+  const again = await applyIdentityObjectWrite(reviewsGraph({ definitions: [written] }), resource, 'create', ctx);
+  assert.match(again.skipped?.reason ?? '', /the access review is already there with the backup's access/);
+});
+
 test('an instanceEnumerationScope naming another group than the scope is kept', async () => {
   const graph = reviewsGraph();
   const other = 'aaaaaaaa-0000-4000-8000-000000000105';

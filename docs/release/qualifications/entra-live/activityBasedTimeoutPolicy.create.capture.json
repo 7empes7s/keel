@@ -1,0 +1,32 @@
+{
+  "restoreRef": "5fc75ec8-4489-805d-8c5c-651f9d5fa896",
+  "entry": {
+    "naturalKey": "activityBasedTimeoutPolicy:32489f18-a655-8678-bc93-13098c644081",
+    "resourceType": "activityBasedTimeoutPolicy",
+    "operation": "create",
+    "targetId": "c3976133-856f-82de-a09e-e14f1268f73d",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T13:59:21.615Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "32489f18-a655-8678-bc93-13098c644081",
+      "definition": [
+        "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
+      ],
+      "displayName": "KEEL-RT-1025-idle",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    },
+    "postState": {
+      "id": "c3976133-856f-82de-a09e-e14f1268f73d",
+      "definition": [
+        "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
+      ],
+      "displayName": "KEEL-RT-1025-idle",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/activityBasedTimeoutPolicies/$entity",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    }
+  }
+}

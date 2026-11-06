@@ -1,0 +1,31 @@
+{
+  "restoreRef": "c137ce4d-a5bd-8484-9261-c16106820d67",
+  "entry": {
+    "naturalKey": "authenticationContextClassReference:c40",
+    "resourceType": "authenticationContextClassReference",
+    "operation": "update",
+    "targetId": "c40",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T13:55:12.146Z",
+    "priorState": {
+      "id": "c40",
+      "description": "KEEL live gate 1025 fixture drifted",
+      "displayName": "KEEL-RT-1025-context",
+      "isAvailable": false
+    },
+    "intendedState": {
+      "id": "c40",
+      "description": "KEEL live gate 1025 fixture, used by nothing",
+      "displayName": "KEEL-RT-1025-context",
+      "isAvailable": false
+    },
+    "postState": {
+      "id": "c40",
+      "description": "KEEL live gate 1025 fixture, used by nothing",
+      "displayName": "KEEL-RT-1025-context",
+      "isAvailable": false,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/authenticationContextClassReferences/$entity"
+    }
+  }
+}

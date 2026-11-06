@@ -7,23 +7,23 @@
   "resourceType": "tenantAppManagementPolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "224e353feca37407ac24b179776e0783d6e8ca61",
+  "build": "01d7b3a84eb215b28515f3a4d90f6029bd13daa0",
   "synthetic": false,
-  "evidenceLevel": "failed",
-  "ok": false,
-  "outcome": "uncertain",
-  "outcomeDetail": "post-state did not verify",
-  "readBackVerified": false,
-  "observedAt": "2026-11-04T04:16:54.595Z",
-  "restoreRef": "ab1ac713-ddcc-851f-a99f-260fd039b330",
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T13:55:12.149Z",
+  "restoreRef": "c137ce4d-a5bd-8484-9261-c16106820d67",
   "naturalKey": "tenantAppManagementPolicy:tenantAppManagementPolicy",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "1a78ca1f07f1e8cba2537c24878022c9f0866ce2628f3d51dad418b0a8bc02b6",
+  "captureSha256": "e72cc840a83c701ba9bff6a08f02166ef2acbd18684a5091ec6edd610d1009d0",
   "proofRef": "docs/release/qualifications/entra-live/tenantAppManagementPolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "244563bdd549842ac7fc066726999f3a32d9241ed74e55b62a7fa457afcaf047"
+      "signature": "f85ddd38c55749d33d652f6e41ed21c3f7b5223219343ed1be3541564f9f5f00"
     }
   }
 }

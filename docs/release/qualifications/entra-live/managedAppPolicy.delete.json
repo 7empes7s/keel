@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "managedAppPolicy",
+  "operation": "delete",
+  "fieldProjectionContractVersion": 1,
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": "absent",
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T20:01:43.711Z",
+  "restoreRef": "ddd95e17-655b-80f0-b245-6b86243c3e03",
+  "naturalKey": "managedAppPolicy:T_5b7af155-0075-8101-82bc-495d21115339",
+  "fixtureKind": "named-object",
+  "captureSha256": "9404dc9b36b08aac33b4ea397c5ff73b461dbc7222ba048bc151fb2209fc805e",
+  "proofRef": "docs/release/qualifications/entra-live/managedAppPolicy.delete.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "0da9752e37034c01d3b3a9cfaf76b823f0a4ce63e84bc462cc4b386a8cbb3a63"
+    }
+  }
+}

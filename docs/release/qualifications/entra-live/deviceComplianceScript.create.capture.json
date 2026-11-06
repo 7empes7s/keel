@@ -1,21 +1,21 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "deviceComplianceScript:1557e08b-41e8-83d4-a433-ec9a7044bf35",
+    "naturalKey": "deviceComplianceScript:5817e5ac-21ca-8a31-97e3-eee24c38651c",
     "resourceType": "deviceComplianceScript",
     "operation": "create",
-    "targetId": "3dbab55c-9c22-8a77-b8d3-5e1dd4c54c7d",
+    "targetId": "9734ef07-fc90-83d6-a753-268a3bf94c88",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:11.625Z",
+    "recordedAt": "2026-11-06T19:44:04.984Z",
     "priorState": null,
     "intendedState": {
       "version": "1",
       "platform": "windows10",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-compliance-script-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-compliance-script-c",
       "runAsAccount": "system",
       "roleScopeTagIds": [
         "0"
@@ -24,20 +24,20 @@
       "detectionScriptContent": "cmV0dXJuIEB7fQ=="
     },
     "postState": {
-      "id": "3dbab55c-9c22-8a77-b8d3-5e1dd4c54c7d",
+      "id": "9734ef07-fc90-83d6-a753-268a3bf94c88",
       "version": "1",
       "platform": "windows10",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-device-compliance-script-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-device-compliance-script-c",
       "runAsAccount": "system",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceComplianceScripts/$entity",
-      "createdDateTime": "2026-11-06T15:00:11.726084Z",
+      "createdDateTime": "2026-11-06T19:44:05.034186Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T15:00:11.726084Z",
+      "lastModifiedDateTime": "2026-11-06T19:44:05.034186Z",
       "enforceSignatureCheck": false,
       "detectionScriptContent": "cmV0dXJuIEB7fQ=="
     }

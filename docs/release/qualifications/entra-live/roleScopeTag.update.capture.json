@@ -1,28 +1,28 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "roleScopeTag:4",
+    "naturalKey": "roleScopeTag:7",
     "resourceType": "roleScopeTag",
     "operation": "update",
-    "targetId": "4",
+    "targetId": "7",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:23.472Z",
+    "recordedAt": "2026-11-06T19:35:50.773Z",
     "priorState": {
-      "id": "4",
+      "id": "7",
       "isBuiltIn": false,
-      "description": "KEEL-RT test fixture (#1031) drifted",
-      "displayName": "KEEL-RT-1031-role-scope-tag-u"
+      "description": "KEEL-RT test fixture (#1049) drifted",
+      "displayName": "KEEL-RT-1049-role-scope-tag-u"
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-role-scope-tag-u"
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-role-scope-tag-u"
     },
     "postState": {
-      "id": "4",
+      "id": "7",
       "isBuiltIn": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-role-scope-tag-u",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-role-scope-tag-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/roleScopeTags/$entity"
     }
   }

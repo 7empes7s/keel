@@ -1,5 +1,5 @@
 {
-  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
   "entry": {
     "naturalKey": "adminConsentRequestPolicy:adminConsentRequestPolicy",
     "resourceType": "adminConsentRequestPolicy",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:34:50.097Z",
+    "recordedAt": "2026-11-06T19:50:12.551Z",
     "priorState": {
       "version": 0,
       "isEnabled": true,

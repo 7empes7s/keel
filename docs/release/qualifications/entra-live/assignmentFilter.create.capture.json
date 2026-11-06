@@ -1,19 +1,19 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "assignmentFilter:7b42d6ba-8608-8af9-8c21-aba325903f96",
+    "naturalKey": "assignmentFilter:164d634b-9a28-826b-8a42-42811801d0a6",
     "resourceType": "assignmentFilter",
     "operation": "create",
-    "targetId": "bd2eb0ef-2c12-8eb9-bc3a-3a1620774b9c",
+    "targetId": "50140a7c-a40f-8038-a122-35114709489c",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:10.245Z",
+    "recordedAt": "2026-11-06T19:44:04.611Z",
     "priorState": null,
     "intendedState": {
       "rule": "(device.deviceName -startsWith \"KEELRT-\")",
       "platform": "windows10AndLater",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-assignment-filter-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-assignment-filter-c",
       "roleScopeTags": [
         "0"
       ],
@@ -21,19 +21,19 @@
       "assignmentFilterManagementType": "devices"
     },
     "postState": {
-      "id": "bd2eb0ef-2c12-8eb9-bc3a-3a1620774b9c",
+      "id": "50140a7c-a40f-8038-a122-35114709489c",
       "rule": "(device.deviceName -startsWith \"KEELRT-\")",
       "payloads": [],
       "platform": "windows10AndLater",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-assignment-filter-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-assignment-filter-c",
       "roleScopeTags": [
         "0"
       ],
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/assignmentFilters/$entity",
       "evaluationMode": "checkinTimeEvaluation",
-      "createdDateTime": "2026-11-06T15:00:10.3642282Z",
-      "lastModifiedDateTime": "2026-11-06T15:00:10.3642282Z",
+      "createdDateTime": "2026-11-06T19:44:04.6713275Z",
+      "lastModifiedDateTime": "2026-11-06T19:44:04.6713275Z",
       "assignmentFilterManagementType": "devices"
     }
   }

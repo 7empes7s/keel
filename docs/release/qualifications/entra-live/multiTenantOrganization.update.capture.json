@@ -1,25 +1,32 @@
 {
-  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
   "entry": {
     "naturalKey": "multiTenantOrganization:multiTenantOrganization",
     "resourceType": "multiTenantOrganization",
     "operation": "update",
     "targetId": null,
-    "outcome": "failed",
-    "outcomeDetail": "status 400",
-    "recordedAt": "2026-11-06T15:38:27.678Z",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T19:49:53.254Z",
     "priorState": {
+      "id": "0f043295-e613-810f-a794-5eae6ce5e6f5",
+      "state": "active",
+      "description": "KEEL-RT drift (#1049)",
+      "displayName": "MTO_SAID_MAROUANE",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#tenantRelationships/multiTenantOrganization/$entity",
+      "createdDateTime": "2025-01-29T15:27:03Z"
+    },
+    "intendedState": {
+      "description": "KEEL-RT drift (#1031)",
+      "displayName": "MTO_SAID_MAROUANE"
+    },
+    "postState": {
       "id": "0f043295-e613-810f-a794-5eae6ce5e6f5",
       "state": "active",
       "description": "KEEL-RT drift (#1031)",
       "displayName": "MTO_SAID_MAROUANE",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#tenantRelationships/multiTenantOrganization/$entity",
       "createdDateTime": "2025-01-29T15:27:03Z"
-    },
-    "intendedState": {
-      "description": null,
-      "displayName": "MTO_SAID_MAROUANE"
-    },
-    "postState": null
+    }
   }
 }

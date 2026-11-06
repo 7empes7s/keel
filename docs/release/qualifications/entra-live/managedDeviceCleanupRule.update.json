@@ -7,23 +7,23 @@
   "resourceType": "managedDeviceCleanupRule",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T14:49:20.043Z",
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
-  "naturalKey": "managedDeviceCleanupRule:d5947671-6d99-827f-88b1-e72ac40193fc",
+  "observedAt": "2026-11-06T19:35:47.238Z",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "naturalKey": "managedDeviceCleanupRule:31bb4204-b114-811d-b510-1c2052ca82a2",
   "fixtureKind": "named-object",
-  "captureSha256": "90583c92f5f1d588a9d8fcf704901fc0db10e353ddb23d1f15fa0f27dfadaa7b",
+  "captureSha256": "771e921b37c37d314d38d3cc49bbb31edd5c10d31c453f7e6bfcd2e4a20c37c2",
   "proofRef": "docs/release/qualifications/entra-live/managedDeviceCleanupRule.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "9235d26d860d6a9dcdc7606d622908d6c02ce4154bc85955b6e2b3b092445064"
+      "signature": "831fddb52be673a461876a66ee073fe6c01bb2b5f739185a4a117116851bf833"
     }
   }
 }

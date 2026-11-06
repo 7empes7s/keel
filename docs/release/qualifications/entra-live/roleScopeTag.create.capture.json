@@ -1,23 +1,23 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "roleScopeTag:5",
+    "naturalKey": "roleScopeTag:8",
     "resourceType": "roleScopeTag",
     "operation": "create",
-    "targetId": "6",
+    "targetId": "9",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:23.510Z",
+    "recordedAt": "2026-11-06T19:35:50.839Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-role-scope-tag-c"
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-role-scope-tag-c"
     },
     "postState": {
-      "id": "6",
+      "id": "9",
       "isBuiltIn": false,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-role-scope-tag-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-role-scope-tag-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/roleScopeTags/$entity"
     }
   }

@@ -7,23 +7,23 @@
   "resourceType": "pronounsSettings",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T15:34:38.981Z",
-  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "observedAt": "2026-11-06T19:49:53.613Z",
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
   "naturalKey": "pronounsSettings:pronounsSettings",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "0a840acdc8edcaedcbd9b70497a18db56f1def78d7016ef637a740cf0881d588",
+  "captureSha256": "331a08e8d0edd5a0797cadbb0954da948e3b47bba7c4484eabb07c714128152a",
   "proofRef": "docs/release/qualifications/entra-live/pronounsSettings.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "a7958ab45aa6aa4d5a146d31670ee1ce0f33fe4982fdf700e908abd153f91e37"
+      "signature": "ec34e347bc06c7cf1d8739b641422b66e5b681b8a584b060c6c73a4f64808a90"
     }
   }
 }

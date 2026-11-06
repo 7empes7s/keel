@@ -1,0 +1,122 @@
+{
+  "restoreRef": "333a8695-2a86-8efc-b384-f07a2edef626",
+  "entry": {
+    "naturalKey": "sharepointSettings:sharepointSettings",
+    "resourceType": "sharepointSettings",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T20:41:56.239Z",
+    "priorState": {
+      "isLoopEnabled": true,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/sharepoint/settings/$entity",
+      "sharingCapability": "externalUserSharingOnly",
+      "idleSessionSignOut": {
+        "isEnabled": false,
+        "warnAfterInSeconds": 0,
+        "signOutAfterInSeconds": 0
+      },
+      "imageTaggingOption": "basic",
+      "isMacSyncAppEnabled": false,
+      "isSiteCreationEnabled": true,
+      "tenantDefaultTimezone": "(UTC-08:00) Pacific Time (US and Canada)",
+      "isSiteCreationUIEnabled": true,
+      "sharingAllowedDomainList": [],
+      "sharingBlockedDomainList": [],
+      "isSitePagesCreationEnabled": true,
+      "isSharePointNewsfeedEnabled": false,
+      "allowedDomainGuidsForSyncApp": [],
+      "isLegacyAuthProtocolsEnabled": false,
+      "isSitesStorageLimitAutomatic": true,
+      "sharingDomainRestrictionMode": "allowList",
+      "isCommentingOnSitePagesEnabled": true,
+      "siteCreationDefaultManagedPath": "/sites/",
+      "excludedFileExtensionsForSyncApp": [
+        "*."
+      ],
+      "isSyncButtonHiddenOnPersonalSite": false,
+      "isFileActivityNotificationEnabled": true,
+      "isResharingByExternalUsersEnabled": false,
+      "personalSiteDefaultStorageLimitInMB": 1048576,
+      "siteCreationDefaultStorageLimitInMB": 26214400,
+      "availableManagedPathsForSiteCreation": [
+        "/sites/",
+        "/teams/"
+      ],
+      "isSharePointMobileNotificationEnabled": true,
+      "isUnmanagedSyncAppForTenantRestricted": true,
+      "deletedUserPersonalSiteRetentionPeriodInDays": 30
+    },
+    "intendedState": {
+      "isLoopEnabled": false,
+      "idleSessionSignOut": {
+        "isEnabled": false,
+        "warnAfterInSeconds": 0,
+        "signOutAfterInSeconds": 0
+      },
+      "imageTaggingOption": "basic",
+      "isMacSyncAppEnabled": false,
+      "isSiteCreationEnabled": true,
+      "tenantDefaultTimezone": "(UTC-08:00) Pacific Time (US and Canada)",
+      "isSiteCreationUIEnabled": true,
+      "isSitePagesCreationEnabled": true,
+      "isSharePointNewsfeedEnabled": false,
+      "allowedDomainGuidsForSyncApp": [],
+      "isLegacyAuthProtocolsEnabled": false,
+      "isSitesStorageLimitAutomatic": true,
+      "isCommentingOnSitePagesEnabled": true,
+      "siteCreationDefaultManagedPath": "/sites/",
+      "excludedFileExtensionsForSyncApp": [
+        "*."
+      ],
+      "isSyncButtonHiddenOnPersonalSite": false,
+      "isFileActivityNotificationEnabled": true,
+      "personalSiteDefaultStorageLimitInMB": 1048576,
+      "siteCreationDefaultStorageLimitInMB": 26214400,
+      "isSharePointMobileNotificationEnabled": true,
+      "isUnmanagedSyncAppForTenantRestricted": true,
+      "deletedUserPersonalSiteRetentionPeriodInDays": 30
+    },
+    "postState": {
+      "isLoopEnabled": false,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/sharepoint/settings/$entity",
+      "sharingCapability": "externalUserSharingOnly",
+      "idleSessionSignOut": {
+        "isEnabled": false,
+        "warnAfterInSeconds": 0,
+        "signOutAfterInSeconds": 0
+      },
+      "imageTaggingOption": "basic",
+      "isMacSyncAppEnabled": false,
+      "isSiteCreationEnabled": true,
+      "tenantDefaultTimezone": "(UTC-08:00) Pacific Time (US and Canada)",
+      "isSiteCreationUIEnabled": true,
+      "sharingAllowedDomainList": [],
+      "sharingBlockedDomainList": [],
+      "isSitePagesCreationEnabled": true,
+      "isSharePointNewsfeedEnabled": false,
+      "allowedDomainGuidsForSyncApp": [],
+      "isLegacyAuthProtocolsEnabled": false,
+      "isSitesStorageLimitAutomatic": true,
+      "sharingDomainRestrictionMode": "allowList",
+      "isCommentingOnSitePagesEnabled": true,
+      "siteCreationDefaultManagedPath": "/sites/",
+      "excludedFileExtensionsForSyncApp": [
+        "*."
+      ],
+      "isSyncButtonHiddenOnPersonalSite": false,
+      "isFileActivityNotificationEnabled": true,
+      "isResharingByExternalUsersEnabled": false,
+      "personalSiteDefaultStorageLimitInMB": 1048576,
+      "siteCreationDefaultStorageLimitInMB": 26214400,
+      "availableManagedPathsForSiteCreation": [
+        "/sites/",
+        "/teams/"
+      ],
+      "isSharePointMobileNotificationEnabled": true,
+      "isUnmanagedSyncAppForTenantRestricted": true,
+      "deletedUserPersonalSiteRetentionPeriodInDays": 30
+    }
+  }
+}

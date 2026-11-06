@@ -7,23 +7,23 @@
   "resourceType": "tokenLifetimePolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T14:49:26.323Z",
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
-  "naturalKey": "tokenLifetimePolicy:ca108717-8277-8cd5-9f06-a7e0656e9d40",
+  "observedAt": "2026-11-06T19:35:54.412Z",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "naturalKey": "tokenLifetimePolicy:5a1b632e-2061-8740-bcbe-83f4be6fd51b",
   "fixtureKind": "named-object",
-  "captureSha256": "cd536442de2830078a5510983c1d52f9cae6c709b34695a8a4e5e238164d6ba4",
+  "captureSha256": "6665d41183cf333871decd9e15ef4677a2ee07363e9c71d4fe930a49cae731ed",
   "proofRef": "docs/release/qualifications/entra-live/tokenLifetimePolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "add5af61de873b84c9fa5da959944240991ff9c3376e8d42397309712280de68"
+      "signature": "84948ad16ea0845e05d87a1afc2573c774b4d84e7bc45307b12295d4bda6b567"
     }
   }
 }

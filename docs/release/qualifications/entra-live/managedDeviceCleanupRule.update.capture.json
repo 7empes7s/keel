@@ -1,32 +1,32 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "managedDeviceCleanupRule:d5947671-6d99-827f-88b1-e72ac40193fc",
+    "naturalKey": "managedDeviceCleanupRule:31bb4204-b114-811d-b510-1c2052ca82a2",
     "resourceType": "managedDeviceCleanupRule",
     "operation": "update",
-    "targetId": "d5947671-6d99-827f-88b1-e72ac40193fc",
+    "targetId": "31bb4204-b114-811d-b510-1c2052ca82a2",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:20.043Z",
+    "recordedAt": "2026-11-06T19:35:47.238Z",
     "priorState": {
-      "id": "d5947671-6d99-827f-88b1-e72ac40193fc",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-managed-device-cleanup-rule-u",
-      "lastModifiedDateTime": "2026-11-06T14:43:18Z",
+      "id": "31bb4204-b114-811d-b510-1c2052ca82a2",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-managed-device-cleanup-rule-u",
+      "lastModifiedDateTime": "2026-11-06T19:24:16Z",
       "deviceCleanupRulePlatformType": "macOS",
       "deviceInactivityBeforeRetirementInDays": 180
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-managed-device-cleanup-rule-u",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-managed-device-cleanup-rule-u",
       "deviceInactivityBeforeRetirementInDays": 270
     },
     "postState": {
-      "id": "d5947671-6d99-827f-88b1-e72ac40193fc",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-managed-device-cleanup-rule-u",
+      "id": "31bb4204-b114-811d-b510-1c2052ca82a2",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-managed-device-cleanup-rule-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/managedDeviceCleanupRules/$entity",
-      "lastModifiedDateTime": "2026-11-06T14:49:20Z",
+      "lastModifiedDateTime": "2026-11-06T19:35:47Z",
       "deviceCleanupRulePlatformType": "macOS",
       "deviceInactivityBeforeRetirementInDays": 270
     }

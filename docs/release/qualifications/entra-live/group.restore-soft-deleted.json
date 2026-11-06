@@ -7,23 +7,23 @@
   "resourceType": "group",
   "operation": "restore-soft-deleted",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T14:49:17.533Z",
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
-  "naturalKey": "group:KEEL-RT-1031-group-s",
+  "observedAt": "2026-11-06T19:35:44.932Z",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "naturalKey": "group:KEEL-RT-1049-group-s",
   "fixtureKind": "named-object",
-  "captureSha256": "512d963ba360e2d297e2d7dc8e00f38f281e0bc2d1c9dfbfac56c51c02e88bc3",
+  "captureSha256": "c36acd8f193c6696494f42633dd043559f5605b25b8e8e51e12f8f140e350605",
   "proofRef": "docs/release/qualifications/entra-live/group.restore-soft-deleted.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "a8e6243ffe4ebddd2c70bf9a6b3ada09635a78d97ade532c9794853d8c58c206"
+      "signature": "301c1db8870cf406de7a073ab462e299ada5c6462ca5d5ab495266d18be1bb6f"
     }
   }
 }

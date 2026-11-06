@@ -7,23 +7,23 @@
   "resourceType": "exchangeCustomAppScope",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T15:55:34.414Z",
-  "restoreRef": "bafd4c93-0332-87e3-ab5c-65f6b9bdb1b2",
-  "naturalKey": "exchangeCustomAppScope:9a129e43-1175-8857-8c39-abcb9d298cb4",
+  "observedAt": "2026-11-06T20:22:46.909Z",
+  "restoreRef": "ef916ac5-e6b8-8894-8b70-591c7d515b9f",
+  "naturalKey": "exchangeCustomAppScope:d236a496-38d3-825b-a493-0b43bfd200da",
   "fixtureKind": "named-object",
-  "captureSha256": "2e38490ccd8a925374683ce9f655923a38620f2af1b2fd4b264d274542f9c486",
+  "captureSha256": "ff32aebaf059197b51a918c22f43fd4189ba2c83a43b489c50abd55883f41248",
   "proofRef": "docs/release/qualifications/entra-live/exchangeCustomAppScope.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "f111b7b59455f2b09d3817b8119ce3f94326012aef50134e9ddd2d8032f3370e"
+      "signature": "51860ded5bf9f591a87e55a79701079c4b1b8dd68cd974cdf705cfd643b387fc"
     }
   }
 }

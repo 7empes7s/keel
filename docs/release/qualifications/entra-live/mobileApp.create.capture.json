@@ -1,13 +1,13 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "mobileApp:KEEL-RT-1031-mobile-app-c",
+    "naturalKey": "mobileApp:KEEL-RT-1049-mobile-app-c",
     "resourceType": "mobileApp",
     "operation": "create",
-    "targetId": "156d7151-f19c-8c3b-951e-1228024ec424",
+    "targetId": "092732d9-bbe7-86bf-8693-ea0790490463",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:20.958Z",
+    "recordedAt": "2026-11-06T19:35:48.342Z",
     "priorState": null,
     "intendedState": {
       "notes": null,
@@ -18,14 +18,14 @@
       "publisher": "KEEL-RT",
       "isFeatured": false,
       "@odata.type": "#microsoft.graph.webApp",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-mobile-app-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-mobile-app-c",
       "informationUrl": null,
       "useManagedBrowser": false,
       "privacyInformationUrl": null
     },
     "postState": {
-      "id": "156d7151-f19c-8c3b-951e-1228024ec424",
+      "id": "092732d9-bbe7-86bf-8693-ea0790490463",
       "notes": null,
       "owner": null,
       "appUrl": "https://example.com/",
@@ -34,14 +34,14 @@
       "publisher": "KEEL-RT",
       "isFeatured": false,
       "@odata.type": "#microsoft.graph.webApp",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-mobile-app-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-mobile-app-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileApps/$entity",
       "informationUrl": null,
-      "createdDateTime": "2026-11-06T14:49:21.356025Z",
+      "createdDateTime": "2026-11-06T19:35:48.5643677Z",
       "publishingState": "published",
       "useManagedBrowser": false,
-      "lastModifiedDateTime": "2026-11-06T14:49:21.356025Z",
+      "lastModifiedDateTime": "2026-11-06T19:35:48.5643677Z",
       "privacyInformationUrl": null
     }
   }

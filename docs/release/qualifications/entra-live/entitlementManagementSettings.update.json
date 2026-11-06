@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "entitlementManagementSettings",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T19:49:52.955Z",
+  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "naturalKey": "entitlementManagementSettings:entitlementManagementSettings",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "397eadb84063d9dd3f92d08ed0a3c4be9b4bda491c0d16c1f65044e274ef3c3e",
+  "proofRef": "docs/release/qualifications/entra-live/entitlementManagementSettings.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "4741b096ccd37801a69d164698bb601b98977793d4cb606dab363409d0c1ff7a"
+    }
+  }
+}

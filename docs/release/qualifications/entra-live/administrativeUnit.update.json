@@ -7,23 +7,23 @@
   "resourceType": "administrativeUnit",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T14:49:13.634Z",
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
-  "naturalKey": "administrativeUnit:KEEL-RT-1031-administrative-unit-u",
+  "observedAt": "2026-11-06T19:35:37.520Z",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "naturalKey": "administrativeUnit:KEEL-RT-1049-administrative-unit-u",
   "fixtureKind": "named-object",
-  "captureSha256": "98a40ac47c9a3b6cc7acff21a63eca07b3be46174b65b7813e464e8182370bca",
+  "captureSha256": "dd168488b10ae420f4f314f73ae4e449aed4f0356ffb48f26c281186540c113e",
   "proofRef": "docs/release/qualifications/entra-live/administrativeUnit.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "3b2940e363594aa31bd9eb57b9fc0bb585c63169ec70ec83423a5843295acf8d"
+      "signature": "2801f318f09d5aa4372181ae72bb37a8b761676ea51c619cae884e513483937b"
     }
   }
 }

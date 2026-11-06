@@ -1,18 +1,18 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "administrativeUnit:KEEL-RT-1031-administrative-unit-u",
+    "naturalKey": "administrativeUnit:KEEL-RT-1049-administrative-unit-u",
     "resourceType": "administrativeUnit",
     "operation": "update",
-    "targetId": "6d232344-e207-8f85-848d-0dce97c6d6a7",
+    "targetId": "0f2a4ac6-0a3e-8b17-936a-339e7bdc84b0",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:13.634Z",
+    "recordedAt": "2026-11-06T19:35:37.520Z",
     "priorState": {
-      "id": "6d232344-e207-8f85-848d-0dce97c6d6a7",
+      "id": "0f2a4ac6-0a3e-8b17-936a-339e7bdc84b0",
       "visibility": null,
-      "description": "KEEL-RT test fixture (#1031) drifted",
-      "displayName": "KEEL-RT-1031-administrative-unit-u",
+      "description": "KEEL-RT test fixture (#1049) drifted",
+      "displayName": "KEEL-RT-1049-administrative-unit-u",
       "membershipRule": null,
       "membershipType": null,
       "deletedDateTime": null,
@@ -20,10 +20,10 @@
       "membershipRuleProcessingState": null
     },
     "intendedState": {
-      "id": "6d232344-e207-8f85-848d-0dce97c6d6a7",
+      "id": "0f2a4ac6-0a3e-8b17-936a-339e7bdc84b0",
       "visibility": null,
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-administrative-unit-u",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-administrative-unit-u",
       "membershipRule": null,
       "membershipType": null,
       "deletedDateTime": null,
@@ -31,8 +31,8 @@
       "membershipRuleProcessingState": null
     },
     "postState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-administrative-unit-u"
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-administrative-unit-u"
     }
   }
 }

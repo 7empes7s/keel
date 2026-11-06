@@ -7,23 +7,23 @@
   "resourceType": "appManagementPolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "build": "128b0e3b844fe351f5493925478091f61f589796",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T14:49:13.830Z",
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
-  "naturalKey": "appManagementPolicy:5777c0f2-c0b0-8064-80ce-85d025d02e46",
+  "observedAt": "2026-11-06T19:35:37.709Z",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "naturalKey": "appManagementPolicy:63714693-5990-8ee4-ba85-e14eee222443",
   "fixtureKind": "named-object",
-  "captureSha256": "5923f65385f154a0777bcb6f379cf1bf808d5b69cefa8ac5cb7add4fa3a878a1",
+  "captureSha256": "631048cf58b0679aeb5e8c5112ee880562095b4902c5887ea377c5d002758aca",
   "proofRef": "docs/release/qualifications/entra-live/appManagementPolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "d90f80c9e5b4997c54e7cae7f29e9834ad12d7c88c3775574d692331144f4cbe"
+      "signature": "9d12ed828b8889087681d255cc42b4e4a4058d8318687a04abdec80d651ca249"
     }
   }
 }

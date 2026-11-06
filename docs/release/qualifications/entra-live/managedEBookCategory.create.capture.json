@@ -1,22 +1,22 @@
 {
-  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
   "entry": {
-    "naturalKey": "managedEBookCategory:8e7ace7e-1de4-8f17-92a1-b49ef94c2672",
+    "naturalKey": "managedEBookCategory:c2888997-e8f9-8c20-82bb-d53396c79d35",
     "resourceType": "managedEBookCategory",
     "operation": "create",
-    "targetId": "9e3f420d-a72d-89d2-824e-afe666374663",
+    "targetId": "40fa17e0-9db3-8996-a3f0-def11c95c84b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T14:49:20.826Z",
+    "recordedAt": "2026-11-06T19:35:47.654Z",
     "priorState": null,
     "intendedState": {
-      "displayName": "KEEL-RT-1031-managed-e-book-category-c"
+      "displayName": "KEEL-RT-1049-managed-e-book-category-c"
     },
     "postState": {
-      "id": "9e3f420d-a72d-89d2-824e-afe666374663",
-      "displayName": "KEEL-RT-1031-managed-e-book-category-c",
+      "id": "40fa17e0-9db3-8996-a3f0-def11c95c84b",
+      "displayName": "KEEL-RT-1049-managed-e-book-category-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/managedEBookCategories/$entity",
-      "lastModifiedDateTime": "2026-11-06T14:49:22Z"
+      "lastModifiedDateTime": "2026-11-06T19:35:48Z"
     }
   }
 }

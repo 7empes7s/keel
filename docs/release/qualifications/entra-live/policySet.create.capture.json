@@ -1,35 +1,35 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "policySet:2e744790-350e-8735-a2f2-cb682303737f",
+    "naturalKey": "policySet:76d444b3-3a17-8ee5-9904-ab36994f2af1",
     "resourceType": "policySet",
     "operation": "create",
-    "targetId": "b34b2f8b-24f1-8bb4-8ab7-329c26eafc77",
+    "targetId": "a5742991-3e25-89d1-bf89-77599fa62d0b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:13.510Z",
+    "recordedAt": "2026-11-06T19:44:06.899Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-policy-set-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-policy-set-c",
       "roleScopeTags": [
         "0"
       ],
       "guidedDeploymentTags": []
     },
     "postState": {
-      "id": "b34b2f8b-24f1-8bb4-8ab7-329c26eafc77",
+      "id": "a5742991-3e25-89d1-bf89-77599fa62d0b",
       "status": "notAssigned",
       "errorCode": "noError",
-      "description": "KEEL-RT test fixture (#1031)",
-      "displayName": "KEEL-RT-1031-policy-set-c",
+      "description": "KEEL-RT test fixture (#1049)",
+      "displayName": "KEEL-RT-1049-policy-set-c",
       "roleScopeTags": [
         "0"
       ],
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/policySets/$entity",
-      "createdDateTime": "2026-11-06T15:00:13.6270495Z",
+      "createdDateTime": "2026-11-06T19:44:06.9811584Z",
       "guidedDeploymentTags": [],
-      "lastModifiedDateTime": "2026-11-06T15:00:13Z"
+      "lastModifiedDateTime": "2026-11-06T19:44:06Z"
     }
   }
 }

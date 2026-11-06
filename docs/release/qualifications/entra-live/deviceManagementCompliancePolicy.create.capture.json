@@ -1,16 +1,16 @@
 {
-  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
   "entry": {
-    "naturalKey": "deviceManagementCompliancePolicy:8fc5076d-de41-8395-8ac8-546ff75b02be",
+    "naturalKey": "deviceManagementCompliancePolicy:273a767f-e18f-8b94-96c4-df32ea2ebc62",
     "resourceType": "deviceManagementCompliancePolicy",
     "operation": "create",
-    "targetId": "d5d06f4b-5ce7-8ebe-acb8-861b6a5cdb18",
+    "targetId": "b7d8dfba-71da-821f-9361-da98ccd5af5b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T15:00:12.446Z",
+    "recordedAt": "2026-11-06T19:44:05.635Z",
     "priorState": null,
     "intendedState": {
-      "name": "KEEL-RT-1031-device-management-compliance-policy-c",
+      "name": "KEEL-RT-1049-device-management-compliance-policy-c",
       "settings": [
         {
           "@odata.type": "#microsoft.graph.deviceManagementConfigurationSetting",
@@ -28,7 +28,7 @@
         }
       ],
       "platforms": "linux",
-      "description": "KEEL-RT test fixture (#1031)",
+      "description": "KEEL-RT test fixture (#1049)",
       "technologies": "linuxMdm",
       "roleScopeTagIds": [
         "0"
@@ -48,8 +48,8 @@
       ]
     },
     "postState": {
-      "id": "d5d06f4b-5ce7-8ebe-acb8-861b6a5cdb18",
-      "name": "KEEL-RT-1031-device-management-compliance-policy-c",
+      "id": "b7d8dfba-71da-821f-9361-da98ccd5af5b",
+      "name": "KEEL-RT-1049-device-management-compliance-policy-c",
       "settings": [
         {
           "id": "0",
@@ -67,24 +67,24 @@
         }
       ],
       "platforms": "linux",
-      "description": "KEEL-RT test fixture (#1031)",
+      "description": "KEEL-RT test fixture (#1049)",
       "settingCount": 1,
       "technologies": "linuxMdm",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
       "creationSource": null,
-      "createdDateTime": "2026-11-06T15:00:12.7131457Z",
+      "createdDateTime": "2026-11-06T19:44:06.3650804Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T15:00:12.7131457Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('d5d06f4b-5ce7-8ebe-acb8-861b6a5cdb18')/settings",
+      "lastModifiedDateTime": "2026-11-06T19:44:06.3650804Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('b7d8dfba-71da-821f-9361-da98ccd5af5b')/settings",
       "scheduledActionsForRule": [
         {
-          "id": "d5d06f4b-5ce7-8ebe-acb8-861b6a5cdb18",
+          "id": "b7d8dfba-71da-821f-9361-da98ccd5af5b",
           "ruleName": null,
           "scheduledActionConfigurations": [
             {
-              "id": "f287a803-7061-8ace-8ccc-ef179ef8bf02",
+              "id": "4567d8f7-fe9d-82da-b123-7488d92f365d",
               "actionType": "block",
               "gracePeriodHours": 0,
               "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",

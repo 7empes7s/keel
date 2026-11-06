@@ -113,7 +113,6 @@ import {
   SIGN_IN_LOCKOUT_TYPES, attachAuthenticationContextConsumers, attachRolloutAppliesTo,
 } from '../engine/restore/signInSettingsOperations.mjs';
 import { rolloutGroupsToAdd } from '../engine/safety/signInSettingEffects.mjs';
-import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import { recordPlannedCreates } from '../engine/restore/plannedIds.mjs';
 import {
@@ -329,8 +328,10 @@ export async function snapshotTypeOutcome(client, { snapshotId, resourceType }) 
   }
 }
 
+// Issue #1057: every delete (a record or a governed administrative type) needs
+// this evidence, so the digest is read whenever any delete is planned.
 export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
-  if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
+  if (!resources.some((resource) => resource.verb === 'delete')) return null;
   const { rows } = await client.query(
     'SELECT coverage_digest FROM snapshot WHERE id = $1 AND tenant_ref = $2',
     [snapshotId, tenantRef],
@@ -951,10 +952,10 @@ export async function runRestore({
     const lockoutGate = await lockoutGateFor(client, resources, {
       tenantRef: tenantRefFor(collectorConfig.tenantId), loadInputs: loadLockoutGateInputsFn, loadMembership: loadGroupMembershipFn,
     });
-    // Roadmap task-109: a governed administrative delete (a tenant-wide setting the
-    // snapshot did not contain) is authorised only by a complete observation of
-    // that collection in the source snapshot. Read only when such a delete is
-    // planned; applyWave refuses it when the entry is missing or partial.
+    // Roadmap task-109: a delete (an object or tenant-wide setting the snapshot did
+    // not contain) is authorised only by a complete observation of that collection
+    // in the source snapshot. Read only when a delete is planned; applyWave
+    // refuses it when the entry is missing or partial.
     const observedCoverage = await observedCoverageFor(client, {
       resources, snapshotId: sourceSnapshot, tenantRef: sourceTenantRef,
     });

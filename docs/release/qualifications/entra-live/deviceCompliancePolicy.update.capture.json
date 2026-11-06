@@ -1,20 +1,20 @@
 {
-  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "deviceCompliancePolicy:KEEL-RT-246-compliance",
+    "naturalKey": "deviceCompliancePolicy:KEEL-RT-1031-device-compliance-policy-u",
     "resourceType": "deviceCompliancePolicy",
     "operation": "update",
-    "targetId": "ed265602-c427-87cb-8839-a6606e547ec8",
+    "targetId": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T23:59:19.353Z",
+    "recordedAt": "2026-11-06T14:49:16.153Z",
     "priorState": {
-      "id": "ed265602-c427-87cb-8839-a6606e547ec8",
+      "id": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
       "version": 2,
       "@odata.type": "#microsoft.graph.windows10CompliancePolicy",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-246-compliance",
-      "createdDateTime": "2026-10-29T23:48:10.2339732Z",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-device-compliance-policy-u",
+      "createdDateTime": "2026-11-06T14:27:31.191269Z",
       "bitLockerEnabled": false,
       "osMaximumVersion": null,
       "osMinimumVersion": null,
@@ -22,26 +22,26 @@
       "secureBootEnabled": false,
       "passwordBlockSimple": false,
       "codeIntegrityEnabled": false,
-      "lastModifiedDateTime": "2026-10-29T23:53:56.5199448Z",
+      "lastModifiedDateTime": "2026-11-06T14:43:07.0163945Z",
       "passwordRequiredType": "deviceDefault",
-      "passwordMinimumLength": 6,
+      "passwordMinimumLength": 8,
       "mobileOsMaximumVersion": null,
       "mobileOsMinimumVersion": null,
       "passwordExpirationDays": null,
       "scheduledActionsForRule": [
         {
-          "id": "ed265602-c427-87cb-8839-a6606e547ec8",
+          "id": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
           "ruleName": null,
           "scheduledActionConfigurations": [
             {
-              "id": "2d6dc336-ce1b-8b06-9fab-0a4d0dde347a",
+              "id": "9ba0be78-afd7-88dd-a873-9bbc60a7ca95",
               "actionType": "block",
               "gracePeriodHours": 0,
               "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
               "notificationMessageCCList": []
             }
           ],
-          "scheduledActionConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('ed265602-c427-87cb-8839-a6606e547ec8')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule('ed265602-c427-87cb-8839-a6606e547ec8')/scheduledActionConfigurations"
+          "scheduledActionConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/scheduledActionConfigurations"
         }
       ],
       "storageRequireEncryption": false,
@@ -51,15 +51,15 @@
       "passwordPreviousPasswordBlockCount": null,
       "earlyLaunchAntiMalwareDriverEnabled": false,
       "passwordMinutesOfInactivityBeforeLock": null,
-      "scheduledActionsForRule@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('ed265602-c427-87cb-8839-a6606e547ec8')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule(scheduledActionConfigurations())"
+      "scheduledActionsForRule@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule(scheduledActionConfigurations())"
     },
     "intendedState": {
-      "id": "ed265602-c427-87cb-8839-a6606e547ec8",
+      "id": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
       "version": 1,
       "@odata.type": "#microsoft.graph.windows10CompliancePolicy",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-246-compliance",
-      "createdDateTime": "2026-10-29T23:48:10.2339732Z",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-compliance-policy-u",
+      "createdDateTime": "2026-11-06T14:27:31.191269Z",
       "bitLockerEnabled": false,
       "osMaximumVersion": null,
       "osMinimumVersion": null,
@@ -67,7 +67,7 @@
       "secureBootEnabled": false,
       "passwordBlockSimple": false,
       "codeIntegrityEnabled": false,
-      "lastModifiedDateTime": "2026-10-29T23:48:10.2339732Z",
+      "lastModifiedDateTime": "2026-11-06T14:27:31.191269Z",
       "passwordRequiredType": "deviceDefault",
       "passwordMinimumLength": 8,
       "mobileOsMaximumVersion": null,
@@ -75,18 +75,18 @@
       "passwordExpirationDays": null,
       "scheduledActionsForRule": [
         {
-          "id": "ed265602-c427-87cb-8839-a6606e547ec8",
+          "id": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
           "ruleName": null,
           "scheduledActionConfigurations": [
             {
-              "id": "2d6dc336-ce1b-8b06-9fab-0a4d0dde347a",
+              "id": "9ba0be78-afd7-88dd-a873-9bbc60a7ca95",
               "actionType": "block",
               "gracePeriodHours": 0,
               "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
               "notificationMessageCCList": []
             }
           ],
-          "scheduledActionConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('ed265602-c427-87cb-8839-a6606e547ec8')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule('ed265602-c427-87cb-8839-a6606e547ec8')/scheduledActionConfigurations"
+          "scheduledActionConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/scheduledActionConfigurations"
         }
       ],
       "storageRequireEncryption": false,
@@ -96,16 +96,16 @@
       "passwordPreviousPasswordBlockCount": null,
       "earlyLaunchAntiMalwareDriverEnabled": false,
       "passwordMinutesOfInactivityBeforeLock": null,
-      "scheduledActionsForRule@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('ed265602-c427-87cb-8839-a6606e547ec8')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule(scheduledActionConfigurations())"
+      "scheduledActionsForRule@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule(scheduledActionConfigurations())"
     },
     "postState": {
-      "id": "ed265602-c427-87cb-8839-a6606e547ec8",
+      "id": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
       "version": 3,
       "@odata.type": "#microsoft.graph.windows10CompliancePolicy",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-246-compliance",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-compliance-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies(scheduledActionsForRule(scheduledActionConfigurations()))/$entity",
-      "createdDateTime": "2026-10-29T23:48:10.2339732Z",
+      "createdDateTime": "2026-11-06T14:27:31.191269Z",
       "bitLockerEnabled": false,
       "osMaximumVersion": null,
       "osMinimumVersion": null,
@@ -113,7 +113,7 @@
       "secureBootEnabled": false,
       "passwordBlockSimple": false,
       "codeIntegrityEnabled": false,
-      "lastModifiedDateTime": "2026-10-29T23:59:19.4501263Z",
+      "lastModifiedDateTime": "2026-11-06T14:49:16.2900663Z",
       "passwordRequiredType": "deviceDefault",
       "passwordMinimumLength": 8,
       "mobileOsMaximumVersion": null,
@@ -121,18 +121,18 @@
       "passwordExpirationDays": null,
       "scheduledActionsForRule": [
         {
-          "id": "ed265602-c427-87cb-8839-a6606e547ec8",
+          "id": "92a87f79-5371-86e0-9d0a-a93a5e7315a2",
           "ruleName": null,
           "scheduledActionConfigurations": [
             {
-              "id": "2d6dc336-ce1b-8b06-9fab-0a4d0dde347a",
+              "id": "9ba0be78-afd7-88dd-a873-9bbc60a7ca95",
               "actionType": "block",
               "gracePeriodHours": 0,
               "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
               "notificationMessageCCList": []
             }
           ],
-          "scheduledActionConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('ed265602-c427-87cb-8839-a6606e547ec8')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule('ed265602-c427-87cb-8839-a6606e547ec8')/scheduledActionConfigurations"
+          "scheduledActionConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/scheduledActionConfigurations"
         }
       ],
       "storageRequireEncryption": false,
@@ -142,7 +142,7 @@
       "passwordPreviousPasswordBlockCount": null,
       "earlyLaunchAntiMalwareDriverEnabled": false,
       "passwordMinutesOfInactivityBeforeLock": null,
-      "scheduledActionsForRule@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('ed265602-c427-87cb-8839-a6606e547ec8')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule(scheduledActionConfigurations())"
+      "scheduledActionsForRule@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCompliancePolicies('92a87f79-5371-86e0-9d0a-a93a5e7315a2')/microsoft.graph.windows10CompliancePolicy/scheduledActionsForRule(scheduledActionConfigurations())"
     }
   }
 }

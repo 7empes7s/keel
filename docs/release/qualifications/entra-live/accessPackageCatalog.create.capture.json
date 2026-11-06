@@ -1,0 +1,35 @@
+{
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
+  "entry": {
+    "naturalKey": "accessPackageCatalog:4ac4fc15-4cbd-89f8-a5de-6ec0e1de1330",
+    "resourceType": "accessPackageCatalog",
+    "operation": "create",
+    "targetId": "39f443de-4501-8051-9ffd-776d89acba01",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T14:49:13.623Z",
+    "priorState": null,
+    "intendedState": {
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-access-package-catalog-c",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    },
+    "postState": {
+      "id": "39f443de-4501-8051-9ffd-776d89acba01",
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-access-package-catalog-c",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/catalogs/$entity",
+      "createdDateTime": "2026-11-06T14:49:13.697Z",
+      "modifiedDateTime": "2026-11-06T14:49:13.697Z",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    }
+  }
+}

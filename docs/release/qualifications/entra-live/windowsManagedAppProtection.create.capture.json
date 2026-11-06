@@ -1,18 +1,18 @@
 {
-  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "windowsManagedAppProtection:I_6cec5bab-dbdf-805c-be8e-2cb32b8ad8d6",
+    "naturalKey": "windowsManagedAppProtection:I_0e8b57ec-5806-84ce-a232-503f9a9b8a2a",
     "resourceType": "windowsManagedAppProtection",
     "operation": "create",
-    "targetId": "I_cd4c6be6-4bca-8ce6-95c0-52b3218cdf89",
+    "targetId": "I_ba2fb173-f351-8d27-ba9b-e0f337462c70",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:10:22.731Z",
+    "recordedAt": "2026-11-06T15:00:14.232Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-win-mam",
-      "printBlocked": false,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-windows-managed-app-protection-c",
+      "printBlocked": true,
       "roleScopeTagIds": [
         "0"
       ],
@@ -39,19 +39,19 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "postState": {
-      "id": "I_cd4c6be6-4bca-8ce6-95c0-52b3218cdf89",
-      "version": "\"1a33d8cd-5ec6-89c8-9785-7cfb56133ee8\"",
+      "id": "I_ba2fb173-f351-8d27-ba9b-e0f337462c70",
+      "version": "\"454e082c-55c6-83a7-88da-fc0f9c8a2d91\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-win-mam",
-      "printBlocked": false,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-windows-managed-app-protection-c",
+      "printBlocked": true,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections/$entity",
-      "createdDateTime": "2026-10-30T01:10:22.8485753Z",
+      "createdDateTime": "2026-11-06T15:00:14.3109579Z",
       "roleScopeTagIds": [
         "0"
       ],
       "deployedAppCount": 0,
-      "lastModifiedDateTime": "2026-10-30T01:10:22Z",
+      "lastModifiedDateTime": "2026-11-06T15:00:14Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,

@@ -1,0 +1,33 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "notificationMessageTemplate:04e143b1-313e-8926-807d-09d2475da6c7",
+    "resourceType": "notificationMessageTemplate",
+    "operation": "create",
+    "targetId": "2472fec7-5ce5-8eae-8fc0-621930aa1333",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:13.469Z",
+    "priorState": null,
+    "intendedState": {
+      "displayName": "KEEL-RT-1031-notification-message-template-c",
+      "brandingOptions": "includeCompanyLogo",
+      "roleScopeTagIds": [
+        "0"
+      ]
+    },
+    "postState": {
+      "id": "2472fec7-5ce5-8eae-8fc0-621930aa1333",
+      "displayName": "KEEL-RT-1031-notification-message-template-c",
+      "defaultLocale": null,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/notificationMessageTemplates(localizedNotificationMessages())/$entity",
+      "brandingOptions": "includeCompanyLogo",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-11-06T15:00:13Z",
+      "localizedNotificationMessages": [],
+      "localizedNotificationMessages@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/notificationMessageTemplates('2472fec7-5ce5-8eae-8fc0-621930aa1333')/localizedNotificationMessages"
+    }
+  }
+}

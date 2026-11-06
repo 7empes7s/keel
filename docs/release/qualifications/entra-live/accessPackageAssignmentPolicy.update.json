@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "accessPackageAssignmentPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "f1521256629373ee33ec8e828f0f582a3401458c",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-06T15:00:21.524Z",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "naturalKey": "accessPackageAssignmentPolicy:311230c4-fe50-8b3e-96a9-49cb3e29c28b",
+  "fixtureKind": "named-object",
+  "captureSha256": "90182131a321a8dacd86e244b18f45775432694db14c184daf3a2fae819a79d7",
+  "proofRef": "docs/release/qualifications/entra-live/accessPackageAssignmentPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "dc1b1278ce797bc6d8f4101e0976e3a0e7722e6ab25f14410d00195f2cd5e7bb"
+    }
+  }
+}

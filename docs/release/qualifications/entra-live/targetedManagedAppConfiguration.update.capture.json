@@ -1,32 +1,32 @@
 {
-  "restoreRef": "f8ea064e-1261-8126-8bc7-389600a279a4",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "targetedManagedAppConfiguration:A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
+    "naturalKey": "targetedManagedAppConfiguration:A_4a7034ca-3085-801b-8ca0-ac3505113b80",
     "resourceType": "targetedManagedAppConfiguration",
     "operation": "update",
-    "targetId": "A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
+    "targetId": "A_4a7034ca-3085-801b-8ca0-ac3505113b80",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T22:41:33.746Z",
+    "recordedAt": "2026-11-06T15:00:06.590Z",
     "priorState": {
-      "id": "A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
-      "version": "\"2100ac35-5cb5-864c-96f2-a26e4d0d08cd\"",
+      "id": "A_4a7034ca-3085-801b-8ca0-ac3505113b80",
+      "version": "\"e3a22c7a-69f8-87d9-b724-51413cd97f21\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-app-config",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-targeted-managed-app-configuration-u",
       "customSettings": [
         {
           "name": "com.microsoft.outlook.Mail.FocusedInbox",
-          "value": "true"
+          "value": "false"
         }
       ],
-      "createdDateTime": "2026-10-29T22:34:15.4837278Z",
+      "createdDateTime": "2026-11-06T14:27:19.8198503Z",
       "deployedAppCount": 1,
-      "lastModifiedDateTime": "2026-10-29T22:38:17.1826499Z"
+      "lastModifiedDateTime": "2026-11-06T14:49:23.9505621Z"
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-app-config",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-targeted-managed-app-configuration-u",
       "customSettings": [
         {
           "name": "com.microsoft.outlook.Mail.FocusedInbox",
@@ -35,11 +35,11 @@
       ]
     },
     "postState": {
-      "id": "A_fe45e73c-e7e4-81fe-b67d-123e098a5941",
-      "version": "\"0b7c8199-a901-8c45-a15b-a7e0586ff38b\"",
+      "id": "A_4a7034ca-3085-801b-8ca0-ac3505113b80",
+      "version": "\"e3a22c7a-69f8-87d9-b724-51413cd97f21\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-app-config",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-targeted-managed-app-configuration-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/targetedManagedAppConfigurations/$entity",
       "customSettings": [
         {
@@ -47,9 +47,9 @@
           "value": "false"
         }
       ],
-      "createdDateTime": "2026-10-29T22:34:15.4837278Z",
+      "createdDateTime": "2026-11-06T14:27:19.8198503Z",
       "deployedAppCount": 1,
-      "lastModifiedDateTime": "2026-10-29T22:41:34Z"
+      "lastModifiedDateTime": "2026-11-06T14:49:23Z"
     }
   }
 }

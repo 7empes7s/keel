@@ -1,32 +1,32 @@
 {
-  "restoreRef": "df583769-14f0-817d-86af-663249c77e04",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "mobileAppConfiguration:8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+    "naturalKey": "mobileAppConfiguration:9cab291b-1f9a-82ca-b2b8-ec459e1c2134",
     "resourceType": "mobileAppConfiguration",
     "operation": "update",
-    "targetId": "8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+    "targetId": "9cab291b-1f9a-82ca-b2b8-ec459e1c2134",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T22:45:17.199Z",
+    "recordedAt": "2026-11-06T15:00:13.661Z",
     "priorState": {
-      "id": "8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+      "id": "9cab291b-1f9a-82ca-b2b8-ec459e1c2134",
       "version": 2,
       "settings": [
         {
           "appConfigKey": "KEELRT",
           "appConfigKeyType": "stringType",
-          "appConfigKeyValue": "2"
+          "appConfigKeyValue": "1"
         }
       ],
       "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-device-config",
-      "createdDateTime": "2026-10-29T22:34:37.816749Z",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-device-config-u",
+      "createdDateTime": "2026-11-06T14:30:02.0504917Z",
       "encodedSettingXml": null,
       "targetedMobileApps": [
-        "eb284b71-337b-803f-8a8c-64a9b74fac84"
+        "2b72e38c-ce29-8dbd-b443-615253a1faf4"
       ],
-      "lastModifiedDateTime": "2026-10-29T22:38:18.0001127Z"
+      "lastModifiedDateTime": "2026-11-06T14:43:27.209232Z"
     },
     "intendedState": {
       "settings": [
@@ -37,15 +37,15 @@
         }
       ],
       "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-device-config",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-config-u",
       "encodedSettingXml": null,
       "targetedMobileApps": [
-        "eb284b71-337b-803f-8a8c-64a9b74fac84"
+        "2b72e38c-ce29-8dbd-b443-615253a1faf4"
       ]
     },
     "postState": {
-      "id": "8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+      "id": "9cab291b-1f9a-82ca-b2b8-ec459e1c2134",
       "version": 3,
       "settings": [
         {
@@ -55,15 +55,15 @@
         }
       ],
       "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-229-device-config",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-config-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileAppConfigurations/$entity",
-      "createdDateTime": "2026-10-29T22:34:37.816749Z",
+      "createdDateTime": "2026-11-06T14:30:02.0504917Z",
       "encodedSettingXml": null,
       "targetedMobileApps": [
-        "eb284b71-337b-803f-8a8c-64a9b74fac84"
+        "2b72e38c-ce29-8dbd-b443-615253a1faf4"
       ],
-      "lastModifiedDateTime": "2026-10-29T22:45:17.2771766Z"
+      "lastModifiedDateTime": "2026-11-06T15:00:13.7726916Z"
     }
   }
 }

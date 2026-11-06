@@ -1,0 +1,39 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "androidForWorkEnrollmentProfile:2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+    "resourceType": "androidForWorkEnrollmentProfile",
+    "operation": "update",
+    "targetId": "2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:10.063Z",
+    "priorState": {
+      "id": "2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+      "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-android-for-work-enrollment-profile-u",
+      "createdDateTime": "2026-11-06T14:27:34.8359919Z",
+      "lastModifiedDateTime": "2026-11-06T14:43:11Z",
+      "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
+    },
+    "intendedState": {
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-android-for-work-enrollment-profile-u"
+    },
+    "postState": {
+      "id": "2223b1b9-f5f2-8d80-b7bb-90ee9dab6f46",
+      "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
+      "tokenValue": null,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-android-for-work-enrollment-profile-u",
+      "qrCodeImage": null,
+      "qrCodeContent": null,
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/androidForWorkEnrollmentProfiles/$entity",
+      "createdDateTime": "2026-11-06T14:27:34.8359919Z",
+      "enrolledDeviceCount": 0,
+      "lastModifiedDateTime": "2026-11-06T15:00:10Z",
+      "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
+    }
+  }
+}

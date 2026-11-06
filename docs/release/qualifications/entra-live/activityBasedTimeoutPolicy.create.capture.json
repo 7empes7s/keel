@@ -1,29 +1,29 @@
 {
-  "restoreRef": "5fc75ec8-4489-805d-8c5c-651f9d5fa896",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "activityBasedTimeoutPolicy:32489f18-a655-8678-bc93-13098c644081",
+    "naturalKey": "activityBasedTimeoutPolicy:d62f4115-88d9-8936-89d9-93399a696908",
     "resourceType": "activityBasedTimeoutPolicy",
     "operation": "create",
-    "targetId": "c3976133-856f-82de-a09e-e14f1268f73d",
+    "targetId": "869c5a4d-9bc5-8614-83ad-4a876628b6f2",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T13:59:21.615Z",
+    "recordedAt": "2026-11-06T14:49:13.713Z",
     "priorState": null,
     "intendedState": {
-      "id": "32489f18-a655-8678-bc93-13098c644081",
+      "id": "d62f4115-88d9-8936-89d9-93399a696908",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1025-idle",
+      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-c",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "c3976133-856f-82de-a09e-e14f1268f73d",
+      "id": "869c5a4d-9bc5-8614-83ad-4a876628b6f2",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1025-idle",
+      "displayName": "KEEL-RT-1031-activity-based-timeout-policy-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/activityBasedTimeoutPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

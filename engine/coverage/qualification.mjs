@@ -55,10 +55,15 @@ const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra }
 // incomplete configuration; recreated by hand from the backup until a
 // best-effort writer is registered (Wave 2).
 const incomplete = (reason) => manual(`incomplete configuration, backed up in full and recreated by hand from the backup until a best-effort writer is registered: ${reason}`);
+// Issue #148: a registered write that failed its live run. `reason` quotes the
+// committed demotion record verbatim (tools/qualification/entraLive.mjs checks
+// that), `failedAt` is the day it was decided and `fix` names what is being
+// changed. The write stays fixture-tested; the ledger row shows the failure.
+const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
 // Issue #148: a registered write that cannot be proven live on the test tenant
 // because of the tenant or the service, not a KEEL bug (the drift cannot be made,
-// or no write is ever planned). A liveFailures entry with no fix and no demotion
-// record: the write stays fixture-tested and the ledger row says why it is unproven.
+// or no write is ever planned). Same shape, with no fix and no demotion record:
+// the write stays fixture-tested and the ledger row says why it is unproven.
 const tenantLimit = (failedAt, reason) => Object.freeze({ failedAt, reason, fix: null });
 // Wave 2 ENTRA: the four token and sign-in routing policies share one writer.
 const STS_SUBSET = 'Wave 2 ENTRA subset: create and update of the name and definition (every definition entry must parse as JSON); a policy that was the organization default is recreated as an ordinary one and making it the default again is a follow-up step; which apps it is assigned to is set by hand; delete is not registered';
@@ -139,7 +144,11 @@ export const TYPE_DECISIONS = Object.freeze({
   tokenLifetimePolicy: automated('tokenlifetimepolicy', STS_SUBSET),
   featureRolloutPolicy: automated('featurerolloutpolicy', 'issue-994 subset: create and update of the name, description, feature and organization-wide flag, plus add-only groups found live by their natural key, only behind the break-glass lockout gate and once approved under the restore approval setting; a recreated rollout lands switched off and switching it on is a separate approved step; delete is not registered'),
   // Issue #1007: the series is recreated; its history never is.
-  accessReviewScheduleDefinition: automated('accessreviewscheduledefinition', 'issue #1007 subset: create of a missing series from the backup with its scope, reviewers, fallback reviewers, stages, who is told, settings and recurrence, behind the restore approval; every user, group and app its queries name is matched in the target by natural key, and one that cannot be (or a query naming anything else by id) holds the whole series as a manual step; a start date that has passed becomes the restore day (a step says so) and a series whose end date has passed is not recreated; an existing series with the same name and scope is never duplicated; update (Graph replaces the whole series) and delete are not registered; past reviews, decisions and history are never recreated (a manual step)'),
+  accessReviewScheduleDefinition: automated('accessreviewscheduledefinition', 'issue #1007 subset: create of a missing series from the backup with its scope, reviewers, fallback reviewers, stages, who is told, settings and recurrence, behind the restore approval; every user, group and app its queries name is matched in the target by natural key, and one that cannot be (or a query naming anything else by id) holds the whole series as a manual step; a start date that has passed becomes the restore day (a step says so) and a series whose end date has passed is not recreated; an existing series with the same name and scope is never duplicated; update (Graph replaces the whole series) and delete are not registered; past reviews, decisions and history are never recreated (a manual step)', {
+    liveFailures: {
+      create: failedLive('2026-11-06', 'POST /identityGovernance/accessReviews/definitions returned 400 "Tenant is not authorized for Custom Scoping Conditions Feature": the create body carries the backed-up instanceEnumerationScope and a scope query ending in /transitiveMembers/microsoft.graph.user, which the tenant has no licence for', 'leave out of the create body the scope parts Graph derives itself (instanceEnumerationScope, the type cast on the member query; #1033), then rerun the create step'),
+    },
+  }),
   // Issue #992: entitlement management, part 1.
   accessPackage: automated('accesspackage', 'create and update of the name, description and whether it is hidden, in its catalog (the restored or live catalog, matched by natural key); a create waits for its catalog and is refused when the catalog is in neither; delete is not registered; its policies and assignments are their own types'),
   // Issue #993: entitlement management, part 2.
@@ -159,7 +168,11 @@ export const TYPE_DECISIONS = Object.freeze({
   agreement: automated('agreement', 'issue #1007 subset: create of a missing agreement with its settings and every backed-up file (the PDFs are stored once per tenant and hash, named by hash in the backup, and never sent when the bytes do not match), and update of the display name and whether people must open it first; a language the live agreement lacks is added; a changed PDF for an existing language, settings Graph takes only on create, and a file the backup holds no bytes for are manual steps (no default file holds the create); every write is behind the restore approval; acceptances are never recreated (the step says everyone will be asked to accept again); Conditional Access policies that require the backed-up agreement are listed by name for a person to point at the recreated one, and Conditional Access is never written; delete is not registered'),
   appManagementPolicy: automated('appmanagementpolicy', 'Wave 2: create and update; the apps a policy applies to are a separate edge not yet collected'),
   tenantAppManagementPolicy: automated('tenantappmanagementpolicy', 'approval-held kinds: update in place of the default rules for app secrets and certificates; each change is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; a restriction that names trusted certificate authorities is a manual step (trust-field rule); tenant-wide, so the test tenant needs the tenant-wide option'),
-  multiTenantOrganization: automated('multitenantorganization', 'Wave 2: update of name and description; member tenants and their acceptance are never written'),
+  multiTenantOrganization: automated('multitenantorganization', 'Wave 2: update of name and description; member tenants and their acceptance are never written', {
+    liveFailures: {
+      update: failedLive('2026-11-06', 'PATCH /tenantRelationships/multiTenantOrganization returned 400 "Invalid value specified for property description": the backup has description null and Graph refuses null (and an empty string) for it', 'leave a null description out of the write (Graph cannot clear it) and report it as a step; #1034), then rerun the update step'),
+    },
+  }),
   b2xIdentityUserFlow: automated('b2xidentityuserflow', 'issue #995: create of a missing flow (its B2X_1_ name, kind and version) and update of its parts: identity providers the tenant has set up, attribute assignments in the backed-up order, languages turned on or off, and API connectors that exist live; each change is a "changes access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; a missing identity provider or API connector, custom page text and removals are manual steps, and a flow is never deleted'),
   identityApiConnector: automated('identityapiconnector', 'issue #1008 subset: create and update of the name and target URL, behind the restore approval; a create sends basic authentication with a random placeholder password nobody knows (never the backup\'s), so the connector cannot be used until a person sets its real password or certificate, which every write lists as a step; user flow links are not changed; delete is not registered'),
   // Read per parent object.

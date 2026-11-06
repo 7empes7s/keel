@@ -1,41 +1,35 @@
 {
-  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "groupPolicyConfiguration:3cc0e427-5048-8e3f-b185-c0de5cc01561",
+    "naturalKey": "groupPolicyConfiguration:090af08d-ae46-8baa-aed3-57620cbb9ffa",
     "resourceType": "groupPolicyConfiguration",
     "operation": "update",
-    "targetId": "3cc0e427-5048-8e3f-b185-c0de5cc01561",
+    "targetId": "090af08d-ae46-8baa-aed3-57620cbb9ffa",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:05:21.826Z",
+    "recordedAt": "2026-11-06T15:00:06.696Z",
     "priorState": {
-      "id": "3cc0e427-5048-8e3f-b185-c0de5cc01561",
-      "description": "KEEL-RT drifted",
-      "displayName": "KEEL-RT-236-admx",
-      "createdDateTime": "2026-10-30T00:55:04.8143821Z",
-      "roleScopeTagIds": [
-        "0"
-      ],
-      "lastModifiedDateTime": "2026-10-30T00:59:41.1036137Z",
+      "id": "090af08d-ae46-8baa-aed3-57620cbb9ffa",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-group-policy-configuration-u",
+      "createdDateTime": "2026-11-06T14:27:05.4331703Z",
+      "roleScopeTagIds": [],
+      "lastModifiedDateTime": "2026-11-06T14:49:18.0776832Z",
       "policyConfigurationIngestionType": "builtIn"
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-admx",
-      "roleScopeTagIds": [
-        "0"
-      ]
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-group-policy-configuration-u",
+      "roleScopeTagIds": []
     },
     "postState": {
-      "id": "3cc0e427-5048-8e3f-b185-c0de5cc01561",
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-admx",
+      "id": "090af08d-ae46-8baa-aed3-57620cbb9ffa",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-group-policy-configuration-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/groupPolicyConfigurations/$entity",
-      "createdDateTime": "2026-10-30T00:55:04.8143821Z",
-      "roleScopeTagIds": [
-        "0"
-      ],
-      "lastModifiedDateTime": "2026-10-30T01:05:21.8818208Z",
+      "createdDateTime": "2026-11-06T14:27:05.4331703Z",
+      "roleScopeTagIds": [],
+      "lastModifiedDateTime": "2026-11-06T14:49:18.0776832Z",
       "policyConfigurationIngestionType": "unknown"
     }
   }

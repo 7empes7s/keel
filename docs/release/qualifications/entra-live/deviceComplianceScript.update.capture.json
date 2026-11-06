@@ -1,28 +1,28 @@
 {
-  "restoreRef": "8279d845-a3e5-8e26-9469-87d67003be16",
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
   "entry": {
-    "naturalKey": "deviceComplianceScript:120feaf0-680e-8606-909b-6c4542f4ab46",
+    "naturalKey": "deviceComplianceScript:2953246b-3446-8789-a54a-2b18b52b34d3",
     "resourceType": "deviceComplianceScript",
     "operation": "update",
-    "targetId": "120feaf0-680e-8606-909b-6c4542f4ab46",
+    "targetId": "2953246b-3446-8789-a54a-2b18b52b34d3",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-30T01:05:21.692Z",
+    "recordedAt": "2026-11-06T15:00:11.633Z",
     "priorState": {
-      "id": "120feaf0-680e-8606-909b-6c4542f4ab46",
+      "id": "2953246b-3446-8789-a54a-2b18b52b34d3",
       "version": "1",
       "platform": "windows10",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT drifted",
-      "displayName": "KEEL-RT-236-compliance-script",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-device-compliance-script-u",
       "runAsAccount": "system",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceComplianceScripts/$entity",
-      "createdDateTime": "2026-10-30T00:55:03.9708326Z",
+      "createdDateTime": "2026-11-06T14:27:03.4837156Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-10-30T00:59:26.5799939Z",
+      "lastModifiedDateTime": "2026-11-06T14:42:39.5137842Z",
       "enforceSignatureCheck": false,
       "detectionScriptContent": "cmV0dXJuIEB7fQ=="
     },
@@ -31,8 +31,8 @@
       "platform": "windows10",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-compliance-script",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-compliance-script-u",
       "runAsAccount": "system",
       "roleScopeTagIds": [
         "0"
@@ -41,20 +41,20 @@
       "detectionScriptContent": "cmV0dXJuIEB7fQ=="
     },
     "postState": {
-      "id": "120feaf0-680e-8606-909b-6c4542f4ab46",
+      "id": "2953246b-3446-8789-a54a-2b18b52b34d3",
       "version": "1",
       "platform": "windows10",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-236-compliance-script",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-device-compliance-script-u",
       "runAsAccount": "system",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceComplianceScripts/$entity",
-      "createdDateTime": "2026-10-30T00:55:03.9708326Z",
+      "createdDateTime": "2026-11-06T14:27:03.4837156Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-10-30T01:05:21.7974856Z",
+      "lastModifiedDateTime": "2026-11-06T15:00:11.7417827Z",
       "enforceSignatureCheck": false,
       "detectionScriptContent": "cmV0dXJuIEB7fQ=="
     }

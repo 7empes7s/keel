@@ -1,212 +1,56 @@
 {
-  "restoreRef": "e836c92c-5798-86f9-8dfe-2aca83983558",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
   "entry": {
-    "naturalKey": "groupSetting:Group.Unified",
+    "naturalKey": "groupSetting:Consent Policy Settings",
     "resourceType": "groupSetting",
     "operation": "update",
-    "targetId": "794e13e2-7d4e-86fc-a647-1eadd83b534a",
+    "targetId": "58aa7d09-f6dd-8bd8-8bfe-e959a9903af9",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T23:05:27.211Z",
+    "recordedAt": "2026-11-06T15:38:27.677Z",
     "priorState": {
-      "id": "794e13e2-7d4e-86fc-a647-1eadd83b534a",
+      "id": "58aa7d09-f6dd-8bd8-8bfe-e959a9903af9",
       "values": [
         {
-          "name": "NewUnifiedGroupWritebackDefault",
+          "name": "BlockUserConsentForRiskyApps",
+          "value": "false"
+        },
+        {
+          "name": "EnableAdminConsentRequests",
           "value": "true"
-        },
-        {
-          "name": "EnableMIPLabels",
-          "value": "false"
-        },
-        {
-          "name": "CustomBlockedWordsList",
-          "value": ""
-        },
-        {
-          "name": "EnableMSStandardBlockedWords",
-          "value": "false"
-        },
-        {
-          "name": "ClassificationDescriptions",
-          "value": ""
-        },
-        {
-          "name": "DefaultClassification",
-          "value": ""
-        },
-        {
-          "name": "PrefixSuffixNamingRequirement",
-          "value": ""
-        },
-        {
-          "name": "AllowGuestsToBeGroupOwner",
-          "value": "false"
-        },
-        {
-          "name": "AllowGuestsToAccessGroups",
-          "value": "true"
-        },
-        {
-          "name": "GuestUsageGuidelinesUrl",
-          "value": ""
-        },
-        {
-          "name": "GroupCreationAllowedGroupId",
-          "value": ""
-        },
-        {
-          "name": "AllowToAddGuests",
-          "value": "true"
-        },
-        {
-          "name": "UsageGuidelinesUrl",
-          "value": ""
-        },
-        {
-          "name": "ClassificationList",
-          "value": ""
-        },
-        {
-          "name": "EnableGroupCreation",
-          "value": "false"
         }
       ],
-      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
-      "displayName": "Group.Unified"
+      "templateId": "8510d01d-cfb4-87da-abf4-3d95e1c31ebd",
+      "displayName": "Consent Policy Settings"
     },
     "intendedState": {
-      "id": "794e13e2-7d4e-86fc-a647-1eadd83b534a",
+      "id": "58aa7d09-f6dd-8bd8-8bfe-e959a9903af9",
       "values": [
         {
-          "name": "NewUnifiedGroupWritebackDefault",
+          "name": "BlockUserConsentForRiskyApps",
           "value": "true"
         },
         {
-          "name": "EnableMIPLabels",
-          "value": "false"
-        },
-        {
-          "name": "CustomBlockedWordsList",
-          "value": ""
-        },
-        {
-          "name": "EnableMSStandardBlockedWords",
-          "value": "false"
-        },
-        {
-          "name": "ClassificationDescriptions",
-          "value": ""
-        },
-        {
-          "name": "DefaultClassification",
-          "value": ""
-        },
-        {
-          "name": "PrefixSuffixNamingRequirement",
-          "value": ""
-        },
-        {
-          "name": "AllowGuestsToBeGroupOwner",
-          "value": "false"
-        },
-        {
-          "name": "AllowGuestsToAccessGroups",
-          "value": "true"
-        },
-        {
-          "name": "GuestUsageGuidelinesUrl",
-          "value": ""
-        },
-        {
-          "name": "GroupCreationAllowedGroupId",
-          "value": ""
-        },
-        {
-          "name": "AllowToAddGuests",
-          "value": "true"
-        },
-        {
-          "name": "UsageGuidelinesUrl",
-          "value": ""
-        },
-        {
-          "name": "ClassificationList",
-          "value": ""
-        },
-        {
-          "name": "EnableGroupCreation",
+          "name": "EnableAdminConsentRequests",
           "value": "true"
         }
       ],
-      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
-      "displayName": "Group.Unified"
+      "templateId": "8510d01d-cfb4-87da-abf4-3d95e1c31ebd",
+      "displayName": "Consent Policy Settings"
     },
     "postState": {
       "values": [
         {
-          "name": "NewUnifiedGroupWritebackDefault",
+          "name": "BlockUserConsentForRiskyApps",
           "value": "true"
         },
         {
-          "name": "EnableMIPLabels",
-          "value": "false"
-        },
-        {
-          "name": "CustomBlockedWordsList",
-          "value": ""
-        },
-        {
-          "name": "EnableMSStandardBlockedWords",
-          "value": "false"
-        },
-        {
-          "name": "ClassificationDescriptions",
-          "value": ""
-        },
-        {
-          "name": "DefaultClassification",
-          "value": ""
-        },
-        {
-          "name": "PrefixSuffixNamingRequirement",
-          "value": ""
-        },
-        {
-          "name": "AllowGuestsToBeGroupOwner",
-          "value": "false"
-        },
-        {
-          "name": "AllowGuestsToAccessGroups",
-          "value": "true"
-        },
-        {
-          "name": "GuestUsageGuidelinesUrl",
-          "value": ""
-        },
-        {
-          "name": "GroupCreationAllowedGroupId",
-          "value": ""
-        },
-        {
-          "name": "AllowToAddGuests",
-          "value": "true"
-        },
-        {
-          "name": "UsageGuidelinesUrl",
-          "value": ""
-        },
-        {
-          "name": "ClassificationList",
-          "value": ""
-        },
-        {
-          "name": "EnableGroupCreation",
+          "name": "EnableAdminConsentRequests",
           "value": "true"
         }
       ],
-      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
-      "displayName": "Group.Unified"
+      "templateId": "8510d01d-cfb4-87da-abf4-3d95e1c31ebd",
+      "displayName": "Consent Policy Settings"
     }
   }
 }

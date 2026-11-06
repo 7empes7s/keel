@@ -1,0 +1,43 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "accessPackage:5febc209-178d-8300-a4d0-00f2774b473d",
+    "resourceType": "accessPackage",
+    "operation": "create",
+    "targetId": "c3546599-8c65-8b06-b0de-bae430e9c0b4",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:00:11.267Z",
+    "priorState": null,
+    "intendedState": {
+      "catalog": {
+        "id": "63f0bf51-16ee-805e-b4f5-cfe6ef5eae02"
+      },
+      "isHidden": true,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-package-c"
+    },
+    "postState": {
+      "id": "c3546599-8c65-8b06-b0de-bae430e9c0b4",
+      "catalog": {
+        "id": "63f0bf51-16ee-805e-b4f5-cfe6ef5eae02",
+        "state": "published",
+        "uniqueName": null,
+        "catalogType": "userManaged",
+        "description": "KEEL-RT test fixture (#1031)",
+        "displayName": "KEEL-RT-1031-access-package-catalog-u",
+        "createdDateTime": "2026-11-06T14:28:01.837Z",
+        "modifiedDateTime": "2026-11-06T14:49:13.707Z",
+        "isExternallyVisible": false,
+        "serviceManagementReference": null
+      },
+      "isHidden": true,
+      "uniqueName": null,
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-package-c",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/accessPackages(catalog())/$entity",
+      "createdDateTime": "2026-11-06T15:00:11.293Z",
+      "modifiedDateTime": "2026-11-06T15:00:11.293Z"
+    }
+  }
+}

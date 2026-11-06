@@ -1,0 +1,23 @@
+{
+  "restoreRef": "8f64bf7c-ad03-8df3-8c49-6e0321006a1c",
+  "entry": {
+    "naturalKey": "pronounsSettings:pronounsSettings",
+    "resourceType": "pronounsSettings",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-06T15:34:38.981Z",
+    "priorState": {
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/people/pronouns/$entity",
+      "isEnabledInOrganization": true
+    },
+    "intendedState": {
+      "isEnabledInOrganization": false
+    },
+    "postState": {
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/people/pronouns/$entity",
+      "isEnabledInOrganization": false
+    }
+  }
+}

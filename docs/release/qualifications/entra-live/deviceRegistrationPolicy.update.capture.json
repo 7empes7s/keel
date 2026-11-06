@@ -1,5 +1,5 @@
 {
-  "restoreRef": "cf848eed-5e8a-8f95-b522-d58b16bc50bc",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
   "entry": {
     "naturalKey": "deviceRegistrationPolicy:deviceRegistrationPolicy",
     "resourceType": "deviceRegistrationPolicy",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-04T04:13:31.846Z",
+    "recordedAt": "2026-11-06T15:38:27.674Z",
     "priorState": {
       "id": "deviceRegistrationPolicy",
       "azureADJoin": {

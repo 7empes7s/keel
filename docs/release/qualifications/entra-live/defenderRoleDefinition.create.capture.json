@@ -1,17 +1,17 @@
 {
-  "restoreRef": "5fc75ec8-4489-805d-8c5c-651f9d5fa896",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "defenderRoleDefinition:d71734e6-01c2-86bb-bce0-f8c491192919",
+    "naturalKey": "defenderRoleDefinition:afe7dfa3-027d-876f-b993-afe962f3d433",
     "resourceType": "defenderRoleDefinition",
     "operation": "create",
-    "targetId": "8f3aa785-1b46-8d4b-bb9c-e4b38d352ee0",
+    "targetId": "728ded2c-907a-8fa3-a830-6b8aaf633a22",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T13:59:22.473Z",
+    "recordedAt": "2026-11-06T14:49:15.040Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL live gate 1025 fixture, read only",
-      "displayName": "KEEL-RT-1025-defender-role",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-defender-role-definition-c",
       "rolePermissions": [
         {
           "allowedResourceActions": [
@@ -21,9 +21,9 @@
       ]
     },
     "postState": {
-      "id": "8f3aa785-1b46-8d4b-bb9c-e4b38d352ee0",
-      "description": "KEEL live gate 1025 fixture, read only",
-      "displayName": "KEEL-RT-1025-defender-role",
+      "id": "728ded2c-907a-8fa3-a830-6b8aaf633a22",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-defender-role-definition-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleDefinitions/$entity",
       "rolePermissions": [
         {

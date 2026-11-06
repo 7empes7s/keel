@@ -1,0 +1,77 @@
+{
+  "restoreRef": "0af025c6-4478-8970-8180-219e897733e5",
+  "entry": {
+    "naturalKey": "accessReviewScheduleDefinition:KEEL-RT-1031-review-c",
+    "resourceType": "accessReviewScheduleDefinition",
+    "operation": "create",
+    "targetId": null,
+    "outcome": "failed",
+    "outcomeDetail": "status 403",
+    "recordedAt": "2026-11-06T15:00:28.315Z",
+    "priorState": null,
+    "intendedState": {
+      "scope": {
+        "query": "/v1.0/groups/0d3e5fca-8d48-84d7-a899-7513ba50c9f6/transitiveMembers/microsoft.graph.user",
+        "queryRoot": null,
+        "queryType": "MicrosoftGraph",
+        "@odata.type": "#microsoft.graph.accessReviewQueryScope"
+      },
+      "settings": {
+        "recurrence": {
+          "range": {
+            "type": "noEnd",
+            "endDate": "9999-12-31",
+            "startDate": "2026-11-07",
+            "recurrenceTimeZone": null,
+            "numberOfOccurrences": 0
+          },
+          "pattern": {
+            "type": "weekly",
+            "index": "first",
+            "month": 0,
+            "interval": 1,
+            "dayOfMonth": 0,
+            "daysOfWeek": [],
+            "firstDayOfWeek": "sunday"
+          }
+        },
+        "applyActions": [
+          {
+            "@odata.type": "#microsoft.graph.removeAccessApplyAction"
+          }
+        ],
+        "defaultDecision": "None",
+        "defaultDecisionEnabled": false,
+        "instanceDurationInDays": 3,
+        "recommendationsEnabled": false,
+        "mailNotificationsEnabled": false,
+        "autoApplyDecisionsEnabled": false,
+        "reminderNotificationsEnabled": false,
+        "recommendationInsightSettings": [],
+        "recommendationLookBackDuration": null,
+        "justificationRequiredOnApproval": false,
+        "decisionHistoriesForReviewersEnabled": false
+      },
+      "reviewers": [
+        {
+          "query": "/v1.0/users/a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+          "queryRoot": null,
+          "queryType": "MicrosoftGraph"
+        }
+      ],
+      "displayName": "KEEL-RT-1031-review-c",
+      "stageSettings": [],
+      "fallbackReviewers": [],
+      "descriptionForAdmins": "KEEL-RT test fixture (#1031)",
+      "descriptionForReviewers": "KEEL-RT test fixture (#1031)",
+      "instanceEnumerationScope": {
+        "query": "/v1.0/groups/0d3e5fca-8d48-84d7-a899-7513ba50c9f6",
+        "queryRoot": null,
+        "queryType": "MicrosoftGraph",
+        "@odata.type": "#microsoft.graph.accessReviewQueryScope"
+      },
+      "additionalNotificationRecipients": []
+    },
+    "postState": null
+  }
+}

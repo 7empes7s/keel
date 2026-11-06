@@ -1,5 +1,5 @@
 {
-  "restoreRef": "c137ce4d-a5bd-8484-9261-c16106820d67",
+  "restoreRef": "564a262b-0dda-8a1b-a4d4-b1a3cd441261",
   "entry": {
     "naturalKey": "tenantAppManagementPolicy:tenantAppManagementPolicy",
     "resourceType": "tenantAppManagementPolicy",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T13:55:12.149Z",
+    "recordedAt": "2026-11-06T15:38:27.678Z",
     "priorState": {
       "id": "a9898e7c-cb8e-8c97-8d6e-3a6540d66839",
       "isEnabled": false,

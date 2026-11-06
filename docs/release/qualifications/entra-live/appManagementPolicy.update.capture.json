@@ -1,24 +1,24 @@
 {
-  "restoreRef": "00f25c72-0eac-8890-a877-0218b8fd7623",
+  "restoreRef": "fa5ccb9c-a690-84cc-9ebd-c0674fdfa81e",
   "entry": {
-    "naturalKey": "appManagementPolicy:244e4d11-2b4a-8679-82c8-4cf4cace708f",
+    "naturalKey": "appManagementPolicy:5777c0f2-c0b0-8064-80ce-85d025d02e46",
     "resourceType": "appManagementPolicy",
     "operation": "update",
-    "targetId": "244e4d11-2b4a-8679-82c8-4cf4cace708f",
+    "targetId": "5777c0f2-c0b0-8064-80ce-85d025d02e46",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-29T22:15:53.041Z",
+    "recordedAt": "2026-11-06T14:49:13.830Z",
     "priorState": {
-      "id": "244e4d11-2b4a-8679-82c8-4cf4cace708f",
+      "id": "5777c0f2-c0b0-8064-80ce-85d025d02e46",
       "isEnabled": true,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-228-credpolicy",
+      "description": "KEEL-RT test fixture (#1031) drifted",
+      "displayName": "KEEL-RT-1031-app-management-policy-u",
       "restrictions": {
         "keyCredentials": [],
         "passwordCredentials": [
           {
             "state": "enabled",
-            "maxLifetime": "P180D",
+            "maxLifetime": "P90D",
             "excludeActors": null,
             "restrictionType": "passwordLifetime",
             "restrictForAppsCreatedAfterDateTime": "2026-01-01T00:00:00Z"
@@ -32,8 +32,8 @@
     },
     "intendedState": {
       "isEnabled": true,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-228-credpolicy",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-app-management-policy-u",
       "restrictions": {
         "keyCredentials": [],
         "passwordCredentials": [
@@ -51,10 +51,10 @@
       }
     },
     "postState": {
-      "id": "244e4d11-2b4a-8679-82c8-4cf4cace708f",
+      "id": "5777c0f2-c0b0-8064-80ce-85d025d02e46",
       "isEnabled": true,
-      "description": "KEEL-RT test fixture",
-      "displayName": "KEEL-RT-228-credpolicy",
+      "description": "KEEL-RT test fixture (#1031)",
+      "displayName": "KEEL-RT-1031-app-management-policy-u",
       "restrictions": {
         "keyCredentials": [],
         "passwordCredentials": [

@@ -1135,8 +1135,20 @@ console.log('keel-restore.test.mjs — all assertions passed');
   // Kinds that can point at other objects are never marked.
   const { CATALOG } = await import('../tools/tenant-probe/catalog.mjs');
   const marked = CATALOG.filter((entry) => entry.holdsNoReferences === true).map((entry) => entry.type).sort();
-  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'todoSettings']);
-  assert.ok(CATALOG.filter((entry) => entry.holdsNoReferences === true).every((entry) => entry.singleton === true), 'only one-per-tenant settings');
+  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'defenderIdentitySensor', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'todoSettings']);
+  assert.ok(CATALOG.filter((entry) => entry.holdsNoReferences === true && entry.type !== 'defenderIdentitySensor').every((entry) => entry.singleton === true), 'only one-per-tenant settings, and the sensors');
+}
+
+// Issue #1035: on a tenant not onboarded to Defender for Identity the sensors read
+// answers 403, and that blocked every Entra and Intune delete (live dry run 6f07e792).
+// A sensor holds server and DNS names, never another object's id, so it blocks none.
+{
+  const planned = ['group', 'servicePrincipal', 'configurationPolicy', 'deviceCompliancePolicy', 'deviceConfiguration', 'groupSetting',
+    'managedAppPolicy', 'mobileAppConfiguration', 'targetedManagedAppConfiguration', 'windowsFeatureUpdateProfile']
+    .map((type) => ({ naturalKey: `${type}:KEEL-RT-1035`, resourceType: type, verb: 'delete' }));
+  assert.deepEqual(incompleteReadDeleteRefusals(['defenderIdentitySensor'], planned), [], 'an unread sensor list blocks no delete');
+  const mixed = incompleteReadDeleteRefusals(['defenderIdentitySensor', 'vppToken'], planned.slice(0, 1));
+  assert.match(mixed[0].reason, /, but vppToken could not be read$/, 'a kind that could hold a reference still blocks, and is the only one named');
 }
 
 // Q220: an unread PIM for Groups resource (Collector 403) blocked the undo

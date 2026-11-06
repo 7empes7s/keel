@@ -5729,7 +5729,11 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
 
   // Cycle to "Protected": calm, no amber action, no attention rows.
   // The harness controls are hidden in CI mode, so press the button from the page.
-  const cycle = () => page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".preview-bar button")].find((item) => item.textContent === "Cycle posture")!.click());
+  const cycle = () => page.evaluate(() => {
+    const toggle = document.querySelector<HTMLButtonElement>(".preview-toggle")!;
+    if (toggle.getAttribute("aria-expanded") !== "true") toggle.click();
+    [...document.querySelectorAll<HTMLButtonElement>(".preview-menu button")].find((item) => item.textContent === "Cycle posture")!.click();
+  });
   await cycle();
   await expect(page.locator(".page-header .status-pill")).toHaveText("Needs attention");
   await cycle();

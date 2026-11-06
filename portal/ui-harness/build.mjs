@@ -44,7 +44,12 @@ const fonts = [
 
 const css = readFileSync(join(root, "app/globals.css"), "utf8");
 const harnessCss = `
-.preview-bar{position:fixed;z-index:60;bottom:calc(12px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;padding:4px 4px 4px 10px;border:1px solid var(--line);background:color-mix(in oklab,var(--surface) 92%,transparent);backdrop-filter:blur(6px);font-family:var(--font-mono);font-size:.6875rem;color:var(--text-muted)}
+.preview-bar{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right, 0px));bottom:calc(12px + env(safe-area-inset-bottom, 0px));display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.preview-menu{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:6px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow-overlay)}
+.preview-menu[hidden]{display:none}
+.preview-toggle{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:2.75rem;min-height:2.75rem;padding:0 14px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface-raised);color:var(--text);box-shadow:var(--shadow-raised);font-family:var(--font-mono);font-size:.75rem;cursor:pointer}
+.preview-toggle .icon{width:1.125rem;height:1.125rem}
+@media (max-width:61.99rem){.preview-bar{bottom:calc(3.5rem + 13px + env(safe-area-inset-bottom, 0px))}.preview-toggle{width:2.75rem;padding:0}.preview-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
 html[data-harness-ci] .preview-bar{display:none}`;
 
 const body = `<title>KEEL Portal Preview</title>

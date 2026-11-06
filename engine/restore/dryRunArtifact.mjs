@@ -365,15 +365,12 @@ export function validateArtifactForApproval(artifact) {
 export function validateArtifactForExecution(artifact, { digest, currentStateFingerprint, plannedVerbs }) {
   const approval = validateArtifactForApproval(artifact);
   if (!approval.ok) return approval;
-  if (artifact.digest !== digest) {
-    return { ok: false, reason: 'the recomputed restore plan no longer matches the dry-run artifact — a new dry run is required' };
-  }
-  if (artifact.currentStateFingerprint !== currentStateFingerprint) {
-    return { ok: false, reason: 'the target has changed since the dry run — a new dry run is required' };
-  }
   // Issue #683: a caller that plans per resource passes its fresh verbs. A write
   // the approved plan did not list (Q219: Viva Engage copied a community's
   // description onto its group after the dry run) is refused, never sent.
+  // Issue #1036: checked before the digest, which a new write always changes (its
+  // recovery mechanism is folded in), so the refusal names the changed target
+  // (a SharePoint setting the dry run read stale) instead of a plan mismatch.
   if (plannedVerbs !== undefined) {
     const unplanned = unplannedWrites(artifact.plannedVerbs, plannedVerbs);
     if (unplanned.length > 0) {
@@ -383,6 +380,12 @@ export function validateArtifactForExecution(artifact, { digest, currentStateFin
         : 'the target changed since the dry run, so this run would write what the approved plan did not list';
       return { ok: false, reason: `${why}: ${listed} — a new dry run and approval are required`, unplanned };
     }
+  }
+  if (artifact.digest !== digest) {
+    return { ok: false, reason: 'the recomputed restore plan no longer matches the dry-run artifact — a new dry run is required' };
+  }
+  if (artifact.currentStateFingerprint !== currentStateFingerprint) {
+    return { ok: false, reason: 'the target has changed since the dry run — a new dry run is required' };
   }
   return { ok: true };
 }

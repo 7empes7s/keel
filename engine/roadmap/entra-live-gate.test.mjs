@@ -596,12 +596,7 @@ test('a delegated consent grant is checked by its client app and user, not a rol
 test('an access package resource role is checked by its package, its group and the group\'s Member role (#1060)', async () => {
   const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'accessPackageResourceRoleScope:create');
   assert.equal(guidanceFor('accessPackageResourceRoleScope').kind, 'by-reference');
-  // As the collector reads it (accessPackages/{id}?$expand=resourceRoleScopes($expand=role,scope))
-  // and canonicalize stores it: keyed by its id, with typed package and group symbols and
-  // unresolvable child ids. No principal or directory role anywhere.
-  const scopeId = '33333333-4444-4555-8666-777777777777';
-  const groupId = '11111111-2222-4333-8444-555555555555';
-  const packageId = '22222222-3333-4444-8555-666666666666';
+  const [scopeId, groupId, packageId] = ['33333333-4444-4555-8666-777777777777', '11111111-2222-4333-8444-555555555555', '22222222-3333-4444-8555-666666666666'];
   const own = `accessPackageResourceRoleScope:${scopeId}`;
   const snapshot = ({ packageName = 'KEEL-RT-992-package', groupName = 'KEEL-RT-group', roleOrigin = `Member_${groupId}`, system = 'AadGroup' } = {}) => ({
     naturalKey: own,
@@ -616,10 +611,8 @@ test('an access package resource role is checked by its package, its group and t
       { id: 'v-group', natural_key: 'group:keelrtgroup', payload: { id: groupId, displayName: groupName, mailNickname: 'keelrtgroup' } },
     ],
     references: [
-      { from_version: 'v-own', field_path: 'role.id', to_symbol: null },
-      { from_version: 'v-own', field_path: 'scope.id', to_symbol: null },
-      { from_version: 'v-own', field_path: 'scope.originId', to_symbol: 'group:keelrtgroup' },
-      { from_version: 'v-own', field_path: 'accessPackageId', to_symbol: `accessPackage:${packageId}` },
+      { from_version: 'v-own', field_path: 'role.id', to_symbol: null }, { from_version: 'v-own', field_path: 'scope.id', to_symbol: null },
+      { from_version: 'v-own', field_path: 'scope.originId', to_symbol: 'group:keelrtgroup' }, { from_version: 'v-own', field_path: 'accessPackageId', to_symbol: `accessPackage:${packageId}` },
     ],
   });
   assert.deepEqual(byReferenceProblems(snapshot()), []);
@@ -630,12 +623,10 @@ test('an access package resource role is checked by its package, its group and t
   const noGroup = snapshot();
   noGroup.references = noGroup.references.filter((ref) => ref.field_path !== 'scope.originId');
   assert.deepEqual(byReferenceProblems(noGroup), ['no group reference']);
-
   // Through the capture: the restore's snapshot holds the role scope, its package and its group.
   const restore = fixtureRestore(step, { naturalKey: own });
   const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
-  journal[0].targetId = scopeId;
-  journal[0].priorState = null;
+  Object.assign(journal[0], { targetId: scopeId, priorState: null });
   const run = (options = {}, allowByReference = true) => captureLive({
     client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: own,
     targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, allowByReference, testTenantRefs: TEST_REFS,

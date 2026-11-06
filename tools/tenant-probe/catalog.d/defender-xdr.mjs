@@ -13,7 +13,10 @@ export default [
   // Defender for Identity sensors: which domain controllers, AD FS, AD CS and Entra
   // Connect servers are watched, and each sensor's settings (description, the DNS
   // names it covers, delayed update).
-  { type: 'defenderIdentitySensor', path: '/security/identities/sensors', version: 'v1.0',
+  // `holdsNoReferences`: a sensor holds server and DNS names, never the id of another
+  // tenant object, so a tenant not onboarded to Defender for Identity (403) blocks no
+  // restore delete (issue #1035, cli/keel-restore.mjs incompleteReadDeleteRefusals).
+  { type: 'defenderIdentitySensor', path: '/security/identities/sensors', version: 'v1.0', holdsNoReferences: true,
     criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'A sensor removed or set to delayed update leaves a server unwatched for identity attacks.' },
   // Secure Score improvement actions and the state an admin set on each: marked as

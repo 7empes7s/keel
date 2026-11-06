@@ -137,15 +137,17 @@ Change these scripts in the repo from now on, never in `/opt/keel-deploy`.
 
 The release sign-off (task-124, #985) is generated: `node tools/release/readiness.mjs signoff --build <candidate>`.
 The full pending list, by objective, is `docs/roadmap/PENDING.md`; the live batches are #1025, #1026 and #1027.
-On 2026-11-06, for the master head `01d7b3a84e` (run in the repo without the key), it says **pending**:
+On 2026-11-06 (#1027, on Mulinux with the key), at the live build `90fdca849c` it says **pending**: 44 gates are from
+another build, 3 are stale and 1 has no record. The one-build rule can't be met while every merge deploys a new build
+(#1044). At `f1521256`, the batch build, 39 gates verify:
 
-- 48 gates hold readiness: 21 have a record from another build, 5 are stale (deployed acceptance, 30 days
-  against its 7-day limit; ScubaGear, 40 days; storage, ServiceNow and NIST at the 30-day limit) and 22 have
-  no record (19 Wave 2 read workloads, the onedrive-site-settings writer, the Exchange role and Purview
-  unpublish writers). Sentinel (117) is an accepted gap.
+- Held there: deployed acceptance (needs an operator `cloudflared access login`), ServiceNow (the dev instance
+  refuses the stored admin login, 401), storage and the drill (host recovery-set work for the operator), native
+  recovery (restore 404 from replication lag, #1045), the site grant, site permission and distribution-list writers
+  (hand prep first), and the Defender indicators read (403, `Ti.Read.All`). Sentinel (117) is an accepted gap.
 - Entra (#148): 223 registered writes. Batch 1b (#1031, 2026-11-06) captured 116 at the live build `f1521256`:
   114 proven (batch 1's 12 among them, `tenantAppManagementPolicy.update` no longer demoted) and 2 demoted
-  (`accessReviewScheduleDefinition.create` #1033, `multiTenantOrganization.update` #1034). 37 have a record from
+  (`accessReviewScheduleDefinition.create` #1033, fixed by #1039; `multiTenantOrganization.update` #1034, fixed by #1040). 37 have a record from
   another build and 70 have none, mostly lockout-sensitive, missing Restorer permissions, or blocked by #1035
   (deletes), #1036 and #1037. Left on the test tenant: the MTO description `KEEL-RT drift (#1031)` (Graph can't
   clear it) and one KEEL-RT-1031 administrative unit in deleted items (app-only purge 404; ages out in 30 days).

@@ -200,14 +200,7 @@ function isoDurationDays(value) {
   return y * 365 + mo * 30 + w * 7 + d + h / 24 + mi / 1440 + sec / 86400;
 }
 const hasValue = (value) => value !== null && value !== undefined && value !== '';
-// Issue #1037: a wait (ISO duration) that is new, shorter, or unreadable.
-const durationShortens = (before, after) => {
-  if (!hasValue(after)) return false;
-  const a = isoDurationDays(after);
-  const b = isoDurationDays(before);
-  return a === null || b === null || a < b;
-};
-const EXTERNAL_USER_LIFECYCLE = ['none', 'blockSignIn', 'blockSignInAndDelete'];
+const durationShortens = (before, after) => hasValue(after) && (isoDurationDays(after) ?? -1) < (isoDurationDays(before) ?? Infinity);
 // The offline period after which the app's work data is wiped. Zero or absent
 // means no wipe. Introducing one, or shortening it, wipes data sooner. An
 // unreadable period is treated as shorter: the safe direction.
@@ -666,16 +659,9 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('managedGroupTypes', 'retention-reducing', widensGroupExpiry),
     rule('alternateNotificationEmails', 'retention-reducing', dropsNoticeAddress),
   ] },
-  // Issue #1037: entitlement management blocks, then deletes, a guest who loses
-  // their last access package. An action further along (none < blockSignIn <
-  // blockSignInAndDelete) or a shorter wait before deletion acts on more guest
-  // accounts, sooner. A wait that cannot be read is treated as shorter.
-  entitlementManagementSettings: { reviewed: true, rules: [
-    rule('externalUserLifecycleAction', 'acts-on-accounts', widens(EXTERNAL_USER_LIFECYCLE)),
-    rule('durationUntilExternalUserDeletedAfterBlocked', 'acts-on-accounts', durationShortens),
-  ] },
-  // Issue #1037: when a Tunnel server is reported healthy or unhealthy. Status
-  // only; the field name matched "hold" through "threshold".
+  // Issue #1037: deleting guests at all, or after a new, shorter or unreadable wait, acts on accounts; Tunnel health limits are status only.
+  entitlementManagementSettings: { reviewed: true, rules: [rule('externalUserLifecycleAction', 'acts-on-accounts', widens(['none', 'blockSignIn', 'blockSignInAndDelete'])),
+    rule('durationUntilExternalUserDeletedAfterBlocked', 'acts-on-accounts', durationShortens)] },
   microsoftTunnelHealthThreshold: { reviewed: true, rules: [] },
   configurationPolicy: { reviewed: true, judgesCreates: true, rules: [
     rule(`settings[${CATALOG_WIPE_THRESHOLD}]`, 'irreversible', wipeThresholdTightens, catalogSetting(CATALOG_WIPE_THRESHOLD)),

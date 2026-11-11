@@ -47,6 +47,7 @@ import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import { APPROVAL_HELD_FIELDS, PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects, withoutMicrosoftSet } from '../safety/contentEffects.mjs';
 import { createdOnce, permanentWriteRefusal, sameIdLists, undoOnlyDelete, withApprovalGate } from './approvalHeld.mjs';
 import { USER_FLOW_RECORDS } from './userFlowOperations.mjs';
+import { SERVICE_SETTING_RECORDS } from './serviceSettingsOperations.mjs';
 import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from './accessPackageOperations.mjs';
 import { ASSIGNMENT_POLICY_RECORD, CONNECTED_ORGANIZATION_RECORD, entitlementPolicyDispatch } from './entitlementPolicyOperations.mjs';
 import { ASSIGNMENT_RECORD, CATALOG_RESOURCE_RECORD, ROLE_ASSIGNMENT_RECORD, entitlementGrantDispatch } from './entitlementGrantOperations.mjs';
@@ -1067,6 +1068,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Issue #995: guest sign-up user flows (behind the restore approval) and their
   // custom attributes (restore/userFlowOperations.mjs).
   ...USER_FLOW_RECORDS,
+  // Issue #1074: Defender and Microsoft 365 settings (restore/serviceSettingsOperations.mjs).
+  ...SERVICE_SETTING_RECORDS,
 });
 
 /** Types read in wave 1 that no record here can write in full, and why. */

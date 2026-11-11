@@ -72,7 +72,7 @@ test('a refused read names the permission the probe found missing, and the setup
 // Restore gaps batch 20 added an update-in-place writer for these, and issue #1075 one for
 // profile card fields; the rest are still restored by hand.
 const WRITTEN = new Set(['formsSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings', 'adminReportSettings',
-  'pronounsSettings', 'engageCommunity', 'profileCardProperty']);
+  'pronounsSettings', 'engageCommunity', 'todoSettings', 'defenderDetectionRule', 'profileCardProperty']);
 
 test('each type is restored as planned (written in place, or by hand), named, placed in its service group, and keyed', () => {
   for (const [type] of EXPECTED) {

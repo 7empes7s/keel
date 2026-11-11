@@ -135,6 +135,8 @@ test('the policy family ledger lists every policy type; the remainder stays rese
       'authenticationContextClassReference', 'featureRolloutPolicy',
       // Issue #1015 (crossTenantSyncOperations.mjs, tested in permanent-writes.test.mjs).
       'crossTenantIdentitySyncPolicyPartner',
+      // Issue #1074 (serviceSettingsOperations.mjs, tested in serviceSettingsOperations.test.mjs).
+      'defenderDetectionRule',
       // Issue #1073 (attackSimulationOperations.mjs, tested in its own test file).
       'attackSimulation',
       // Issue #1075 (tested in entra-directory-settings.test.mjs).

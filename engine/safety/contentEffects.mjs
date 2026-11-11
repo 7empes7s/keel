@@ -45,6 +45,7 @@ import { SCRIPT_BODY_FIELDS, appRuleScriptDetail, appRuleScripts, scriptFingerpr
 import { SIGN_IN_DISCLOSURE, SIGN_IN_EFFECT, authenticationContextEffects, authenticationEventListenerEffects, customAuthenticationExtensionEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
 import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
 import { GRANT_HELD_FIELDS, grantAccessReaders } from './entitlementGrantEffects.mjs';
+import { SERVICE_SETTING_PROTECTION_RULES } from './serviceSettingEffects.mjs';
 import { DIRECTORY_SETTING_EFFECT_RULES } from './directorySettingEffects.mjs';
 
 export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing', SIGN_IN_EFFECT, PERMANENT_EFFECT]);
@@ -796,15 +797,13 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
 });
 
 /**
- * Restore approvals: the settings a restore used to write in one direction only.
- * A backup that loosens one of these, or turns on something that acts by itself,
- * was always left for a person. It is now an effect like the ones above: the
- * customer's restore approval setting decides whether a second person approves it
- * first, and the writer sends it only when the promotion checked that approval (or
- * the setting is off). Judged on every type, reviewed or not, and only in the
- * direction the writer used to refuse. Each `when` mirrors that writer's old test.
- * The lockout gate, preservation locks and the trust-field rule are not here: they
- * hold whatever this says.
+ * Restore approvals: the settings a restore used to write in one direction only
+ * (each `when` mirrors that writer's old test), and issue #1074's settings
+ * (serviceSettingEffects.mjs). A backup that loosens one, or turns on something
+ * that acts by itself, is an effect like the ones above: the customer's restore
+ * approval setting decides whether a second person approves it first, and the
+ * writer sends it only once that approval was checked (or the setting is off).
+ * Judged on every type. The lockout gate, preservation locks and the trust-field rule hold whatever this says.
  */
 const isValue = (loose) => (value) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
 // Admin center settings: the backup holds the loose value and live does not (fails closed when live lacks it).
@@ -877,6 +876,7 @@ export const PROTECTION_EFFECT_RULES = Object.freeze({
     const removed = labelList(before.Labels).filter((name) => !kept.has(name.toLowerCase()));
     return removed.length ? [{ field: 'Labels', effect: 'weakens-protection', before: labelList(before.Labels), after: labelList(after.Labels) }] : [];
   } },
+  ...SERVICE_SETTING_PROTECTION_RULES,
 });
 
 /**

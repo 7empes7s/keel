@@ -44,6 +44,7 @@ import { ATTACK_SIMULATION_PAYLOAD, attackSimulationRead, attackSimulationWrite,
 import { SIGN_IN_EXTENSION_LISTED, SIGN_IN_EXTENSION_PAYLOADS, SIGN_IN_EXTENSION_SEEDS } from './signInExtensionFixture.mjs';
 import { DIRECTORY_SETTING_LISTED, DIRECTORY_SETTING_PAYLOADS, DIRECTORY_SETTING_SEEDS, directorySettingWrite } from './directorySettingFixture.mjs';
 import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
+import { SERVICE_SETTING_DRIFT, SERVICE_SETTING_LISTED, SERVICE_SETTING_PAYLOADS } from './serviceSettingFixtures.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
 // it made before; the fake answers them with their direct children.
@@ -244,7 +245,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
   attackSimulation: ATTACK_SIMULATION_PAYLOAD, // Issue #1073 (attackSimulationFixture.mjs).
   ...SIGN_IN_EXTENSION_PAYLOADS, // Issue #1072 (signInExtensionFixture.mjs).
-  ...DIRECTORY_SETTING_PAYLOADS, // Issue #1075 (directorySettingFixture.mjs).
+  ...DIRECTORY_SETTING_PAYLOADS, ...SERVICE_SETTING_PAYLOADS, // Issues #1075, #1074 (directorySettingFixture.mjs, serviceSettingFixtures.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -566,7 +567,7 @@ const FIXTURE_DRIFT = Object.freeze({
   appsAndServicesSettings: (payload) => ({ settings: { ...payload.settings, isAppAndServicesTrialEnabled: false } }),
   adminReportSettings: () => ({ displayConcealedNames: false }),
   pronounsSettings: () => ({ isEnabledInOrganization: false }),
-  engageCommunity: () => ({ description: 'Drifted' }),
+  engageCommunity: () => ({ description: 'Drifted' }), ...SERVICE_SETTING_DRIFT, // Issue #1074.
   // Approval-held kinds: each drifts one access setting its restore puts back.
   deviceRegistrationPolicy: () => ({ userDeviceQuota: 20 }),
   tenantAppManagementPolicy: () => ({ isEnabled: true }),
@@ -677,7 +678,7 @@ const LISTED_BEFORE_CREATE = new Set([
   // Issue #1007: an access review series is looked for by name and scope before a
   // create, and terms of use by name.
   '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
-  ...SIGN_IN_EXTENSION_LISTED, ...DIRECTORY_SETTING_LISTED, // Issues #1072, #1075.
+  ...SIGN_IN_EXTENSION_LISTED, ...DIRECTORY_SETTING_LISTED, ...SERVICE_SETTING_LISTED, // Issues #1072, #1075, #1074.
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
   // Issue #1071: a catalog role's assignments are listed before a create.

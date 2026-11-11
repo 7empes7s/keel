@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 51 are full, 125 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 124 at least in part and 9 hold nothing to restore; the other 52 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 51 are full, 125 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 125 at least in part and 9 hold nothing to restore; the other 51 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -248,12 +248,12 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Multitenant organization sync template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
-| Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Attack simulation payloads | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Attack simulation login pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Attack simulation landing pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Attack simulation notification emails | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Attack simulation payloads | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Attack simulation login pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Attack simulation landing pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Attack simulation notification emails | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Sign-in identifiers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Default cross-tenant sharing settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -333,22 +333,22 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Guest SAML or WS-Fed sign-in.** Puts back each partner's name and sign-in protocol.
   - *Not brought back:* its domains (in the backup, but KEEL does not write it yet).
   - *You do:* KEEL never puts back a partner's sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.
-- **Attack simulation automations** (not built yet). KEEL backs up each automation's name and status but does not restore it yet.
+- **Attack simulation automations** (Microsoft limit). Microsoft lets tools read automations but not create or change them. KEEL backs up each automation's name and status.
   - *Not brought back:* each run of the automation (stored separately and not in the backup yet).
   - *You do:* Recreate the automation in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Automations, from the backup.
-- **Attack simulations** (not built yet). KEEL backs up each simulation's settings and targets but not its results, and does not restore it yet.
-  - *Not brought back:* its results: who clicked, reported or entered a password (no tool can write it).
-  - *You do:* Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.
-- **Attack simulation payloads** (not built yet). KEEL backs up the payloads your organisation made (sender, subject, message and technique), not Microsoft's built-in ones, but does not restore them yet.
+- **Attack simulations.** Recreates simulations as drafts with their name, technique, payload, login page, landing page, duration and the people they target, and changes drafts back. The payload and pages are matched in the tenant by id or name.
+  - *Not brought back:* its results and history: who clicked, reported or entered a password (no tool can write it); its training, end-user notification and app consent settings (in the backup, but KEEL does not write it yet).
+  - *You do:* KEEL never launches or schedules a simulation, because that sends phishing emails to real people: check its training and notifications, then launch it yourself in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations. Results and history are never recreated. A simulation whose payload, page or people are missing waits until they are back, one already launched is changed by hand, and one an automation made is left to the automation.
+- **Attack simulation payloads** (Microsoft limit). Microsoft lets tools read payloads but not create or change them. KEEL backs up the payloads your organisation made (sender, subject, message and technique), not Microsoft's built-in ones.
   - *Not brought back:* built-in payloads from Microsoft (set by Microsoft).
-  - *You do:* Recreate the payload in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Payloads, from the backup.
-- **Attack simulation login pages** (not built yet). KEEL backs up the login pages your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *You do:* Recreate the payload in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Payloads, from the backup, before restoring the simulations that use it.
+- **Attack simulation login pages** (Microsoft limit). Microsoft lets tools read login pages but not create or change them. KEEL backs up the login pages your organisation made, not Microsoft's built-in ones.
   - *Not brought back:* built-in login pages from Microsoft (set by Microsoft).
-  - *You do:* Recreate the login page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Login pages, from the backup.
-- **Attack simulation landing pages** (not built yet). KEEL backs up the landing pages your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *You do:* Recreate the login page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Login pages, from the backup, before restoring the simulations that use it.
+- **Attack simulation landing pages** (Microsoft limit). Microsoft lets tools read landing pages but not create or change them. KEEL backs up the landing pages your organisation made, not Microsoft's built-in ones.
   - *Not brought back:* built-in landing pages from Microsoft (set by Microsoft).
-  - *You do:* Recreate the landing page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Landing pages, from the backup.
-- **Attack simulation notification emails** (not built yet). KEEL backs up the training and reminder emails your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *You do:* Recreate the landing page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Landing pages, from the backup, before restoring the simulations that use it.
+- **Attack simulation notification emails** (Microsoft limit). Microsoft lets tools read the training and reminder emails but not create or change them. KEEL backs up the ones your organisation made, not Microsoft's built-in ones.
   - *Not brought back:* built-in notifications from Microsoft (set by Microsoft).
   - *You do:* Recreate the notification in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, End user notifications, from the backup.
 - **Sign-in identifiers** (not built yet). KEEL backs up which identifiers people can sign in with (email, user name, custom user name) and whether each is on, but does not restore them yet.

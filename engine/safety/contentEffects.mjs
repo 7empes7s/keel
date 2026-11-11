@@ -42,7 +42,9 @@ import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approv
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
 import { SCRIPT_BODY_FIELDS, appRuleScriptDetail, appRuleScripts, scriptFingerprint, scriptText } from './scriptBodies.mjs';
-import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
+import {
+  SIGN_IN_EFFECT, authenticationContextEffects, authenticationEventListenerEffects, customAuthenticationExtensionEffects, featureRolloutEffects, idleSignOutDefaultEffects,
+} from './signInSettingEffects.mjs';
 import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
 import { GRANT_HELD_FIELDS, grantAccessReaders } from './entitlementGrantEffects.mjs';
 
@@ -75,7 +77,8 @@ const DISCLOSURES = Object.freeze({
   // Issue #994: an authentication context that something uses, or a staged rollout.
   [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
     + 'which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom, '
-    + 'or how long everyone can stay idle before being signed out (the organization default idle sign-out policy). '
+    + 'how long everyone can stay idle before being signed out (the organization default idle sign-out policy), '
+    + 'or which apps\' sign-ins call a custom authentication extension and which claims it adds to their tokens. '
     + 'People may be asked for other sign-in methods, may stop being asked, or may not be able to sign in until it is set right. '
     + `Check the change with the person who owns sign-in before approving. ${NOT_BACKED_UP}`,
   [PERMANENT_EFFECT]: 'This write cannot be undone: once it is made, neither Keel nor an admin can take it back, so undoing the restore leaves it in place. '
@@ -768,6 +771,9 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   featureRolloutPolicy: { reviewed: true, effectsOf: featureRolloutEffects },
   // Issue #1008: a write into the organization default idle sign-out policy signs out everyone.
   activityBasedTimeoutPolicy: { reviewed: true, effectsOf: idleSignOutDefaultEffects },
+  // Issue #1072: which apps call which custom authentication extension, and the claims it adds to their tokens.
+  authenticationEventListener: { reviewed: true, effectsOf: authenticationEventListenerEffects },
+  customAuthenticationExtension: { reviewed: true, effectsOf: customAuthenticationExtensionEffects },
   // Issue #1015 (permanentEffects.mjs): an attribute set or attribute created, or partner user sync turned on, cannot be undone (`why`, said first, names what stays).
   attributeSet: { reviewed: true, effectsOf: attributeCreateEffects }, customSecurityAttributeDefinition: { reviewed: true, effectsOf: attributeCreateEffects },
   crossTenantIdentitySyncPolicyPartner: { reviewed: true, effectsOf: identitySyncEffects },

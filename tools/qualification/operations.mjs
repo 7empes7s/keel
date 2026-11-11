@@ -52,6 +52,15 @@ const STS_DEFINITION = Object.freeze(['{"TokenLifetimePolicy":{"Version":1,"Acce
 const FIXTURE_AGREEMENT_PDF = Buffer.from('%PDF-1.4\n% KEEL fixture terms of use\n%%EOF\n');
 const FIXTURE_AGREEMENT_PDF_SHA256 = createHash('sha256').update(FIXTURE_AGREEMENT_PDF).digest('hex');
 
+// Issue #1072: a token issuance extension as Graph v1.0 returns it.
+const FIXTURE_EXTENSION = Object.freeze({
+  '@odata.type': '#microsoft.graph.onTokenIssuanceStartCustomExtension', displayName: 'Fixture extension', description: 'Fixture claims',
+  endpointConfiguration: { '@odata.type': '#microsoft.graph.httpRequestEndpoint', targetUrl: 'https://fixture.example/api/claims' },
+  authenticationConfiguration: { '@odata.type': '#microsoft.graph.azureAdTokenAuthentication', resourceId: 'api://fixture.example/fixture-app' },
+  clientConfiguration: { timeoutInMilliseconds: 2000, maximumRetries: 1 },
+  claimsForTokenConfiguration: [{ claimIdInApiResponse: 'FixtureClaim' }],
+});
+
 export const FIXTURE_PAYLOADS = Object.freeze({
   // Wave 2 ENTRA: directory policies and a delegated consent.
   tokenLifetimePolicy: { displayName: 'Fixture token lifetime', definition: STS_DEFINITION, isOrganizationDefault: false },
@@ -239,6 +248,14 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
   },
   synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
+  // Issue #1072: a token issuance extension and its listener as the v1.0 list
+  // reads return them (the listener's handler expands the extension).
+  customAuthenticationExtension: FIXTURE_EXTENSION,
+  authenticationEventListener: {
+    '@odata.type': '#microsoft.graph.onTokenIssuanceStartListener', displayName: 'Fixture listener', priority: 500,
+    conditions: { applications: { includeApplications: [{ appId: 'fixture-app' }] } },
+    handler: { '@odata.type': '#microsoft.graph.onTokenIssuanceStartCustomExtensionHandler', configuration: null, customExtension: { ...FIXTURE_EXTENSION, id: 'fixture-source-extension' } },
+  },
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -652,6 +669,10 @@ const FIXTURE_SEEDS = Object.freeze({
   },
   // Issue #1071: the catalog a resource is added to.
   accessPackageCatalogResource: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
+  // Issue #1072: an extension is never POSTed, so its create updates the live one with
+  // the backup's name; a listener points at that live extension.
+  customAuthenticationExtension: (graph) => graph.objects.set('/identity/customAuthenticationExtensions/fixture-live-extension', { ...FIXTURE_EXTENSION, id: 'fixture-live-extension', description: 'Drifted' }),
+  authenticationEventListener: (graph) => graph.objects.set('/identity/customAuthenticationExtensions/fixture-live-extension', { ...FIXTURE_EXTENSION, id: 'fixture-live-extension' }),
   crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
 
@@ -668,6 +689,8 @@ const LISTED_BEFORE_CREATE = new Set([
   // Issue #1007: an access review series is looked for by name and scope before a
   // create, and terms of use by name.
   '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
+  // Issue #1072: an extension is found by name, and a listener create looks for one calling the same extension.
+  '/identity/customAuthenticationExtensions', '/identity/authenticationEventListeners',
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
   // Issue #1071: a catalog role's assignments are listed before a create.

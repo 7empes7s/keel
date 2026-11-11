@@ -107,3 +107,55 @@ export function idleSignOutDefaultEffects(resource) {
   }
   return effects;
 }
+
+/** Issue #1072: the claims a token issuance extension adds, by their name in the API's answer, sorted. */
+export const tokenClaimIds = (payload) => sortedNames((payload?.claimsForTokenConfiguration ?? []).map((claim) => claim?.claimIdInApiResponse).filter(Boolean));
+
+/**
+ * Issue #1072: a custom authentication extension's token claims are what its
+ * API's answer adds to every token of the apps whose listener calls it, so a
+ * change to them changes sign-in. Its name and description do not.
+ */
+export function customAuthenticationExtensionEffects(resource) {
+  if (!resource?.payload || resource.verb === 'delete' || resource.payload.claimsForTokenConfiguration === undefined) return [];
+  const after = tokenClaimIds(resource.payload);
+  const before = present(resource) ? tokenClaimIds(resource.live.payload) : null;
+  return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ field: 'claimsForTokenConfiguration', effect: SIGN_IN_EFFECT, before, after }];
+}
+
+/** Issue #1072: the apps a listener applies to (their app ids, sorted), or ['all apps']. */
+export function listenerApps(payload) {
+  const applications = payload?.conditions?.applications;
+  if (applications?.includeAllApplications === true) return ['all apps'];
+  return sortedNames((applications?.includeApplications ?? []).map((app) => app?.appId).filter(Boolean));
+}
+
+/** Issue #1072: the custom authentication extension a listener calls, by name (a list read expands it), or null. */
+export const listenerExtensionName = (payload) => {
+  const name = payload?.handler?.customExtension?.displayName;
+  return typeof name === 'string' && name.length > 0 ? name : null;
+};
+
+/**
+ * Issue #1072: an authentication event listener decides which apps' sign-ins
+ * call which custom authentication extension, and in which order. Which apps,
+ * which extension (by name) and its priority are each an effect, judged on
+ * create too: a recreated listener starts calling the extension at once.
+ */
+export function authenticationEventListenerEffects(resource) {
+  if (!resource?.payload || resource.verb === 'delete') return [];
+  const live = present(resource) ? (resource.live.payload ?? {}) : null;
+  const views = {
+    conditions: (payload) => (payload?.conditions === undefined ? undefined : listenerApps(payload)),
+    handler: (payload) => (payload?.handler === undefined ? undefined : listenerExtensionName(payload) ?? normal(payload.handler?.customExtension?.id)),
+    priority: (payload) => payload?.priority,
+  };
+  const effects = [];
+  for (const [field, view] of Object.entries(views)) {
+    const after = view(resource.payload);
+    if (after === undefined || after === null) continue;
+    const before = live ? normal(view(live)) : null;
+    if (JSON.stringify(before) !== JSON.stringify(after)) effects.push({ field, effect: SIGN_IN_EFFECT, before, after });
+  }
+  return effects;
+}

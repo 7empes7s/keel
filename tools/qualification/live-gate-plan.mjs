@@ -461,6 +461,19 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     breakGlass: 'The fixture connector is on no user flow and calls an address that does not exist, so nobody signs up through it.',
     note: 'Check the dry run lists the name and URL under "Changes access" and the enforce run writes only after that is approved; check the recreated connector has a placeholder username starting keel-placeholder- and the restore lists setting the real password as a step. Nothing is added to a user flow.',
   },
+  // Issue #1072.
+  customAuthenticationExtension: {
+    kind: 'named-object', fixture: `token issuance custom authentication extension ${FIXTURE_PREFIX}-claims calling https://keel-rt.invalid/api/claims (app ID URI of ${FIXTURE_PREFIX}-app), returning one claim FixtureClaim, called by no listener`,
+    select: `${FIXTURE_PREFIX}-claims`, drift: 'change its description and add a second token claim; for create, delete it and recreate it by hand under the same name with another description (the restore never creates one)',
+    breakGlass: 'The fixture extension is called by no listener, and its address does not exist, so no sign-in calls it.',
+    note: 'Check the dry run lists the token claims under "Changes sign-in", the enforce run writes only after that is approved, and the endpoint, its app ID URI and timeouts read back unchanged.',
+  },
+  authenticationEventListener: {
+    kind: 'named-object', fixture: `token issuance listener for ${FIXTURE_PREFIX}-app calling ${FIXTURE_PREFIX}-claims, priority 500`,
+    select: `the listener calling ${FIXTURE_PREFIX}-claims`, drift: 'change its priority to 400; for create, delete it',
+    breakGlass: `Only ${FIXTURE_PREFIX}-app, which nothing signs in to, calls the extension; never add a listener for another app or for all apps.`,
+    note: 'Check the dry run lists the apps, extension and priority under "Changes sign-in", the enforce run writes only after that is approved, and the recreated handler names the live extension; with the extension deleted first, the restore holds the listener with "recreate the extension first".',
+  },
   activityBasedTimeoutPolicy: {
     kind: 'named-object', fixture: `idle sign-out policy ${FIXTURE_PREFIX}-idle (Graph only) with a one-hour default idle timeout, isOrganizationDefault false`,
     select: `${FIXTURE_PREFIX}-idle`, drift: 'change its WebSessionIdleTimeout to 02:00:00; for create, delete it',

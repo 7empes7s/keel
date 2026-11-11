@@ -199,11 +199,15 @@ const REGISTERED = Object.freeze({
   // Issue #994: authentication contexts (an upsert under the backup's id) and staged rollout.
   authenticationContextClassReference: ['create', 'update'],
   featureRolloutPolicy: ['create', 'update'],
+  // Issue #1072: a custom authentication extension (a create updates the live one with its name) and its listeners.
+  customAuthenticationExtension: ['create', 'update'],
+  authenticationEventListener: ['create', 'update'],
 });
 
 // Issue #1015: an attribute set is created under the backup's name, an attribute
 // under its set and name, and partner sync settings under the partner's tenant id.
-const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner']);
+// Issue #1072: a custom authentication extension is never created; its create updates the live one with its name.
+const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner', 'customAuthenticationExtension']);
 
 function governor() {
   return new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });
@@ -314,8 +318,9 @@ test('mutation pin: a real Graph collection path never implies write capability'
     assert.equal(graphPathFor(entry.type), null, `${entry.type} must have no registered write path`);
     checked += 1;
   }
-  // Wave 2 registered more than half the catalogue, so the floor is now a third.
-  assert.ok(checked > CATALOG.length / 3, 'this pin must exercise a large share of the catalogue, not a token sample');
+  // Wave 2 registered more than half the catalogue, so the floor became a third; with
+  // issue #1072 two thirds are registered, so it is now a quarter (still 45+ types).
+  assert.ok(checked > CATALOG.length / 4, 'this pin must exercise a large share of the catalogue, not a token sample');
 });
 
 test('mutation pin: descriptor.remappable never gates a capability claim', () => {

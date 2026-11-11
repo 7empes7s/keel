@@ -35,6 +35,20 @@ export const SIGN_IN_WRITE_PATHS = Object.freeze({
   featureRolloutPolicy: '/policies/featureRolloutPolicies',
 });
 
+/**
+ * Issue #1072: custom authentication extensions and authentication event listeners
+ * (engine/restore/signInExtensionOperations.mjs). An extension is never created: a
+ * create updates the live extension with the backup's name, or is a step for a
+ * person, so its id is the target's own. A listener create gets a new id. Delete is
+ * not registered for either.
+ */
+export const SIGN_IN_EXTENSION_HANDLER = 'engine/restore/signInExtensionOperations.mjs#applySignInExtensionWrite';
+export const SIGN_IN_EXTENSION_PROOF = 'engine/roadmap/sign-in-extensions.test.mjs';
+export const SIGN_IN_EXTENSION_WRITE_PATHS = Object.freeze({
+  customAuthenticationExtension: '/identity/customAuthenticationExtensions',
+  authenticationEventListener: '/identity/authenticationEventListeners',
+});
+
 export default [
   ...Object.entries(ENTRA_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({
     resourceType, operation, path, handler: ENTRA_HANDLER,
@@ -45,5 +59,10 @@ export default [
     resourceType, operation, path, handler: SIGN_IN_HANDLER,
     idOutcome: operation === 'create' && resourceType === 'featureRolloutPolicy' ? 'server-assigned' : 'preserved',
     proofRef: SIGN_IN_PROOF,
+  }))),
+  ...Object.entries(SIGN_IN_EXTENSION_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({
+    resourceType, operation, path, handler: SIGN_IN_EXTENSION_HANDLER,
+    idOutcome: operation === 'create' && resourceType === 'authenticationEventListener' ? 'server-assigned' : 'preserved',
+    proofRef: SIGN_IN_EXTENSION_PROOF,
   }))),
 ];

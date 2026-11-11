@@ -3520,21 +3520,9 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("target", "_blank");
   await expect(alert.getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/2e570e00-0000-4000-8000-0000000000c2$/);
 
-  // Rows: plain words, the Microsoft name beside them, what Keel uses it for, a badge.
-  // The restore writer, with the most missing, comes first; the backup reader's role is on a later page.
-  const missing = panel.locator('.su-ptable-row[data-status="missing"]');
-  await expect(missing).toHaveCount(4);
-  const groups = missing.filter({ hasText: "Change groups" });
-  await expect(groups.locator(".su-ptable-words")).toHaveText("Change groups");
-  await expect(groups.locator("code")).toHaveText("Group.ReadWrite.All");
-  await expect(groups.locator(".badge")).toHaveText("Missing");
-  await expect(groups.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=2e570e00/);
-  const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
-  await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
-  await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
   // The app with the most missing is listed first. The table is paged: the
-  // restore writer's rows can fill the first page, so the order of both apps is
-  // checked below with only the missing rows shown.
+  // restore writer's rows can fill the first page, so its missing rows and the
+  // order of both apps are checked below with only the missing rows shown.
   await expect(panel.locator(".su-ptable-app").first()).toHaveText(/Restore writer app/);
 
   // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
@@ -3554,6 +3542,18 @@ test("Setup · missing permissions come first with a consent link, and the table
   await tile("Missing").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
   await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
+  // Rows: plain words, the Microsoft name beside them, what Keel uses it for, a badge.
+  // The restore writer's four come first, then the backup reader's admin role.
+  const missing = panel.locator('.su-ptable-row[data-status="missing"]');
+  await expect(missing.locator("code")).toHaveText(["Group.ReadWrite.All", "RoleManagement.ReadWrite.Directory", "Policy.ReadWrite.ConditionalAccess", "Exchange.ManageAsApp", "Teams Administrator"]);
+  const groups = missing.filter({ hasText: "Change groups" });
+  await expect(groups.locator(".su-ptable-words")).toHaveText("Change groups");
+  await expect(groups.locator("code")).toHaveText("Group.ReadWrite.All");
+  await expect(groups.locator(".badge")).toHaveText("Missing");
+  await expect(groups.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=2e570e00/);
+  const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
+  await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
+  await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
   await expect(tile("Extra access").locator("small")).toHaveText("+1 more if picked");
   await tile("Extra access").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(6);

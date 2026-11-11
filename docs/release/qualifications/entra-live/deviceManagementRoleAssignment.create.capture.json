@@ -1,44 +1,44 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceManagementRoleAssignment:19126b6f-69f2-8b5c-b3b2-374258cbad79",
+    "naturalKey": "deviceManagementRoleAssignment:325f4be3-554a-83c6-95e3-65783a86af25",
     "resourceType": "deviceManagementRoleAssignment",
     "operation": "create",
-    "targetId": "e463546c-f16a-8521-b13a-3787fcb9cac7",
+    "targetId": "d62ddc45-ba61-8be5-9b08-9542f5e829f5",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:05.857Z",
+    "recordedAt": "2026-11-11T19:36:10.890Z",
     "priorState": null,
     "intendedState": {
       "members": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "scopeType": "resourceScope",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-intune-assignment-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-intune-assignment-c",
       "scopeMembers": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "resourceScopes": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "roleScopeTagIds": [],
       "roleDefinition@odata.bind": "https://graph.microsoft.com/beta/deviceManagement/roleDefinitions/5b4fb61f-76ba-83b5-bb02-d86a2a16cd37"
     },
     "postState": {
-      "id": "e463546c-f16a-8521-b13a-3787fcb9cac7",
+      "id": "d62ddc45-ba61-8be5-9b08-9542f5e829f5",
       "members": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "scopeType": "resourceScope",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-intune-assignment-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-intune-assignment-c",
       "scopeMembers": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/roleAssignments/$entity",
       "resourceScopes": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "roleScopeTagIds": []
     }

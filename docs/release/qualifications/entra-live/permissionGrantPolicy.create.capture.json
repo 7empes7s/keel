@@ -1,20 +1,20 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "permissionGrantPolicy:KEEL-RT-1049-permission-grant-policy-c",
+    "naturalKey": "permissionGrantPolicy:KEEL-RT-1083-permission-grant-policy-c",
     "resourceType": "permissionGrantPolicy",
     "operation": "create",
-    "targetId": "keel-rt-1049-permission-grant-policy-c",
+    "targetId": "keel-rt-1083-permission-grant-policy-c",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:49.108Z",
+    "recordedAt": "2026-11-11T19:35:57.005Z",
     "priorState": null,
     "intendedState": {
-      "id": "keel-rt-1049-permission-grant-policy-c",
+      "id": "keel-rt-1083-permission-grant-policy-c",
       "excludes": [],
       "includes": [
         {
-          "id": "4af301cb-b579-8226-b8ae-b5ca210d77d2",
+          "id": "a356f9b0-3ad5-88ed-80a4-55f2591068c9",
           "permissions": [
             "all"
           ],
@@ -33,17 +33,17 @@
           "clientApplicationsFromVerifiedPublisherOnly": false
         }
       ],
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-permission-grant-policy-c",
-      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1049-permission-grant-policy-c')/excludes",
-      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1049-permission-grant-policy-c')/includes"
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-permission-grant-policy-c",
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1083-permission-grant-policy-c')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1083-permission-grant-policy-c')/includes"
     },
     "postState": {
-      "id": "keel-rt-1049-permission-grant-policy-c",
+      "id": "keel-rt-1083-permission-grant-policy-c",
       "excludes": [],
       "includes": [
         {
-          "id": "2f5a86d4-09dd-815b-95fc-0102aa37c340",
+          "id": "5e6c1013-300d-8447-8c7b-faf6e9b348cc",
           "permissions": [
             "all"
           ],
@@ -62,11 +62,11 @@
           "clientApplicationsFromVerifiedPublisherOnly": false
         }
       ],
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-permission-grant-policy-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-permission-grant-policy-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies/$entity",
-      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1049-permission-grant-policy-c')/excludes",
-      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1049-permission-grant-policy-c')/includes"
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1083-permission-grant-policy-c')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-1083-permission-grant-policy-c')/includes"
     }
   }
 }

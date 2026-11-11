@@ -1,5 +1,5 @@
 {
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "entry": {
     "naturalKey": "microsoft365AppsInstallationOptions:microsoft365AppsInstallationOptions",
     "resourceType": "microsoft365AppsInstallationOptions",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:49:52.957Z",
+    "recordedAt": "2026-11-11T19:49:31.458Z",
     "priorState": {
       "appsForMac": {
         "isMicrosoft365AppsEnabled": true,

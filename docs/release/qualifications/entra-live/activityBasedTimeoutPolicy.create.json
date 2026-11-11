@@ -7,23 +7,23 @@
   "resourceType": "activityBasedTimeoutPolicy",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:37.562Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "activityBasedTimeoutPolicy:65aa0f6c-ef5f-85bc-8d9d-30592fb29e2e",
+  "observedAt": "2026-11-11T19:35:49.262Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "activityBasedTimeoutPolicy:512c424c-53f6-86f7-9ead-1dd6c28f982e",
   "fixtureKind": "named-object",
-  "captureSha256": "db8f7ea6455b3104289710924682a4fca9091d3fcae239542e56cd4d5103668c",
+  "captureSha256": "43e7fba0ed6f0616aae199da83fb33aa06147df4eb03f8aca7f0f75f755c718e",
   "proofRef": "docs/release/qualifications/entra-live/activityBasedTimeoutPolicy.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2743c861d495feb03d7a6710b2dbbafc8b8da60dbd8e8c21be0056c3ff090750"
+      "signature": "c5838b0bb1f00afc271bbd221f1c04afb360ecec8e588d291348f311609831fd"
     }
   }
 }

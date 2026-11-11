@@ -1,17 +1,17 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "defenderRoleDefinition:357b6764-24b3-8c69-9880-911284a6d319",
+    "naturalKey": "defenderRoleDefinition:e95675ab-20a1-834d-9cf2-646d8360ae6e",
     "resourceType": "defenderRoleDefinition",
     "operation": "create",
-    "targetId": "e319428b-99f6-8c9e-b4dd-4164f3995d7c",
+    "targetId": "d065129c-5d00-8bb5-bb9a-2a972e0bdd80",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:39.953Z",
+    "recordedAt": "2026-11-11T19:35:50.237Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-defender-role-definition-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-defender-role-definition-c",
       "rolePermissions": [
         {
           "allowedResourceActions": [
@@ -21,9 +21,9 @@
       ]
     },
     "postState": {
-      "id": "e319428b-99f6-8c9e-b4dd-4164f3995d7c",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-defender-role-definition-c",
+      "id": "d065129c-5d00-8bb5-bb9a-2a972e0bdd80",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-defender-role-definition-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/defender/roleDefinitions/$entity",
       "rolePermissions": [
         {

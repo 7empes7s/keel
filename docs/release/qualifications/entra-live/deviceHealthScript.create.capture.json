@@ -1,20 +1,20 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceHealthScript:8390e36b-822a-8e48-94aa-9df846457fa0",
+    "naturalKey": "deviceHealthScript:b6f23bb9-c947-8076-acfe-f6df5c3e8e5e",
     "resourceType": "deviceHealthScript",
     "operation": "create",
-    "targetId": "9800e782-f479-8ea2-82e0-27aa1693146e",
+    "targetId": "780037d4-cdcc-8f69-9cf7-0e3723bb0e64",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:05.435Z",
+    "recordedAt": "2026-11-11T19:36:10.086Z",
     "priorState": null,
     "intendedState": {
       "version": "1",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-health-script-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-health-script-c",
       "runAsAccount": "system",
       "roleScopeTagIds": [
         "0"
@@ -27,20 +27,20 @@
       "remediationScriptParameters": []
     },
     "postState": {
-      "id": "9800e782-f479-8ea2-82e0-27aa1693146e",
+      "id": "780037d4-cdcc-8f69-9cf7-0e3723bb0e64",
       "version": "1",
       "publisher": "KEEL-RT",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-health-script-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-health-script-c",
       "runAsAccount": "system",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceHealthScripts/$entity",
       "isGlobalScript": false,
-      "createdDateTime": "2026-11-06T19:44:05.6125778Z",
+      "createdDateTime": "2026-11-11T19:36:10.1630592Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:44:05.6125778Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:10.1630592Z",
       "enforceSignatureCheck": false,
       "detectionScriptContent": "ZXhpdCAw",
       "deviceHealthScriptType": "deviceHealthScript",

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "configurationPolicy",
+  "operation": "delete",
+  "fieldProjectionContractVersion": 1,
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": "absent",
+  "readBackVerified": true,
+  "observedAt": "2026-11-11T19:56:05.330Z",
+  "restoreRef": "d69cfa13-d3cf-8a10-a44b-8160adaafe82",
+  "naturalKey": "configurationPolicy:KEEL-RT-1083-configuration-policy-d",
+  "fixtureKind": "named-object",
+  "captureSha256": "66047c820d5220e0f9285e10fb67be4b41512fc457ea0cd9a70989b17278e133",
+  "proofRef": "docs/release/qualifications/entra-live/configurationPolicy.delete.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "fddc1459327ee62a91135e8fc56ecc59b79aeb22f69836e162d8375a62f174e1"
+    }
+  }
+}

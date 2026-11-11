@@ -1,19 +1,19 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "androidDeviceOwnerEnrollmentProfile:968f70d4-07b5-8a1b-859a-bcbdafbece5d",
+    "naturalKey": "androidDeviceOwnerEnrollmentProfile:0bdb9c60-9585-8736-b7bb-5a865a19ccd7",
     "resourceType": "androidDeviceOwnerEnrollmentProfile",
     "operation": "create",
-    "targetId": "92f4a278-86f6-81e2-bb6b-b891b4972124",
+    "targetId": "03f86f40-9b35-8545-8237-1150f9e11c2a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:04.203Z",
+    "recordedAt": "2026-11-11T19:36:08.757Z",
     "priorState": null,
     "intendedState": {
       "wifiSsid": null,
       "wifiHidden": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-android-device-owner-enrollment-profile-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-android-device-owner-enrollment-profile-c",
       "configureWifi": true,
       "enrollmentMode": "corporateOwnedDedicatedDevice",
       "roleScopeTagIds": [
@@ -25,20 +25,20 @@
       "isTeamsDeviceProfile": false
     },
     "postState": {
-      "id": "92f4a278-86f6-81e2-bb6b-b891b4972124",
+      "id": "03f86f40-9b35-8545-8237-1150f9e11c2a",
       "wifiSsid": null,
       "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
       "tokenValue": null,
       "wifiHidden": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-android-device-owner-enrollment-profile-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-android-device-owner-enrollment-profile-c",
       "qrCodeImage": null,
       "wifiPassword": null,
       "configureWifi": true,
       "qrCodeContent": null,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/androidDeviceOwnerEnrollmentProfiles/$entity",
       "enrollmentMode": "corporateOwnedDedicatedDevice",
-      "createdDateTime": "2026-11-06T19:44:04.4787774Z",
+      "createdDateTime": "2026-11-11T19:36:09.1135755Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -47,7 +47,7 @@
       "enrolledDeviceCount": 0,
       "enrollmentTokenType": "default",
       "isTeamsDeviceProfile": false,
-      "lastModifiedDateTime": "2026-11-06T19:44:04Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:09Z",
       "tokenCreationDateTime": "0001-01-01T00:00:00Z",
       "tokenExpirationDateTime": "0001-01-01T00:00:00Z",
       "enrollmentTokenUsageCount": 0

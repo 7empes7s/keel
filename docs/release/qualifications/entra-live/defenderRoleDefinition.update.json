@@ -7,23 +7,23 @@
   "resourceType": "defenderRoleDefinition",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:39.109Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "defenderRoleDefinition:5a5a990d-48de-8b07-8666-fe7b75d22c18",
+  "observedAt": "2026-11-11T19:35:50.178Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "defenderRoleDefinition:6ec9b80e-b0bb-8aba-b6be-d06ce2365fdc",
   "fixtureKind": "named-object",
-  "captureSha256": "1481d215f76d0d1b516bd3418092e457631889781e63dfd5731ace8d676fa6f4",
+  "captureSha256": "5b5f362d511cf672c013a0ab9f56a68710d2a257df36ec96b9580e7ec4f17e11",
   "proofRef": "docs/release/qualifications/entra-live/defenderRoleDefinition.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "844646684cce0887e88cad98ba1f9e72a39a53e4096390d55d7bb88bc85cdccf"
+      "signature": "82cc53841884ca38ef7fa369bebf7ac4fbfdf583ff627bae370a7e2e5ca3a24c"
     }
   }
 }

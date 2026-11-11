@@ -1,0 +1,43 @@
+{
+  "restoreRef": "8fe3e1e0-6725-86a6-90b7-e76d18af519f",
+  "entry": {
+    "naturalKey": "profileCardProperty:customAttribute15",
+    "resourceType": "profileCardProperty",
+    "operation": "update",
+    "targetId": "customAttribute15",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-11T20:08:32.058Z",
+    "priorState": {
+      "isVisible": true,
+      "annotations": [
+        {
+          "displayName": "KEEL-RT-1083-other",
+          "localizations": []
+        }
+      ],
+      "directoryPropertyName": "customAttribute15"
+    },
+    "intendedState": {
+      "isVisible": true,
+      "annotations": [
+        {
+          "displayName": "KEEL-RT-1083-field-u",
+          "localizations": []
+        }
+      ],
+      "directoryPropertyName": "customAttribute15"
+    },
+    "postState": {
+      "isVisible": true,
+      "annotations": [
+        {
+          "displayName": "KEEL-RT-1083-field-u",
+          "localizations": []
+        }
+      ],
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/people/profileCardProperties/$entity",
+      "directoryPropertyName": "customAttribute15"
+    }
+  }
+}

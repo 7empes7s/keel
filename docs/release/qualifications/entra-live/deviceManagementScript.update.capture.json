@@ -1,34 +1,34 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceManagementScript:a8c837a8-a8ad-880e-8639-49ef391a5a49",
+    "naturalKey": "deviceManagementScript:c305fd5a-1aba-8497-8f42-b4ab3e3a189b",
     "resourceType": "deviceManagementScript",
     "operation": "update",
-    "targetId": "a8c837a8-a8ad-880e-8639-49ef391a5a49",
+    "targetId": "c305fd5a-1aba-8497-8f42-b4ab3e3a189b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:05.829Z",
+    "recordedAt": "2026-11-11T19:36:11.677Z",
     "priorState": {
-      "id": "a8c837a8-a8ad-880e-8639-49ef391a5a49",
-      "fileName": "keel-rt-1049-device-management-script-u.ps1",
+      "id": "c305fd5a-1aba-8497-8f42-b4ab3e3a189b",
+      "fileName": "keel-rt-1083-device-management-script-u.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-device-management-script-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-device-management-script-u",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
-      "createdDateTime": "2026-11-06T19:16:39.5476759Z",
+      "createdDateTime": "2026-11-11T19:20:20.9390938Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:23:45.9387892Z",
+      "lastModifiedDateTime": "2026-11-11T19:27:25.4536662Z",
       "enforceSignatureCheck": false
     },
     "intendedState": {
-      "fileName": "keel-rt-1049-device-management-script-u.ps1",
+      "fileName": "keel-rt-1083-device-management-script-u.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-management-script-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-management-script-u",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "roleScopeTagIds": [
@@ -37,19 +37,19 @@
       "enforceSignatureCheck": false
     },
     "postState": {
-      "id": "a8c837a8-a8ad-880e-8639-49ef391a5a49",
-      "fileName": "keel-rt-1049-device-management-script-u.ps1",
+      "id": "c305fd5a-1aba-8497-8f42-b4ab3e3a189b",
+      "fileName": "keel-rt-1083-device-management-script-u.ps1",
       "runAs32Bit": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-management-script-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-management-script-u",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
-      "createdDateTime": "2026-11-06T19:16:39.5476759Z",
+      "createdDateTime": "2026-11-11T19:20:20.9390938Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:44:06.0163509Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:11.9342626Z",
       "enforceSignatureCheck": false
     }
   }

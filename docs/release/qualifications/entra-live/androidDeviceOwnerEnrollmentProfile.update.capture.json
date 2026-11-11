@@ -1,23 +1,23 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "androidDeviceOwnerEnrollmentProfile:228520b2-77e0-84c4-bafe-ddafdcff9a73",
+    "naturalKey": "androidDeviceOwnerEnrollmentProfile:6cc65e83-4609-8351-a2de-b5f1f1d48102",
     "resourceType": "androidDeviceOwnerEnrollmentProfile",
     "operation": "update",
-    "targetId": "228520b2-77e0-84c4-bafe-ddafdcff9a73",
+    "targetId": "6cc65e83-4609-8351-a2de-b5f1f1d48102",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:04.201Z",
+    "recordedAt": "2026-11-11T19:36:08.758Z",
     "priorState": {
-      "id": "228520b2-77e0-84c4-bafe-ddafdcff9a73",
+      "id": "6cc65e83-4609-8351-a2de-b5f1f1d48102",
       "wifiSsid": null,
       "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
       "wifiHidden": false,
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-android-device-owner-enrollment-profile-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-android-device-owner-enrollment-profile-u",
       "configureWifi": true,
       "enrollmentMode": "corporateOwnedDedicatedDevice",
-      "createdDateTime": "2026-11-06T19:17:19.6243572Z",
+      "createdDateTime": "2026-11-11T19:20:41.1005803Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -25,15 +25,15 @@
       "deviceNameTemplate": "KEEL-RT-{{SERIAL}}",
       "enrollmentTokenType": "default",
       "isTeamsDeviceProfile": false,
-      "lastModifiedDateTime": "2026-11-06T19:24:08Z",
+      "lastModifiedDateTime": "2026-11-11T19:27:40Z",
       "tokenCreationDateTime": "0001-01-01T00:00:00Z",
       "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
     },
     "intendedState": {
       "wifiSsid": null,
       "wifiHidden": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-android-device-owner-enrollment-profile-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-android-device-owner-enrollment-profile-u",
       "configureWifi": true,
       "roleScopeTagIds": [
         "0"
@@ -42,20 +42,20 @@
       "deviceNameTemplate": "KEEL-RT-{{SERIAL}}"
     },
     "postState": {
-      "id": "228520b2-77e0-84c4-bafe-ddafdcff9a73",
+      "id": "6cc65e83-4609-8351-a2de-b5f1f1d48102",
       "wifiSsid": null,
       "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
       "tokenValue": null,
       "wifiHidden": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-android-device-owner-enrollment-profile-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-android-device-owner-enrollment-profile-u",
       "qrCodeImage": null,
       "wifiPassword": null,
       "configureWifi": true,
       "qrCodeContent": null,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/androidDeviceOwnerEnrollmentProfiles/$entity",
       "enrollmentMode": "corporateOwnedDedicatedDevice",
-      "createdDateTime": "2026-11-06T19:17:19.6243572Z",
+      "createdDateTime": "2026-11-11T19:20:41.1005803Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -64,7 +64,7 @@
       "enrolledDeviceCount": 0,
       "enrollmentTokenType": "default",
       "isTeamsDeviceProfile": false,
-      "lastModifiedDateTime": "2026-11-06T19:44:04Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:09Z",
       "tokenCreationDateTime": "0001-01-01T00:00:00Z",
       "tokenExpirationDateTime": "0001-01-01T00:00:00Z",
       "enrollmentTokenUsageCount": 0

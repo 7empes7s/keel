@@ -1,13 +1,13 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "permissionGrantPreApprovalPolicy:3e33fbdb-3252-8f18-88bf-5cd7126c0c22",
+    "naturalKey": "permissionGrantPreApprovalPolicy:bc4b781b-eb0f-8d2c-888b-6495ff754ede",
     "resourceType": "permissionGrantPreApprovalPolicy",
     "operation": "create",
-    "targetId": "b7282fb0-93cd-8043-a8a6-324ea9d86185",
+    "targetId": "7010d698-fd40-8ecc-bad4-68f200fa96c4",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:49.171Z",
+    "recordedAt": "2026-11-11T19:35:59.069Z",
     "priorState": null,
     "intendedState": {
       "conditions": [
@@ -30,7 +30,7 @@
       ]
     },
     "postState": {
-      "id": "b7282fb0-93cd-8043-a8a6-324ea9d86185",
+      "id": "7010d698-fd40-8ecc-bad4-68f200fa96c4",
       "conditions": [
         {
           "scopeType": "chat",

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "profileCardProperty",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-11T20:08:32.159Z",
+  "restoreRef": "8fe3e1e0-6725-86a6-90b7-e76d18af519f",
+  "naturalKey": "profileCardProperty:customAttribute14",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "395b7070493272e8a2fef9f996780eb26e0386a6d9de14ab94086a09ae0001e4",
+  "proofRef": "docs/release/qualifications/entra-live/profileCardProperty.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "856de15477357dfc1495b4fa41b6dd1c0e486c44964a1a0f77fa7a345e80de55"
+    }
+  }
+}

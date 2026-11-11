@@ -1,22 +1,22 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "mobileAppCategory:e255e9bc-4994-814d-935b-0d5dd89fc432",
+    "naturalKey": "mobileAppCategory:4073b90a-c3c8-841d-a42e-b7bf9c57f125",
     "resourceType": "mobileAppCategory",
     "operation": "create",
-    "targetId": "31188747-a642-829d-b9c0-49743ec72d03",
+    "targetId": "95b8a4c5-6605-8e5f-a657-6de8dbbc3baa",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:48.543Z",
+    "recordedAt": "2026-11-11T19:35:56.276Z",
     "priorState": null,
     "intendedState": {
-      "displayName": "KEEL-RT-1049-mobile-app-category-c"
+      "displayName": "KEEL-RT-1083-mobile-app-category-c"
     },
     "postState": {
-      "id": "31188747-a642-829d-b9c0-49743ec72d03",
-      "displayName": "KEEL-RT-1049-mobile-app-category-c",
+      "id": "95b8a4c5-6605-8e5f-a657-6de8dbbc3baa",
+      "displayName": "KEEL-RT-1083-mobile-app-category-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileAppCategories/$entity",
-      "lastModifiedDateTime": "2026-11-06T19:35:48Z"
+      "lastModifiedDateTime": "2026-11-11T19:35:56Z"
     }
   }
 }

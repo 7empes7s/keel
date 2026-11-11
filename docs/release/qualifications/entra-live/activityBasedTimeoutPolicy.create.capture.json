@@ -1,29 +1,29 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "activityBasedTimeoutPolicy:65aa0f6c-ef5f-85bc-8d9d-30592fb29e2e",
+    "naturalKey": "activityBasedTimeoutPolicy:512c424c-53f6-86f7-9ead-1dd6c28f982e",
     "resourceType": "activityBasedTimeoutPolicy",
     "operation": "create",
-    "targetId": "800eadd5-52c7-8e9c-9441-12ac2435345d",
+    "targetId": "79becf30-656d-8c83-bdd6-6fbb4c301088",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:37.562Z",
+    "recordedAt": "2026-11-11T19:35:49.262Z",
     "priorState": null,
     "intendedState": {
-      "id": "65aa0f6c-ef5f-85bc-8d9d-30592fb29e2e",
+      "id": "512c424c-53f6-86f7-9ead-1dd6c28f982e",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1049-activity-based-timeout-policy-c",
+      "displayName": "KEEL-RT-1083-activity-based-timeout-policy-c",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "800eadd5-52c7-8e9c-9441-12ac2435345d",
+      "id": "79becf30-656d-8c83-bdd6-6fbb4c301088",
       "definition": [
         "{\"ActivityBasedTimeoutPolicy\":{\"Version\":1,\"ApplicationPolicies\":[{\"ApplicationId\":\"default\",\"WebSessionIdleTimeout\":\"01:00:00\"}]}}"
       ],
-      "displayName": "KEEL-RT-1049-activity-based-timeout-policy-c",
+      "displayName": "KEEL-RT-1083-activity-based-timeout-policy-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/activityBasedTimeoutPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

@@ -1,18 +1,18 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1049-device-management-role-definition-c",
+    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1083-device-management-role-definition-c",
     "resourceType": "deviceManagementRoleDefinition",
     "operation": "create",
-    "targetId": "621d1046-411d-8a8e-9d73-5cbab9e57370",
+    "targetId": "6655788f-f59f-8930-b50e-d42a53fe7008",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:44.329Z",
+    "recordedAt": "2026-11-11T19:35:52.402Z",
     "priorState": null,
     "intendedState": {
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-management-role-definition-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-management-role-definition-c",
       "rolePermissions": [
         {
           "resourceActions": [
@@ -27,11 +27,11 @@
       ]
     },
     "postState": {
-      "id": "621d1046-411d-8a8e-9d73-5cbab9e57370",
+      "id": "6655788f-f59f-8930-b50e-d42a53fe7008",
       "isBuiltIn": false,
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-management-role-definition-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-management-role-definition-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/roleDefinitions/$entity",
       "rolePermissions": [
         {

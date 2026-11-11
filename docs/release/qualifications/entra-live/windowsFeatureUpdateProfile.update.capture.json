@@ -1,18 +1,18 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "windowsFeatureUpdateProfile:85286625-371f-8cb9-981c-cd9e70f13f47",
+    "naturalKey": "windowsFeatureUpdateProfile:6e7fcc32-5d6c-8da1-9271-d92a67e3b55e",
     "resourceType": "windowsFeatureUpdateProfile",
     "operation": "update",
-    "targetId": "85286625-371f-8cb9-981c-cd9e70f13f47",
+    "targetId": "6e7fcc32-5d6c-8da1-9271-d92a67e3b55e",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:07.081Z",
+    "recordedAt": "2026-11-11T19:36:17.863Z",
     "priorState": {
-      "id": "85286625-371f-8cb9-981c-cd9e70f13f47",
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-windows-feature-update-profile-u",
-      "createdDateTime": "2026-11-06T19:16:47.0813997Z",
+      "id": "6e7fcc32-5d6c-8da1-9271-d92a67e3b55e",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-windows-feature-update-profile-u",
+      "createdDateTime": "2026-11-11T19:20:25.799289Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -23,14 +23,14 @@
       },
       "endOfSupportDate": "2027-10-12T00:00:00Z",
       "featureUpdateVersion": "Windows 11, version 24H2",
-      "lastModifiedDateTime": "2026-11-06T19:23:52.6825865Z",
+      "lastModifiedDateTime": "2026-11-11T19:27:29.9321908Z",
       "deployableContentDisplayName": null,
       "installFeatureUpdatesOptional": false,
       "installLatestWindows10OnWindows11IneligibleDevice": false
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-windows-feature-update-profile-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-windows-feature-update-profile-u",
       "roleScopeTagIds": [
         "0"
       ],
@@ -44,11 +44,11 @@
       "installLatestWindows10OnWindows11IneligibleDevice": false
     },
     "postState": {
-      "id": "85286625-371f-8cb9-981c-cd9e70f13f47",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-windows-feature-update-profile-u",
+      "id": "6e7fcc32-5d6c-8da1-9271-d92a67e3b55e",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-windows-feature-update-profile-u",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/windowsFeatureUpdateProfiles/$entity",
-      "createdDateTime": "2026-11-06T19:16:47.0813997Z",
+      "createdDateTime": "2026-11-11T19:20:25.799289Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -59,7 +59,7 @@
       },
       "endOfSupportDate": "2027-10-12T00:00:00Z",
       "featureUpdateVersion": "Windows 11, version 24H2",
-      "lastModifiedDateTime": "2026-11-06T19:44:07.2398563Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:18.2975578Z",
       "deployableContentDisplayName": "Windows 11, version 24H2",
       "installFeatureUpdatesOptional": false,
       "installLatestWindows10OnWindows11IneligibleDevice": false

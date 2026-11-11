@@ -1,33 +1,33 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceCustomAttributeShellScript:e83cb22d-6374-84af-977c-ee558e03d409",
+    "naturalKey": "deviceCustomAttributeShellScript:93c7c2d1-a6fb-82c1-b518-856e70ecd6e5",
     "resourceType": "deviceCustomAttributeShellScript",
     "operation": "update",
-    "targetId": "e83cb22d-6374-84af-977c-ee558e03d409",
+    "targetId": "93c7c2d1-a6fb-82c1-b518-856e70ecd6e5",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:05.246Z",
+    "recordedAt": "2026-11-11T19:36:09.900Z",
     "priorState": {
-      "id": "e83cb22d-6374-84af-977c-ee558e03d409",
-      "fileName": "keel-rt-1049-device-custom-attribute-shell-script-u.sh",
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-device-custom-attribute-shell-script-u",
+      "id": "93c7c2d1-a6fb-82c1-b518-856e70ecd6e5",
+      "fileName": "keel-rt-1083-device-custom-attribute-shell-script-u.sh",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-device-custom-attribute-shell-script-u",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
-      "createdDateTime": "2026-11-06T19:16:38.7428046Z",
+      "createdDateTime": "2026-11-11T19:20:20.2405173Z",
       "roleScopeTagIds": [
         "0"
       ],
       "customAttributeName": null,
       "customAttributeType": "string",
-      "lastModifiedDateTime": "2026-11-06T19:23:44.6827547Z"
+      "lastModifiedDateTime": "2026-11-11T19:27:24.522981Z"
     },
     "intendedState": {
-      "fileName": "keel-rt-1049-device-custom-attribute-shell-script-u.sh",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-custom-attribute-shell-script-u",
+      "fileName": "keel-rt-1083-device-custom-attribute-shell-script-u.sh",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-custom-attribute-shell-script-u",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -37,20 +37,20 @@
       "customAttributeType": "string"
     },
     "postState": {
-      "id": "e83cb22d-6374-84af-977c-ee558e03d409",
-      "fileName": "keel-rt-1049-device-custom-attribute-shell-script-u.sh",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-custom-attribute-shell-script-u",
+      "id": "93c7c2d1-a6fb-82c1-b518-856e70ecd6e5",
+      "fileName": "keel-rt-1083-device-custom-attribute-shell-script-u.sh",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-custom-attribute-shell-script-u",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
-      "createdDateTime": "2026-11-06T19:16:38.7428046Z",
+      "createdDateTime": "2026-11-11T19:20:20.2405173Z",
       "roleScopeTagIds": [
         "0"
       ],
       "customAttributeName": null,
       "customAttributeType": "string",
-      "lastModifiedDateTime": "2026-11-06T19:44:05.3969266Z"
+      "lastModifiedDateTime": "2026-11-11T19:36:10.0395325Z"
     }
   }
 }

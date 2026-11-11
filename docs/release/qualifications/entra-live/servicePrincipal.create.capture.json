@@ -1,29 +1,29 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "a9a4343b-e226-8d04-b4fb-711fab507d6a",
   "entry": {
-    "naturalKey": "servicePrincipal:57130f15-a2c7-834e-9c06-5141f6628c0c",
+    "naturalKey": "servicePrincipal:ddac8bef-88d1-8210-adbf-48c49adaf7f3",
     "resourceType": "servicePrincipal",
     "operation": "create",
-    "targetId": "5a4f60f6-a9d6-89da-ac9e-c32cfbb57178",
+    "targetId": "d8ebccfa-4b13-8824-80fc-e6a7b51db34c",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:11.645Z",
+    "recordedAt": "2026-11-11T19:41:52.334Z",
     "priorState": null,
     "intendedState": {
-      "id": "7fa20378-3218-8a5f-8185-5a547585cc8c",
+      "id": "cc949c03-c770-8f58-9f0e-814cdcd98c49",
       "tags": [],
-      "appId": "d00537aa-85c9-8e7f-8334-3afb98e3776b",
-      "notes": "KEEL-RT test fixture (#1049)",
+      "appId": "ddac8bef-88d1-8210-adbf-48c49adaf7f3",
+      "notes": "KEEL-RT test fixture (#1083)",
       "appRoles": [],
       "description": null,
-      "displayName": "KEEL-RT-1049-app-c",
+      "displayName": "KEEL-RT-1083-app-c",
       "accountEnabled": true,
       "servicePrincipalType": "Application",
       "oauth2PermissionScopes": [],
       "appRoleAssignmentRequired": false
     },
     "postState": {
-      "id": "5a4f60f6-a9d6-89da-ac9e-c32cfbb57178",
+      "id": "d8ebccfa-4b13-8824-80fc-e6a7b51db34c",
       "info": {
         "logoUrl": null,
         "supportUrl": null,
@@ -32,8 +32,8 @@
         "privacyStatementUrl": null
       },
       "tags": [],
-      "appId": "d00537aa-85c9-8e7f-8334-3afb98e3776b",
-      "notes": "KEEL-RT test fixture (#1049)",
+      "appId": "ddac8bef-88d1-8210-adbf-48c49adaf7f3",
+      "notes": "KEEL-RT test fixture (#1083)",
       "addIns": [],
       "appRoles": [],
       "homepage": null,
@@ -42,15 +42,15 @@
       "replyUrls": [],
       "isDisabled": null,
       "description": null,
-      "displayName": "KEEL-RT-1049-app-c",
+      "displayName": "KEEL-RT-1083-app-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals/$entity",
       "accountEnabled": true,
-      "appDescription": "KEEL-RT test fixture (#1049)",
-      "appDisplayName": "KEEL-RT-1049-app-c",
+      "appDescription": "KEEL-RT test fixture (#1083)",
+      "appDisplayName": "KEEL-RT-1083-app-c",
       "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
       "keyCredentials": [],
       "signInAudience": "AzureADMyOrg",
-      "createdDateTime": "2026-11-06T19:44:11Z",
+      "createdDateTime": "2026-11-11T19:41:52Z",
       "deletedDateTime": null,
       "alternativeNames": [],
       "verifiedPublisher": {
@@ -63,7 +63,7 @@
       "tokenEncryptionKeyId": null,
       "applicationTemplateId": null,
       "servicePrincipalNames": [
-        "d00537aa-85c9-8e7f-8334-3afb98e3776b"
+        "ddac8bef-88d1-8210-adbf-48c49adaf7f3"
       ],
       "appOwnerOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
       "oauth2PermissionScopes": [],

@@ -7,23 +7,23 @@
   "resourceType": "mobileAppCategory",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:48.543Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "mobileAppCategory:e255e9bc-4994-814d-935b-0d5dd89fc432",
+  "observedAt": "2026-11-11T19:35:56.276Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "mobileAppCategory:4073b90a-c3c8-841d-a42e-b7bf9c57f125",
   "fixtureKind": "named-object",
-  "captureSha256": "b51523b712f0453e25aff39be1fbea5afc2c0551f0ff79cb6878bda19170b60a",
+  "captureSha256": "3f6892eb2d9983614287e7294e7bab0575c0f2d28668ed64e7ab352923c93cd2",
   "proofRef": "docs/release/qualifications/entra-live/mobileAppCategory.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "de6aa86e233aa1056c54e1b82927fc8a94f4292fd8aad7c24d3b95498aabca03"
+      "signature": "377e27104b0351606cd6950b970816c69491ed92c48385c09268cebdc83ba12b"
     }
   }
 }

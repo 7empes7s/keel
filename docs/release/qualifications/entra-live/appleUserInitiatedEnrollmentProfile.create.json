@@ -7,23 +7,23 @@
   "resourceType": "appleUserInitiatedEnrollmentProfile",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:37.521Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "appleUserInitiatedEnrollmentProfile:366a4878-a559-8237-a138-17fafd23d6f0",
+  "observedAt": "2026-11-11T19:35:49.144Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "appleUserInitiatedEnrollmentProfile:45611d91-0d8b-8f80-bcd2-6127c4f981ff",
   "fixtureKind": "named-object",
-  "captureSha256": "99872c1b3c816618f0541143b5299a6b9521474790ed5ff7f83c99d9804fab72",
+  "captureSha256": "f14c82e20db2c0e286bf446bdb350b3ae7197f367cd83f1f83654ce9bee2a3c8",
   "proofRef": "docs/release/qualifications/entra-live/appleUserInitiatedEnrollmentProfile.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "4f62b7323e55d4f880515ca237c4fcf0a9d0074ea56f9f4f3cfef3cf0654c820"
+      "signature": "f80f25f677f72af1505a4c99663f08ca8f705afa3fb38a437e3080940f0c06fa"
     }
   }
 }

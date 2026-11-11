@@ -7,23 +7,23 @@
   "resourceType": "mobileApp",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:48.342Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "mobileApp:KEEL-RT-1049-mobile-app-c",
+  "observedAt": "2026-11-11T19:35:56.116Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "mobileApp:KEEL-RT-1083-mobile-app-c",
   "fixtureKind": "named-object",
-  "captureSha256": "3599490b2aff2c824b8e1e8c038100d837faed722474724c89b613d28741717f",
+  "captureSha256": "1059a8d7da334b2ae7cbc1e1027ea73419acd77b5cab75e29e8056777ddfb1b9",
   "proofRef": "docs/release/qualifications/entra-live/mobileApp.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "265e7a480733145e0f1c72162c2d7c0eb051bee034228f36b9f3b109a7350d76"
+      "signature": "2dd2b9fe6cdc8d1efa0d6607a03765f1f7c7848d3f2dfceb1cf80633712404b9"
     }
   }
 }

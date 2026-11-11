@@ -1,0 +1,53 @@
+{
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "entry": {
+    "naturalKey": "accessPackageResourceRoleScope:3fda06d1-4d42-8d02-b18a-9f24909f689b_af701651-88ed-88a3-9ca1-a80bcbde5ff7",
+    "resourceType": "accessPackageResourceRoleScope",
+    "operation": "create",
+    "targetId": "3fda06d1-4d42-8d02-b18a-9f24909f689b_af701651-88ed-88a3-9ca1-a80bcbde5ff7",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-11T19:36:23.901Z",
+    "priorState": null,
+    "intendedState": {
+      "role": {
+        "originId": "Member_7898e3fb-4de7-8813-99cc-f0891ab641f8",
+        "resource": {
+          "originId": "7898e3fb-4de7-8813-99cc-f0891ab641f8",
+          "originSystem": "AadGroup"
+        },
+        "displayName": "Member",
+        "originSystem": "AadGroup"
+      },
+      "scope": {
+        "originId": "7898e3fb-4de7-8813-99cc-f0891ab641f8",
+        "description": "Root Scope",
+        "displayName": "Root",
+        "isRootScope": true,
+        "originSystem": "AadGroup"
+      }
+    },
+    "postState": {
+      "id": "3fda06d1-4d42-8d02-b18a-9f24909f689b_af701651-88ed-88a3-9ca1-a80bcbde5ff7",
+      "role": {
+        "id": "3fda06d1-4d42-8d02-b18a-9f24909f689b",
+        "type": null,
+        "originId": "Member_7898e3fb-4de7-8813-99cc-f0891ab641f8",
+        "description": null,
+        "displayName": "Member",
+        "originSystem": "AadGroup"
+      },
+      "scope": {
+        "id": "af701651-88ed-88a3-9ca1-a80bcbde5ff7",
+        "originId": "7898e3fb-4de7-8813-99cc-f0891ab641f8",
+        "description": "Root Scope",
+        "displayName": "Root",
+        "isRootScope": true,
+        "originSystem": "AadGroup"
+      },
+      "createdDateTime": "2026-11-11T19:36:25.45Z",
+      "role@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/accessPackages('cdfceb06-c5b3-89e3-8f9b-e3aa357cc9a4')/resourceRoleScopes('3fda06d1-4d42-8d02-b18a-9f24909f689b_af701651-88ed-88a3-9ca1-a80bcbde5ff7')/role/$entity",
+      "scope@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/accessPackages('cdfceb06-c5b3-89e3-8f9b-e3aa357cc9a4')/resourceRoleScopes('3fda06d1-4d42-8d02-b18a-9f24909f689b_af701651-88ed-88a3-9ca1-a80bcbde5ff7')/scope/$entity"
+    }
+  }
+}

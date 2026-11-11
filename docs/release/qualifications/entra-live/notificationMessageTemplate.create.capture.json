@@ -1,33 +1,33 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "notificationMessageTemplate:f4cae8cc-4384-8c69-8b2b-4fd134a6e0ba",
+    "naturalKey": "notificationMessageTemplate:28a88fff-d24f-86ad-8007-8f10e4e6e9f3",
     "resourceType": "notificationMessageTemplate",
     "operation": "create",
-    "targetId": "7bee1eb7-2e9f-80cd-8862-e5f4e8f6d196",
+    "targetId": "cc054cf2-eb71-80ec-a89c-8d60819f2d71",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:06.478Z",
+    "recordedAt": "2026-11-11T19:36:15.622Z",
     "priorState": null,
     "intendedState": {
-      "displayName": "KEEL-RT-1049-notification-message-template-c",
+      "displayName": "KEEL-RT-1083-notification-message-template-c",
       "brandingOptions": "includeCompanyLogo",
       "roleScopeTagIds": [
         "0"
       ]
     },
     "postState": {
-      "id": "7bee1eb7-2e9f-80cd-8862-e5f4e8f6d196",
-      "displayName": "KEEL-RT-1049-notification-message-template-c",
+      "id": "cc054cf2-eb71-80ec-a89c-8d60819f2d71",
+      "displayName": "KEEL-RT-1083-notification-message-template-c",
       "defaultLocale": null,
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/notificationMessageTemplates(localizedNotificationMessages())/$entity",
       "brandingOptions": "includeCompanyLogo",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:44:07Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:16Z",
       "localizedNotificationMessages": [],
-      "localizedNotificationMessages@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/notificationMessageTemplates('7bee1eb7-2e9f-80cd-8862-e5f4e8f6d196')/localizedNotificationMessages"
+      "localizedNotificationMessages@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/notificationMessageTemplates('cc054cf2-eb71-80ec-a89c-8d60819f2d71')/localizedNotificationMessages"
     }
   }
 }

@@ -1,0 +1,33 @@
+{
+  "restoreRef": "8fe3e1e0-6725-86a6-90b7-e76d18af519f",
+  "entry": {
+    "naturalKey": "securityZone:aed268f4318a8c838cd69224bc499dfa",
+    "resourceType": "securityZone",
+    "operation": "create",
+    "targetId": "352dc3f24a0782848c3505707adcec10",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-11T20:08:32.557Z",
+    "priorState": null,
+    "intendedState": {
+      "description": "Fixture",
+      "displayName": "KEEL-RT-1083-zone-c"
+    },
+    "postState": {
+      "id": "352dc3f24a0782848c3505707adcec10",
+      "created": {
+        "by": "",
+        "dateTime": "2026-11-11T20:08:33.3501421Z"
+      },
+      "modified": {
+        "by": "",
+        "dateTime": "2026-11-11T20:08:33.4402441Z"
+      },
+      "description": "Fixture",
+      "displayName": "KEEL-RT-1083-zone-c",
+      "aggregations": [],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#security/zones/$entity",
+      "aggregations@odata.context": "https://graph.microsoft.com/beta/$metadata#security/zones('352dc3f24a0782848c3505707adcec10')/aggregations"
+    }
+  }
+}

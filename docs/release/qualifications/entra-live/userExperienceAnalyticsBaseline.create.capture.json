@@ -1,23 +1,23 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "userExperienceAnalyticsBaseline:e1353f29-7ef1-8261-b623-4fc46dd8ec40",
+    "naturalKey": "userExperienceAnalyticsBaseline:910e361c-48bd-891f-9bc3-845581552bef",
     "resourceType": "userExperienceAnalyticsBaseline",
     "operation": "create",
-    "targetId": "637246e4-56cd-8518-bdde-63e8090d3cff",
+    "targetId": "d2e40fc9-5f34-8c12-bef2-8b6844ce2fe1",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:54.613Z",
+    "recordedAt": "2026-11-11T19:36:02.045Z",
     "priorState": null,
     "intendedState": {
-      "displayName": "KEEL-RT-1049-user-experience-analytics-baseline-c"
+      "displayName": "KEEL-RT-1083-user-experience-analytics-baseline-c"
     },
     "postState": {
-      "id": "637246e4-56cd-8518-bdde-63e8090d3cff",
+      "id": "d2e40fc9-5f34-8c12-bef2-8b6844ce2fe1",
       "isBuiltIn": false,
-      "displayName": "KEEL-RT-1049-user-experience-analytics-baseline-c",
+      "displayName": "KEEL-RT-1083-user-experience-analytics-baseline-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/userExperienceAnalyticsBaselines/$entity",
-      "createdDateTime": "2026-11-06T19:35:54.9984729Z"
+      "createdDateTime": "2026-11-11T19:36:02.3904243Z"
     }
   }
 }

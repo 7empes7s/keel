@@ -1,6 +1,6 @@
 # O1 live proof at `ef793e66bd` (issue #1083)
 
-**Status: plan approved. G1, G3 and G4 run; G2 held (tenant-wide toggle). Stopped after G3 on an unexpected failure (`site-template.update`, see "Bugs found"); E1-E4 not run yet.**
+**Status: done at `ef793e66bd`.** All batches ran except E5 (second Global Administrator) and storage and the drill (held). The sign-off is regenerated (verdict pending: 43 of 49 gates, 135 of 255 Entra writes).
 Approval is asked once per batch below; each batch starts only after its approval.
 
 ## Approvals
@@ -28,29 +28,32 @@ Approval is asked once per batch below; each batch starts only after its approva
 Every record verifies with `qualification.mjs verify --require-live --tenant <tenant ref> --build <B>` (exit 0).
 Tenant state afterwards: the native fixture group is live with its id; nothing else in the test tenant was written.
 
-### G2 (2026-11-11): held
+### G2 (2026-11-11)
+
+Run after the CEO's message relaying the manager's G2 approval, under the standing decision in `ops/STATE.md`
+(2026-10-22: tenant-wide test-tenant settings may change if each is put back right after).
 
 | Gate | Result | Notes |
 |---|---|---|
-| `sharepoint-live-acceptance` | **held** (owner: manager) | The capture flips the tenant-wide `isResharingByExternalUsersEnabled` and puts it back. It is `false` now, so the flip widens sharing (`--allow-widening-toggle`). The gate doc calls this beyond the KEEL-RT-only guardrail, and the manager's rule for this window is to stop on writes outside KEEL-RT fixtures |
-| `teams-live-acceptance`, `exchange-live-acceptance`, `onedrive-purview-live-acceptance` | **held** (owner: manager) | Each takes the previous gate's record as input (chain from SharePoint), and each puts tenant-wide Teams or Exchange settings back after changing them |
-
-`ops/STATE.md` has a standing decision (2026-10-22) that tenant-wide test-tenant settings may change if each is put
-back right after; it was not used because the manager's stop rule for this window is stricter.
+| `sharepoint-live-acceptance` | **proven** | `isResharingByExternalUsersEnabled` flipped and put back (`--allow-widening-toggle`); before and after fingerprints match; reads `false` afterwards |
+| `teams-live-acceptance` | **proven** | Settings put back; quinn added, promoted, demoted and removed; members and owners fingerprints match |
+| `exchange-live-acceptance` | **proven** | Every changed value put back (read back by the capture) |
+| `onedrive-purview-live-acceptance` | **proven** | New label `KEEL-RT-20261111-label1` (the capture's publish is add-only); unpublished and removed afterwards, the fixture policy is back to its 6 labels |
 
 ### G3 (2026-11-11)
 
-Run without `--allow-tenant-wide-test-writes`: only KEEL-RT- objects were written; tenant-wide families were skipped.
+First run without `--allow-tenant-wide-test-writes` (only KEEL-RT- objects). After G2, Exchange extended and Teams org
+policies were run again with it, under the same 2026-10-22 decision; each value was put back and read back.
 
 | Gate | Result | Notes |
 |---|---|---|
 | Mail flow writers | **proven 7/7** | |
-| Exchange extended writers | **proven 10**, skipped 11 | 9 skipped by design as before; connection filter and quarantine global settings skipped (tenant-wide, not run) |
+| Exchange extended writers | **proven 12**, skipped 9 | the same 9 as at `128b0e3b84`, by design |
 | Purview retention/DLP writers | **proven 4/4** | |
 | Purview governance writers | **proven 1/1** | |
-| Teams org policy writers | **proven 2**, skipped 5 | federation (by design); client, guest meeting, guest messaging and guest calling configurations (tenant-wide, not run) |
+| Teams org policy writers | **proven 6**, skipped 1 | federation configuration (by design) |
 | Teams voice policy writers | **proven 20**, skipped 1 | live events configuration (by design) |
-| OneDrive site settings writer | **held** (owner: manager) | Needs a hand change on the fixture person's OneDrive first (link permission to Edit) through PnP; not run in this window |
+| OneDrive site settings writer | **proven** | alice's link setting set to Edit by hand, narrowed and put back by the capture, then back to None by hand (reads None/None/Unlock) |
 | SharePoint site grants | **proven 2/2** | add and update on `KEEL-RT-site-grant-app`; the grant was removed by hand afterwards |
 | SharePoint site permissions | **proven 5/5** | on `KEEL-RT-perm-list` (made for the run); level, group, admin flag and list removed by hand afterwards |
 | SharePoint structure writers | **proven 5/7**, **failed 1**, skipped 1 | `site-template.update` failed, see "Bugs found"; `hub-site.add` skipped (it leaves a permanent hub) |
@@ -68,6 +71,39 @@ Run without `--allow-tenant-wide-test-writes`: only KEEL-RT- objects were writte
 Every G3 and G4 record verifies with `verify --require-live --tenant <tenant ref> --build <B>` (exit 0).
 Left on purpose (KEEL never deletes these; all KEEL-RT-, unassigned): the Teams `KEEL-RT-capture-*` policies, the
 Exchange role and distribution list, and the site script and site design the captures created.
+
+### E1-E4 (2026-11-11)
+
+Fixtures `KEEL-RT-1083-*` (`-u` drifted, `-c` deleted, `-s` soft-deleted, `-d` made after S1 and removed with
+`--delete`) and the fixture user carla. Snapshots S1 and S2 by `keel-collect` (both exit 3 only for the known
+`defenderIdentitySensor` 403 and `todoSettings` 500). Each restore: dry run, approval, enforce. The owner's Gmail
+principal requested and the owner's Entra principal approved, under the standing authorization of 2026-10-14
+(`ops/STATE.md`, as in #1049); the Restorer did every write, Global Administrator was not used.
+
+| Batch | Result |
+|---|---|
+| E1 | **127 of 127 proven** (runs a, b, c1, c2, d, e, e2) |
+| E2 | **7 proven**: `configurationPolicy.delete` (#1056), `accessPackageAssignmentPolicy.create` (#1059), `accessPackageResourceRoleScope.create` (#1060), `securityZone.create/update`, `profileCardProperty.create/update`. **Failed:** `schemaExtension.create` (see "Bugs found"). **Capture refused a write that succeeded:** `accessPackageCatalogResource.create`, `entitlementManagementRoleAssignment.create` (see "Bugs found"). **Not run:** `accessPackageAssignment.create` (S2 held no assignment), `itemInsightsSettings.update` (the Restorer's write answers 403), `todoSettings.update` (the read answers 500), the Defender detection rules, Copilot connectors and attack simulations (missing Restorer permission), the five tenant-wide settings not approved by name, and `mobileAppRelationship.delete` (no relationship can be made) |
+| E3 | **1 proven**: `accessReviewScheduleDefinition.create` (#1062). 28 skipped for the missing Restorer permission (read from the token's roles); `crossTenantM365Capability.update` has its grant but was not run in this window |
+| E4 | **0 proven.** Every retry failed at Microsoft again: driver and quality updates 403, Tunnel 500, Autopilot, cart and app relationship 400, connected organization 404, the cross-tenant default 404, external identities 400 (no privacy profile), directory role access review 404, the baseline drift 400, `exchangeCustomAppScope.update` and `notificationMessageTemplate.update` made no change, the group owner remove refused (a group keeps one owner); the no-fixture types stay not attempted |
+| E5 | held (second Global Administrator) |
+
+Not committed: the failed records for `schemaExtension.create` and `group#owner.edge-remove` (a demotion needs a
+code note, which the freeze does not allow).
+
+Tenant state afterwards: all 26 tenant-wide values read before the run read the same afterwards (SharePoint Loop,
+the consent setting, the partner's tenant restrictions, carla's department and the rest). Every `KEEL-RT-1083`
+object, including the ones KEEL recreated under new ids (from the restore journal), is deleted; groups and apps are
+purged from deleted items; a sweep by name finds none. The Microsoft partner entry made for the create is removed.
+Item insights stays on. Never touched: Conditional Access, break-glass, the owner's account, consent grants.
+
+### Sign-off (S, 2026-11-11)
+
+`readiness.mjs signoff --build ef793e66bd --accept-objective-gaps` with the fixture journeys (all passed) and the
+key: verdict **pending**, 43 of 49 gates and 135 of 255 Entra writes live-qualified. The report is in
+`release-signoff.md`, the record in `docs/release/final-acceptance.json`, and `PENDING.md` O1 matches it. The NIST
+gate reads its pinned catalog from the kept copy through a private mount, as in G1.
+
 
 ## Candidate
 
@@ -492,7 +528,7 @@ Then commit `release-signoff.md`, `final-acceptance.json` and the records, and u
 
 ## Results
 
-None yet. Each batch adds its passed, failed and skipped lines here.
+See "Results" at the top of this file.
 
 ## Bugs found
 
@@ -503,3 +539,11 @@ None yet. Each batch adds its passed, failed and skipped lines here.
   and every QuickLaunch node on `KEEL-RT-20261004` had new, consecutive ids with "Recent" listed twice: the put-back
   rebuilds the whole navigation, and the read-back then differs from what was there before. Not fixed under the
   freeze; the manager is asked on #1083 whether to file it.
+- **`schemaExtension.create` (E2):** the restore sends the id Graph generated (`ext…_keelrt1083courses`); Graph
+  refuses it with "Your organization must own the namespace". Graph only accepts a bare name (it adds its own prefix)
+  or a verified-domain prefix, so the writer has to send the bare name and map the new id. Not fixed under the freeze.
+- **`accessPackageCatalogResource.create` and `entitlementManagementRoleAssignment.create` captures (E2):** both
+  restores wrote and verified, but `entraLive.mjs capture` refuses them ("no principal reference; no role reference";
+  "the role is not the fixture role"), the same kind of gap #1060 fixed for role scopes. Not fixed under the freeze.
+- **`accessPackageAssignment` read (E2):** S2 held no assignment although the fixture assignment was delivered
+  before the snapshot started. Not investigated under the freeze.

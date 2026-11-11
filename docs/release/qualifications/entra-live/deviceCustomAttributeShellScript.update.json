@@ -7,23 +7,23 @@
   "resourceType": "deviceCustomAttributeShellScript",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:44:05.246Z",
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
-  "naturalKey": "deviceCustomAttributeShellScript:e83cb22d-6374-84af-977c-ee558e03d409",
+  "observedAt": "2026-11-11T19:36:09.900Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "deviceCustomAttributeShellScript:93c7c2d1-a6fb-82c1-b518-856e70ecd6e5",
   "fixtureKind": "named-object",
-  "captureSha256": "afc425ab49c038524ee794f0c012bd88c3d192b10fd94d8d894b220507a27bf4",
+  "captureSha256": "c490aff87797b06d0ca3db631cd7174dfc313565b9ef855b5eedfb73d05dd918",
   "proofRef": "docs/release/qualifications/entra-live/deviceCustomAttributeShellScript.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "1bfeedeac01b3cdfcf978956d4553008e9f5eb5069b10aad03c20d24762a2c0e"
+      "signature": "4136064e204899235f19839d6b5aba2bdef31a966ea40abe5a904da0327388fb"
     }
   }
 }

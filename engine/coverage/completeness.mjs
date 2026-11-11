@@ -248,9 +248,9 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementRoleAssignment: {},
   // Remaining kinds, batch 1.
   applePushNotificationCertificate: { whole: 'not-written', missing: [part('The certificate file', 'secret')] },
-  mobileThreatDefenseConnector: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
-  deviceManagementPartner: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
-  complianceManagementPartner: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
+  mobileThreatDefenseConnector: { missing: [part('The connection made from the partner console', 'other-route')] },
+  deviceManagementPartner: { missing: [part('The connection made from the partner console', 'other-route')] },
+  complianceManagementPartner: { missing: [part('The connection made from the partner console', 'other-route')] },
   remoteAssistancePartner: { whole: 'not-written', missing: [part('The onboarding made from the partner console', 'other-route')] },
   deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
   // Restore approvals: turned on once approved.
@@ -301,7 +301,7 @@ export const COMPLETENESS = Object.freeze({
   androidForWorkEnrollmentProfile: { missing: [part('Enrollment token and QR code', 'secret')] },
   appleUserInitiatedEnrollmentProfile: { missing: [part('Its place in the priority order', 'not-written'), part('Who the profile is assigned to', 'not-written')] },
   androidForWorkSettings: { whole: 'not-written' },
-  deviceManagementDerivedCredentialSettings: { whole: 'not-written' },
+  deviceManagementDerivedCredentialSettings: { missing: [part('The issuer', 'not-written')] },
   microsoftTunnelConfiguration: { missing: [part('The sites and servers that use it', 'other-route')] },
   microsoftTunnelHealthThreshold: { missing: [part('The default limits', 'microsoft-managed')] },
   // Restore gaps batch 16: assignments read per profile and written through /assign.
@@ -316,8 +316,8 @@ export const COMPLETENESS = Object.freeze({
   userExperienceAnalyticsBaseline: { missing: [part('Built-in baselines', 'microsoft-managed'), part('The scores taken when it was created', 'microsoft-managed')] },
   // Remaining kinds, batch 7.
   // Restore gaps batch 17: the settings other than sharing (the SharePoint workload writes those).
-  itemInsightsSettings: { whole: 'not-written' },
-  externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
+  itemInsightsSettings: {},
+  externalConnection: { missing: [part('The connection schema and the items pushed into it', 'other-route')] },
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
   // The payloads, login and landing pages it uses are backed up as their own kinds.
   attackSimulation: { whole: 'not-written', missing: [part('Its results: who clicked, reported or entered a password', 'read-only')] },
@@ -338,16 +338,16 @@ export const COMPLETENESS = Object.freeze({
   crossTenantM365Capability: { whole: 'not-written' },
   entitlementManagementRoleAssignment: { missing: [part('Roles other than catalog owner, catalog reader and access package manager, such as catalog creator, which are added by hand', 'not-written')] },
   deviceTemplate: { whole: 'not-written', missing: [part('Its owners and the devices made from it', 'other-route')] },
-  securityZone: { whole: 'not-written', missing: [part('The environments in the zone', 'other-route')] },
+  securityZone: { missing: [part('The environments in the zone', 'other-route')] },
   sharedEmailDomain: { managed: true },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
   // Remaining kinds, batch 9: read once the Collector holds the read permission.
-  todoSettings: { whole: 'not-written' },
+  todoSettings: {},
   microsoft365AppsInstallationOptions: {},
   profileCardProperty: { whole: 'not-written' },
   pronounsSettings: {},
-  defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
-  defenderIdentitySensor: { whole: 'not-written', missing: [part('The sensor software on each server and its health', 'other-route')] },
+  defenderDetectionRule: { missing: [part('Whether the rule is on', 'not-written'), part('Past runs and the alerts a rule raised', 'other-route')] },
+  defenderIdentitySensor: { missing: [part('The sensor software on each server and its health', 'other-route')] },
   secureScoreControlProfile: { whole: 'not-written', missing: [part('Microsoft\'s text and score for each action', 'microsoft-managed')] },
   teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
   formsSettings: {},

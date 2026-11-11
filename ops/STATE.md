@@ -175,6 +175,11 @@ engine code after the candidate, so the next sign-off needs a new frozen candida
   and update are fixture-tested with no live record yet. Capture needs KEEL-RT-993-org (proposed, one
   operator-owned domain) and KEEL-RT-993-policy on KEEL-RT-992-package (steps in the #993 PR body); both
   writes are approval-held.
+- Defender, Intune connector and Microsoft 365 settings (#1074): `defenderDetectionRule` and `securityZone` and
+  `externalConnection` create and update, and `defenderIdentitySensor`, `itemInsightsSettings`, `todoSettings`, the
+  three Intune partner kinds and `deviceManagementDerivedCredentialSettings` update are fixture-tested with no live
+  record yet. Capture needs KEEL-RT-148-rule (no response actions, off), KEEL-RT-148-zone and keelrtconnection; the
+  rest are tenant settings (steps in the #1074 PR body). Skip a partner or sensor kind the test tenant does not have.
 - Entitlement management part 3 (#1071): `accessPackageCatalogResource`, `accessPackageAssignment` and
   `entitlementManagementRoleAssignment` create are fixture-tested with no live record yet. Capture needs the
   KEEL-RT-148-group in KEEL-RT-992-catalog, carla assigned KEEL-RT-992-package through KEEL-RT-993-policy and

@@ -419,7 +419,10 @@ test('the administrative batch runner drives the subset through applyWave and re
       'sharepointSettings update passed',
       // Restore gaps, batch 20.
       'adminReportSettings update passed', 'appsAndServicesSettings update passed', 'engageCommunity update passed',
-      'formsSettings update passed', 'microsoft365AppsInstallationOptions update passed', 'pronounsSettings update passed'].sort());
+      'formsSettings update passed', 'microsoft365AppsInstallationOptions update passed', 'pronounsSettings update passed',
+      // Issue #1074.
+      'defenderIdentitySensor update passed', 'externalConnection create passed', 'externalConnection update passed',
+      'itemInsightsSettings update passed', 'securityZone create passed', 'securityZone update passed', 'todoSettings update passed'].sort());
   assert.ok(report.operations.every((op) => op.synthetic === true));
   assert.ok(report.administrativeLedger.families.some((family) => family.resourceType === 'administrativeUnit'
     && family.unrecoverable.some((item) => item.name === 'members')));

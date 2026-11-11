@@ -180,6 +180,17 @@ const REGISTERED = Object.freeze({
   adminReportSettings: ['update'],
   pronounsSettings: ['update'],
   engageCommunity: ['update'],
+  // Issue #1074: Defender, Intune connector and Microsoft 365 settings.
+  defenderDetectionRule: ['create', 'update'],
+  defenderIdentitySensor: ['update'],
+  securityZone: ['create', 'update'],
+  itemInsightsSettings: ['update'],
+  todoSettings: ['update'],
+  externalConnection: ['create', 'update'],
+  mobileThreatDefenseConnector: ['update'],
+  deviceManagementPartner: ['update'],
+  complianceManagementPartner: ['update'],
+  deviceManagementDerivedCredentialSettings: ['update'],
   // Restore gaps, batch 12.
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],
@@ -203,7 +214,9 @@ const REGISTERED = Object.freeze({
 
 // Issue #1015: an attribute set is created under the backup's name, an attribute
 // under its set and name, and partner sync settings under the partner's tenant id.
-const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner']);
+const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner',
+  // Issue #1074: a detection rule and a Copilot connection are created under the backup's own id.
+  'defenderDetectionRule', 'externalConnection']);
 
 function governor() {
   return new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });
@@ -314,8 +327,9 @@ test('mutation pin: a real Graph collection path never implies write capability'
     assert.equal(graphPathFor(entry.type), null, `${entry.type} must have no registered write path`);
     checked += 1;
   }
-  // Wave 2 registered more than half the catalogue, so the floor is now a third.
-  assert.ok(checked > CATALOG.length / 3, 'this pin must exercise a large share of the catalogue, not a token sample');
+  // Wave 2 registered more than half the catalogue, and issue #1074 more again
+  // (53 of 185 types are left unregistered), so the floor is now a quarter.
+  assert.ok(checked > CATALOG.length / 4, 'this pin must exercise a large share of the catalogue, not a token sample');
 });
 
 test('mutation pin: descriptor.remappable never gates a capability claim', () => {

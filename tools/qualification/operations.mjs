@@ -41,6 +41,7 @@ import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
 import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
 import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
+import { SERVICE_SETTING_DRIFT, SERVICE_SETTING_PAYLOADS } from './serviceSettingFixtures.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
 // it made before; the fake answers them with their direct children.
@@ -482,6 +483,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     servicePrincipalRestrictions: { passwordCredentials: [], keyCredentials: [] },
   },
   engageCommunity: { id: 'fixture-community', displayName: 'Fixture community', description: 'Fixture', privacy: 'private', groupId: 'fixture-group' },
+  ...SERVICE_SETTING_PAYLOADS, // Issue #1074 (serviceSettingFixtures.mjs).
   // Restore gaps, batch 18: a web link app, the kind recreated in full.
   mobileApp: {
     '@odata.type': '#microsoft.graph.webApp', displayName: 'Fixture web link', description: 'Fixture', publisher: 'Fixture',
@@ -561,6 +563,7 @@ const FIXTURE_DRIFT = Object.freeze({
   adminReportSettings: () => ({ displayConcealedNames: false }),
   pronounsSettings: () => ({ isEnabledInOrganization: false }),
   engageCommunity: () => ({ description: 'Drifted' }),
+  ...SERVICE_SETTING_DRIFT,
   // Approval-held kinds: each drifts one access setting its restore puts back.
   deviceRegistrationPolicy: () => ({ userDeviceQuota: 20 }),
   tenantAppManagementPolicy: () => ({ isEnabled: true }),
@@ -672,6 +675,7 @@ const LISTED_BEFORE_CREATE = new Set([
   '/policies/featureRolloutPolicies',
   // Issue #1071: a catalog role's assignments are listed before a create.
   '/roleManagement/entitlementManagement/roleAssignments',
+  '/security/zones', // Issue #1074: a zone is looked for by name before a create.
 ]);
 
 // Issue #994: an authentication context is written under its own id, so the

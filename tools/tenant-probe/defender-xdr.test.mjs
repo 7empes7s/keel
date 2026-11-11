@@ -64,9 +64,10 @@ test('a refused read names the permission, and the setup page lists it for the b
   }
 });
 
-test('each kind is restored by hand, named, placed under Defender and keyed by id', () => {
+test('each kind is restored as planned, named, placed under Defender and keyed by id', () => {
+  // Issue #1074: a sensor's settings are written in place; an action's state stays by hand.
   for (const [type] of EXPECTED) {
-    assert.equal(qualificationFor(type).decision, 'manual', type);
+    assert.equal(qualificationFor(type).decision, type === 'defenderIdentitySensor' ? 'automated' : 'manual', type);
     const info = typeInfo(type);
     assert.deepEqual([info.known, info.service], [true, 'Defender'], type);
     assert.notEqual(info.category, 'other', type);

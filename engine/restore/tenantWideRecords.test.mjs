@@ -19,8 +19,10 @@ const ENTRA = Object.freeze([
   'accessReviewPolicy', 'directoryRoleAccessReviewPolicy', 'multiTenantOrganizationIdentitySyncPolicyTemplate',
   'multiTenantOrganizationPartnerConfigurationTemplate', 'sharepointSettings', 'deviceRegistrationPolicy', 'tenantAppManagementPolicy',
   'formsSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings', 'adminReportSettings', 'pronounsSettings',
+  'itemInsightsSettings', 'todoSettings',
 ]);
-const INTUNE = Object.freeze(['deviceManagementSettings', 'microsoftTunnelHealthThreshold', 'onPremisesConditionalAccessSettings']);
+const INTUNE = Object.freeze(['deviceManagementSettings', 'microsoftTunnelHealthThreshold', 'onPremisesConditionalAccessSettings',
+  'mobileThreatDefenseConnector', 'deviceManagementPartner', 'complianceManagementPartner', 'deviceManagementDerivedCredentialSettings']);
 
 const writes = (graph) => graph.writes.filter((write) => write.method !== 'GET');
 // The approval-held settings (deviceRegistrationPolicy, tenantAppManagementPolicy)

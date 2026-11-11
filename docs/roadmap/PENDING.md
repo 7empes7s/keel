@@ -76,22 +76,19 @@ until then (a 403 means skip and list it).
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 33 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; 18 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Entra sign-in extensions: custom authentication extensions (`:203`) and authentication event listeners (`:520`); the endpoint and its credentials stay a manual step. O1 · M · code
-- Entra PIM: custom extensions (`:660`) and PIM managed groups (`:663`). O1 · M · code
-- Entra other: app certificate authority trust (`:645`, the trust list stays manual), sign-in identifiers (`:648`), Verified ID profiles (`:651`), lifecycle policies (`:657`), default cross-tenant sharing settings (`:666`), device templates (`:672`), schema extensions (`:681`), profile card fields (`:703`). O1 · M · code
-- Attack simulation: automations, simulations, payloads, login pages, landing pages, notification emails (`:622`-`:637`). O1 · M · code
-- Defender and security: custom detection rules (`:709`), Defender for Identity sensors (`:712`), Secure Score action states (`:715`), exposure management zones (`:675`). O1 · M · code
-- Intune partners and connectors: mobile threat defense (`:424`), device management partners (`:427`), compliance partners (`:430`), remote help partners (`:433`), derived credential issuers (`:568`). O1 · M · code
-- Intune apps: managed e-books (`:587`), Windows code signing certificates (`:602`). O1 · S · code
-- Microsoft 365 and Teams: item insights setting (`:616`), Copilot connectors (`:619`), To Do settings (`:689`), Teams custom apps (`:718`). O1 · S · code
+- Entra sign-in extensions: custom authentication extensions (`:205`) and authentication event listeners (`:525`); the endpoint and its credentials stay a manual step. O1 · M · code
+- Entra PIM: custom extensions (`:668`) and PIM managed groups (`:671`). O1 · M · code
+- Entra other: app certificate authority trust (`:653`, the trust list stays manual), sign-in identifiers (`:656`), Verified ID profiles (`:659`), lifecycle policies (`:665`), default cross-tenant sharing settings (`:674`), device templates (`:681`), schema extensions (`:691`), profile card fields (`:714`). O1 · M · code
+- Attack simulation: automations, simulations, payloads, login pages, landing pages, notification emails (`:630`-`:645`). O1 · M · code
 
 ### Not restored by design (stay manual)
 
 - Certificate sign-in settings: the trusted certificate authority list is never written; a restore lists what differs (`qualification.mjs:101`, #994). O1 · — · none
 - Guest invitation domain restrictions: a restore never changes who can be invited (`qualification.mjs:237`, trust-field rule). O1 · — · none
+- Windows code signing certificates: a restore never uploads a certificate devices trust (#1074, trust-field rule). Remote help partners: only the partner's name and onboarding URL, a sign-in endpoint, are writable (#1074). Managed e-books, Secure Score action states and Teams custom apps are Microsoft limits (#1074: books come from Apple Business Manager, Graph documents no state update, no app package). O1 · — · none
 
 ### Restore guidance still missing
 

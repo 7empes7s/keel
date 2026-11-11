@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 51 are full, 125 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 122 at least in part and 9 hold nothing to restore; the other 54 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 53 are full, 123 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 132 at least in part and 9 hold nothing to restore; the other 44 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -75,7 +75,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | PIM managed groups | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Entitlement management role assignments | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Device templates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Teams custom apps | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Teams custom apps | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 
 ### Details and what you do
 
@@ -207,7 +207,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Device templates** (not built yet). KEEL backs up each device template's maker, model and operating system but not its owners or the devices made from it, and does not restore it yet.
   - *Not brought back:* its owners and the devices made from it (stored separately and not in the backup yet).
   - *You do:* Create the template again with PowerShell from the backup, then add its owners.
-- **Teams custom apps** (not built yet). KEEL backs up each app your organisation uploaded to Teams, with its versions and publishing state, but not the app package, which Microsoft does not give out. It does not restore them yet.
+- **Teams custom apps** (Microsoft limit). KEEL backs up each app your organisation uploaded to Teams, with its versions and publishing state. Microsoft does not give out the app package, so no tool can upload it again.
   - *Not brought back:* the app package (stored separately and not in the backup yet).
   - *You do:* Upload the app package again in the Teams admin center, under Teams apps, Manage apps, from your own copy, then check its details against the backup.
 
@@ -255,7 +255,7 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Sign-in identifiers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Default cross-tenant sharing settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Defender custom detection rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender custom detection rules | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 
 ### Details and what you do
 
@@ -356,9 +356,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Create the policy again in the Entra admin center, under Identity Governance, Lifecycle workflows, from the backup, and leave it off until you have checked who it covers.
 - **Default cross-tenant sharing settings** (not built yet). KEEL backs up the default calendar sharing, mail tips and room booking settings for other tenants but does not restore them yet.
   - *You do:* Set the same values with PowerShell from the backup.
-- **Defender custom detection rules** (not built yet). KEEL backs up each custom detection rule: its hunting query, schedule, alert details and response actions. It does not restore them yet.
-  - *Not brought back:* past runs and the alerts a rule raised (stored separately and not in the backup yet).
-  - *You do:* Create the rule again in the Microsoft Defender portal, under Hunting, Custom detection rules, from the backup. Leave it off until you have checked its response actions, because a rule can isolate devices or disable users.
+- **Defender custom detection rules.** Recreates rules turned off, and puts back their hunting query, schedule, alert details and response actions.
+  - *Not brought back:* whether the rule is on (in the backup, but KEEL does not write it yet); past runs and the alerts a rule raised (stored separately and not in the backup yet).
+  - *You do:* A rule can isolate devices or disable users, so KEEL never turns one on or off: check its response actions, then turn it on in the Microsoft Defender portal, under Hunting, Custom detection rules. Changed response actions, or a changed query on a rule that has them, wait for a second person to approve them in Approvals, unless restore approvals are off.
 
 ## Tenant settings
 
@@ -374,21 +374,21 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Group expiration policy | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Administrative units | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | SharePoint and OneDrive tenant settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Item insights setting | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Copilot connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Exposure management zones | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Item insights setting | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Copilot connectors | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Exposure management zones | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Shared email domains | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Schema extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Microsoft Forms settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Microsoft To Do settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Microsoft To Do settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Microsoft 365 Apps installation options | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | User owned apps and services | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Usage report privacy | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Profile card fields | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Pronouns setting | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Viva Engage communities | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
-| Defender for Identity sensors | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Secure Score action states | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Defender for Identity sensors | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Secure Score action states | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 
 ### Details and what you do
 
@@ -418,14 +418,14 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Members, admins scoped to the unit, dynamic membership rules and a deleted unit are restored by hand from the backup.
 - **SharePoint and OneDrive tenant settings.** Puts back the tenant-wide SharePoint and OneDrive settings, such as site creation, sync app limits, idle session sign-out, Loop and storage limits. The sharing settings are put back by the SharePoint service backup.
   - *You do:* Turning legacy authentication on, letting devices outside the domain sync, or letting a guest invitation be accepted by another account waits for a second person to approve it in Approvals, unless you turned restore approvals off for SharePoint.
-- **Item insights setting** (not built yet). KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.
-  - *You do:* Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Search and intelligence, from the backup, and pick the same group again.
-- **Copilot connectors** (not built yet). KEEL backs up each connection's name, description and allowed apps but not its schema or the items pushed into it, and does not restore it yet.
+- **Item insights setting.** Puts back whether people cards and search show the documents a person worked on, and the group it is turned off for.
+  - *You do:* Turning it on, or clearing or changing the group it is turned off for, waits for a second person to approve it in Approvals, unless restore approvals are off for Entra ID.
+- **Copilot connectors.** Recreates a deleted connection and puts back its name, description, settings and the apps allowed to push items into it.
   - *Not brought back:* the connection schema and the items pushed into it (stored separately and not in the backup yet).
-  - *You do:* Recreate the connector in the Microsoft 365 admin center, under Copilot, Connectors, from the backup, then let it sync its items again.
-- **Exposure management zones** (not built yet). KEEL backs up each zone's name and description but not the environments in it, and does not restore it yet.
+  - *You do:* The schema and the items are not backed up: let the connector set them up and sync its items again. An app newly allowed to push items waits for a second person to approve it in Approvals, unless restore approvals are off for Entra ID.
+- **Exposure management zones.** Recreates zones and puts back their name and description.
   - *Not brought back:* the environments in the zone (stored separately and not in the backup yet).
-  - *You do:* Create the zone again in the Microsoft Defender portal, under Exposure management, and add the same environments.
+  - *You do:* The environments in a zone are not backed up: add them again in the Microsoft Defender portal, under Exposure management. A zone with the same name and another description is left for you to check.
 - **Shared email domains** (Nothing to restore). KEEL backs up which shared email domains the tenant uses. Microsoft sets them up, so there is nothing to restore.
   - *You do:* Ask Microsoft support if a shared domain is missing.
 - **Schema extensions** (not built yet). KEEL backs up the schema extensions this tenant's own apps defined, but not the values stored in them on users and groups, and does not restore them yet.
@@ -433,8 +433,8 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Create the extension again with PowerShell, with the same id, owner app and properties from the backup.
 - **Microsoft Forms settings.** Puts back the tenant-wide Forms settings, such as sharing forms outside the organisation, phishing scans and Bing image search. The forms and their answers are not backed up.
   - *You do:* Widening sharing outside the organisation or turning the phishing scan off waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
-- **Microsoft To Do settings** (not built yet). KEEL backs up whether To Do lists can be shared with or joined by people outside the organisation, and push notifications, but does not restore them yet.
-  - *You do:* Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft To Do, from the backup.
+- **Microsoft To Do settings.** Puts back whether To Do lists can be shared with or joined by people outside the organisation, and push notifications.
+  - *You do:* Turning sharing or joining outside the organisation on waits for a second person to approve it in Approvals, unless restore approvals are off for Entra ID.
 - **Microsoft 365 Apps installation options.** Puts back which Microsoft 365 apps people can install themselves on Windows and Mac, and the update channel.
 - **User owned apps and services.** Puts back whether people can use the Office Store and start app trials.
   - *You do:* Turning the Office Store on waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
@@ -446,10 +446,10 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Viva Engage communities.** Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.
   - *Not brought back:* a deleted community (in the backup, but KEEL does not write it yet); posts, files and members of the community (stored separately and not in the backup yet).
   - *You do:* A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. Making a private community public waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
-- **Defender for Identity sensors** (not built yet). KEEL backs up which servers have a Defender for Identity sensor and each sensor's settings, such as its description, the domain controllers it covers and delayed updates. It does not restore them yet.
+- **Defender for Identity sensors.** Puts back the settings of an installed sensor: its description, the domain controllers it covers and delayed updates.
   - *Not brought back:* the sensor software on each server and its health (stored separately and not in the backup yet).
-  - *You do:* Install the sensor again on any server that lost it, then set the same settings in the Microsoft Defender portal, under Settings, Identities, Sensors, from the backup.
-- **Secure Score action states** (not built yet). KEEL backs up the state an admin set on each Secure Score action, such as resolved through a third party or risk accepted, with the reason given. It does not restore them yet.
+  - *You do:* A server that lost its sensor gets it installed again by hand. Microsoft does not let some settings change on some sensors (domain controllers on a domain controller sensor, both on version 3): set those by hand. Delayed updates turned on, or a domain controller dropped, wait for a second person to approve it in Approvals.
+- **Secure Score action states** (Microsoft limit). Microsoft documents no way for a tool to set the state an admin gives a Secure Score action, such as resolved through a third party or risk accepted, or its reason.
   - *Not brought back:* microsoft's text and score for each action (set by Microsoft).
   - *You do:* Set the same state and reason on each action in the Microsoft Defender portal, under Exposure management, Secure Score, Recommended actions, from the backup.
 
@@ -487,10 +487,10 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Intune admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Apple push certificate | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
-| Mobile threat defense connectors | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Device management partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Compliance partners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Remote help partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Mobile threat defense connectors | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Device management partners | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Compliance partners | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Remote help partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Exchange on-premises connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Exchange on-premises access settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -510,16 +510,16 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | Android work profile enrollment profiles | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Apple user enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Android work profile connection | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
-| Derived credential issuers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Derived credential issuers | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Apple app provisioning profiles | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back; take out a link a restore added, when that restore is undone | Tested against a simulated tenant |
-| Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows app protection policies | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
 | Symantec code signing certificate | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
 | Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | BIOS configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -600,16 +600,16 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Apple push certificate** (Microsoft limit). Apple issues this certificate. No tool can upload it from a backup, and a new certificate from a different Apple ID cuts off every Apple device.
   - *Not brought back:* the certificate file (Microsoft never returns it).
   - *You do:* Use the backup for the Apple ID and expiry date. Renew the certificate at Apple with that same Apple ID and upload it in the Intune admin center before it expires.
-- **Mobile threat defense connectors** (not built yet). KEEL backs these up but does not restore them yet. The connection is completed from the partner's console.
+- **Mobile threat defense connectors.** Puts back the settings of a connector that is connected: which platforms the partner checks, whether devices are blocked when the partner has no data, and what app data the partner may collect.
   - *Not brought back:* the connection made from the partner console (stored separately and not in the backup yet).
-  - *You do:* Set up the connector again from the partner's console, then turn on the settings the backup shows. Compliance policies that use the partner's threat level need it back first.
-- **Device management partners** (not built yet). KEEL backs these up but does not restore them yet. The connection is completed from the partner's console.
+  - *You do:* A missing connector is set up again from the partner's console first. Turning a check off or on, sharing app data with the partner, or changing how long the partner may stay silent waits for a second person to approve it in Approvals, unless restore approvals are off for Intune.
+- **Device management partners.** Puts back which groups enroll their devices through a partner that is connected.
   - *Not brought back:* the connection made from the partner console (stored separately and not in the backup yet).
-  - *You do:* Connect the partner again from its console, using the backup for the settings.
-- **Compliance partners** (not built yet). KEEL backs these up but does not restore them yet. The connection is completed from the partner's console.
+  - *You do:* A missing partner is connected again from its console first. A change to the groups waits for a second person to approve it in Approvals, unless restore approvals are off for Intune.
+- **Compliance partners.** Puts back the groups whose device compliance a connected partner decides, for each platform.
   - *Not brought back:* the connection made from the partner console (stored separately and not in the backup yet).
-  - *You do:* Connect the partner again from its console, using the backup for the settings and the groups it applies to.
-- **Remote help partners** (not built yet). KEEL backs these up but does not restore them yet. Onboarding is completed from the partner's console.
+  - *You do:* A missing partner is connected again from its console first. A change to the groups waits for a second person to approve it in Approvals, unless restore approvals are off for Intune.
+- **Remote help partners** (Microsoft limit). Onboarding is completed from the partner's console. Microsoft lets a tool write only the partner's name and its onboarding address, which is a sign-in page KEEL never writes.
   - *Not brought back:* the onboarding made from the partner console (stored separately and not in the backup yet).
   - *You do:* Onboard the partner again from its console, using the backup for the settings.
 - **Exchange on-premises connectors** (Microsoft limit). The connector is a program installed on an Exchange server. No tool can install it from a backup.
@@ -662,8 +662,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* A recreated profile goes to the end of the priority order and is assigned to nobody: set its priority and assign it again by hand from the backup.
 - **Android work profile connection** (Microsoft limit). The legacy work profile connection is made by signing in to Google. No tool can make it from a backup.
   - *You do:* Use the backup for the Google account and target groups, connect again in the Intune admin center with that account, and turn on the same enrollment options.
-- **Derived credential issuers** (not built yet). KEEL backs up the issuer settings but does not restore them yet.
-  - *You do:* Set the same issuer, help page and renewal threshold in the Intune admin center, under Tenant administration, Connectors and tokens, Derived credentials, from the backup.
+- **Derived credential issuers.** Puts back the help page, how people are told, and when a credential is renewed.
+  - *Not brought back:* the issuer (in the backup, but KEEL does not write it yet).
+  - *You do:* The issuer decides which certificates phones get, so KEEL never changes it: if it differs, set it by hand in the Intune admin center, under Tenant administration, Connectors and tokens, Derived credentials. A changed help page waits for a second person to approve it in Approvals, unless restore approvals are off for Intune.
 - **Microsoft Tunnel server configurations.** Recreates configurations and puts back their network, DNS servers, routes and port.
   - *Not brought back:* the sites and servers that use it (stored separately and not in the backup yet).
   - *You do:* A site points to its configuration by id: point the site at a recreated configuration again by hand.
@@ -674,9 +675,9 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again. Undoing a restore takes out a link it added.
   - *Not brought back:* the app packages on both ends, added again by hand before the link (a file the backup does not hold).
   - *You do:* An app KEEL cannot add again (a synced app) is added by hand first: a link to a missing app is not written. Intune links only Win32 apps, so a link to any other kind of app is a step for a person. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.
-- **Managed e-books** (not built yet). KEEL backs up each book's details but not yet who it is assigned to, and does not restore it yet.
+- **Managed e-books** (Microsoft limit). Books are bought in Apple Business Manager and synced into Intune, so no tool can add one. The backup holds each book's details, not who it is assigned to.
   - *Not brought back:* who the book is assigned to (stored separately and not in the backup yet).
-  - *You do:* Sync the books again from Apple Business Manager in the Intune admin center, under Apps, eBooks, and assign them again from the backup.
+  - *You do:* Sync the books again from Apple Business Manager in the Intune admin center, under Apps, eBooks, and assign them again.
 - **E-book categories.** Recreates categories and puts their names back.
   - *Not brought back:* which books are in the category (stored separately and not in the backup yet).
   - *You do:* Which books are in a category is set on each book; add the books to a recreated category again by hand.
@@ -685,8 +686,8 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Devices and classes are named by id and are not restored by KEEL: if a device or class was removed, add the cart to the new class again in Intune for Education.
 - **Windows app protection policies.** Recreates policies and puts back their settings, the apps they cover and who they are assigned to.
   - *You do:* Who a policy is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. A backup taken before the apps were read is refused for a recreate; take a new backup.
-- **Windows code signing certificates** (not built yet). KEEL backs up each public certificate but does not restore it yet.
-  - *You do:* Upload the same certificate again in the Intune admin center, under Tenant administration, Connectors and tokens, Windows enterprise certificate, from the backup.
+- **Windows code signing certificates** (KEEL choice). Devices trust every app signed with this certificate, so KEEL never uploads a certificate from a backup.
+  - *You do:* Check the certificate in the backup, then upload it again in the Intune admin center, under Tenant administration, Connectors and tokens, Windows enterprise certificate.
 - **Symantec code signing certificate** (KEEL choice). KEEL backs up the certificate's subject, issuer and expiry but never the certificate file or its password.
   - *Not brought back:* certificate file and password (Microsoft never returns it).
   - *You do:* Upload the certificate again from your own copy in the Intune admin center, under Tenant administration, Connectors and tokens, Windows Symantec certificate, and check its expiry against the backup.

@@ -57,6 +57,7 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import { trustSettingIds } from './workloads/writeDeclarations.mjs';
+import { INTUNE_CONNECTOR_RECORDS } from './serviceSettingsOperations.mjs';
 import { appleProfileField, appleProfileTrust, groupPolicyTrustSettings, namedTrustSkip, trustOmaUris } from './namedTrustSettings.mjs';
 import {
   applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
@@ -2238,6 +2239,8 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     operations: ['update'], writable: ['enabled', 'includedGroups', 'excludedGroups', 'overrideDefaultRule'],
     refusal: onPremisesAccessRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
+  // Issue #1074: partner connections and derived credentials (restore/serviceSettingsOperations.mjs).
+  ...INTUNE_CONNECTOR_RECORDS,
 });
 
 // ------------------------------------- batch 17: Intune tenant-wide settings

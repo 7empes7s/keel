@@ -23,6 +23,7 @@ const AGREEMENT_PROOF = 'engine/restore/agreementOperations.test.mjs';
 const SYNC_JOB_PROOF = 'engine/restore/synchronizationJobOperations.test.mjs';
 const GRANT_PROOF = 'engine/restore/entitlementGrantOperations.test.mjs';
 const PERMANENT_PROOF = 'engine/roadmap/permanent-writes.test.mjs';
+const SERVICE_PROOF = 'engine/restore/serviceSettingsOperations.test.mjs';
 
 export default [
   { resourceType: 'servicePrincipal', operation: 'update', path: '/servicePrincipals', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
@@ -174,6 +175,21 @@ export default [
   { resourceType: 'adminReportSettings', operation: 'update', path: '/admin/reportSettings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'pronounsSettings', operation: 'update', path: '/admin/people/pronouns', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'engageCommunity', operation: 'update', path: '/employeeExperience/communities', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Issue #1074: Defender, Intune connector and Microsoft 365 settings (restore/serviceSettingsOperations.mjs).
+  // A detection rule and a connection are created under the backup's own id.
+  { resourceType: 'defenderDetectionRule', operation: 'create', path: '/security/rules/detectionRules', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'defenderDetectionRule', operation: 'update', path: '/security/rules/detectionRules', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'defenderIdentitySensor', operation: 'update', path: '/security/identities/sensors', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'securityZone', operation: 'create', path: '/security/zones', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: SERVICE_PROOF },
+  { resourceType: 'securityZone', operation: 'update', path: '/security/zones', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'itemInsightsSettings', operation: 'update', path: '/admin/people/itemInsights', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'todoSettings', operation: 'update', path: '/admin/todo', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'externalConnection', operation: 'create', path: '/external/connections', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'externalConnection', operation: 'update', path: '/external/connections', handler: IDENTITY, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'mobileThreatDefenseConnector', operation: 'update', path: '/deviceManagement/mobileThreatDefenseConnectors', handler: INTUNE, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'deviceManagementPartner', operation: 'update', path: '/deviceManagement/deviceManagementPartners', handler: INTUNE, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'complianceManagementPartner', operation: 'update', path: '/deviceManagement/complianceManagementPartners', handler: INTUNE, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
+  { resourceType: 'deviceManagementDerivedCredentialSettings', operation: 'update', path: '/deviceManagement/derivedCredentials', handler: INTUNE, idOutcome: 'preserved', proofRef: SERVICE_PROOF },
   // Approval-held kinds (restore/approvalHeld.mjs): device join settings, the default app
   // credential rules and custom Intune admin roles, written behind the restore approval.
   { resourceType: 'deviceRegistrationPolicy', operation: 'update', path: '/policies/deviceRegistrationPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

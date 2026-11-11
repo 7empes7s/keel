@@ -135,6 +135,8 @@ test('the policy family ledger lists every policy type; the remainder stays rese
       'authenticationContextClassReference', 'featureRolloutPolicy',
       // Issue #1015 (crossTenantSyncOperations.mjs, tested in permanent-writes.test.mjs).
       'crossTenantIdentitySyncPolicyPartner',
+      // Issue #1074 (serviceSettingsOperations.mjs, tested in serviceSettingsOperations.test.mjs).
+      'defenderDetectionRule',
     ].includes(family.resourceType)) {
       assert.equal(family.status, 'qualified-subset', family.resourceType);
       assert.ok(family.supportedOperations.length > 0, family.resourceType);

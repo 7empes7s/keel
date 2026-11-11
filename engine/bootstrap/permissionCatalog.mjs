@@ -217,6 +217,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('CustomDetection.ReadWrite.All', 'purview', 'Policies', 'Change custom detection rules', 'Restore Defender custom detection rules, always turned off'),
   write('SecurityIdentitiesSensors.ReadWrite.All', 'purview', 'Settings', 'Change Defender for Identity sensors', 'Restore the settings of installed sensors'),
   write('Zone.ReadWrite.All', 'purview', 'Settings', 'Change exposure management zones', 'Restore the name and description of zones'),
+  write('AttackSimulation.ReadWrite.All', 'purview', 'Settings', 'Change attack simulation training', 'Restore attack simulations as drafts (never launched)'),
   write('TeamMember.ReadWrite.All', 'teams', 'Memberships', 'Change team members', 'Restore team owners and members'),
   write('TeamSettings.ReadWrite.All', 'teams', 'Settings', 'Change team settings', 'Restore each team\'s settings'),
 

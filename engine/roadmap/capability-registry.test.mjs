@@ -90,6 +90,8 @@ const REGISTERED = Object.freeze({
   accessPackageCatalogResource: ['create'],
   accessPackageAssignment: ['create'],
   entitlementManagementRoleAssignment: ['create'],
+  // Issue #1073: attack simulations, always as a draft.
+  attackSimulation: ['create', 'update'],
   // Issue #1007: access review series (create only).
   accessReviewScheduleDefinition: ['create'],
   agreement: ['create', 'update'],

@@ -77,11 +77,15 @@ until then (a 403 means skip and list it).
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 14 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Entra other: app certificate authority trust (`:657`, the trust list stays manual), sign-in identifiers (`:660`), Verified ID profiles (`:663`), lifecycle policies (`:669`), default cross-tenant sharing settings (`:678`), device templates (`:685`), schema extensions (`:695`), profile card fields (`:718`). O1 · M · code
-- Attack simulation: automations, simulations, payloads, login pages, landing pages, notification emails (`:634`-`:649`). O1 · M · code
+- Entra other: app certificate authority trust (the trust list stays manual), sign-in identifiers, Verified ID profiles, lifecycle policies, default cross-tenant sharing settings, device templates, schema extensions, profile card fields. O1 · M · code
+- Attack simulation automations: no writer yet (automations are created in the Defender portal); simulations, payloads, login pages, landing pages and notifications were restored by #1073. O1 · S · code
+- Defender for Identity sensors, Secure Score action states, exposure management zones were restored by #1074; custom detection rules remain. O1 · M · code
+- Intune partners and connectors: mobile threat defense, device management partners, compliance partners, derived credential issuers; remote help partners were restored by #1074. O1 · M · code
+- Intune apps: managed e-books; Windows code signing certificates were reclassified to manual (trust-field rule) by #1074. O1 · S · code
+- Microsoft 365 and Teams: To Do settings, Teams custom apps; item insights setting and Copilot connectors were restored by #1074. O1 · S · code
 
 ### Not restored by design (stay manual)
 

@@ -40,6 +40,7 @@ import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
 import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
+import { ATTACK_SIMULATION_PAYLOAD, attackSimulationRead, attackSimulationWrite, seedAttackSimulation } from './attackSimulationFixture.mjs';
 import { SIGN_IN_EXTENSION_LISTED, SIGN_IN_EXTENSION_PAYLOADS, SIGN_IN_EXTENSION_SEEDS } from './signInExtensionFixture.mjs';
 import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
 import { SERVICE_SETTING_DRIFT, SERVICE_SETTING_PAYLOADS } from './serviceSettingFixtures.mjs';
@@ -241,6 +242,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
   },
   synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
+  attackSimulation: ATTACK_SIMULATION_PAYLOAD, // Issue #1073 (attackSimulationFixture.mjs).
   ...SIGN_IN_EXTENSION_PAYLOADS, // Issue #1072 (signInExtensionFixture.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
@@ -657,6 +659,7 @@ const FIXTURE_SEEDS = Object.freeze({
   },
   // Issue #1071: the catalog a resource is added to.
   accessPackageCatalogResource: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
+  attackSimulation: seedAttackSimulation, // Issue #1073: the payload, pages and person a simulation needs.
   ...SIGN_IN_EXTENSION_SEEDS, // Issue #1072.
   crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
@@ -699,7 +702,7 @@ export function fakeGraph() {
     async write(version, path, { method, body }) {
       writes.push({ method, path });
       const nextId = () => { next += 1; return next; };
-      const flowWrite = userFlowWrite(objects, path, method, body, nextId) ?? syncJobWrite(objects, path, method, body, nextId);
+      const flowWrite = userFlowWrite(objects, path, method, body, nextId) ?? syncJobWrite(objects, path, method, body, nextId) ?? attackSimulationWrite(objects, path, method, body, nextId);
       if (flowWrite) return flowWrite;
       // Roadmap task-152: a Conditional Access policy is restored from its own
       // deleted-items container; the fake keeps one deleted map for both.
@@ -927,7 +930,7 @@ export function fakeGraph() {
       return { ok: false, status: 405, body: null };
     },
     async read(version, requested) {
-      const flowRead = userFlowRead(objects, requested);
+      const flowRead = userFlowRead(objects, requested) ?? attackSimulationRead(objects, requested);
       if (flowRead) return flowRead;
       // A $select narrows nothing here: the fake returns the whole object.
       const path = requested.split('?')[0];

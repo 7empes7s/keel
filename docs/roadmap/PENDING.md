@@ -1,6 +1,6 @@
 # KEEL: pending work
 
-Date: 2026-11-06. Built from `master` at `01d7b3a84e`; the O1 live proof section is from #1051 at `128b0e3b84`. This file replaces
+Date: 2026-11-11. Built from `master` at `01d7b3a84e`; the O1 live proof section is from #1083 at `ef793e66bd`. This file replaces
 `COMPLETE-ROADMAP-PLAN.md` (2026-09-15) and `coverage-gap-register.md` (2026-10-12), which are kept
 for history only.
 
@@ -15,63 +15,69 @@ Each line: **objective** · **size** (S under a day, M a few days, L a week or m
 
 ### Live proof at one build
 
-Source: `node tools/release/readiness.mjs signoff --build 128b0e3b84 --accept-objective-gaps --fixture <journeys> --tenant <ref>`
-run on Mulinux with the key on 2026-11-06 (#1051), at the frozen candidate build `128b0e3b84` (Recheck 1 #1049
-and Recheck 2 #1050 captured there). The report is in `release-signoff.md`. Verdict **pending**. The six fixture
-journeys passed at the candidate.
+Source: `node tools/release/readiness.mjs signoff --build ef793e66bd --accept-objective-gaps --fixture <journeys> --tenant <ref>`
+run on Mulinux with the key on 2026-11-11 (#1083), at the candidate build `ef793e66bd` (plan and batches in
+`live-proof-ef793e66bd.md`). The report is in `release-signoff.md`. Verdict **pending**. The fixture journeys passed
+at the candidate.
 
-**Live-qualified at `128b0e3b84`:** 45 of 49 gates (storage, native recovery, drill, NIST, ScubaGear, SharePoint,
-Teams, Exchange, OneDrive/Purview, the 7 writer families, 23 of 24 Wave 2 reads and the 6 single-record writer
-gates), and 127 of 223 Entra writes. Sentinel is the accepted gap. Objectives D2, D4, D5, G6 and G8 are
-live-qualified; D1 and D6 are not (below); the rest are accepted gaps.
+**Live-qualified at `ef793e66bd`:** 43 of 49 gates (native recovery, NIST, ScubaGear, SharePoint, Teams, Exchange,
+OneDrive/Purview, the 7 writer families, 23 of 24 Wave 2 reads and the 6 single-record writer gates), and 135 of
+255 Entra writes (all 127 proven at `128b0e3b84`, plus 8 new: `configurationPolicy.delete`,
+`accessPackageAssignmentPolicy.create`, `accessPackageResourceRoleScope.create`, `accessReviewScheduleDefinition.create`,
+`securityZone.create/update` and `profileCardProperty.create/update`). Sentinel is the accepted gap.
 
-Held at `128b0e3b84`, with the reason:
+Down from 45 at `128b0e3b84`: storage and the drill are held this time (below); every other gate that was
+live-qualified there is live-qualified again.
 
-- Deployed acceptance (D1; stale, 30 days, limit 7): needs the owner's Cloudflare Access login for deployed
+Held at `ef793e66bd`, with the reason:
+
+- Storage (task-114) and drill (task-116): their records are from `128b0e3b84`. A new recovery set has to be written
+  to `/opt/backups` and the separate volume `/mnt/keel-copy`, plus scratch databases for the reconstruction and the
+  drill: writes outside the office worktree, held by the manager for this window. O1 · S · owner
+- Deployed acceptance (D1; stale, 35 days, limit 7): needs the owner's Cloudflare Access login for deployed
   acceptance on Mulinux (`cloudflared access login https://keel.techinsiderbytes.com`). O1 · S · owner
-- ServiceNow (D6; stale, 30 days): needs the ServiceNow instance. The dev instance refuses the stored admin login
-  (401 on the OAuth token and on basic auth); wake or re-provision it and update `/etc/keel/servicenow.env`. O1 · S · owner
+- ServiceNow (D6; stale, 35 days): needs the ServiceNow instance. The dev instance refuses the stored admin login;
+  wake or re-provision it and update `/etc/keel/servicenow.env`. O1 · S · owner
 - Defender endpoint indicators read (no record): needs the `Ti.Read.All` grant for the Collector (403). O1 · S · owner
-- Entra, 1 demoted: `accessReviewScheduleDefinition.create` failed live again at the candidate (400 on the custom
-  scope). Fixed on master after the candidate by #1062 (#1055). Recapture. O1 · S · live
-- Entra, 95 with no record (60) or a record from another build (35) (steps in `live-gate-148.md`; reasons from #1049):
-  - Lockout rule (needs a second Global Administrator signed in for the lockout-rule writes): role definitions,
-    assignments and schedules, `unifiedRoleManagementPolicy`, named locations, authentication strength and methods,
-    `authorizationPolicy`, security defaults, staged rollout, home realm discovery, Conditional Access. O1 · M · owner
-  - Missing Restorer permission: the permission grants under "Waiting for the owner's grant" below, plus lifecycle
-    workflows, user flows and their attributes, attribute sets and custom security attributes. O1 · S · owner
-  - By rule: `crossTenantIdentitySyncPolicyPartner` create/update (#1015: sync is on), `oauth2PermissionGrant` and
-    `exchangeRoleAssignment` (they grant permissions), `user.create` (needs its own fixture user). O1 · S · owner
-  - KEEL gaps found live at the candidate, each needs a code fix and then a recapture: `configurationPolicy.delete`
-    (#1056), record deletes without an administrative type (#1057), `accessPackageAssignmentPolicy.create` (#1059),
-    `accessPackageResourceRoleScope.create` capture (#1060). O1 · S · code, then live
+- Entra, 120 with no record at this build (steps in `live-gate-plan.mjs`; results in `live-proof-ef793e66bd.md`):
+  - Lockout rule (needs a second Global Administrator signed in): the 24 E5 writes. O1 · M · owner
+  - Missing Restorer permission: the grants under "Waiting for the owner's grant" below (28 E3 writes), plus
+    Defender custom detections (`CustomDetection.ReadWrite.All`), Copilot connectors (`ExternalConnection.*`) and
+    attack simulations (`AttackSimulation.ReadWrite.All`). O1 · S · owner
+  - By rule: `crossTenantIdentitySyncPolicyPartner` create/update, `oauth2PermissionGrant`, `exchangeRoleAssignment`
+    and `user.create`. O1 · S · owner
+  - Owner decision on tenant-wide settings: `mobileThreatDefenseConnector`, `deviceManagementPartner`,
+    `complianceManagementPartner`, `deviceManagementDerivedCredentialSettings` and `defenderIdentitySensor` updates
+    (not approved by name; the Defender for Identity sensor also needs the tenant onboarded). O1 · S · owner
+  - KEEL gaps found live at the candidate, each needs a code fix and then a recapture: `schemaExtension.create`
+    re-sends the generated `ext…_` id, which Graph refuses ("must own the namespace"); the
+    `accessPackageCatalogResource.create` and `entitlementManagementRoleAssignment.create` captures refuse writes that
+    succeeded ("no principal reference; no role reference", "the role is not the fixture role"); the snapshot held no
+    access package assignment although one was delivered, so `accessPackageAssignment.create` could not run. O1 · S · code, then live
+  - Microsoft limit at this build: `itemInsightsSettings.update` (the Restorer's write answers 403), `todoSettings.update`
+    (the read answers 500), Windows driver and quality updates (403), Tunnel configuration (500), Autopilot and
+    `cartToClassAssociation` (400), `mobileAppRelationship` create/update/delete (400 when making the fixture), `connectedOrganization` (404),
+    `externalIdentitiesPolicy`, `directoryRoleAccessReviewPolicy`, the cross-tenant default,
+    `exchangeCustomAppScope.update` and `notificationMessageTemplate.update` (no change takes), the group owner
+    edge remove (a group keeps one owner), and the drift of `userExperienceAnalyticsBaseline`. O1 · M · live
   - Manual by design: the `defenderRoleAssignment`, `deviceManagementRoleAssignment` and
     `deviceManagementRoleDefinition` deletes. O1 · — · none
-  - Microsoft limit: Windows driver and quality updates (403), Tunnel configuration (500), Autopilot and
-    `cartToClassAssociation` (400), `mobileAppRelationship` (Win32 apps must be published), `connectedOrganization`
-    (404), `externalIdentitiesPolicy`, `directoryRoleAccessReviewPolicy`, the cross-tenant default,
-    `exchangeCustomAppScope.update` (no change takes), group owner edges, and the drift of
-    `userExperienceAnalyticsBaseline` and `notificationMessageTemplate`. O1 · M · live
-  - No fixture yet: ADMX upload, iOS provisioning, hardware configuration, on-premises CA settings,
-    branding and its localization, group lifecycle, federated domain, device management settings, Engage,
-    the MTO templates. O1 · M · live
-- Writer families: `sharepoint-structure.site-template.update` was refused by the job queue at the candidate; fixed
-  on master after the candidate by #1054 (#1052), recapture. `hub-site.add` is skipped because it would leave a
-  permanent hub. The other partial families are partial by design: those writes have no harmless field to change
-  (#1032). O1 · S · live
-- The next sign-off needs a new candidate: #1054 and #1062 changed engine code after `128b0e3b84`, so records
-  from the candidate are `other-build` at today's master. O1 · L · live
+  - No fixture yet: ADMX upload, iOS provisioning, hardware configuration, on-premises CA settings, branding and its
+    localization, group lifecycle, federated domain, device management settings, Engage, the MTO templates, and
+    `crossTenantM365Capability.update` (granted, not run in this window). O1 · M · live
+- Writer families: `sharepoint-structure.site-template.update` now sends its template (#1054) but the navigation put-back
+  never reads back the same (the put-back rebuilds the whole navigation); needs a code fix. `hub-site.add` is skipped
+  because it would leave a permanent hub. The other partial families are partial by design (#1032). O1 · S · code
 
 ### Waiting for the owner's grant
 
 Declared in the code, not yet confirmed as granted in the test tenant. Each write is skipped live
 until then (a 403 means skip and list it).
 
-- `AccessReview.ReadWrite.All` (Restorer) for `accessReviewScheduleDefinition.create` (`engine/coverage/qualification.mjs:956`). O1 · S · owner
 - `Agreement.ReadWrite.All` (Restorer, application grant) for `agreement.create/update` (`qualification.mjs:983`). O1 · S · owner
 - `APIConnectors.ReadWrite.All` (Restorer) for `identityApiConnector.create/update` (`qualification.mjs:987`). O1 · S · owner
 - `CustomAuthenticationExtension.ReadWrite.All` and `EventListener.ReadWrite.All` (Restorer) for `customAuthenticationExtension.create/update` and `authenticationEventListener.create/update` (#1072). O1 · S · owner
-- `SignInIdentifier.ReadWrite.All`, `Policy.ReadWrite.CrossTenantCapability`, `VerifiedId-Profile.ReadWrite.All`, `LifecyclePolicies-AgentId.ReadWrite.All` and `DeviceTemplate.ReadWrite.All` (Restorer) for `signInIdentifier.update`, `crossTenantM365Capability.update`, `verifiedIdProfile.create/update`, `lifecyclePolicy.create/update` and `deviceTemplate.create`; `schemaExtension.create` uses `Application.ReadWrite.All` and `Directory.ReadWrite.All` (#1075). O1 · S · owner
+- `SignInIdentifier.ReadWrite.All`, `VerifiedId-Profile.ReadWrite.All`, `LifecyclePolicies-AgentId.ReadWrite.All` and `DeviceTemplate.ReadWrite.All` (Restorer) for `signInIdentifier.update`, `verifiedIdProfile.create/update`, `lifecyclePolicy.create/update` and `deviceTemplate.create`; `schemaExtension.create` uses `Application.ReadWrite.All` and `Directory.ReadWrite.All` (#1075). O1 · S · owner
 - `Synchronization.ReadWrite.All` (Restorer) for `synchronizationJob.create/update` (`qualification.mjs:991`) and `Synchronization.Read.All` (Collector) for the job and schema reads (`docs/roadmap/restorer-least-privilege.md:53`). O1 · S · owner
 - `Ti.Read.All` (Collector, WindowsDefenderATP) for the Defender endpoint indicators read. O1 · S · owner
 

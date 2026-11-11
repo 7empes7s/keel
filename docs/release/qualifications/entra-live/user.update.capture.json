@@ -1,5 +1,5 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
     "naturalKey": "user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
     "resourceType": "user",
@@ -7,7 +7,7 @@
     "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:54.539Z",
+    "recordedAt": "2026-11-11T19:36:01.793Z",
     "priorState": {
       "id": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
       "city": "Seattle",

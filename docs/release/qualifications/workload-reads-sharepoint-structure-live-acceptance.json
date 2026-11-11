@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:29:49.958Z",
+  "observedAt": "2026-11-11T18:27:36.911Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "hubSite",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:49.958Z",
+        "capturedAt": "2026-11-11T18:27:36.911Z",
         "ok": true,
         "status": "read",
         "objects": 2,
@@ -36,10 +36,10 @@
         "family": "siteDesign",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:49.958Z",
+        "capturedAt": "2026-11-11T18:27:36.911Z",
         "ok": true,
         "status": "read",
-        "objects": 2,
+        "objects": 3,
         "error": null
       },
       {
@@ -47,10 +47,10 @@
         "family": "siteScript",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:49.958Z",
+        "capturedAt": "2026-11-11T18:27:36.911Z",
         "ok": true,
         "status": "read",
-        "objects": 2,
+        "objects": 3,
         "error": null
       },
       {
@@ -58,7 +58,7 @@
         "family": "siteTemplate",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:49.958Z",
+        "capturedAt": "2026-11-11T18:27:36.911Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,7 +69,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "0e90da0a883c4aaae64b556ac7ed95a0c5178594438b235e2f9fae9cfc6e0de3"
+      "signature": "f8542e70d0bb521372065aee37438099f4a70eafdf9f51ce4a352c708a9bd802"
     }
   }
 }

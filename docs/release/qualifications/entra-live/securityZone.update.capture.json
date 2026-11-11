@@ -1,0 +1,47 @@
+{
+  "restoreRef": "8fe3e1e0-6725-86a6-90b7-e76d18af519f",
+  "entry": {
+    "naturalKey": "securityZone:6952acb177358bd59de8ebec33b955e4",
+    "resourceType": "securityZone",
+    "operation": "update",
+    "targetId": "6952acb177358bd59de8ebec33b955e4",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-11-11T20:08:32.064Z",
+    "priorState": {
+      "id": "6952acb177358bd59de8ebec33b955e4",
+      "created": {
+        "by": "",
+        "dateTime": "2026-11-11T19:57:55.9930638Z"
+      },
+      "modified": {
+        "by": "",
+        "dateTime": "2026-11-11T20:03:28.6260834Z"
+      },
+      "description": "Fixture drifted",
+      "displayName": "KEEL-RT-1083-zone-u",
+      "aggregations": [],
+      "aggregations@odata.context": "https://graph.microsoft.com/beta/$metadata#security/zones('6952acb177358bd59de8ebec33b955e4')/aggregations"
+    },
+    "intendedState": {
+      "description": "Fixture",
+      "displayName": "KEEL-RT-1083-zone-u"
+    },
+    "postState": {
+      "id": "6952acb177358bd59de8ebec33b955e4",
+      "created": {
+        "by": "",
+        "dateTime": "2026-11-11T19:57:55.9930638Z"
+      },
+      "modified": {
+        "by": "",
+        "dateTime": "2026-11-11T20:08:32.4938606Z"
+      },
+      "description": "Fixture",
+      "displayName": "KEEL-RT-1083-zone-u",
+      "aggregations": [],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#security/zones/$entity",
+      "aggregations@odata.context": "https://graph.microsoft.com/beta/$metadata#security/zones('6952acb177358bd59de8ebec33b955e4')/aggregations"
+    }
+  }
+}

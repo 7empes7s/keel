@@ -7,23 +7,23 @@
   "resourceType": "multiTenantOrganization",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:49:53.254Z",
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "observedAt": "2026-11-11T19:49:31.850Z",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "naturalKey": "multiTenantOrganization:multiTenantOrganization",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "959a530bf4fd86ae99431e260a7cd0c87de3a2594b4f481e3e369e8a1e07d5f8",
+  "captureSha256": "1362bebbd492a5f542122bf0317a65894c78e79a9fe846c59e9e88a26eda692e",
   "proofRef": "docs/release/qualifications/entra-live/multiTenantOrganization.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2fcbf2a7d678d64d6476d94955ee07c236676b38a466ec0971dee95dd3161b4f"
+      "signature": "3852cbaa9f4bfd9b4cb0a8a4cb30b6785756ea9d103ad69955eb1de2e3c483af"
     }
   }
 }

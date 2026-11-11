@@ -7,23 +7,23 @@
   "resourceType": "sharepointSettings",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T20:41:56.239Z",
-  "restoreRef": "333a8695-2a86-8efc-b384-f07a2edef626",
+  "observedAt": "2026-11-11T19:49:32.470Z",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "naturalKey": "sharepointSettings:sharepointSettings",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "ac0832e79df9fa597563893cbc78f8ef673d9dcd96893d113e2937ea68d73223",
+  "captureSha256": "e1da99597789143611f0522b47a2e3690bbfb867f768d1c692af2f7640b64962",
   "proofRef": "docs/release/qualifications/entra-live/sharepointSettings.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2682137bf4c96f9c229742ad2f3d520393df4956183f6f349138b699999d7977"
+      "signature": "ec73d975fb11292bfbcc1bacffe142ef0b0491996bfce4563e4c8aa2bef12ad8"
     }
   }
 }

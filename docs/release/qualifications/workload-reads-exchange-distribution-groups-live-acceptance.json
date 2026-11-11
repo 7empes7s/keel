@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:18:42.645Z",
+  "observedAt": "2026-11-11T18:15:35.935Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,10 +25,10 @@
         "family": "distributionGroup",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:18:42.645Z",
+        "capturedAt": "2026-11-11T18:15:35.935Z",
         "ok": true,
         "status": "read",
-        "objects": 8,
+        "objects": 9,
         "error": null
       },
       {
@@ -36,7 +36,7 @@
         "family": "dynamicDistributionGroup",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:18:42.645Z",
+        "capturedAt": "2026-11-11T18:15:35.935Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -47,7 +47,7 @@
         "family": "microsoft365Group",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:18:42.645Z",
+        "capturedAt": "2026-11-11T18:15:35.935Z",
         "ok": true,
         "status": "read",
         "objects": 13,
@@ -58,7 +58,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "22a41cfed2c382e92537eda7e95f1f8fe2eaa3c664bac0f872187463d23b3b0e"
+      "signature": "a3234de85330c2dba0198babe5250d927df7f860cc808b0ff5a0cc035746ef62"
     }
   }
 }

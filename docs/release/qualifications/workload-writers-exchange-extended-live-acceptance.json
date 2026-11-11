@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T19:49:18.740Z",
+  "observedAt": "2026-11-11T20:23:30.440Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "AdminDisplayName",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:46:24.271Z",
+        "capturedAt": "2026-11-11T20:20:07.004Z",
         "error": null
       },
       {
@@ -213,13 +213,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:46:39.769Z",
+        "capturedAt": "2026-11-11T20:20:26.464Z",
         "error": null
       },
       {
@@ -234,13 +234,13 @@
         "field": "AdminDisplayName",
         "type": "text",
         "before": "",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:46:55.717Z",
+        "capturedAt": "2026-11-11T20:20:44.263Z",
         "error": null
       },
       {
@@ -255,13 +255,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:47:11.472Z",
+        "capturedAt": "2026-11-11T20:21:02.281Z",
         "error": null
       },
       {
@@ -276,13 +276,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:47:27.209Z",
+        "capturedAt": "2026-11-11T20:21:20.950Z",
         "error": null
       },
       {
@@ -297,13 +297,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:47:42.560Z",
+        "capturedAt": "2026-11-11T20:21:39.015Z",
         "error": null
       },
       {
@@ -324,7 +324,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:47:58.124Z",
+        "capturedAt": "2026-11-11T20:21:56.857Z",
         "error": null
       },
       {
@@ -345,7 +345,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:48:13.483Z",
+        "capturedAt": "2026-11-11T20:22:18.925Z",
         "error": null
       },
       {
@@ -366,7 +366,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:48:28.905Z",
+        "capturedAt": "2026-11-11T20:22:36.409Z",
         "error": null
       },
       {
@@ -381,13 +381,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:48:46.487Z",
+        "capturedAt": "2026-11-11T20:22:55.431Z",
         "error": null
       },
       {
@@ -402,13 +402,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:49:03.143Z",
+        "capturedAt": "2026-11-11T20:23:13.196Z",
         "error": null
       },
       {
@@ -423,13 +423,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:44:59.366Z",
+        "target": "KEEL capture 2026-11-11T20:18:38.204Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:49:18.739Z",
+        "capturedAt": "2026-11-11T20:23:30.439Z",
         "error": null
       }
     ],
@@ -525,7 +525,7 @@
         "cmdlet": "Set-HostedOutboundSpamFilterPolicy",
         "parameters": {
           "Identity": "73bbf561-4403-8814-854a-276992ecda59",
-          "AdminDisplayName": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "AdminDisplayName": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -567,7 +567,7 @@
         "cmdlet": "Set-HostedOutboundSpamFilterRule",
         "parameters": {
           "Identity": "9499e747-a7c0-884b-9bff-93ef310cbd75",
-          "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comments": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -609,7 +609,7 @@
         "cmdlet": "Set-HostedConnectionFilterPolicy",
         "parameters": {
           "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
-          "AdminDisplayName": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "AdminDisplayName": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -651,7 +651,7 @@
         "cmdlet": "Set-HostedContentFilterRule",
         "parameters": {
           "Identity": "0a39f307-8adc-885a-b54c-e9577416c0e7",
-          "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comments": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -693,7 +693,7 @@
         "cmdlet": "Set-AntiPhishRule",
         "parameters": {
           "Identity": "f2a737cc-823c-8d80-849e-ebbda00b9610",
-          "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comments": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -735,7 +735,7 @@
         "cmdlet": "Set-MalwareFilterRule",
         "parameters": {
           "Identity": "d5fde52e-0792-8aea-af63-839a7d4cbe56",
-          "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comments": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -903,7 +903,7 @@
         "cmdlet": "Set-RetentionPolicyTag",
         "parameters": {
           "Identity": "a9fc748a-a1f6-83e0-b081-55e58d7a1ca4",
-          "Comment": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comment": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -945,7 +945,7 @@
         "cmdlet": "Set-SafeLinksRule",
         "parameters": {
           "Identity": "125245b8-d2ac-8b0d-88c2-6106785343e5",
-          "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comments": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -987,7 +987,7 @@
         "cmdlet": "Set-SafeAttachmentRule",
         "parameters": {
           "Identity": "76e028b8-e38d-8d15-9089-14ab864e9768",
-          "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+          "Comments": "KEEL capture 2026-11-11T20:18:38.204Z"
         },
         "outcome": "ok"
       },
@@ -1017,16 +1017,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "f006c6f0fc54a4f70f61c212046b46aa5e5592f6028077440370a5410d9edf86"
+    "captureLogSha256": "8e26fe70978224dde40b7b6d62b181e2a77b87ce32fc64ffd5b1c6c2d7f6f57e"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-exchange-extended-live-acceptance.capture.json",
-      "sha256": "f006c6f0fc54a4f70f61c212046b46aa5e5592f6028077440370a5410d9edf86"
+      "sha256": "8e26fe70978224dde40b7b6d62b181e2a77b87ce32fc64ffd5b1c6c2d7f6f57e"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2c4be812e5666e5f01149474a4fa8849a305660f1274b75dbbf7e7bf6dc8eed2"
+      "signature": "6e1255f6f718ec3865b235504ca55b4176e05dd0511e850ffed9f9d1127749da"
     }
   }
 }

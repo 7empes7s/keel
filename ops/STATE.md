@@ -137,24 +137,21 @@ Change these scripts in the repo from now on, never in `/opt/keel-deploy`.
 
 The release sign-off (task-124, #985) is generated: `node tools/release/readiness.mjs signoff --build <candidate>`.
 The full pending list, by objective, is `docs/roadmap/PENDING.md`; the live batches are #1025, #1026 and #1027.
-On 2026-11-06 (#1051, on Mulinux with the key), at the frozen candidate `128b0e3b84` it says **pending**: 45 of 49
-gates and 127 of 223 Entra writes are live-qualified; deployed acceptance and ServiceNow are stale and the Defender
-indicators read has no record. The freeze is lifted and `/opt/keel-candidate` is removed. #1054 and #1062 changed
-engine code after the candidate, so the next sign-off needs a new frozen candidate:
+On 2026-11-11 (#1083, on Mulinux with the key), at the candidate `ef793e66bd` it says **pending**: 43 of 49 gates
+and 135 of 255 Entra writes are live-qualified. Held: storage and the drill (a new recovery set needs writes outside
+the office worktree; the records are from `128b0e3b84`), deployed acceptance (needs an operator `cloudflared access
+login`), ServiceNow (the dev instance refuses the stored admin login) and the Defender indicators read (403,
+`Ti.Read.All`). Sentinel (117) is an accepted gap. Plan, batches and results: `docs/roadmap/live-proof-ef793e66bd.md`.
 
-- Recheck 2 (#1050, 2026-11-06) recaptured every non-Entra gate it could at the frozen candidate `128b0e3b84`:
-  storage, drill, native recovery, NIST, ScubaGear, gates 120–123, the 7 writer families, 22 reads and the 6
-  separate writers. `sharepoint-structure.site-template.update` is refused before sending (#1052). Still held:
-  deployed acceptance (needs an operator `cloudflared access login`), ServiceNow (the dev instance refuses the
-  stored admin login, 401) and the Defender indicators read (403, `Ti.Read.All`). Sentinel (117) is an accepted gap.
-  The recovery set is `/opt/backups/2026-11-06/recovery-set-r1050`, copied to `/mnt/keel-copy/2026-11-06-r1050`.
-- Entra (#148): 223 registered writes. Recheck 1 (#1049, 2026-11-06) proved 127 at the frozen build `128b0e3b`
-  (`multiTenantOrganization.update`, the deletes, SharePoint Loop, entitlement settings and the Tunnel limit among
-  them). `accessReviewScheduleDefinition.create` failed again (#1039's scope match misses Graph's `/v1.0/` prefix)
-  and `configurationPolicy.delete` failed (Graph answers 400 ResourceNotFound after the delete). 35 have a record
-  from another build and 60 have none, mostly lockout-sensitive or missing Restorer permissions. Left on the test
-  tenant: the MTO description `KEEL-RT drift (#1031)` (Graph can't clear it) and the KEEL-RT-1031 and KEEL-RT-1049
-  administrative units in deleted items (app-only purge 404; they age out in 30 days).
+- Entra (#148): 255 registered writes. All 127 proven at `128b0e3b84` are proven again at `ef793e66bd`, plus
+  `configurationPolicy.delete`, `accessPackageAssignmentPolicy.create`, `accessPackageResourceRoleScope.create`,
+  `accessReviewScheduleDefinition.create`, `securityZone` and `profileCardProperty` create/update. Found live and not
+  fixed under the freeze: `schemaExtension.create` (Graph refuses the generated id), the catalog resource and
+  entitlement role assignment captures, the access package assignment read, and the site template navigation
+  put-back. Left on the test tenant: the MTO description `KEEL-RT drift (#1031)` (Graph can't clear it) and the
+  KEEL-RT-1031, KEEL-RT-1049 and KEEL-RT-1083 administrative units in deleted items (app-only purge 404; they age out
+  in 30 days).
+- The last recovery set is `/opt/backups/2026-11-06/recovery-set-r1050`, copied to `/mnt/keel-copy/2026-11-06-r1050`.
 - User flows (#995, fixture-tested only): capture `b2xIdentityUserFlow` create/update and
   `identityUserFlowAttribute` create/update on a `B2X_1_KEEL-RT-148-flow` flow that asks for one custom
   attribute `KEEL-RT-148Attr` (`FIXTURE_GUIDANCE` in `tools/qualification/live-gate-plan.mjs`). Check the

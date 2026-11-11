@@ -1,29 +1,29 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "windowsManagedAppProtection:I_1866a594-567d-8c47-b3a6-efbcc642ae40",
+    "naturalKey": "windowsManagedAppProtection:I_b6f5e71c-d442-8426-a725-f3e204d41beb",
     "resourceType": "windowsManagedAppProtection",
     "operation": "update",
-    "targetId": "I_1866a594-567d-8c47-b3a6-efbcc642ae40",
+    "targetId": "I_b6f5e71c-d442-8426-a725-f3e204d41beb",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:07.266Z",
+    "recordedAt": "2026-11-11T19:36:19.859Z",
     "priorState": {
-      "id": "I_1866a594-567d-8c47-b3a6-efbcc642ae40",
+      "id": "I_b6f5e71c-d442-8426-a725-f3e204d41beb",
       "apps": [],
-      "version": "\"f63574c9-f6f8-8337-908e-901a891782b5\"",
+      "version": "\"c01b119a-a572-8b83-8165-abb1e3adc4cf\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-windows-managed-app-protection-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-windows-managed-app-protection-u",
       "printBlocked": true,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections(apps())/$entity",
-      "createdDateTime": "2026-11-06T19:16:50.5148289Z",
+      "createdDateTime": "2026-11-11T19:20:27.7529748Z",
       "roleScopeTagIds": [
         "0"
       ],
       "deployedAppCount": 0,
-      "apps@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections('I_1866a594-567d-8c47-b3a6-efbcc642ae40')/apps",
-      "lastModifiedDateTime": "2026-11-06T19:23:53Z",
+      "apps@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections('I_b6f5e71c-d442-8426-a725-f3e204d41beb')/apps",
+      "lastModifiedDateTime": "2026-11-11T19:27:30Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,
@@ -47,8 +47,8 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-windows-managed-app-protection-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-windows-managed-app-protection-u",
       "printBlocked": true,
       "roleScopeTagIds": [
         "0"
@@ -76,19 +76,19 @@
       "allowedOutboundDataTransferDestinationApps": "none"
     },
     "postState": {
-      "id": "I_1866a594-567d-8c47-b3a6-efbcc642ae40",
-      "version": "\"2708883b-261f-8693-9252-c02a142a2c30\"",
+      "id": "I_b6f5e71c-d442-8426-a725-f3e204d41beb",
+      "version": "\"359c0744-2112-8308-9fe8-6961fa84644b\"",
       "isAssigned": false,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-windows-managed-app-protection-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-windows-managed-app-protection-u",
       "printBlocked": true,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/windowsManagedAppProtections/$entity",
-      "createdDateTime": "2026-11-06T19:16:50.5148289Z",
+      "createdDateTime": "2026-11-11T19:20:27.7529748Z",
       "roleScopeTagIds": [
         "0"
       ],
       "deployedAppCount": 0,
-      "lastModifiedDateTime": "2026-11-06T19:44:07Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:20Z",
       "maximumWipeOsVersion": null,
       "minimumWipeOsVersion": null,
       "minimumWipeAppVersion": null,

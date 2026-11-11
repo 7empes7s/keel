@@ -8,7 +8,7 @@
       ],
       "name": "6fcefee1-c106-824a-a24b-9d98904c6937",
       "outcome": "ok",
-      "at": "2026-11-06T20:11:41.332Z",
+      "at": "2026-11-11T18:57:02.792Z",
       "missing": [
         "RejectMessagesFromSendersOrMembers",
         "ReportToManagerEnabled",
@@ -22,9 +22,9 @@
       "methods": [
         "Get"
       ],
-      "name": "880e74cc-940b-8d04-9e7a-b92f86b0866b",
+      "name": "3b2c3839-f22e-8f29-b96a-7100c83f372e",
       "outcome": "ok",
-      "at": "2026-11-06T20:11:53.859Z",
+      "at": "2026-11-11T18:57:16.176Z",
       "missing": [
         "RejectMessagesFromSendersOrMembers",
         "ReportToManagerEnabled",
@@ -38,9 +38,9 @@
       "methods": [
         "Get"
       ],
-      "name": "KEEL-RT-capture-819c85fd",
+      "name": "KEEL-RT-capture-c1c2f47c",
       "outcome": "ok",
-      "at": "2026-11-06T20:12:05.279Z",
+      "at": "2026-11-11T18:57:27.364Z",
       "missing": [
         "RejectMessagesFromSendersOrMembers",
         "ReportToManagerEnabled",
@@ -54,7 +54,7 @@
       "methods": [
         "Set"
       ],
-      "name": "KEEL-RT-capture-819c85fd",
+      "name": "KEEL-RT-capture-c1c2f47c",
       "ensure": "Present",
       "fields": [
         "Alias",
@@ -72,7 +72,7 @@
         "Type"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:12:16.565Z"
+      "at": "2026-11-11T18:57:38.180Z"
     },
     {
       "credential": "collector",
@@ -80,9 +80,9 @@
       "methods": [
         "Get"
       ],
-      "name": "KEEL-RT-capture-819c85fd",
+      "name": "KEEL-RT-capture-c1c2f47c",
       "outcome": "ok",
-      "at": "2026-11-06T20:12:31.351Z",
+      "at": "2026-11-11T18:57:51.707Z",
       "missing": [
         "RejectMessagesFromSendersOrMembers",
         "ReportToManagerEnabled",
@@ -112,7 +112,7 @@
         "SendOofMessageToOriginatorEnabled"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:12:42.447Z"
+      "at": "2026-11-11T18:58:02.823Z"
     },
     {
       "credential": "collector",
@@ -122,7 +122,7 @@
       ],
       "name": "6fcefee1-c106-824a-a24b-9d98904c6937",
       "outcome": "ok",
-      "at": "2026-11-06T20:12:54.617Z",
+      "at": "2026-11-11T18:58:15.537Z",
       "missing": [
         "RejectMessagesFromSendersOrMembers",
         "ReportToManagerEnabled",
@@ -133,12 +133,12 @@
   ],
   "values": {
     "created": {
-      "Identity": "KEEL-RT-capture-819c85fd",
-      "Name": "KEEL-RT-capture-819c85fd",
+      "Identity": "KEEL-RT-capture-c1c2f47c",
+      "Name": "KEEL-RT-capture-c1c2f47c",
       "Ensure": "Present",
-      "DisplayName": "KEEL-RT-capture-819c85fd",
-      "Alias": "KEEL-RT-capture-819c85fd",
-      "PrimarySmtpAddress": "keel-rt-u772b1f64f28f@ta036f59837f.onmicrosoft.com",
+      "DisplayName": "KEEL-RT-capture-c1c2f47c",
+      "Alias": "KEEL-RT-capture-c1c2f47c",
+      "PrimarySmtpAddress": "keel-rt-ue2df6ae11642@ta036f59837f.onmicrosoft.com",
       "Type": "Distribution",
       "HiddenFromAddressListsEnabled": true,
       "MemberJoinRestriction": "Closed",
@@ -151,7 +151,7 @@
       "ModeratedBy": [],
       "GrantSendOnBehalfTo": [],
       "EmailAddresses": [
-        "SMTP:keel-rt-u772b1f64f28f@ta036f59837f.onmicrosoft.com"
+        "SMTP:keel-rt-ue2df6ae11642@ta036f59837f.onmicrosoft.com"
       ],
       "AcceptMessagesOnlyFromSendersOrMembers": [],
       "Members": [],
@@ -162,17 +162,17 @@
       "Identity": "KEEL-RT-capture-seed",
       "Name": "KEEL-RT-capture-seed",
       "Ensure": "Present",
-      "DisplayName": "KEEL-RT-capture-seed updated 719ee1fe",
+      "DisplayName": "KEEL-RT-capture-seed updated 819c85fd",
       "Alias": "KEEL-RT-capture-seed",
       "PrimarySmtpAddress": "keel-rt-u59125b8c5d40@ta036f59837f.onmicrosoft.com",
       "Type": "Distribution",
       "HiddenFromAddressListsEnabled": true,
-      "MemberJoinRestriction": "ApprovalRequired",
+      "MemberJoinRestriction": "Closed",
       "MemberDepartRestriction": "Open",
       "RequireSenderAuthenticationEnabled": true,
       "ModerationEnabled": true,
       "SendModerationNotifications": "Always",
-      "SendOofMessageToOriginatorEnabled": true,
+      "SendOofMessageToOriginatorEnabled": false,
       "ManagedBy": [
         "keel-rt-u3a6a77968dbb@t42987720ee3.example"
       ],
@@ -196,17 +196,17 @@
       "Identity": "KEEL-RT-capture-seed",
       "Name": "KEEL-RT-capture-seed",
       "Ensure": "Present",
-      "DisplayName": "KEEL-RT-capture-seed updated 819c85fd",
+      "DisplayName": "KEEL-RT-capture-seed updated c1c2f47c",
       "Alias": "KEEL-RT-capture-seed",
       "PrimarySmtpAddress": "keel-rt-u59125b8c5d40@ta036f59837f.onmicrosoft.com",
       "Type": "Distribution",
       "HiddenFromAddressListsEnabled": true,
-      "MemberJoinRestriction": "Closed",
+      "MemberJoinRestriction": "ApprovalRequired",
       "MemberDepartRestriction": "Open",
       "RequireSenderAuthenticationEnabled": true,
       "ModerationEnabled": true,
       "SendModerationNotifications": "Always",
-      "SendOofMessageToOriginatorEnabled": false,
+      "SendOofMessageToOriginatorEnabled": true,
       "ManagedBy": [
         "keel-rt-u3a6a77968dbb@t42987720ee3.example"
       ],

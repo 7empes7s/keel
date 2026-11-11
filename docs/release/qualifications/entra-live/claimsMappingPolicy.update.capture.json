@@ -1,37 +1,37 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "claimsMappingPolicy:b7601da0-31f0-8b16-8056-4e1f4a339138",
+    "naturalKey": "claimsMappingPolicy:8c5e70d2-b61e-8efb-ad3e-4aa51db50ed5",
     "resourceType": "claimsMappingPolicy",
     "operation": "update",
-    "targetId": "b7601da0-31f0-8b16-8056-4e1f4a339138",
+    "targetId": "8c5e70d2-b61e-8efb-ad3e-4aa51db50ed5",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:38.252Z",
+    "recordedAt": "2026-11-11T19:35:49.780Z",
     "priorState": {
-      "id": "b7601da0-31f0-8b16-8056-4e1f4a339138",
+      "id": "8c5e70d2-b61e-8efb-ad3e-4aa51db50ed5",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-1049-claims-mapping-policy-u-drifted",
+      "displayName": "KEEL-RT-1083-claims-mapping-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "b7601da0-31f0-8b16-8056-4e1f4a339138",
+      "id": "8c5e70d2-b61e-8efb-ad3e-4aa51db50ed5",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-1049-claims-mapping-policy-u",
+      "displayName": "KEEL-RT-1083-claims-mapping-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "b7601da0-31f0-8b16-8056-4e1f4a339138",
+      "id": "8c5e70d2-b61e-8efb-ad3e-4aa51db50ed5",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-1049-claims-mapping-policy-u",
+      "displayName": "KEEL-RT-1083-claims-mapping-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/claimsMappingPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

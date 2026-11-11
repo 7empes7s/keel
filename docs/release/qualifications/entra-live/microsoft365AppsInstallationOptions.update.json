@@ -7,23 +7,23 @@
   "resourceType": "microsoft365AppsInstallationOptions",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:49:52.957Z",
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "observedAt": "2026-11-11T19:49:31.458Z",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "naturalKey": "microsoft365AppsInstallationOptions:microsoft365AppsInstallationOptions",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "ca08014ebd7c2ad19f2e80368287832ba5acae2fc8d2223ec451b9170fcaff9b",
+  "captureSha256": "9915aa1228e7be54408e7710a4dd25d6416b50e31f7cd7a00f57c50b0f829f66",
   "proofRef": "docs/release/qualifications/entra-live/microsoft365AppsInstallationOptions.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "640f57d1e7a5795090eef16a31459c75ca0526bcfff703aaeb82d78f407f8436"
+      "signature": "1f2191f989edc3c68e80e1dc154db4e22d5d4a19bf39cbcac48ae45945e50e6a"
     }
   }
 }

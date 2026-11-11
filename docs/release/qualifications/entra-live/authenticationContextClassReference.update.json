@@ -7,23 +7,23 @@
   "resourceType": "authenticationContextClassReference",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:37.960Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "observedAt": "2026-11-11T19:35:49.455Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "naturalKey": "authenticationContextClassReference:c41",
   "fixtureKind": "named-object",
-  "captureSha256": "476972673a7ff87eefa9a358635ed16b79e02a6e1a4d8c07569422e6a06c6a91",
+  "captureSha256": "ccd6b23ae8d185a74a0372f12236ef195be85476507031ed4cab24628081bca1",
   "proofRef": "docs/release/qualifications/entra-live/authenticationContextClassReference.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "7db08c030de785db42daa7a72ae5c9a49c28a7484980fca1fdb01e6035595f51"
+      "signature": "029a9ac85a7780bfbfed4f4dfc3b867595b1461fbdb7e21754ad96998fcfdb1b"
     }
   }
 }

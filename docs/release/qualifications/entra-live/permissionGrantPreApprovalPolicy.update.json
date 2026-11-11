@@ -7,23 +7,23 @@
   "resourceType": "permissionGrantPreApprovalPolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:49.175Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "permissionGrantPreApprovalPolicy:b72ddf1c-a144-8916-9deb-4e4322440ae6",
+  "observedAt": "2026-11-11T19:35:57.433Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "permissionGrantPreApprovalPolicy:d2368281-b084-858c-9747-f65282a1b65c",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "984b31c62901a482f3adc52eca0d542b41e78ef8dba74cf39488efda7798caee",
+  "captureSha256": "8db16960c1a80e2d7e0aa5e745dd70ae0e8d3a38cd6a3ba7678612b23a10691f",
   "proofRef": "docs/release/qualifications/entra-live/permissionGrantPreApprovalPolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "0e3c7081609fcc30a7196a8ba258ed51ba26666a6ac3254180e7012c8aadcab3"
+      "signature": "38642a88824ab8b468ef64d24507c027403d9509d8803efd8e95b655e24c6f17"
     }
   }
 }

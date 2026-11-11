@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:24:15.578Z",
+  "observedAt": "2026-11-11T18:21:43.309Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "retentionPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:24:15.578Z",
+        "capturedAt": "2026-11-11T18:21:43.309Z",
         "ok": true,
         "status": "read",
         "objects": 2,
@@ -36,7 +36,7 @@
         "family": "retentionRule",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:24:15.578Z",
+        "capturedAt": "2026-11-11T18:21:43.309Z",
         "ok": true,
         "status": "read",
         "objects": 2,
@@ -47,7 +47,7 @@
         "family": "dlpPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:24:15.578Z",
+        "capturedAt": "2026-11-11T18:21:43.309Z",
         "ok": true,
         "status": "read",
         "objects": 3,
@@ -58,7 +58,7 @@
         "family": "dlpRule",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:24:15.578Z",
+        "capturedAt": "2026-11-11T18:21:43.309Z",
         "ok": true,
         "status": "read",
         "objects": 3,
@@ -69,7 +69,7 @@
         "family": "alertPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:24:15.578Z",
+        "capturedAt": "2026-11-11T18:21:43.309Z",
         "ok": true,
         "status": "read",
         "objects": 53,
@@ -80,7 +80,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "47bb3c7812a77d6661d4cd37d0b35981209a6256539c6df9d813518aea7a8d6b"
+      "signature": "d82430301ff60690a3daba519052e7c532a1615f665943da454b1e7203fece27"
     }
   }
 }

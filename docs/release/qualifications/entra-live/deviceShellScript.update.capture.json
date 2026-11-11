@@ -1,35 +1,35 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceShellScript:b89ad795-2be2-8e4a-9eba-724a1a20609e",
+    "naturalKey": "deviceShellScript:86bf8e9c-d7b1-878d-85fb-f0a03f5bda88",
     "resourceType": "deviceShellScript",
     "operation": "update",
-    "targetId": "b89ad795-2be2-8e4a-9eba-724a1a20609e",
+    "targetId": "86bf8e9c-d7b1-878d-85fb-f0a03f5bda88",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:06.095Z",
+    "recordedAt": "2026-11-11T19:36:13.273Z",
     "priorState": {
-      "id": "b89ad795-2be2-8e4a-9eba-724a1a20609e",
-      "fileName": "keel-rt-1049-device-shell-script-u.sh",
+      "id": "86bf8e9c-d7b1-878d-85fb-f0a03f5bda88",
+      "fileName": "keel-rt-1083-device-shell-script-u.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-device-shell-script-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-device-shell-script-u",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
-      "createdDateTime": "2026-11-06T19:16:39.8135834Z",
+      "createdDateTime": "2026-11-11T19:20:21.224957Z",
       "roleScopeTagIds": [
         "0"
       ],
       "executionFrequency": "PT0S",
-      "lastModifiedDateTime": "2026-11-06T19:23:46.4586276Z",
+      "lastModifiedDateTime": "2026-11-11T19:27:25.9059345Z",
       "blockExecutionNotifications": true
     },
     "intendedState": {
-      "fileName": "keel-rt-1049-device-shell-script-u.sh",
+      "fileName": "keel-rt-1083-device-shell-script-u.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-shell-script-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-shell-script-u",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "roleScopeTagIds": [
@@ -39,20 +39,20 @@
       "blockExecutionNotifications": true
     },
     "postState": {
-      "id": "b89ad795-2be2-8e4a-9eba-724a1a20609e",
-      "fileName": "keel-rt-1049-device-shell-script-u.sh",
+      "id": "86bf8e9c-d7b1-878d-85fb-f0a03f5bda88",
+      "fileName": "keel-rt-1083-device-shell-script-u.sh",
       "retryCount": 0,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-shell-script-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-shell-script-u",
       "runAsAccount": "system",
       "scriptContent": "ZWNobyBLRUVMLVJU",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
-      "createdDateTime": "2026-11-06T19:16:39.8135834Z",
+      "createdDateTime": "2026-11-11T19:20:21.224957Z",
       "roleScopeTagIds": [
         "0"
       ],
       "executionFrequency": "PT0S",
-      "lastModifiedDateTime": "2026-11-06T19:44:06.2237374Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:13.4976253Z",
       "blockExecutionNotifications": true
     }
   }

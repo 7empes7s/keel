@@ -1,5 +1,5 @@
 {
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "entry": {
     "naturalKey": "authenticationFlowsPolicy:authenticationFlowsPolicy",
     "resourceType": "authenticationFlowsPolicy",
@@ -7,7 +7,7 @@
     "targetId": "authenticationFlowsPolicy",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:50:13.105Z",
+    "recordedAt": "2026-11-11T19:49:44.228Z",
     "priorState": {
       "id": "authenticationFlowsPolicy",
       "description": "Authentication flows policy allows modification of settings related to authentication flows in AAD tenant, such as self-service sign up configuration.",

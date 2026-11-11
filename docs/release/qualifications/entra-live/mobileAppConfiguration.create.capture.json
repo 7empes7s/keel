@@ -1,13 +1,13 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "mobileAppConfiguration:02ceea09-f650-826f-a0d4-cc290b027c8f",
+    "naturalKey": "mobileAppConfiguration:2620b06f-3cd6-86b3-b9ef-8ec7f2294cce",
     "resourceType": "mobileAppConfiguration",
     "operation": "create",
-    "targetId": "0e3cd62b-61d2-85e5-a638-baafd8048e3a",
+    "targetId": "6175a02c-2522-8c83-a258-6106a7b8d88d",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:06.635Z",
+    "recordedAt": "2026-11-11T19:36:16.788Z",
     "priorState": null,
     "intendedState": {
       "settings": [
@@ -18,15 +18,15 @@
         }
       ],
       "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-config-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-config-c",
       "encodedSettingXml": null,
       "targetedMobileApps": [
-        "33e5a3d2-645f-8c31-8354-46c5eabc90f0"
+        "93aa691b-f353-835e-af62-412ca91ea620"
       ]
     },
     "postState": {
-      "id": "0e3cd62b-61d2-85e5-a638-baafd8048e3a",
+      "id": "6175a02c-2522-8c83-a258-6106a7b8d88d",
       "version": 1,
       "settings": [
         {
@@ -36,15 +36,15 @@
         }
       ],
       "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-config-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-config-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileAppConfigurations/$entity",
-      "createdDateTime": "2026-11-06T19:44:06.7590073Z",
+      "createdDateTime": "2026-11-11T19:36:19.5732834Z",
       "encodedSettingXml": null,
       "targetedMobileApps": [
-        "33e5a3d2-645f-8c31-8354-46c5eabc90f0"
+        "93aa691b-f353-835e-af62-412ca91ea620"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:44:06.7590073Z"
+      "lastModifiedDateTime": "2026-11-11T19:36:19.5732834Z"
     }
   }
 }

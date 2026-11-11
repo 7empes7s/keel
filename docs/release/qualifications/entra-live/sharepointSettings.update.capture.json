@@ -1,5 +1,5 @@
 {
-  "restoreRef": "333a8695-2a86-8efc-b384-f07a2edef626",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "entry": {
     "naturalKey": "sharepointSettings:sharepointSettings",
     "resourceType": "sharepointSettings",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T20:41:56.239Z",
+    "recordedAt": "2026-11-11T19:49:32.470Z",
     "priorState": {
       "isLoopEnabled": true,
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#admin/sharepoint/settings/$entity",

@@ -1,29 +1,29 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "claimsMappingPolicy:b743e05d-80a0-8ea2-9988-caa23577ed27",
+    "naturalKey": "claimsMappingPolicy:aa3981f9-f7a3-8b6d-8f5d-ef38b2a1382d",
     "resourceType": "claimsMappingPolicy",
     "operation": "create",
-    "targetId": "2435f7f0-5626-877e-8211-8a48182ea37f",
+    "targetId": "a5a09c7a-5802-86ad-a425-660621b53cb7",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:38.782Z",
+    "recordedAt": "2026-11-11T19:35:49.558Z",
     "priorState": null,
     "intendedState": {
-      "id": "b743e05d-80a0-8ea2-9988-caa23577ed27",
+      "id": "aa3981f9-f7a3-8b6d-8f5d-ef38b2a1382d",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-1049-claims-mapping-policy-c",
+      "displayName": "KEEL-RT-1083-claims-mapping-policy-c",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "2435f7f0-5626-877e-8211-8a48182ea37f",
+      "id": "a5a09c7a-5802-86ad-a425-660621b53cb7",
       "definition": [
         "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-1049-claims-mapping-policy-c",
+      "displayName": "KEEL-RT-1083-claims-mapping-policy-c",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/claimsMappingPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

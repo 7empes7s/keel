@@ -7,23 +7,23 @@
   "resourceType": "microsoftTunnelHealthThreshold",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:49:53.198Z",
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "observedAt": "2026-11-11T19:49:31.769Z",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "naturalKey": "microsoftTunnelHealthThreshold:cpuUsage",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "4af09e4b1a907e4c11a965089e33ab5418565225e8829adee9ff61d58ab2e425",
+  "captureSha256": "d6d5c962f42bf48d704c9ad618b508f08015859ab50d329f92e687c932ab4558",
   "proofRef": "docs/release/qualifications/entra-live/microsoftTunnelHealthThreshold.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "bbe68b1eb7dd3d20f7668a67e8be2c761707fb8104aa2be94f4e129810982f4f"
+      "signature": "e5cbadba2fc742c47ad5ac428455ec3a9890c64c52dc73b287b472ce11ec4b7c"
     }
   }
 }

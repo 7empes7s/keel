@@ -7,23 +7,23 @@
   "resourceType": "targetedManagedAppConfiguration",
   "operation": "delete",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": "absent",
   "readBackVerified": true,
-  "observedAt": "2026-11-06T20:01:43.940Z",
-  "restoreRef": "ddd95e17-655b-80f0-b245-6b86243c3e03",
-  "naturalKey": "targetedManagedAppConfiguration:A_b8d659f8-18f1-8619-9d14-e74796de3ab9",
+  "observedAt": "2026-11-11T19:56:06.209Z",
+  "restoreRef": "d69cfa13-d3cf-8a10-a44b-8160adaafe82",
+  "naturalKey": "targetedManagedAppConfiguration:A_89c5df7a-213f-8b5d-bcd8-2a570aa9f9d2",
   "fixtureKind": "named-object",
-  "captureSha256": "dbaa8a78c3439912f3b9447499491003095e41d27e4e84a12dceb3f3a4c2d55c",
+  "captureSha256": "1b6e736c891c4caea04fe4f05548792f14693d7ee30c3f674a8b9a528d809fab",
   "proofRef": "docs/release/qualifications/entra-live/targetedManagedAppConfiguration.delete.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2102d09026e7910d1720258b91b30dce5e2abbddad707c36be12ce4d366b928c"
+      "signature": "1b75d237ad52e3a8ec0cfed7cd96bc184f929c085bdd783e79976bb66a133613"
     }
   }
 }

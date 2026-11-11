@@ -1,5 +1,5 @@
 {
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "entry": {
     "naturalKey": "crossTenantAccessPolicy:CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",
     "resourceType": "crossTenantAccessPolicy",
@@ -7,7 +7,7 @@
     "targetId": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:50:15.387Z",
+    "recordedAt": "2026-11-11T19:49:48.180Z",
     "priorState": {
       "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
       "displayName": "CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",

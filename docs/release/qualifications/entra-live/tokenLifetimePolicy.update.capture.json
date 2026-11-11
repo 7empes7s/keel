@@ -1,37 +1,37 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "tokenLifetimePolicy:5a1b632e-2061-8740-bcbe-83f4be6fd51b",
+    "naturalKey": "tokenLifetimePolicy:a76afd19-af1c-8886-9085-906adbb5834f",
     "resourceType": "tokenLifetimePolicy",
     "operation": "update",
-    "targetId": "5a1b632e-2061-8740-bcbe-83f4be6fd51b",
+    "targetId": "a76afd19-af1c-8886-9085-906adbb5834f",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:54.412Z",
+    "recordedAt": "2026-11-11T19:36:01.577Z",
     "priorState": {
-      "id": "5a1b632e-2061-8740-bcbe-83f4be6fd51b",
+      "id": "a76afd19-af1c-8886-9085-906adbb5834f",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-1049-token-lifetime-policy-u-drifted",
+      "displayName": "KEEL-RT-1083-token-lifetime-policy-u-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "5a1b632e-2061-8740-bcbe-83f4be6fd51b",
+      "id": "a76afd19-af1c-8886-9085-906adbb5834f",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-1049-token-lifetime-policy-u",
+      "displayName": "KEEL-RT-1083-token-lifetime-policy-u",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "5a1b632e-2061-8740-bcbe-83f4be6fd51b",
+      "id": "a76afd19-af1c-8886-9085-906adbb5834f",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-1049-token-lifetime-policy-u",
+      "displayName": "KEEL-RT-1083-token-lifetime-policy-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/tokenLifetimePolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

@@ -7,23 +7,23 @@
   "resourceType": "entitlementManagementSettings",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:49:52.955Z",
-  "restoreRef": "bb34b0cb-2abb-8214-942c-0eee4c238a37",
+  "observedAt": "2026-11-11T19:49:31.454Z",
+  "restoreRef": "42aa869a-fe70-866e-9ef8-6433dc67cdd8",
   "naturalKey": "entitlementManagementSettings:entitlementManagementSettings",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "397eadb84063d9dd3f92d08ed0a3c4be9b4bda491c0d16c1f65044e274ef3c3e",
+  "captureSha256": "aa3957185cb6c414f1561472d5a12d4f58f804c9595cec126a8e76c96a9ce3d5",
   "proofRef": "docs/release/qualifications/entra-live/entitlementManagementSettings.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "4741b096ccd37801a69d164698bb601b98977793d4cb606dab363409d0c1ff7a"
+      "signature": "7bdb9d68b81b3e2ac9c4f3dca91b99c217a754149f3f1f34d8d634d49bd2614c"
     }
   }
 }

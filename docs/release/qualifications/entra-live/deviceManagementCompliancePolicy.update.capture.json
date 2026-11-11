@@ -1,16 +1,16 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceManagementCompliancePolicy:4a6f1799-1eab-8dcd-a679-02f161ae1faa",
+    "naturalKey": "deviceManagementCompliancePolicy:1e00fd35-0e48-8ff4-a742-817ac4ddd07d",
     "resourceType": "deviceManagementCompliancePolicy",
     "operation": "update",
-    "targetId": "4a6f1799-1eab-8dcd-a679-02f161ae1faa",
+    "targetId": "1e00fd35-0e48-8ff4-a742-817ac4ddd07d",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:05.552Z",
+    "recordedAt": "2026-11-11T19:36:10.235Z",
     "priorState": {
-      "id": "4a6f1799-1eab-8dcd-a679-02f161ae1faa",
-      "name": "KEEL-RT-1049-device-management-compliance-policy-u",
+      "id": "1e00fd35-0e48-8ff4-a742-817ac4ddd07d",
+      "name": "KEEL-RT-1083-device-management-compliance-policy-u",
       "settings": [
         {
           "id": "0",
@@ -28,20 +28,20 @@
         }
       ],
       "platforms": "linux",
-      "description": "KEEL-RT test fixture (#1049) drifted",
+      "description": "KEEL-RT test fixture (#1083) drifted",
       "settingCount": 1,
       "technologies": "linuxMdm",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
       "creationSource": null,
-      "createdDateTime": "2026-11-06T19:17:14.4840129Z",
+      "createdDateTime": "2026-11-11T19:20:37.9680516Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:24:05.9897838Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('4a6f1799-1eab-8dcd-a679-02f161ae1faa')/settings"
+      "lastModifiedDateTime": "2026-11-11T19:27:36.6528105Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('1e00fd35-0e48-8ff4-a742-817ac4ddd07d')/settings"
     },
     "intendedState": {
-      "name": "KEEL-RT-1049-device-management-compliance-policy-u",
+      "name": "KEEL-RT-1083-device-management-compliance-policy-u",
       "settings": [
         {
           "@odata.type": "#microsoft.graph.deviceManagementConfigurationSetting",
@@ -59,15 +59,15 @@
         }
       ],
       "platforms": "linux",
-      "description": "KEEL-RT test fixture (#1049)",
+      "description": "KEEL-RT test fixture (#1083)",
       "technologies": "linuxMdm",
       "roleScopeTagIds": [
         "0"
       ]
     },
     "postState": {
-      "id": "4a6f1799-1eab-8dcd-a679-02f161ae1faa",
-      "name": "KEEL-RT-1049-device-management-compliance-policy-u",
+      "id": "1e00fd35-0e48-8ff4-a742-817ac4ddd07d",
+      "name": "KEEL-RT-1083-device-management-compliance-policy-u",
       "settings": [
         {
           "id": "0",
@@ -85,24 +85,24 @@
         }
       ],
       "platforms": "linux",
-      "description": "KEEL-RT test fixture (#1049)",
+      "description": "KEEL-RT test fixture (#1083)",
       "settingCount": 1,
       "technologies": "linuxMdm",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
       "creationSource": null,
-      "createdDateTime": "2026-11-06T19:17:14.4840129Z",
+      "createdDateTime": "2026-11-11T19:20:37.9680516Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-11-06T19:44:05.7821718Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('4a6f1799-1eab-8dcd-a679-02f161ae1faa')/settings",
+      "lastModifiedDateTime": "2026-11-11T19:36:10.4651919Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('1e00fd35-0e48-8ff4-a742-817ac4ddd07d')/settings",
       "scheduledActionsForRule": [
         {
-          "id": "4a6f1799-1eab-8dcd-a679-02f161ae1faa",
+          "id": "1e00fd35-0e48-8ff4-a742-817ac4ddd07d",
           "ruleName": null,
           "scheduledActionConfigurations": [
             {
-              "id": "6d1885d5-6ffd-8963-9333-8ff6e46b3780",
+              "id": "a4b0d67f-2ce7-8db0-8a61-844c1e76248c",
               "actionType": "block",
               "gracePeriodHours": 0,
               "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",

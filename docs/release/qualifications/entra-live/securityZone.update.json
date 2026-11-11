@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "securityZone",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-11-11T20:08:32.064Z",
+  "restoreRef": "8fe3e1e0-6725-86a6-90b7-e76d18af519f",
+  "naturalKey": "securityZone:6952acb177358bd59de8ebec33b955e4",
+  "fixtureKind": "named-object",
+  "captureSha256": "f6b195d5c8d01b95812d507134047138641f2ac664b4a33f35de835b38ef03f8",
+  "proofRef": "docs/release/qualifications/entra-live/securityZone.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "6f392c7e9281b3968d3a2ef0de2556e45e363c4f5bf3c125e0182dba63451a96"
+    }
+  }
+}

@@ -7,23 +7,23 @@
   "resourceType": "roleScopeTag",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:35:50.839Z",
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
-  "naturalKey": "roleScopeTag:8",
+  "observedAt": "2026-11-11T19:35:59.173Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "roleScopeTag:11",
   "fixtureKind": "named-object",
-  "captureSha256": "b258ed8d04441eebb72888a4edd137fffc5b0ea005fa69eb6fef880d881a84ce",
+  "captureSha256": "ad4aa3ec4484ec2359c68c7738cc76e3eb5a3b36d63508c40d5324184b6cdf39",
   "proofRef": "docs/release/qualifications/entra-live/roleScopeTag.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "6584f9a8f6b1d9012ce530a850fc97eae0b1462d3e7739717f9d7f842b060b2b"
+      "signature": "3af3afe0660ea37050d6a97dd7158ecce13d5c297018884969b7179acba10271"
     }
   }
 }

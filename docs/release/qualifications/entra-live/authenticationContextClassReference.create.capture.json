@@ -1,5 +1,5 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
     "naturalKey": "authenticationContextClassReference:c42",
     "resourceType": "authenticationContextClassReference",
@@ -7,18 +7,18 @@
     "targetId": "c42",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:38.065Z",
+    "recordedAt": "2026-11-11T19:35:49.467Z",
     "priorState": null,
     "intendedState": {
       "id": "c42",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-context-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-context-c",
       "isAvailable": false
     },
     "postState": {
       "id": "c42",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-context-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-context-c",
       "isAvailable": false,
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/authenticationContextClassReferences/$entity"
     }

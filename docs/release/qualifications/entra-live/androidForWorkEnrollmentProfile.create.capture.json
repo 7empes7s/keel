@@ -1,30 +1,30 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "androidForWorkEnrollmentProfile:64e8658d-e3c8-8c96-ba26-50c374ac98c2",
+    "naturalKey": "androidForWorkEnrollmentProfile:ac861794-9b80-8e01-bbf7-101118c70ccb",
     "resourceType": "androidForWorkEnrollmentProfile",
     "operation": "create",
-    "targetId": "0398a9aa-3676-8b37-a77d-d2bdf619d963",
+    "targetId": "faf938de-c5de-8ef8-8489-9d021cef3b7b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:04.205Z",
+    "recordedAt": "2026-11-11T19:36:08.759Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-android-for-work-enrollment-profile-c"
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-android-for-work-enrollment-profile-c"
     },
     "postState": {
-      "id": "0398a9aa-3676-8b37-a77d-d2bdf619d963",
+      "id": "faf938de-c5de-8ef8-8489-9d021cef3b7b",
       "accountId": "eee7a8a0-b394-80fb-b33a-32e7bc22d6b3",
       "tokenValue": null,
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-android-for-work-enrollment-profile-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-android-for-work-enrollment-profile-c",
       "qrCodeImage": null,
       "qrCodeContent": null,
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/androidForWorkEnrollmentProfiles/$entity",
-      "createdDateTime": "2026-11-06T19:44:04.6005376Z",
+      "createdDateTime": "2026-11-11T19:36:09.0454787Z",
       "enrolledDeviceCount": 0,
-      "lastModifiedDateTime": "2026-11-06T19:44:04Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:09Z",
       "tokenExpirationDateTime": "0001-01-01T00:00:00Z"
     }
   }

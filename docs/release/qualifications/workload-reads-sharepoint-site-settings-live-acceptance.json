@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:29:23.870Z",
+  "observedAt": "2026-11-11T18:27:03.464Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "site-sharing",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:23.870Z",
+        "capturedAt": "2026-11-11T18:27:03.464Z",
         "ok": true,
         "status": "read",
         "objects": 22,
@@ -36,7 +36,7 @@
         "family": "site-settings",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:23.870Z",
+        "capturedAt": "2026-11-11T18:27:03.464Z",
         "ok": false,
         "status": "partial",
         "objects": 22,
@@ -47,7 +47,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "962a097037736ecb5089eb6b01c7acf633fd27b692bdc2a8e95b2cde02d00301"
+      "signature": "8e05cd92500236bbecb5fee0c59988cff067aa93a6886d4ccd492f87cc86b796"
     }
   }
 }

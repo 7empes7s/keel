@@ -1,19 +1,19 @@
 {
-  "restoreRef": "82e0e942-548d-80db-8364-47c79b009ab0",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1049-device-management-role-definition-u",
+    "naturalKey": "deviceManagementRoleDefinition:KEEL-RT-1083-device-management-role-definition-u",
     "resourceType": "deviceManagementRoleDefinition",
     "operation": "update",
-    "targetId": "04abb8ac-101f-8605-bc4f-e715cd87d868",
+    "targetId": "37d4954b-63e8-8c61-b76e-6112743feada",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:35:44.370Z",
+    "recordedAt": "2026-11-11T19:35:52.416Z",
     "priorState": {
-      "id": "04abb8ac-101f-8605-bc4f-e715cd87d868",
+      "id": "37d4954b-63e8-8c61-b76e-6112743feada",
       "isBuiltIn": false,
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-device-management-role-definition-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-device-management-role-definition-u",
       "rolePermissions": [
         {
           "resourceActions": [
@@ -29,8 +29,8 @@
     },
     "intendedState": {
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-management-role-definition-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-management-role-definition-u",
       "rolePermissions": [
         {
           "resourceActions": [
@@ -45,11 +45,11 @@
       ]
     },
     "postState": {
-      "id": "04abb8ac-101f-8605-bc4f-e715cd87d868",
+      "id": "37d4954b-63e8-8c61-b76e-6112743feada",
       "isBuiltIn": false,
       "@odata.type": "#microsoft.graph.deviceAndAppManagementRoleDefinition",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-device-management-role-definition-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-device-management-role-definition-u",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/roleDefinitions/$entity",
       "rolePermissions": [
         {

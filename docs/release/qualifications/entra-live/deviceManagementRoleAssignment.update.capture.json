@@ -1,58 +1,58 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "deviceManagementRoleAssignment:7efcdacb-9617-8dde-b48a-d71143b7acde",
+    "naturalKey": "deviceManagementRoleAssignment:07297084-90e2-8322-8b4c-88a2fc67efa6",
     "resourceType": "deviceManagementRoleAssignment",
     "operation": "update",
-    "targetId": "7efcdacb-9617-8dde-b48a-d71143b7acde",
+    "targetId": "07297084-90e2-8322-8b4c-88a2fc67efa6",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:05.888Z",
+    "recordedAt": "2026-11-11T19:36:11.089Z",
     "priorState": {
-      "id": "7efcdacb-9617-8dde-b48a-d71143b7acde",
+      "id": "07297084-90e2-8322-8b4c-88a2fc67efa6",
       "members": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "scopeType": "resourceScope",
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-intune-assignment-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-intune-assignment-u",
       "scopeMembers": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "resourceScopes": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "roleScopeTagIds": []
     },
     "intendedState": {
       "members": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "scopeType": "resourceScope",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-intune-assignment-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-intune-assignment-u",
       "scopeMembers": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "resourceScopes": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "roleScopeTagIds": []
     },
     "postState": {
-      "id": "7efcdacb-9617-8dde-b48a-d71143b7acde",
+      "id": "07297084-90e2-8322-8b4c-88a2fc67efa6",
       "members": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "scopeType": "resourceScope",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-intune-assignment-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-intune-assignment-u",
       "scopeMembers": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/roleAssignments/$entity",
       "resourceScopes": [
-        "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a"
+        "7898e3fb-4de7-8813-99cc-f0891ab641f8"
       ],
       "roleScopeTagIds": []
     }

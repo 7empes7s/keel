@@ -1,17 +1,17 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "windowsFeatureUpdateProfile:c3976501-dcf3-84e7-9af1-802b1c8927bd",
+    "naturalKey": "windowsFeatureUpdateProfile:1c5279ee-8870-88a3-a0fa-7822cd15a284",
     "resourceType": "windowsFeatureUpdateProfile",
     "operation": "create",
-    "targetId": "64227320-843d-8ddc-9e99-f1e29043e156",
+    "targetId": "22b4010f-29c4-853a-9c9f-cf8c6fc7216e",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:07.180Z",
+    "recordedAt": "2026-11-11T19:36:16.905Z",
     "priorState": null,
     "intendedState": {
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-windows-feature-update-profile-c",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-windows-feature-update-profile-c",
       "roleScopeTagIds": [
         "0"
       ],
@@ -25,11 +25,11 @@
       "installLatestWindows10OnWindows11IneligibleDevice": false
     },
     "postState": {
-      "id": "64227320-843d-8ddc-9e99-f1e29043e156",
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-windows-feature-update-profile-c",
+      "id": "22b4010f-29c4-853a-9c9f-cf8c6fc7216e",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-windows-feature-update-profile-c",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/windowsFeatureUpdateProfiles/$entity",
-      "createdDateTime": "2026-11-06T19:44:07.3718318Z",
+      "createdDateTime": "2026-11-11T19:36:18.5836553Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -40,7 +40,7 @@
       },
       "endOfSupportDate": "2027-10-12T00:00:00Z",
       "featureUpdateVersion": "Windows 11, version 24H2",
-      "lastModifiedDateTime": "2026-11-06T19:44:07.3718318Z",
+      "lastModifiedDateTime": "2026-11-11T19:36:18.5836553Z",
       "deployableContentDisplayName": "Windows 11, version 24H2",
       "installFeatureUpdatesOptional": false,
       "installLatestWindows10OnWindows11IneligibleDevice": false

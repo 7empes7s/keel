@@ -1,35 +1,35 @@
 {
-  "restoreRef": "524c2712-4ce8-84fe-a2af-1607cdf5794e",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
   "entry": {
-    "naturalKey": "accessPackageAssignmentPolicy:e1d9783c-8146-8443-ab8e-0cc3f681b95f",
+    "naturalKey": "accessPackageAssignmentPolicy:b95ac543-f6e2-8bd3-98bc-be01dc9d360d",
     "resourceType": "accessPackageAssignmentPolicy",
     "operation": "update",
-    "targetId": "e1d9783c-8146-8443-ab8e-0cc3f681b95f",
+    "targetId": "b95ac543-f6e2-8bd3-98bc-be01dc9d360d",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-11-06T19:44:11.831Z",
+    "recordedAt": "2026-11-11T19:36:23.970Z",
     "priorState": {
-      "id": "e1d9783c-8146-8443-ab8e-0cc3f681b95f",
+      "id": "b95ac543-f6e2-8bd3-98bc-be01dc9d360d",
       "questions": [],
       "expiration": {
         "type": "afterDuration",
         "duration": "P30D",
         "endDateTime": null
       },
-      "description": "KEEL-RT test fixture (#1049) drifted",
-      "displayName": "KEEL-RT-1049-policy-u",
+      "description": "KEEL-RT test fixture (#1083) drifted",
+      "displayName": "KEEL-RT-1083-policy-u",
       "accessPackage": {
-        "id": "3300d6ae-f795-82e2-805e-2b28898aff67",
+        "id": "cdfceb06-c5b3-89e3-8f9b-e3aa357cc9a4",
         "isHidden": true,
         "uniqueName": null,
-        "description": "KEEL-RT test fixture (#1049) drifted",
-        "displayName": "KEEL-RT-1049-package-u",
-        "createdDateTime": "2026-11-06T19:18:12.34Z",
-        "modifiedDateTime": "2026-11-06T19:30:02.163Z"
+        "description": "KEEL-RT test fixture (#1083) drifted",
+        "displayName": "KEEL-RT-1083-package-u",
+        "createdDateTime": "2026-11-11T19:21:27.437Z",
+        "modifiedDateTime": "2026-11-11T19:28:04.507Z"
       },
       "reviewSettings": null,
-      "createdDateTime": "2026-11-06T19:18:12.89Z",
-      "modifiedDateTime": "2026-11-06T19:24:35.51Z",
+      "createdDateTime": "2026-11-11T19:21:28.087Z",
+      "modifiedDateTime": "2026-11-11T19:28:05.107Z",
       "requestorSettings": {
         "onBehalfRequestors": [],
         "enableTargetsToSelfAddAccess": true,
@@ -46,12 +46,12 @@
       },
       "specificAllowedTargets": [
         {
-          "groupId": "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a",
+          "groupId": "7898e3fb-4de7-8813-99cc-f0891ab641f8",
           "@odata.type": "#microsoft.graph.groupMembers",
-          "description": "KEEL-RT-1049-group-u"
+          "description": "KEEL-RT-1083-group-u"
         }
       ],
-      "questions@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies('e1d9783c-8146-8443-ab8e-0cc3f681b95f')/questions",
+      "questions@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies('b95ac543-f6e2-8bd3-98bc-be01dc9d360d')/questions",
       "requestApprovalSettings": {
         "stages": [
           {
@@ -85,10 +85,10 @@
         "duration": "P30D",
         "endDateTime": null
       },
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-policy-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-policy-u",
       "accessPackage": {
-        "id": "3300d6ae-f795-82e2-805e-2b28898aff67"
+        "id": "cdfceb06-c5b3-89e3-8f9b-e3aa357cc9a4"
       },
       "reviewSettings": null,
       "requestorSettings": {
@@ -107,9 +107,9 @@
       },
       "specificAllowedTargets": [
         {
-          "groupId": "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a",
+          "groupId": "7898e3fb-4de7-8813-99cc-f0891ab641f8",
           "@odata.type": "#microsoft.graph.groupMembers",
-          "description": "KEEL-RT-1049-group-u"
+          "description": "KEEL-RT-1083-group-u"
         }
       ],
       "requestApprovalSettings": {
@@ -139,28 +139,28 @@
       "automaticRequestSettings": null
     },
     "postState": {
-      "id": "e1d9783c-8146-8443-ab8e-0cc3f681b95f",
+      "id": "b95ac543-f6e2-8bd3-98bc-be01dc9d360d",
       "questions": [],
       "expiration": {
         "type": "afterDuration",
         "duration": "P30D",
         "endDateTime": null
       },
-      "description": "KEEL-RT test fixture (#1049)",
-      "displayName": "KEEL-RT-1049-policy-u",
+      "description": "KEEL-RT test fixture (#1083)",
+      "displayName": "KEEL-RT-1083-policy-u",
       "accessPackage": {
-        "id": "3300d6ae-f795-82e2-805e-2b28898aff67",
+        "id": "cdfceb06-c5b3-89e3-8f9b-e3aa357cc9a4",
         "isHidden": true,
         "uniqueName": null,
-        "description": "KEEL-RT test fixture (#1049) drifted",
-        "displayName": "KEEL-RT-1049-package-u",
-        "createdDateTime": "2026-11-06T19:18:12.34Z",
-        "modifiedDateTime": "2026-11-06T19:30:02.163Z"
+        "description": "KEEL-RT test fixture (#1083)",
+        "displayName": "KEEL-RT-1083-package-u",
+        "createdDateTime": "2026-11-11T19:21:27.437Z",
+        "modifiedDateTime": "2026-11-11T19:36:08.843Z"
       },
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies(accessPackage())/$entity",
       "reviewSettings": null,
-      "createdDateTime": "2026-11-06T19:18:12.89Z",
-      "modifiedDateTime": "2026-11-06T19:44:12.14Z",
+      "createdDateTime": "2026-11-11T19:21:28.087Z",
+      "modifiedDateTime": "2026-11-11T19:36:24.36Z",
       "requestorSettings": {
         "onBehalfRequestors": [],
         "enableTargetsToSelfAddAccess": true,
@@ -177,12 +177,12 @@
       },
       "specificAllowedTargets": [
         {
-          "groupId": "2c6d3ba6-bcc8-89ba-ad5a-3bc916ee478a",
+          "groupId": "7898e3fb-4de7-8813-99cc-f0891ab641f8",
           "@odata.type": "#microsoft.graph.groupMembers",
-          "description": "KEEL-RT-1049-group-u"
+          "description": "KEEL-RT-1083-group-u"
         }
       ],
-      "questions@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies('e1d9783c-8146-8443-ab8e-0cc3f681b95f')/questions",
+      "questions@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/assignmentPolicies('b95ac543-f6e2-8bd3-98bc-be01dc9d360d')/questions",
       "requestApprovalSettings": {
         "stages": [
           {

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "dsc-distribution-groups-writes-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "exchange-distribution-groups.dsc-writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T20:13:06.020Z",
+  "observedAt": "2026-11-11T18:58:27.385Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -53,11 +53,11 @@
         "operationId": "exchange-distribution-groups.distribution-group.add",
         "version": "2.26.1021.1",
         "synthetic": false,
-        "fixture": "KEEL-RT-capture-819c85fd",
+        "fixture": "KEEL-RT-capture-c1c2f47c",
         "ok": true,
         "readBackVerified": true,
         "collateralUnchanged": true,
-        "capturedAt": "2026-11-06T20:12:42.446Z",
+        "capturedAt": "2026-11-11T18:58:02.823Z",
         "error": null
       },
       {
@@ -68,7 +68,7 @@
         "ok": true,
         "readBackVerified": true,
         "collateralUnchanged": true,
-        "capturedAt": "2026-11-06T20:13:06.020Z",
+        "capturedAt": "2026-11-11T18:58:27.385Z",
         "error": null
       }
     ],
@@ -76,7 +76,7 @@
     "created": [
       {
         "kind": "distributionGroup",
-        "name": "KEEL-RT-capture-819c85fd"
+        "name": "KEEL-RT-capture-c1c2f47c"
       }
     ],
     "requests": [
@@ -101,7 +101,7 @@
         "methods": [
           "Get"
         ],
-        "name": "880e74cc-940b-8d04-9e7a-b92f86b0866b",
+        "name": "3b2c3839-f22e-8f29-b96a-7100c83f372e",
         "outcome": "ok",
         "missing": [
           "RejectMessagesFromSendersOrMembers",
@@ -116,7 +116,7 @@
         "methods": [
           "Get"
         ],
-        "name": "KEEL-RT-capture-819c85fd",
+        "name": "KEEL-RT-capture-c1c2f47c",
         "outcome": "ok",
         "missing": [
           "RejectMessagesFromSendersOrMembers",
@@ -131,7 +131,7 @@
         "methods": [
           "Set"
         ],
-        "name": "KEEL-RT-capture-819c85fd",
+        "name": "KEEL-RT-capture-c1c2f47c",
         "ensure": "Present",
         "fields": [
           "Alias",
@@ -156,7 +156,7 @@
         "methods": [
           "Get"
         ],
-        "name": "KEEL-RT-capture-819c85fd",
+        "name": "KEEL-RT-capture-c1c2f47c",
         "outcome": "ok",
         "missing": [
           "RejectMessagesFromSendersOrMembers",
@@ -204,16 +204,16 @@
         ]
       }
     ],
-    "captureLogSha256": "b0bb63f1406f5c38166a6e6d17ceeedbc9dc02c40a5dc3c7899ba5243ca3e854"
+    "captureLogSha256": "fc8d38ca7ba09f1c9902595f55ebf4f956704e70f9f219fb6b287447f77cb539"
   },
   "proof": {
     "artifact": {
       "path": "dsc-distribution-groups-writes-live-acceptance.capture.json",
-      "sha256": "b0bb63f1406f5c38166a6e6d17ceeedbc9dc02c40a5dc3c7899ba5243ca3e854"
+      "sha256": "fc8d38ca7ba09f1c9902595f55ebf4f956704e70f9f219fb6b287447f77cb539"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "dcdcbdcb45a71ac61709b0b5d5572dfe65273ca0aceab9bc21af5f81ec78beca"
+      "signature": "ae4fd15a6398bb863bf4ea763ef3d46c855f3912642041e66258d2672af641ae"
     }
   }
 }

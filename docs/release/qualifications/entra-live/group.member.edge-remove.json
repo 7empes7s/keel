@@ -7,23 +7,23 @@
   "resourceType": "group#member",
   "operation": "edge-remove",
   "fieldProjectionContractVersion": 1,
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-11-06T19:55:17.254Z",
-  "restoreRef": "db9b5797-8f1c-82e5-9266-3671861e432b",
-  "naturalKey": "edge:group:KEEL-RT-1049-group-u|member|remove|user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
+  "observedAt": "2026-11-11T19:36:35.638Z",
+  "restoreRef": "5c9126fc-b900-867a-8101-79d801dd793c",
+  "naturalKey": "edge:group:KEEL-RT-1083-group-u|member|remove|user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
   "fixtureKind": "named-object",
-  "captureSha256": "8afacc9a57c51741a4ed45df19ee35f116dc2081a2b1cc282cbeabfc174c2e01",
+  "captureSha256": "a58b94e82b81bdbba44195b789ce73888b0e35bca373d9d870951c93f5534195",
   "proofRef": "docs/release/qualifications/entra-live/group.member.edge-remove.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "3b4efeaad256206fcf14cdabc9b6fcd296578df8eb8dacf559a017e97b7d3b0a"
+      "signature": "f758882f2ee2ae7129403389ae193172f3813de93f5d38d0d22f974ba423f20f"
     }
   }
 }

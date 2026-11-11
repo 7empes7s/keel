@@ -6,7 +6,7 @@
       "role": null,
       "parameters": [],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:44.756Z"
+      "at": "2026-11-11T18:54:59.667Z"
     },
     {
       "credential": "collector",
@@ -16,7 +16,7 @@
         "Identity"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:48.501Z"
+      "at": "2026-11-11T18:55:04.354Z"
     },
     {
       "credential": "restorer",
@@ -24,12 +24,12 @@
       "role": null,
       "parameters": [],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:51.491Z"
+      "at": "2026-11-11T18:55:08.520Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "New-ManagementRole",
-      "role": "KEEL-RT-capture-role-9ae83fc0",
+      "role": "KEEL-RT-capture-role-9b5645be",
       "parameters": [
         "Description",
         "EnabledCmdlets",
@@ -37,39 +37,39 @@
         "Parent"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:54.965Z"
+      "at": "2026-11-11T18:55:12.601Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Get-ManagementRoleEntry",
-      "role": "KEEL-RT-capture-role-9ae83fc0",
+      "role": "KEEL-RT-capture-role-9b5645be",
       "parameters": [
         "Identity"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:59.032Z"
+      "at": "2026-11-11T18:55:17.246Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-ManagementRoleEntry",
-      "role": "KEEL-RT-capture-role-9ae83fc0",
+      "role": "KEEL-RT-capture-role-9b5645be",
       "parameters": [
         "Identity",
         "Parameters",
         "RemoveParameter"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:10:02.155Z"
+      "at": "2026-11-11T18:55:20.959Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Get-ManagementRoleEntry",
-      "role": "KEEL-RT-capture-role-9ae83fc0",
+      "role": "KEEL-RT-capture-role-9b5645be",
       "parameters": [
         "Identity"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:10:05.461Z"
+      "at": "2026-11-11T18:55:24.748Z"
     },
     {
       "credential": "restorer",
@@ -77,17 +77,17 @@
       "role": null,
       "parameters": [],
       "outcome": "ok",
-      "at": "2026-11-06T20:10:08.510Z"
+      "at": "2026-11-11T18:55:28.353Z"
     },
     {
       "credential": "collector",
       "cmdlet": "Get-ManagementRoleEntry",
-      "role": "KEEL-RT-capture-role-9ae83fc0",
+      "role": "KEEL-RT-capture-role-9b5645be",
       "parameters": [
         "Identity"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:10:11.748Z"
+      "at": "2026-11-11T18:55:32.365Z"
     },
     {
       "credential": "collector",
@@ -95,7 +95,7 @@
       "role": null,
       "parameters": [],
       "outcome": "ok",
-      "at": "2026-11-06T20:10:14.825Z"
+      "at": "2026-11-11T18:55:35.898Z"
     },
     {
       "credential": "collector",
@@ -105,7 +105,7 @@
         "Identity"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:10:18.129Z"
+      "at": "2026-11-11T18:55:39.682Z"
     }
   ],
   "values": {
@@ -117,10 +117,10 @@
           "naturalKey": "exchangeRoleDefinition:capture-role",
           "kind": "add",
           "operationId": "exchange-role-definitions.role.add",
-          "name": "KEEL-RT-capture-role-9ae83fc0",
+          "name": "KEEL-RT-capture-role-9b5645be",
           "parent": "Address Lists",
           "parentChosen": "the smallest role in the backup that holds every entry",
-          "description": "KEEL-RT capture role 9ae83fc0",
+          "description": "KEEL-RT capture role 9b5645be",
           "entries": {
             "Get-AddressList": [
               "Identity"
@@ -130,19 +130,19 @@
             ]
           },
           "parameters": {
-            "Name": "KEEL-RT-capture-role-9ae83fc0",
+            "Name": "KEEL-RT-capture-role-9b5645be",
             "Parent": "Address Lists",
             "EnabledCmdlets": [
               "Get-AddressBookPolicy",
               "Get-AddressList"
             ],
-            "Description": "KEEL-RT capture role 9ae83fc0"
+            "Description": "KEEL-RT capture role 9b5645be"
           },
           "changes": [
             {
               "field": "Name",
               "before": null,
-              "after": "KEEL-RT-capture-role-9ae83fc0"
+              "after": "KEEL-RT-capture-role-9b5645be"
             },
             {
               "field": "Parent",
@@ -186,9 +186,9 @@
     },
     "readBack": {
       "role": {
-        "name": "KEEL-RT-capture-role-9ae83fc0",
+        "name": "KEEL-RT-capture-role-9b5645be",
         "parent": "ta036f59837f.onmicrosoft.com\\Address Lists",
-        "description": "KEEL-RT capture role 9ae83fc0"
+        "description": "KEEL-RT capture role 9b5645be"
       },
       "entries": {
         "Get-AddressList": [

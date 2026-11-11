@@ -1,6 +1,6 @@
 # O1 live proof at `ef793e66bd` (issue #1083)
 
-**Status: plan approved, batch G1 run (3 of 5 gates recorded; storage and drill held with the manager as owner). G2 onward approved; not run yet.**
+**Status: plan approved. G1, G3 and G4 run; G2 held (tenant-wide toggle). Stopped after G3 on an unexpected failure (`site-template.update`, see "Bugs found"); E1-E4 not run yet.**
 Approval is asked once per batch below; each batch starts only after its approval.
 
 ## Approvals
@@ -27,6 +27,47 @@ Approval is asked once per batch below; each batch starts only after its approva
 
 Every record verifies with `qualification.mjs verify --require-live --tenant <tenant ref> --build <B>` (exit 0).
 Tenant state afterwards: the native fixture group is live with its id; nothing else in the test tenant was written.
+
+### G2 (2026-11-11): held
+
+| Gate | Result | Notes |
+|---|---|---|
+| `sharepoint-live-acceptance` | **held** (owner: manager) | The capture flips the tenant-wide `isResharingByExternalUsersEnabled` and puts it back. It is `false` now, so the flip widens sharing (`--allow-widening-toggle`). The gate doc calls this beyond the KEEL-RT-only guardrail, and the manager's rule for this window is to stop on writes outside KEEL-RT fixtures |
+| `teams-live-acceptance`, `exchange-live-acceptance`, `onedrive-purview-live-acceptance` | **held** (owner: manager) | Each takes the previous gate's record as input (chain from SharePoint), and each puts tenant-wide Teams or Exchange settings back after changing them |
+
+`ops/STATE.md` has a standing decision (2026-10-22) that tenant-wide test-tenant settings may change if each is put
+back right after; it was not used because the manager's stop rule for this window is stricter.
+
+### G3 (2026-11-11)
+
+Run without `--allow-tenant-wide-test-writes`: only KEEL-RT- objects were written; tenant-wide families were skipped.
+
+| Gate | Result | Notes |
+|---|---|---|
+| Mail flow writers | **proven 7/7** | |
+| Exchange extended writers | **proven 10**, skipped 11 | 9 skipped by design as before; connection filter and quarantine global settings skipped (tenant-wide, not run) |
+| Purview retention/DLP writers | **proven 4/4** | |
+| Purview governance writers | **proven 1/1** | |
+| Teams org policy writers | **proven 2**, skipped 5 | federation (by design); client, guest meeting, guest messaging and guest calling configurations (tenant-wide, not run) |
+| Teams voice policy writers | **proven 20**, skipped 1 | live events configuration (by design) |
+| OneDrive site settings writer | **held** (owner: manager) | Needs a hand change on the fixture person's OneDrive first (link permission to Edit) through PnP; not run in this window |
+| SharePoint site grants | **proven 2/2** | add and update on `KEEL-RT-site-grant-app`; the grant was removed by hand afterwards |
+| SharePoint site permissions | **proven 5/5** | on `KEEL-RT-perm-list` (made for the run); level, group, admin flag and list removed by hand afterwards |
+| SharePoint structure writers | **proven 5/7**, **failed 1**, skipped 1 | `site-template.update` failed, see "Bugs found"; `hub-site.add` skipped (it leaves a permanent hub) |
+| Exchange role definitions | **proven** | |
+| Purview label unpublish | **proven** | |
+| DSC distribution lists | **proven 2/2** | |
+
+### G4 (2026-11-11)
+
+| Gate | Result | Notes |
+|---|---|---|
+| Wave 2 reads | **23 recorded**: 19 complete, 4 partial | Partial as at `128b0e3b84`: teams-collaboration-policies, power-platform-settings, sharepoint-site-settings (the fixture sites set no sensitivity label or restricted access group), sharepoint-tenant (the restricted-search list needs a Copilot licence) |
+| Defender endpoint indicators read | **held** (owner: owner) | HTTP 403: the Collector still lacks `Ti.Read.All`. No record committed |
+
+Every G3 and G4 record verifies with `verify --require-live --tenant <tenant ref> --build <B>` (exit 0).
+Left on purpose (KEEL never deletes these; all KEEL-RT-, unassigned): the Teams `KEEL-RT-capture-*` policies, the
+Exchange role and distribution list, and the site script and site design the captures created.
 
 ## Candidate
 
@@ -455,4 +496,10 @@ None yet. Each batch adds its passed, failed and skipped lines here.
 
 ## Bugs found
 
-None yet.
+- **`sharepoint-structure.site-template.update` (G3, 2026-11-11):** the capture applied its template (a
+  `KEEL-RT-capture-*` list, column, content type and navigation link) and then the put-back template (the original
+  navigation alone). Both applies returned ok, but six read-backs over two minutes never matched the original
+  navigation, so the capture reported "PUTTING THE NAVIGATION BACK FAILED". Afterwards the capture link was gone,
+  and every QuickLaunch node on `KEEL-RT-20261004` had new, consecutive ids with "Recent" listed twice: the put-back
+  rebuilds the whole navigation, and the read-back then differs from what was there before. Not fixed under the
+  freeze; the manager is asked on #1083 whether to file it.

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "purview-label-unpublish-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "purview-labels.unpublish-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T20:11:40.938Z",
+  "observedAt": "2026-11-11T18:57:02.436Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -56,7 +56,7 @@
         "readBackVerified": true,
         "putBack": true,
         "collateralUnchanged": true,
-        "capturedAt": "2026-11-06T20:11:40.938Z",
+        "capturedAt": "2026-11-11T18:57:02.436Z",
         "error": null
       }
     ],
@@ -119,16 +119,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "5e07f415c685cca9f877a63efdfb93476bd438f86b791f77b5d407428ec99fae"
+    "captureLogSha256": "c07a63375ec40c2fab4bf1c5b19ae98e8d549e722f3bbfea56996c3cc5390614"
   },
   "proof": {
     "artifact": {
       "path": "purview-label-unpublish-live-acceptance.capture.json",
-      "sha256": "5e07f415c685cca9f877a63efdfb93476bd438f86b791f77b5d407428ec99fae"
+      "sha256": "c07a63375ec40c2fab4bf1c5b19ae98e8d549e722f3bbfea56996c3cc5390614"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "b826829579e57b4e9cd940487602ebc40e5847b0999e2f428a8748ddc70221c2"
+      "signature": "d90a2f10719ffb19a0e9761852a964371f23924cd982cfd3d5b7d9ca94e27df8"
     }
   }
 }

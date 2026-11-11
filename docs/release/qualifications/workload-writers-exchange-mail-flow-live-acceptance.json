@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T19:44:52.370Z",
+  "observedAt": "2026-11-11T18:32:52.926Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-11-06T19:41:44.773Z",
+        "target": "KEEL capture 2026-11-11T18:29:21.508Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:43:15.052Z",
+        "capturedAt": "2026-11-11T18:31:02.015Z",
         "error": null
       },
       {
@@ -213,13 +213,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-11-06T19:41:44.773Z",
+        "target": "KEEL capture 2026-11-11T18:29:21.508Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:43:31.718Z",
+        "capturedAt": "2026-11-11T18:31:20.863Z",
         "error": null
       },
       {
@@ -234,13 +234,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL-RT fixture",
-        "target": "KEEL capture 2026-11-06T19:41:44.773Z",
+        "target": "KEEL capture 2026-11-11T18:29:21.508Z",
         "final": "KEEL-RT fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:43:47.063Z",
+        "capturedAt": "2026-11-11T18:31:38.852Z",
         "error": null
       },
       {
@@ -261,7 +261,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:44:02.640Z",
+        "capturedAt": "2026-11-11T18:31:56.791Z",
         "error": null
       },
       {
@@ -282,7 +282,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:44:20.405Z",
+        "capturedAt": "2026-11-11T18:32:14.516Z",
         "error": null
       },
       {
@@ -297,13 +297,13 @@
         "field": "AdminDisplayName",
         "type": "text",
         "before": "",
-        "target": "KEEL capture 2026-11-06T19:41:44.773Z",
+        "target": "KEEL capture 2026-11-11T18:29:21.508Z",
         "final": "",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:44:35.897Z",
+        "capturedAt": "2026-11-11T18:32:34.648Z",
         "error": null
       },
       {
@@ -324,7 +324,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:44:52.369Z",
+        "capturedAt": "2026-11-11T18:32:52.926Z",
         "error": null
       }
     ],
@@ -358,7 +358,7 @@
         "cmdlet": "Set-TransportRule",
         "parameters": {
           "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
-          "Comments": "KEEL capture 2026-11-06T19:41:44.773Z"
+          "Comments": "KEEL capture 2026-11-11T18:29:21.508Z"
         },
         "outcome": "ok"
       },
@@ -400,7 +400,7 @@
         "cmdlet": "Set-InboundConnector",
         "parameters": {
           "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
-          "Comment": "KEEL capture 2026-11-06T19:41:44.773Z"
+          "Comment": "KEEL capture 2026-11-11T18:29:21.508Z"
         },
         "outcome": "ok"
       },
@@ -442,7 +442,7 @@
         "cmdlet": "Set-OutboundConnector",
         "parameters": {
           "Identity": "55945417-e979-88f7-9a0b-159f3460a638",
-          "Comment": "KEEL capture 2026-11-06T19:41:44.773Z"
+          "Comment": "KEEL capture 2026-11-11T18:29:21.508Z"
         },
         "outcome": "ok"
       },
@@ -568,7 +568,7 @@
         "cmdlet": "Set-MalwareFilterPolicy",
         "parameters": {
           "Identity": "46dc1ba4-53ad-8cd1-af46-a8518d96a7fa",
-          "AdminDisplayName": "KEEL capture 2026-11-06T19:41:44.773Z"
+          "AdminDisplayName": "KEEL capture 2026-11-11T18:29:21.508Z"
         },
         "outcome": "ok"
       },
@@ -640,16 +640,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "9e9d77bbc8bcf9140e259c38e2e22f9e50a35d11387abdcbc287da19041b880a"
+    "captureLogSha256": "20e29eecc1cfb78d2571c5c85e92dd09645f9c7c3be28aacea601278084d8944"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-exchange-mail-flow-live-acceptance.capture.json",
-      "sha256": "9e9d77bbc8bcf9140e259c38e2e22f9e50a35d11387abdcbc287da19041b880a"
+      "sha256": "20e29eecc1cfb78d2571c5c85e92dd09645f9c7c3be28aacea601278084d8944"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "daadf0ccce9efffcdc9c03dcabc3123c512187b980986fe6af24dff318e28150"
+      "signature": "01bf6d0ba21d9bff304d453a8b2a414fb2431454640e097e15f67786c6cfc4dc"
     }
   }
 }

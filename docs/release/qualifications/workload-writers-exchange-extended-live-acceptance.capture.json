@@ -27,7 +27,7 @@
         "defenderForOffice"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:44:59.367Z"
+      "at": "2026-11-11T18:33:00.907Z"
     },
     {
       "credential": "collector",
@@ -36,17 +36,17 @@
         "outboundSpamPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:07.921Z"
+      "at": "2026-11-11T18:34:13.447Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-HostedOutboundSpamFilterPolicy",
       "parameters": {
         "Identity": "73bbf561-4403-8814-854a-276992ecda59",
-        "AdminDisplayName": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "AdminDisplayName": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:46:10.927Z"
+      "at": "2026-11-11T18:34:16.782Z"
     },
     {
       "credential": "collector",
@@ -55,7 +55,7 @@
         "outboundSpamPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:14.413Z"
+      "at": "2026-11-11T18:34:20.507Z"
     },
     {
       "credential": "restorer",
@@ -65,7 +65,7 @@
         "AdminDisplayName": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:46:17.613Z"
+      "at": "2026-11-11T18:34:23.739Z"
     },
     {
       "credential": "collector",
@@ -74,7 +74,7 @@
         "outboundSpamPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:21.210Z"
+      "at": "2026-11-11T18:34:27.520Z"
     },
     {
       "credential": "collector",
@@ -83,17 +83,17 @@
         "outboundSpamRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:24.271Z"
+      "at": "2026-11-11T18:34:30.857Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-HostedOutboundSpamFilterRule",
       "parameters": {
         "Identity": "9499e747-a7c0-884b-9bff-93ef310cbd75",
-        "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comments": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:46:27.239Z"
+      "at": "2026-11-11T18:34:34.194Z"
     },
     {
       "credential": "collector",
@@ -102,7 +102,7 @@
         "outboundSpamRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:30.446Z"
+      "at": "2026-11-11T18:34:37.755Z"
     },
     {
       "credential": "restorer",
@@ -112,7 +112,7 @@
         "Comments": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:46:33.615Z"
+      "at": "2026-11-11T18:34:41.224Z"
     },
     {
       "credential": "collector",
@@ -121,54 +121,7 @@
         "outboundSpamRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:36.790Z"
-    },
-    {
-      "credential": "collector",
-      "read": "exchange-extended",
-      "families": [
-        "connectionFilterPolicy"
-      ],
-      "outcome": "ok",
-      "at": "2026-11-06T19:46:39.770Z"
-    },
-    {
-      "credential": "restorer",
-      "cmdlet": "Set-HostedConnectionFilterPolicy",
-      "parameters": {
-        "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
-        "AdminDisplayName": "KEEL capture 2026-11-06T19:44:59.366Z"
-      },
-      "outcome": "ok",
-      "at": "2026-11-06T19:46:42.974Z"
-    },
-    {
-      "credential": "collector",
-      "read": "exchange-extended",
-      "families": [
-        "connectionFilterPolicy"
-      ],
-      "outcome": "ok",
-      "at": "2026-11-06T19:46:46.351Z"
-    },
-    {
-      "credential": "restorer",
-      "cmdlet": "Set-HostedConnectionFilterPolicy",
-      "parameters": {
-        "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
-        "AdminDisplayName": ""
-      },
-      "outcome": "ok",
-      "at": "2026-11-06T19:46:49.408Z"
-    },
-    {
-      "credential": "collector",
-      "read": "exchange-extended",
-      "families": [
-        "connectionFilterPolicy"
-      ],
-      "outcome": "ok",
-      "at": "2026-11-06T19:46:52.625Z"
+      "at": "2026-11-11T18:34:44.864Z"
     },
     {
       "credential": "collector",
@@ -177,17 +130,17 @@
         "antiSpamRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:46:55.717Z"
+      "at": "2026-11-11T18:34:48.228Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-HostedContentFilterRule",
       "parameters": {
         "Identity": "0a39f307-8adc-885a-b54c-e9577416c0e7",
-        "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comments": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:46:58.641Z"
+      "at": "2026-11-11T18:34:51.999Z"
     },
     {
       "credential": "collector",
@@ -196,7 +149,7 @@
         "antiSpamRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:02.044Z"
+      "at": "2026-11-11T18:34:55.849Z"
     },
     {
       "credential": "restorer",
@@ -206,7 +159,7 @@
         "Comments": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:05.187Z"
+      "at": "2026-11-11T18:34:59.682Z"
     },
     {
       "credential": "collector",
@@ -215,7 +168,7 @@
         "antiSpamRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:08.571Z"
+      "at": "2026-11-11T18:35:04.936Z"
     },
     {
       "credential": "collector",
@@ -224,17 +177,17 @@
         "antiPhishRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:11.472Z"
+      "at": "2026-11-11T18:35:08.688Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-AntiPhishRule",
       "parameters": {
         "Identity": "f2a737cc-823c-8d80-849e-ebbda00b9610",
-        "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comments": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:14.518Z"
+      "at": "2026-11-11T18:35:12.074Z"
     },
     {
       "credential": "collector",
@@ -243,7 +196,7 @@
         "antiPhishRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:17.698Z"
+      "at": "2026-11-11T18:35:16.001Z"
     },
     {
       "credential": "restorer",
@@ -253,7 +206,7 @@
         "Comments": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:20.782Z"
+      "at": "2026-11-11T18:35:19.667Z"
     },
     {
       "credential": "collector",
@@ -262,7 +215,7 @@
         "antiPhishRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:24.110Z"
+      "at": "2026-11-11T18:35:23.442Z"
     },
     {
       "credential": "collector",
@@ -271,17 +224,17 @@
         "antiMalwareRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:27.209Z"
+      "at": "2026-11-11T18:35:27.224Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-MalwareFilterRule",
       "parameters": {
         "Identity": "d5fde52e-0792-8aea-af63-839a7d4cbe56",
-        "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comments": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:30.140Z"
+      "at": "2026-11-11T18:35:30.927Z"
     },
     {
       "credential": "collector",
@@ -290,7 +243,7 @@
         "antiMalwareRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:33.280Z"
+      "at": "2026-11-11T18:35:34.814Z"
     },
     {
       "credential": "restorer",
@@ -300,7 +253,7 @@
         "Comments": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:36.267Z"
+      "at": "2026-11-11T18:35:38.768Z"
     },
     {
       "credential": "collector",
@@ -309,7 +262,7 @@
         "antiMalwareRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:39.551Z"
+      "at": "2026-11-11T18:35:42.610Z"
     },
     {
       "credential": "collector",
@@ -318,7 +271,7 @@
         "quarantinePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:42.560Z"
+      "at": "2026-11-11T18:35:46.071Z"
     },
     {
       "credential": "restorer",
@@ -328,7 +281,7 @@
         "ESNEnabled": true
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:45.576Z"
+      "at": "2026-11-11T18:35:49.814Z"
     },
     {
       "credential": "collector",
@@ -337,7 +290,7 @@
         "quarantinePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:48.817Z"
+      "at": "2026-11-11T18:35:53.705Z"
     },
     {
       "credential": "restorer",
@@ -347,7 +300,7 @@
         "ESNEnabled": false
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:47:51.850Z"
+      "at": "2026-11-11T18:35:57.534Z"
     },
     {
       "credential": "collector",
@@ -356,54 +309,7 @@
         "quarantinePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:47:55.149Z"
-    },
-    {
-      "credential": "collector",
-      "read": "exchange-extended",
-      "families": [
-        "globalQuarantineSettings"
-      ],
-      "outcome": "ok",
-      "at": "2026-11-06T19:47:58.124Z"
-    },
-    {
-      "credential": "restorer",
-      "cmdlet": "Set-QuarantinePolicy",
-      "parameters": {
-        "Identity": "DefaultGlobalTag",
-        "OrganizationBrandingEnabled": true
-      },
-      "outcome": "ok",
-      "at": "2026-11-06T19:48:01.266Z"
-    },
-    {
-      "credential": "collector",
-      "read": "exchange-extended",
-      "families": [
-        "globalQuarantineSettings"
-      ],
-      "outcome": "ok",
-      "at": "2026-11-06T19:48:04.615Z"
-    },
-    {
-      "credential": "restorer",
-      "cmdlet": "Set-QuarantinePolicy",
-      "parameters": {
-        "Identity": "DefaultGlobalTag",
-        "OrganizationBrandingEnabled": false
-      },
-      "outcome": "ok",
-      "at": "2026-11-06T19:48:07.513Z"
-    },
-    {
-      "credential": "collector",
-      "read": "exchange-extended",
-      "families": [
-        "globalQuarantineSettings"
-      ],
-      "outcome": "ok",
-      "at": "2026-11-06T19:48:10.594Z"
+      "at": "2026-11-11T18:36:01.656Z"
     },
     {
       "credential": "collector",
@@ -412,7 +318,7 @@
         "mobileDevicePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:13.483Z"
+      "at": "2026-11-11T18:36:06.007Z"
     },
     {
       "credential": "restorer",
@@ -422,7 +328,7 @@
         "AllowNonProvisionableDevices": true
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:48:16.336Z"
+      "at": "2026-11-11T18:36:09.981Z"
     },
     {
       "credential": "collector",
@@ -431,7 +337,7 @@
         "mobileDevicePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:19.488Z"
+      "at": "2026-11-11T18:36:14.101Z"
     },
     {
       "credential": "restorer",
@@ -441,7 +347,7 @@
         "AllowNonProvisionableDevices": false
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:48:22.513Z"
+      "at": "2026-11-11T18:36:17.828Z"
     },
     {
       "credential": "collector",
@@ -450,7 +356,7 @@
         "mobileDevicePolicy"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:25.776Z"
+      "at": "2026-11-11T18:36:22.618Z"
     },
     {
       "credential": "collector",
@@ -459,17 +365,17 @@
         "retentionPolicyTag"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:28.905Z"
+      "at": "2026-11-11T18:36:26.297Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-RetentionPolicyTag",
       "parameters": {
         "Identity": "a9fc748a-a1f6-83e0-b081-55e58d7a1ca4",
-        "Comment": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comment": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:48:32.441Z"
+      "at": "2026-11-11T18:36:30.069Z"
     },
     {
       "credential": "collector",
@@ -478,7 +384,7 @@
         "retentionPolicyTag"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:35.920Z"
+      "at": "2026-11-11T18:36:33.560Z"
     },
     {
       "credential": "restorer",
@@ -488,7 +394,7 @@
         "Comment": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:48:39.563Z"
+      "at": "2026-11-11T18:36:37.210Z"
     },
     {
       "credential": "collector",
@@ -497,7 +403,7 @@
         "retentionPolicyTag"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:42.943Z"
+      "at": "2026-11-11T18:36:40.732Z"
     },
     {
       "credential": "collector",
@@ -506,17 +412,17 @@
         "safeLinksRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:46.487Z"
+      "at": "2026-11-11T18:36:44.493Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-SafeLinksRule",
       "parameters": {
         "Identity": "125245b8-d2ac-8b0d-88c2-6106785343e5",
-        "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comments": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:48:49.647Z"
+      "at": "2026-11-11T18:36:47.793Z"
     },
     {
       "credential": "collector",
@@ -525,7 +431,7 @@
         "safeLinksRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:48:53.402Z"
+      "at": "2026-11-11T18:36:51.473Z"
     },
     {
       "credential": "restorer",
@@ -535,7 +441,7 @@
         "Comments": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:48:56.943Z"
+      "at": "2026-11-11T18:36:54.746Z"
     },
     {
       "credential": "collector",
@@ -544,7 +450,7 @@
         "safeLinksRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:49:00.166Z"
+      "at": "2026-11-11T18:36:58.174Z"
     },
     {
       "credential": "collector",
@@ -553,17 +459,17 @@
         "safeAttachmentRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:49:03.143Z"
+      "at": "2026-11-11T18:37:01.623Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-SafeAttachmentRule",
       "parameters": {
         "Identity": "76e028b8-e38d-8d15-9089-14ab864e9768",
-        "Comments": "KEEL capture 2026-11-06T19:44:59.366Z"
+        "Comments": "KEEL capture 2026-11-11T18:33:00.907Z"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:49:06.237Z"
+      "at": "2026-11-11T18:37:05.131Z"
     },
     {
       "credential": "collector",
@@ -572,7 +478,7 @@
         "safeAttachmentRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:49:09.398Z"
+      "at": "2026-11-11T18:37:08.749Z"
     },
     {
       "credential": "restorer",
@@ -582,7 +488,7 @@
         "Comments": "KEEL-RT fixture"
       },
       "outcome": "ok",
-      "at": "2026-11-06T19:49:12.500Z"
+      "at": "2026-11-11T18:37:12.241Z"
     },
     {
       "credential": "collector",
@@ -591,7 +497,7 @@
         "safeAttachmentRule"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T19:49:15.730Z"
+      "at": "2026-11-11T18:37:15.589Z"
     }
   ],
   "values": {
@@ -600,9 +506,6 @@
       "written": true
     },
     "exchange-extended.outbound-spam-rule.update": {
-      "written": true
-    },
-    "exchange-extended.connection-filter-policy.update": {
       "written": true
     },
     "exchange-extended.anti-spam-rule.update": {
@@ -615,9 +518,6 @@
       "written": true
     },
     "exchange-extended.quarantine-policy.update": {
-      "written": true
-    },
-    "exchange-extended.quarantine-global-settings.update": {
       "written": true
     },
     "exchange-extended.mobile-device-policy.update": {

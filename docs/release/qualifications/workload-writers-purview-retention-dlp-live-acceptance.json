@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T19:58:42.981Z",
+  "observedAt": "2026-11-11T18:46:48.884Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-11-06T19:49:25.825Z",
+        "target": "KEEL capture 2026-11-11T18:37:26.453Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:55:54.848Z",
+        "capturedAt": "2026-11-11T18:44:00.131Z",
         "error": null
       },
       {
@@ -213,13 +213,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-11-06T19:49:25.825Z",
+        "target": "KEEL capture 2026-11-11T18:37:26.453Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:56:33.088Z",
+        "capturedAt": "2026-11-11T18:44:43.646Z",
         "error": null
       },
       {
@@ -234,13 +234,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-11-06T19:49:25.825Z",
+        "target": "KEEL capture 2026-11-11T18:37:26.453Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:57:29.310Z",
+        "capturedAt": "2026-11-11T18:45:26.897Z",
         "error": null
       },
       {
@@ -255,13 +255,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-11-06T19:49:25.825Z",
+        "target": "KEEL capture 2026-11-11T18:37:26.453Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T19:58:42.981Z",
+        "capturedAt": "2026-11-11T18:46:48.883Z",
         "error": null
       }
     ],
@@ -292,7 +292,7 @@
         "cmdlet": "Set-RetentionCompliancePolicy",
         "parameters": {
           "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
-          "Comment": "KEEL capture 2026-11-06T19:49:25.825Z"
+          "Comment": "KEEL capture 2026-11-11T18:37:26.453Z"
         },
         "outcome": "failed",
         "error": {
@@ -358,7 +358,7 @@
         "cmdlet": "Set-RetentionComplianceRule",
         "parameters": {
           "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
-          "Comment": "KEEL capture 2026-11-06T19:49:25.825Z"
+          "Comment": "KEEL capture 2026-11-11T18:37:26.453Z"
         },
         "outcome": "ok"
       },
@@ -400,7 +400,7 @@
         "cmdlet": "Set-DlpCompliancePolicy",
         "parameters": {
           "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
-          "Comment": "KEEL capture 2026-11-06T19:49:25.825Z"
+          "Comment": "KEEL capture 2026-11-11T18:37:26.453Z"
         },
         "outcome": "ok"
       },
@@ -442,7 +442,7 @@
         "cmdlet": "Set-DlpComplianceRule",
         "parameters": {
           "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
-          "Comment": "KEEL capture 2026-11-06T19:49:25.825Z"
+          "Comment": "KEEL capture 2026-11-11T18:37:26.453Z"
         },
         "outcome": "ok"
       },
@@ -472,16 +472,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "5cc5aa349e4e7fa72f20ef903f099901a31b0296a28f6fb766a03c3b28e0794e"
+    "captureLogSha256": "24635ba28a5d9fd6f15adc50b146203f5817b7b4761b87dacb3f2b7f025efc57"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-purview-retention-dlp-live-acceptance.capture.json",
-      "sha256": "5cc5aa349e4e7fa72f20ef903f099901a31b0296a28f6fb766a03c3b28e0794e"
+      "sha256": "24635ba28a5d9fd6f15adc50b146203f5817b7b4761b87dacb3f2b7f025efc57"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "bce4a6b70a56041ff970ce5c1102f390af3bd1f01c01a2c8c659f9e087c3c8a4"
+      "signature": "2d322795611ff04a7ce365815a7de964c8365a0c768d53ca6cb12d0f3cadda5e"
     }
   }
 }

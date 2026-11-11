@@ -148,18 +148,20 @@ test('the formerly unknown Entra types without a writer stay manual and are rest
     assert.equal(TYPE_DECISIONS[type].decision, 'manual', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'by-hand', type);
   }
-  // Issue #992: access packages now have a writer; their policies and assignments are still by hand.
+  // Issue #992: access packages now have a writer.
   assert.equal(TYPE_DECISIONS.accessPackage.decision, 'automated');
   assert.equal(completenessFor('accessPackage', TYPE_DECISIONS.accessPackage).recreate, 'keel');
-  // Issue #993: connected organizations and package policies have writers too; assignments stay by hand.
-  for (const type of ['connectedOrganization', 'accessPackageAssignmentPolicy']) {
+  // Issue #993: connected organizations and package policies have writers too, and
+  // issue #1071 catalog resources, assignments and catalog roles.
+  for (const type of ['connectedOrganization', 'accessPackageAssignmentPolicy', 'accessPackageCatalogResource', 'accessPackageAssignment', 'entitlementManagementRoleAssignment']) {
     assert.equal(TYPE_DECISIONS[type].decision, 'automated', type);
     assert.equal(completenessFor(type, TYPE_DECISIONS[type]).recreate, 'keel', type);
   }
   // Issue #1007: access review series are created by KEEL; their past reviews never are.
   assert.equal(TYPE_DECISIONS.accessReviewScheduleDefinition.decision, 'automated');
   assert.equal(completenessFor('accessReviewScheduleDefinition', TYPE_DECISIONS.accessReviewScheduleDefinition).recreate, 'keel');
-  assert.equal(TYPE_DECISIONS.accessPackageAssignment.decision, 'manual');
+  // Issue #1071: outside connectors stay by hand: their sign-in is never written.
+  assert.equal(TYPE_DECISIONS.externalOriginResourceConnector.decision, 'manual');
 });
 
 // ------------------------------------------------------- token and routing policies
@@ -640,17 +642,18 @@ test('a writer\'s follow-up steps become completion items; parts that are only a
 });
 
 test('a type with no writer gets a by-hand step with the backed-up values and its admin center path', () => {
-  // Wave 2 IDO gave lifecycle workflows a writer, and issue #1007 access reviews and
-  // terms of use, so an access package assignment is the example.
-  const assignment = {
-    id: 'as-1', displayName: 'KEEL-RT assignment', createdDateTime: '2026-01-01T00:00:00Z', state: 'delivered',
+  // Wave 2 IDO gave lifecycle workflows a writer, issue #1007 access reviews and
+  // terms of use, and issue #1071 access package assignments, so a lifecycle policy is the example.
+  const policy = {
+    id: 'lp-1', displayName: 'KEEL-RT policy', createdDateTime: '2026-01-01T00:00:00Z', enforcementAction: 'disable',
   };
-  const steps = byHandSteps('accessPackageAssignment', assignment, TYPE_DECISIONS.accessPackageAssignment);
+  const steps = byHandSteps('lifecyclePolicy', policy, TYPE_DECISIONS.lifecyclePolicy);
   assert.equal(steps[0].requirement, 'followUp:recreate-by-hand');
-  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Entitlement management > Access packages > <package> > Assignments');
-  assert.equal(steps[0].values.displayName, 'KEEL-RT assignment');
+  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Lifecycle workflows > Lifecycle policies');
+  assert.equal(steps[0].values.displayName, 'KEEL-RT policy');
   assert.ok(!('id' in steps[0].values) && !('createdDateTime' in steps[0].values), 'ids and timestamps are not values to enter');
-  assert.equal(steps[1].actionable, false, 'the original request is a record only');
+  assert.equal(steps[1].part, 'Its rules and past versions', 'the parts the backup does not hold follow');
+  assert.throws(() => byHandSteps('accessPackageAssignment', {}, TYPE_DECISIONS.accessPackageAssignment), /has a writer/);
   assert.throws(() => byHandSteps('lifecycleWorkflow', {}, TYPE_DECISIONS.lifecycleWorkflow), /has a writer/);
   assert.throws(() => byHandSteps('application', incompleteApp, TYPE_DECISIONS.application), /has a writer/);
 });

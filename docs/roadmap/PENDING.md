@@ -76,10 +76,9 @@ until then (a 403 means skip and list it).
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 37 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; 33 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Entra governance: access package catalog resources (`coverageDoc.mjs:178`), access package assignments (`:185`), entitlement management role assignments (`:669`), outside connectors (`:654`). O1 · M · code
 - Entra sign-in extensions: custom authentication extensions (`:203`) and authentication event listeners (`:520`); the endpoint and its credentials stay a manual step. O1 · M · code
 - Entra PIM: custom extensions (`:660`) and PIM managed groups (`:663`). O1 · M · code
 - Entra other: app certificate authority trust (`:645`, the trust list stays manual), sign-in identifiers (`:648`), Verified ID profiles (`:651`), lifecycle policies (`:657`), default cross-tenant sharing settings (`:666`), device templates (`:672`), schema extensions (`:681`), profile card fields (`:703`). O1 · M · code

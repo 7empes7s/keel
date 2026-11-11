@@ -51,10 +51,6 @@ const automated = (resource, reason, { view = 'graph-rest-1.0', liveFailures = n
   decision: 'automated', docs: `${DOCS}/resources/${resource}?view=${view}`, reason, ...(liveFailures ? { liveFailures: Object.freeze(liveFailures) } : {}),
 });
 const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra });
-// Coverage plan v3 (package INCOMPLETE): read in full and backed up as an
-// incomplete configuration; recreated by hand from the backup until a
-// best-effort writer is registered (Wave 2).
-const incomplete = (reason) => manual(`incomplete configuration, backed up in full and recreated by hand from the backup until a best-effort writer is registered: ${reason}`);
 // Issue #148: a registered write that failed its live run. `reason` quotes the
 // committed demotion record verbatim (tools/qualification/entraLive.mjs checks
 // that), `failedAt` is the day it was decided and `fix` names what is being
@@ -160,9 +156,9 @@ export const TYPE_DECISIONS = Object.freeze({
   attributeSet: automated('attributeset', 'Wave 2 update; issue #1015 create: an attribute set can never be deleted once created, so a create (its name, description and size) is a "can\'t be undone" effect, written only once the restore\'s dry run is approved or approvals are off for the service, and the dry run says it stays for good; delete is not registered'),
   customSecurityAttributeDefinition: automated('customsecurityattributedefinition', 'Wave 2 update, and allowed values added or switched off; issue #1015 create with its allowed values: a definition can never be deleted once created, so a create is a "can\'t be undone" effect, written only once the restore\'s dry run is approved or approvals are off for the service, and the dry run says it stays for good; delete is not registered'),
   accessPackageCatalog: automated('accesspackagecatalog', 'Wave 2: create and update; the resources a catalog holds are their own type (accessPackageCatalogResource)'),
-  accessPackageCatalogResource: incomplete('a group or app is added to a catalog again (adminAdd) by the resource role restore when a package grants one of its roles and it exists in the target; a site, or a resource no package uses, is added by hand'),
+  accessPackageCatalogResource: automated('accesspackageresource', 'issue #1071: create of a backed-up group, app or SharePoint site in its catalog (resourceRequests adminAdd); the catalog and the group or app are matched in the target by natural key, a site by its address, and a group or app that is not there is a manual step; one already in the catalog is skipped; each add is a "changes admin access" effect (the catalog\'s owners can put the resource in a package), written only once the restore\'s dry run is approved or approvals are off for the service; update and delete are not registered'),
   accessPackageAssignmentPolicy: automated('accesspackageassignmentpolicy', 'issue #993: create and update (a whole replace) on the restored or live access package; every user, group and connected organization it names as requestor, approver or reviewer is matched in the target by natural key, and one that cannot be is a manual step that holds the whole policy; every change to who may request, approve or review, or how long access lasts, is behind the restore approval, and the step names a loosening; custom extensions are never written (a manual step, and an update of a live policy that has them is held); delete is not registered'),
-  accessPackageAssignment: incomplete('an assignment is granted through a request against its policy, never copied'),
+  accessPackageAssignment: automated('accesspackageassignment', 'issue #1071: access granted again through an adminAdd request against the restored policy, never copied; the person, package and policy are matched in the target by natural key (a missing person is a manual step, a missing package or policy fails as a dependency); an assignment no longer in effect is skipped, one the person already holds live is skipped, a backup that does not name its policy is a manual step, and access ends no later than the backup\'s end date; every grant is a "changes admin access" effect, written only once the restore\'s dry run (which says who gets which package) is approved or approvals are off for the service; update and delete are not registered'),
   entitlementManagementSettings: automated('entitlementmanagementsettings', 'Wave 2: update in place'),
   // Issue #1007: terms of use with their files.
   agreement: automated('agreement', 'issue #1007 subset: create of a missing agreement with its settings and every backed-up file (the PDFs are stored once per tenant and hash, named by hash in the backup, and never sent when the bytes do not match), and update of the display name and whether people must open it first; a language the live agreement lacks is added; a changed PDF for an existing language, settings Graph takes only on create, and a file the backup holds no bytes for are manual steps (no default file holds the create); every write is behind the restore approval; acceptances are never recreated (the step says everyone will be asked to accept again); Conditional Access policies that require the backed-up agreement are listed by name for a person to point at the recreated one, and Conditional Access is never written; delete is not registered'),
@@ -288,12 +284,12 @@ export const TYPE_DECISIONS = Object.freeze({
   certificateBasedApplicationConfiguration: manual('no writer yet; beta only'),
   signInIdentifier: manual('no writer yet; beta only'),
   verifiedIdProfile: manual('no writer yet; beta only'),
-  externalOriginResourceConnector: manual('no writer yet; beta only'),
+  externalOriginResourceConnector: manual('KEEL choice, issue #1071: Graph beta creates a connector only with its connectionInfo, which holds how it signs in to SAP (client id, token address, Key Vault secret); a restore never writes sign-in settings, so the connector is created again by hand (https://learn.microsoft.com/en-us/graph/api/entitlementmanagement-post-externaloriginresourceconnectors?view=graph-rest-beta)'),
   lifecyclePolicy: manual('no writer yet; beta only'),
   roleManagementCustomExtension: manual('no writer yet; the Logic App address is not backed up'),
   privilegedAccessGroupResource: manual('no writer yet; beta only'),
   crossTenantM365Capability: manual('no writer yet; beta only'),
-  entitlementManagementRoleAssignment: manual('no writer yet; beta only, listed one role at a time'),
+  entitlementManagementRoleAssignment: automated('unifiedroleassignment', 'issue #1071: create of a catalog owner, catalog reader or access package manager on its catalog through Graph beta (as read); the person and the catalog are matched in the target by natural key, and a missing person is a manual step and a missing catalog a dependency; any other role, or one not on a catalog, is a manual step; one the person already holds is skipped; every assignment is a "changes admin access" effect, written only once the restore\'s dry run is approved or approvals are off for the service; update and delete are not registered', { view: 'graph-rest-beta' }),
   deviceTemplate: manual('no writer yet; beta only'),
   securityZone: manual('no writer yet; beta only'),
   sharedEmailDomain: manual('no writer yet; beta only'),
@@ -388,6 +384,11 @@ recordRemappingProof('accessPackageResourceRoleScope', 'create', 'engine/restore
 for (const operation of ['create', 'update']) {
   recordRemappingProof('accessPackageAssignmentPolicy', operation, 'engine/restore/entitlementPolicyOperations.test.mjs');
   recordRemappingProof('connectedOrganization', operation, 'engine/restore/entitlementPolicyOperations.test.mjs');
+}
+// Issue #1071: a catalog resource, an assignment and a catalog role pointed at the
+// target's catalog, people, packages and policies.
+for (const resourceType of ['accessPackageCatalogResource', 'accessPackageAssignment', 'entitlementManagementRoleAssignment']) {
+  recordRemappingProof(resourceType, 'create', 'engine/restore/entitlementGrantOperations.test.mjs');
 }
 // Issue #1007: an access review's queries pointed at the target's users, groups and apps.
 recordRemappingProof('accessReviewScheduleDefinition', 'create', 'engine/restore/accessReviewOperations.test.mjs');
@@ -912,7 +913,6 @@ export const EXPANSION_BATCHES = Object.freeze([
 ]);
 
 const APP_RW = 'Application.ReadWrite.All (restorer); not verified as granted to the KEEL Restorer';
-const research = (batch, api, permission, reason) => ({ batch, status: 'research-needed', api, permission, reason });
 const notWritable = (batch, api, permission, reason) => ({ batch, status: 'unsupported', api, permission, reason });
 const byHand = (batch, api, permission, reason) => ({ batch, status: 'manual', api, permission, reason });
 const subset = (batch, api, permission, reason) => ({ batch, status: 'qualified-subset', api, permission, reason });
@@ -972,12 +972,12 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update and allowed values are fixture-tested; definitions cannot be deleted once created, so a create with its allowed values is fixture-tested behind an approved "can\'t be undone" effect'),
   accessPackageCatalog: subset('identity-application', 'POST /identityGovernance/entitlementManagement/catalogs; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',
     'create and update are fixture-tested; the resources a catalog holds are backed up as their own type'),
-  accessPackageCatalogResource: research('identity-application', 'POST /identityGovernance/entitlementManagement/resourceRequests (adminAdd)', 'EntitlementManagement.ReadWrite.All',
-    'added to a catalog only by the resource role restore, for a group or app a package grants that exists in the target; a site, or a resource no package uses, is added by hand'),
+  accessPackageCatalogResource: subset('identity-application', 'POST /identityGovernance/entitlementManagement/resourceRequests (adminAdd)', 'EntitlementManagement.ReadWrite.All',
+    'create is fixture-tested behind the restore approval; the catalog and the group or app are matched by natural key, a site by its address'),
   accessPackageAssignmentPolicy: subset('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentPolicies; PUT .../{id}', 'EntitlementManagement.ReadWrite.All',
     'create and update are fixture-tested behind the restore approval; the package and every user, group and connected organization named are matched by natural key, and one missing holds the policy; custom extensions are a manual step'),
-  accessPackageAssignment: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentRequests', 'EntitlementManagement.ReadWrite.All',
-    'an assignment is granted through a request against its policy, never copied, and access packages are not restored yet'),
+  accessPackageAssignment: subset('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentRequests (adminAdd)', 'EntitlementManagement.ReadWrite.All',
+    'a grant through a request against the restored policy is fixture-tested behind the restore approval, never a copy; assignments no longer in effect or already held are skipped'),
   entitlementManagementSettings: subset('identity-application', 'PATCH /identityGovernance/entitlementManagement/settings', 'EntitlementManagement.ReadWrite.All',
     'update of the tenant singleton is fixture-tested'),
   agreement: subset('identity-application', 'POST /identityGovernance/termsOfUse/agreements; PATCH .../{id}; POST .../{id}/files', 'Agreement.ReadWrite.All',
@@ -1269,7 +1269,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   verifiedIdProfile: byHand('identity-application', 'POST /identity/verifiedId/profiles (beta)', 'VerifiedId-Profile.ReadWrite.All',
     'backed up; no writer yet'),
   externalOriginResourceConnector: byHand('identity-application', 'POST /identityGovernance/entitlementManagement/externalOriginResourceConnectors (beta)', 'EntitlementManagement.ReadWrite.All',
-    'backed up; no writer yet'),
+    'backed up; the create needs connectionInfo, which holds the connector\'s sign-in, and a restore never writes sign-in settings'),
   lifecyclePolicy: byHand('policy', 'POST /identityGovernance/lifecycleWorkflows/lifecyclePolicies (beta)', 'LifecycleWorkflows.ReadWrite.All',
     'backed up without rules or versions; no writer yet'),
   roleManagementCustomExtension: byHand('identity-application', 'POST /identityGovernance/privilegedAccess/customExtensions', 'RoleManagementPolicy.ReadWrite.Directory',
@@ -1278,8 +1278,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; a group comes under PIM when it gets its first eligible or time-bound member'),
   crossTenantM365Capability: byHand('policy', 'PATCH /policies/crossTenantAccessPolicy/default/m365Capabilities/{id} (beta)', 'Policy.ReadWrite.CrossTenantAccess',
     'backed up; no writer yet'),
-  entitlementManagementRoleAssignment: byHand('identity-application', 'POST /roleManagement/entitlementManagement/roleAssignments (beta)', 'EntitlementManagement.ReadWrite.All',
-    'backed up one role at a time; no writer yet'),
+  entitlementManagementRoleAssignment: subset('identity-application', 'POST /roleManagement/entitlementManagement/roleAssignments (beta)', 'EntitlementManagement.ReadWrite.All',
+    'create of a catalog owner, catalog reader or access package manager is fixture-tested behind the restore approval; the person and the catalog are matched by natural key'),
   deviceTemplate: byHand('identity-application', 'POST /templates/deviceTemplates (beta)', 'DeviceTemplate.ReadWrite.All',
     'backed up without owners or devices; no writer yet'),
   securityZone: byHand('administrative-configuration', 'POST /security/zones (beta)', 'SecurityZone.ReadWrite.All',

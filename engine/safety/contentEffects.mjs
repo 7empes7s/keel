@@ -44,6 +44,7 @@ import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
 import { SCRIPT_BODY_FIELDS, appRuleScriptDetail, appRuleScripts, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 import { SIGN_IN_EFFECT, authenticationContextEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
 import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
+import { GRANT_HELD_FIELDS, grantAccessReaders } from './entitlementGrantEffects.mjs';
 
 export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts', 'blocks-sign-in', 'access-changing', SIGN_IN_EFFECT, PERMANENT_EFFECT]);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
@@ -69,11 +70,8 @@ const DISCLOSURES = Object.freeze({
   // Kinds that were held back for a privilege review (APPROVAL_HELD_KINDS): putting
   // them back changes who has admin access, who may join devices, or which secrets
   // and certificates apps may add.
-  'access-changing': 'This puts back settings that decide who has admin access, who may join or register devices, '
-    + 'which secrets and certificates apps may add, how guests sign themselves up (a user flow\'s identity providers, questions and API connectors), '
-    + 'or which accounts a provisioning job creates, updates or disables in another directory (its next cycle checks every user and group in scope again). '
-    + 'If the backup was changed after it was taken, that changed access is granted. '
-    + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
+  'access-changing': 'This puts back settings that decide who has admin access, who holds or manages access packages, who may join or register devices, which secrets and certificates apps may add, how guests sign themselves up (a user flow\'s identity providers, questions and API connectors), or which accounts a provisioning job creates, updates or disables in another directory (its next cycle checks every user and group in scope again). '
+    + `If the backup was changed after it was taken, that changed access is granted. Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
   // Issue #994: an authentication context that something uses, or a staged rollout.
   [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
     + 'which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom, '
@@ -295,6 +293,7 @@ export const APPROVAL_HELD_FIELDS = Object.freeze({
   // Issue #1007: Conditional Access can require terms of use before sign-in, so
   // which documents they show and how acceptance works decide who gets in.
   agreement: Object.freeze(['files', 'isViewingBeforeAcceptanceRequired', 'isPerDeviceAcceptanceRequired', 'userReacceptRequiredFrequency', 'termsExpiration']),
+  ...GRANT_HELD_FIELDS, // Issue #1071: catalog resources, access package assignments and catalog roles (entitlementGrantEffects.mjs).
 });
 // Nested fields Microsoft sets on its own, at any depth: a restore never sends
 // them, and they are no change. Graph sets a default app credential rules
@@ -314,7 +313,7 @@ export function withoutMicrosoftSet(resourceType, value) {
   return strip(value);
 }
 // The batch 2 kinds: their access values name principals and roles.
-const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope', 'accessPackageAssignmentPolicy', 'connectedOrganization', 'accessReviewScheduleDefinition']);
+const NAMED_ACCESS_KINDS = new Set(['deviceManagementRoleAssignment', 'exchangeRoleAssignment', 'defenderRoleAssignment', 'accessPackageResourceRoleScope', 'accessPackageAssignmentPolicy', 'connectedOrganization', 'accessReviewScheduleDefinition', ...Object.keys(GRANT_HELD_FIELDS)]);
 // Compared in a canonical form with nulls dropped, so a value that reads back with
 // its keys in another order, or with empty fields Graph adds, is no change.
 const withoutNulls = (value) => {
@@ -455,6 +454,7 @@ const queryNamedValue = (field) => (payload, resource) => {
   return typeof shown === 'object' ? canonical(shown) : shown;
 };
 const OWN_ACCESS_READERS = Object.freeze({
+  ...grantAccessReaders(namedAccessValue),
   connectedOrganization: Object.freeze({ identitySources: identitySourceValue, internalSponsors: sponsorValue('internalSponsors'), externalSponsors: sponsorValue('externalSponsors') }),
   accessReviewScheduleDefinition: Object.freeze(Object.fromEntries(APPROVAL_HELD_FIELDS.accessReviewScheduleDefinition.map((field) => [field, queryNamedValue(field)]))),
   agreement: Object.freeze({ files: agreementFilesValue }),

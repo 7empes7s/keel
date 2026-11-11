@@ -3,7 +3,7 @@
 Read this first if you are a new session. It says where the live system, the queues and the open work stand.
 Keep it current: update it in the same PR as any change to the facts below, and refresh the date.
 
-- **Last updated:** 2026-11-06
+- **Last updated:** 2026-11-11
 - **Older history:** an earlier version of this file (to 2026-10-09) lives on branch `claude/operator-queue`.
   It is out of date; use it only for history.
 
@@ -175,6 +175,11 @@ engine code after the candidate, so the next sign-off needs a new frozen candida
   and update are fixture-tested with no live record yet. Capture needs KEEL-RT-993-org (proposed, one
   operator-owned domain) and KEEL-RT-993-policy on KEEL-RT-992-package (steps in the #993 PR body); both
   writes are approval-held.
+- Entitlement management part 3 (#1071): `accessPackageCatalogResource`, `accessPackageAssignment` and
+  `entitlementManagementRoleAssignment` create are fixture-tested with no live record yet. Capture needs the
+  KEEL-RT-148-group in KEEL-RT-992-catalog, carla assigned KEEL-RT-992-package through KEEL-RT-993-policy and
+  carla as Catalog reader (steps in the #1071 PR body); all three are approval-held. First check a new backup
+  names each assignment's policy (`$expand=assignmentPolicy`). Outside connectors stay by hand (their sign-in).
 - Access review series (#1007): `accessReviewScheduleDefinition` create is fixture-tested with no live record
   yet. Capture needs KEEL-RT-1007-review of the empty KEEL-RT-148-group reviewed by carla, auto-apply off
   (steps in the #1007 PR body); the write is approval-held and needs `AccessReview.ReadWrite.All` granted.

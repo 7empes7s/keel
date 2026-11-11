@@ -21,6 +21,7 @@ const POLICY_PROOF = 'engine/restore/entitlementPolicyOperations.test.mjs';
 const ACCESS_REVIEW_PROOF = 'engine/restore/accessReviewOperations.test.mjs';
 const AGREEMENT_PROOF = 'engine/restore/agreementOperations.test.mjs';
 const SYNC_JOB_PROOF = 'engine/restore/synchronizationJobOperations.test.mjs';
+const GRANT_PROOF = 'engine/restore/entitlementGrantOperations.test.mjs';
 const PERMANENT_PROOF = 'engine/roadmap/permanent-writes.test.mjs';
 
 export default [
@@ -48,6 +49,10 @@ export default [
   { resourceType: 'connectedOrganization', operation: 'update', path: '/identityGovernance/entitlementManagement/connectedOrganizations', handler: IDENTITY, idOutcome: 'preserved', proofRef: POLICY_PROOF },
   { resourceType: 'accessPackageAssignmentPolicy', operation: 'create', path: '/identityGovernance/entitlementManagement/assignmentPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: POLICY_PROOF },
   { resourceType: 'accessPackageAssignmentPolicy', operation: 'update', path: '/identityGovernance/entitlementManagement/assignmentPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: POLICY_PROOF },
+  // Issue #1071: catalog resources, access package assignments (a request, never a copy) and catalog roles. Create only.
+  { resourceType: 'accessPackageCatalogResource', operation: 'create', path: '/identityGovernance/entitlementManagement/resourceRequests', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: GRANT_PROOF },
+  { resourceType: 'accessPackageAssignment', operation: 'create', path: '/identityGovernance/entitlementManagement/assignmentRequests', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: GRANT_PROOF },
+  { resourceType: 'entitlementManagementRoleAssignment', operation: 'create', path: '/roleManagement/entitlementManagement/roleAssignments', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: GRANT_PROOF },
   // Issue #1007: access review series (create only).
   { resourceType: 'accessReviewScheduleDefinition', operation: 'create', path: '/identityGovernance/accessReviews/definitions', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: ACCESS_REVIEW_PROOF },
   // Issue #1007: terms of use with their files.

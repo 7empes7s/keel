@@ -48,8 +48,6 @@ import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { readAllPages } from './approvalHeld.mjs';
 import { isTrustField } from './workloads/writeDeclarations.mjs';
 
-export const SIGN_IN_EXTENSIONS_CONTRACT_VERSION = 1;
-
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
 const EXTENSIONS = '/identity/customAuthenticationExtensions';
 const LISTENERS = '/identity/authenticationEventListeners';

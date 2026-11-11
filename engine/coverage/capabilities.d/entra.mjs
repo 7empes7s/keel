@@ -43,8 +43,8 @@ export const SIGN_IN_WRITE_PATHS = Object.freeze({
  * not registered for either.
  */
 export const SIGN_IN_EXTENSION_HANDLER = 'engine/restore/signInExtensionOperations.mjs#applySignInExtensionWrite';
-export const SIGN_IN_EXTENSION_PROOF = 'engine/roadmap/sign-in-extensions.test.mjs';
-export const SIGN_IN_EXTENSION_WRITE_PATHS = Object.freeze({
+const SIGN_IN_EXTENSION_PROOF = 'engine/roadmap/sign-in-extensions.test.mjs';
+const SIGN_IN_EXTENSION_WRITE_PATHS = Object.freeze({
   customAuthenticationExtension: '/identity/customAuthenticationExtensions',
   authenticationEventListener: '/identity/authenticationEventListeners',
 });

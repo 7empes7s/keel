@@ -11,7 +11,7 @@ Approval is asked once per batch below; each batch starts only after its approva
   `todoSettings.update` run, the other five tenant-wide settings are held as `owner`; E5 stays held for the second
   Global Administrator.
 - 2026-11-11, the manager via the office CEO (message 2569): batches G2 onward approved; storage and drill stay
-  held. This approval is not yet posted on #1083.
+  held. Posted on #1083: https://github.com/7empes7s/keel/issues/1083#issuecomment-6803651959
 
 ## Results
 

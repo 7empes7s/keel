@@ -301,12 +301,18 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/api/actions/restore/dry-run")) { jobPolls = 0; return json({ job: { id: "job-dry-7f3c" }, artifactId: "dr-7f3c" }, 202); }
   if (url.includes("/api/jobs/")) { jobPolls += 1; return json({ job: { status: jobPolls >= 2 ? "succeeded" : "running" } }); }
   if (url.includes("/api/actions/restore/dry-run/")) {
+    // Issue #1076: this policy's deleted copy is past its 30 days, so the dry run refuses it
+    // and names the purge a person does in Entra; a restored group's window is closing.
+    const expiredPolicy = "conditionalAccessPolicy:Require MFA for admins";
     return json({ artifact: { id: "dr-7f3c", status: "completed", closureKeys: lastClosure, guardRefusals: [], results: {
-      applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties",
+      applied: lastClosure.filter((naturalKey) => naturalKey !== expiredPolicy).map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties",
         // Issue #546: the backup could not read this profile's assignments.
         ...(naturalKey === "deviceConfiguration:Windows baseline" ? { completion: [{ kind: "integration", requirement: "assignments",
           description: "Assignments not restored: the backup could not read who it is assigned to, so the groups it applies to were left as they are. Check its assignments in the Intune admin center and set them by hand" }] } : {}) })),
-      skipped: [], failed: [], notRemediable: [] },
+      skipped: lastClosure.filter((naturalKey) => naturalKey === expiredPolicy).map((naturalKey) => ({ naturalKey, reason: "refused: recovery-point-expired",
+        completion: [{ kind: "manual-setting", requirement: "purgeDeletedPolicy",
+          description: "The old copy of this policy is still in the recycle bin and its 30 days to restore it have passed. Purge it in the Microsoft Entra admin center (Conditional Access, Deleted policies): KEEL signs in with an app-only token, which cannot purge it. Then run this restore again and KEEL recreates the policy." }] })),
+      failed: [], notRemediable: [] },
       effectsDigest: "digest-1",
       contentEffectApprovals: contentEffectsApproved ? [{ approvedBy: "approver@contoso.example", approvedAt: "2026-10-03T08:00:00Z" }] : [],
       contentEffects: lastClosure.includes("group:Break-glass admins") ? [{
@@ -314,7 +320,11 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         disclosure: "Content becomes visible to people outside its current audience. KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.",
       }] : [],
       recoveryMechanisms: lastClosure.map((naturalKey) => naturalKey.startsWith("group:")
-        ? { naturalKey, mechanism: "soft-delete-restore", idOutcome: "retained", retainedId: "g-1", deadline: "2026-10-30T09:00:00Z", credentialMode: "restorer", reason: null }
+        ? { naturalKey, mechanism: "soft-delete-restore", idOutcome: "retained", retainedId: "g-1", deadline: "2026-10-30T09:00:00Z", credentialMode: "restorer", reason: null,
+          window: { deadline: "2026-10-30T09:00:00Z", daysLeft: 5, state: "closing" } }
+        : naturalKey === expiredPolicy
+        ? { naturalKey, mechanism: "refused", idOutcome: "none", retainedId: null, deadline: "2026-09-29T07:30:00Z", credentialMode: null, reason: null,
+          window: { deadline: "2026-09-29T07:30:00Z", daysLeft: 0, state: "expired" } }
         : { naturalKey, mechanism: "update-existing", idOutcome: "retained", retainedId: "p-1", deadline: null, credentialMode: "restorer", reason: null }),
       relationshipOperations: lastClosure.filter((naturalKey) => naturalKey.startsWith("group:")).flatMap((parentNaturalKey) => [
         { parentNaturalKey, family: "member", action: "add", targetNaturalKey: "user:amara.okafor@contoso.example", targetId: "u-1" },
@@ -572,7 +582,9 @@ const DRIFT = [
       firewall: { domainProfileEnabled: true, publicProfileEnabled: true, inboundBlocked: true }, bitLocker: { recoveryKeyBackup: true, startupAuthentication: "tpmAndPin" }, edge: { smartScreenEnabled: true, passwordManagerEnabled: false }, usbStorageBlocked: true },
     after: { description: "Corporate Windows baseline v2", passwordMinimumLength: 8, passwordRequired: true, storageRequireEncryption: false, defenderScanType: "quick", defenderScheduledScanTime: "02:00", screenLockMinutes: 15,
       firewall: { domainProfileEnabled: true, publicProfileEnabled: false, inboundBlocked: true }, bitLocker: { recoveryKeyBackup: true, startupAuthentication: "tpmOnly" }, edge: { smartScreenEnabled: true, passwordManagerEnabled: true, trackingPrevention: "strict" } } },
-  { id: "dr6", naturalKey: "group:Old project team", resourceType: "group", changeType: "removed", blastRadius: "cosmetic", detectedAt: "2026-09-28T12:00:00Z", before: { displayName: "Old project team" }, after: null },
+  { id: "dr6", naturalKey: "group:Old project team", resourceType: "group", changeType: "removed", blastRadius: "cosmetic", detectedAt: "2026-09-28T12:00:00Z", before: { displayName: "Old project team" }, after: null,
+    // Issue #1076: still in the recycle bin, with 5 days left to recover it.
+    recovery: { deadline: "2026-10-08T11:40:00Z", daysLeft: 5, state: "closing" } },
   // Task 98: a change whose baseline copy was not kept; its earlier values are unknown.
   { id: "dr7", naturalKey: "namedLocation:HQ egress", resourceType: "namedLocation", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-09-27T07:15:00Z", before: null, after: { displayName: "HQ egress", ipRanges: ["198.51.100.0/24"] } },
 ] as unknown as DriftRecord[];

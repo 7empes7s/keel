@@ -902,7 +902,7 @@ export function RestoreSelection({
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Needs doing by hand</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
 
-          <ObjectSteps entries={objectResults(artifact.results.applied)} label={(key) => plainLabel(key, names)} />
+          <ObjectSteps entries={[...objectResults(artifact.results.applied), ...objectResults(artifact.results.skipped)]} label={(key) => plainLabel(key, names)} />
 
           <BeforeAfter changes={changeByKey} names={names} keys={objectResults(artifact.results.applied).map((entry) => entry.naturalKey)} />
 

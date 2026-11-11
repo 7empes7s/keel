@@ -82,6 +82,48 @@ export function softDeleteDeadline(payload, { retentionDays = SOFT_DELETE_RETENT
   return new Date(deletedAt + retentionDays * DAY_MS).toISOString();
 }
 
+/** Issue #1076: from this many days left, a recovery window is shown as closing. */
+export const RECOVERY_WARNING_DAYS = 7;
+
+/**
+ * How long a soft-deleted object can still be restored from deleted items:
+ * { deadline, daysLeft, state: 'open' | 'closing' | 'expired' }, or null when
+ * there is no deleted date. Takes Graph's deletedDateTime, or a deadline a plan
+ * already worked out. daysLeft counts started days, so the last hours read "1".
+ */
+export function recoveryWindow({ deletedDateTime, deadline } = {}, { now = new Date() } = {}) {
+  const until = deadline ?? softDeleteDeadline({ deletedDateTime });
+  const end = Date.parse(until ?? '');
+  if (Number.isNaN(end)) return null;
+  const left = end - now.getTime();
+  if (left <= 0) return { deadline: new Date(end).toISOString(), daysLeft: 0, state: 'expired' };
+  return {
+    deadline: new Date(end).toISOString(),
+    daysLeft: Math.ceil(left / DAY_MS),
+    state: left <= RECOVERY_WARNING_DAYS * DAY_MS ? 'closing' : 'open',
+  };
+}
+
+/**
+ * Issue #1076: a Conditional Access policy whose old copy is still in deleted
+ * items after its recovery window closed. KEEL cannot restore it, and an
+ * app-only token cannot purge it, so a person purges it in Entra before the
+ * policy is recreated. Null for anything else: a copy that may still be
+ * restorable (no deleted date) or that KEEL cannot single out (two share the
+ * name) is never named for purging.
+ */
+export function oldCopyPurgeStep(resource, { now = new Date() } = {}) {
+  const live = resource?.live;
+  if (resource?.resourceType !== 'conditionalAccessPolicy' || live?.state !== 'soft-deleted' || live.ambiguous) return null;
+  if (recoveryWindow({ deletedDateTime: live.payload?.deletedDateTime }, { now })?.state !== 'expired') return null;
+  return {
+    kind: 'manual-setting',
+    requirement: 'purgeDeletedPolicy',
+    fields: [],
+    description: `The old copy of this policy is still in the recycle bin and its ${SOFT_DELETE_RETENTION_DAYS} days to restore it have passed. Purge it in the Microsoft Entra admin center (Conditional Access, Deleted policies): KEEL signs in with an app-only token, which cannot purge it. Then run this restore again and KEEL recreates the policy.`,
+  };
+}
+
 function capability(resourceType, verb) {
   const record = capabilityFor(resourceType, verb);
   return { supported: isSupportedClaim(record.claim), record };

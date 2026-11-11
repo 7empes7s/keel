@@ -937,6 +937,13 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   // Task-64: each resource names its recovery mechanism and what happens to its id.
   await expect(page.getByText("How each setting is put back")).toBeVisible();
   await expect(page.locator(".mechanism-row.mechanism-update-existing").first()).toContainText("Same ID kept");
+  // Issue #1076: each deleted setting says until when it can be recovered, warned from 7
+  // days; a policy past its window names the purge a person does in Entra.
+  await expect(page.locator(".mechanism-soft-delete-restore .recovery-window-closing")).toHaveText("Can be recovered until 30 Oct 2026, 09:00 UTC (5 days left)");
+  await expect(page.locator(".mechanism-refused .recovery-window-expired")).toHaveText("Can no longer be recovered from the recycle bin");
+  const purge = page.locator(".object-steps");
+  await expect(purge).toContainText("Require MFA for admins");
+  await expect(purge).toContainText("Purge it in the Microsoft Entra admin center");
   // Task-66: a content effect states that content is not backed up and needs its own approval.
   const effects = page.locator(".content-effects");
   await expect(effects).toContainText("Widens sharing");
@@ -1215,6 +1222,16 @@ test("the undo preview speaks in words and states a refusal as a sentence", asyn
   await expect(record).toContainText("Write step 1");
   await expect(record).toContainText("onPremisesSyncEnabled=true");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+});
+
+// Issue #1076: a removed group still in the recycle bin says until when it can be
+// recovered, in the warning style from 7 days left, in its row and in its details.
+test("a removed setting says until when it can be recovered from the recycle bin", async ({ page }) => {
+  await open(page, "/changes");
+  const row = page.locator(".bl-row", { has: page.locator(".bl-row-link", { hasText: /^Old project team$/ }) });
+  await expect(row.locator(".recovery-window-closing")).toHaveText("Can be recovered until 8 Oct 2026, 11:40 UTC (5 days left)");
+  await row.locator(".bl-row-link").click();
+  await expect(page.getByRole("dialog").locator(".recovery-window-closing")).toHaveText("Can be recovered until 8 Oct 2026, 11:40 UTC (5 days left)");
 });
 
 // Accepting chosen changes says what it does first, asks why, then takes them off the list.

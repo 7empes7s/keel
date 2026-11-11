@@ -175,7 +175,7 @@ Tables are in `engine/store/schema.sql`, unless marked "(fragment)", which means
 
 | Area | Tables |
 |---|---|
-| Backups | `snapshot`, `resource_version`, `resource_reference`, `resource_symbol`, `resource_lineage*`, `relationship_edge_set`, `relationship_edge`, `branding_asset*`, `type_coverage_latest` (fragment) |
+| Backups | `snapshot`, `resource_version`, `resource_reference`, `resource_symbol`, `resource_lineage*`, `relationship_edge_set`, `relationship_edge`, `branding_asset*`, `type_coverage_latest` (fragment), `deleted_item` and `deleted_item_read` (fragments) |
 | Content | `content_item`, `content_chunk`, `content_ref`, `content_run`, `content_sync_state`, `content_restore_run`, `content_restore_entry` (all fragments) |
 | Workloads | `workload_collection`, `workload_observation`, `workload_ledger_evidence`, `workload_ledger_grants`, `workload_drift` (fragment) |
 | Drift and baselines | `baseline`, `baseline_resource`, `drift`, `disposition`, `baseline_score_point` (fragment) |

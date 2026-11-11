@@ -1,6 +1,7 @@
 import type { AuditCheck } from "@/lib/audit-check";
 import type { UnnamedReference } from "@/lib/app-names";
 import type { EngineRef, PlanRef } from "@/lib/sentences";
+import type { RecoveryWindow } from "@/components/recovery-window";
 
 export type ProtectionState =
   | "protected"
@@ -526,6 +527,9 @@ export interface DriftRecord {
   // What the setting points to (a role, who holds it, where) that no backup names: each
   // id with a Microsoft Graph lookup link, for Technical details. Absent when all named.
   unnamedRefs?: UnnamedReference[];
+  // Issue #1076: for a removed user, group, app or Conditional Access policy that the
+  // latest backup still found in the recycle bin, until when it can be recovered.
+  recovery?: RecoveryWindow | null;
   // Task 91: who made the change, from audit evidence, and where a roll back of it
   // would be routed. Absent when the reader did not compute it.
   attribution?: ChangeAttribution | null;

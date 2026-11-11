@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "scubagear-benchmark-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "scubagear.benchmark-acceptance",
   "credentialMode": "collector",
-  "observedAt": "2026-11-06T20:05:03.604Z",
+  "observedAt": "2026-11-11T16:05:03.362Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -346,7 +346,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "699f8ff92e7021f311cc46559e1ab6c485c976bfce79c75bf7dfef3f5b24089a"
+      "signature": "e924bb008b98c76ec326fd95e25fa46c4831ec838748194b86a4971355b7544a"
     }
   }
 }

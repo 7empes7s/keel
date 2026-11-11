@@ -1,7 +1,30 @@
 # O1 live proof at `ef793e66bd` (issue #1083)
 
-**Status: plan, waiting for the manager's approval. No capture has run and nothing has been written to the
-test tenant.** Approval is asked once per batch below; each batch starts only after its approval.
+**Status: plan approved, batch G1 run (3 of 5 gates recorded, 2 held), G2 waiting for its approval.**
+Approval is asked once per batch below; each batch starts only after its approval.
+
+## Approvals
+
+- 2026-11-11, the manager via the office CEO (messages 2530 and 2531): the plan and batch G1 approved; office
+  agents may read the `/etc/keel` files this plan names (never `globaladmin.*`, `gh.env`, `offsite.env` or
+  `portal.env`); master takes records-only PRs during the window; in E2 only `itemInsightsSettings.update` and
+  `todoSettings.update` run, the other five tenant-wide settings are held as `owner`; E5 stays held for the second
+  Global Administrator.
+
+## Results
+
+### G1 (2026-11-11)
+
+| Gate | Result | Notes |
+|---|---|---|
+| `nist-benchmark-acceptance` | **proven** | `nistLive.mjs capture --live`; the database was only read. The pinned catalog was read from its kept copy through a private mount (nothing on the host changed) |
+| `native-live-acceptance` | **proven** | `KEEL-RT-native-recovery-group` deleted and restored, same id, 1 object, 9 s |
+| `scubagear-benchmark-acceptance` | **proven** | Verdicts from the live evaluator's 16:05 UTC run, after this build was deployed (12:27 UTC): 43 aad/exo policies, 9 pass, 23 fail, 11 unknown. The same method rebuilds the `128b0e3b84` record byte for byte from its own run |
+| `storage-live-acceptance` | **held** (owner: manager) | Needs a new recovery set written to `/opt/backups/<date>` and `/mnt/keel-copy` and a checkout the recovery account can read: writes outside the worktree |
+| `drill-live-acceptance` | **held** (owner: manager) | Needs that recovery set, a reconstruction and scratch databases in `keel-postgres`: writes outside the worktree |
+
+Every record verifies with `qualification.mjs verify --require-live --tenant <tenant ref> --build <B>` (exit 0).
+Tenant state afterwards: the native fixture group is live with its id; nothing else in the test tenant was written.
 
 ## Candidate
 

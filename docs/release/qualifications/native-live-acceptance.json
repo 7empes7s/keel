@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "native-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "native-recovery.live-acceptance",
   "credentialMode": "restorer",
-  "observedAt": "2026-11-06T19:34:05.094Z",
+  "observedAt": "2026-11-11T16:22:44.477Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -27,7 +27,7 @@
     "bounds": {
       "maxObjects": 1,
       "objectsTouched": 1,
-      "elapsedMs": 15083
+      "elapsedMs": 9174
     },
     "operations": [
       {
@@ -39,15 +39,15 @@
           "objectId": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
           "name": "KEEL-RT-native-recovery-group"
         },
-        "deletedDateTime": "2026-11-06T19:33:50Z",
-        "retentionDeadline": "2026-12-06T19:33:50.000Z",
-        "restoredAt": "2026-11-06T19:34:02.931Z",
+        "deletedDateTime": "2026-11-11T16:22:35Z",
+        "retentionDeadline": "2026-12-11T16:22:35.000Z",
+        "restoredAt": "2026-11-11T16:22:42.157Z",
         "restoredObjectId": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
         "idPreserved": true,
         "docs": {
           "url": "https://learn.microsoft.com/en-us/graph/api/directory-deleteditems-restore?view=graph-rest-1.0",
           "apiVersion": "v1.0",
-          "retrievedAt": "2026-11-06"
+          "retrievedAt": "2026-11-11"
         }
       },
       {
@@ -57,16 +57,16 @@
         "reason": "named location recovery from deleted items is not credential-qualified for KEEL"
       }
     ],
-    "captureSha256": "aa62e05f5ead61c604f96204c9efb7504ed59db7e1f9ade4379c0e9fdfd79a70"
+    "captureSha256": "2c801219014929f190a15d7565225037c7c5bba55d3c0beb1f328823670b162a"
   },
   "proof": {
     "artifact": {
       "path": "native-live-acceptance.artifact.json",
-      "sha256": "aa62e05f5ead61c604f96204c9efb7504ed59db7e1f9ade4379c0e9fdfd79a70"
+      "sha256": "2c801219014929f190a15d7565225037c7c5bba55d3c0beb1f328823670b162a"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "b512a8bcd97335a545441122685f5a4a7a522f386bf2792ddd9f29d54a975936"
+      "signature": "e59ede036be5a203ef6e44b0060a7b8d1e054a7315a65c0210b25e12b73d71a8"
     }
   }
 }

@@ -1,8 +1,8 @@
 {
   "gate": "native-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
-  "capturedAt": "2026-11-06T19:34:05.094Z",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
+  "capturedAt": "2026-11-11T16:22:44.477Z",
   "operations": [
     {
       "resourceType": "group",
@@ -34,7 +34,7 @@
           "body": {
             "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
-            "deletedDateTime": "2026-11-06T19:33:50Z"
+            "deletedDateTime": "2026-11-11T16:22:35Z"
           },
           "attempts": [
             404,
@@ -53,8 +53,6 @@
             "deletedDateTime": null
           },
           "attempts": [
-            404,
-            404,
             200
           ]
         },

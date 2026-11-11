@@ -120,6 +120,9 @@ async function targetSimulation(io, resource, verb) {
   if (payload.isAutomated === true || (typeof payload.automationId === 'string' && payload.automationId)) {
     return { skipped: { naturalKey: resource.naturalKey, reason: `${nameOf(payload)} was made by an attack simulation automation, which makes its own simulations, so it is not recreated; recreate the automation by hand in ${PORTAL}, Automations` } };
   }
+  if (verb === 'create' && !payload.payload?.id) {
+    return held(resource, ['payload'], `The backup does not say which payload ${nameOf(payload)} uses (it was taken before KEEL read it), so it was not restored. Take a new backup, or recreate it by hand in ${PORTAL}, Simulations.`);
+  }
   const rewritten = { ...payload };
   // Only the content this verb sends: an update sends the payload alone.
   const fields = Object.keys(CONTENT).filter((field) => payload[field] && (verb === 'create' || field === 'payload'));

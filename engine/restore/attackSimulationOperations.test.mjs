@@ -254,6 +254,13 @@ test('a missing payload holds the simulation, and nothing is written', async () 
   assert.equal(writes(graph).length, 0);
 });
 
+test('a backup that does not name its payload holds the create: Graph needs one', async () => {
+  const graph = simulationGraph({ payloads: [targetPayload()] });
+  const result = await run(graph, [{ naturalKey: KEY, resourceType: 'attackSimulation', verb: 'create', payload: graphSimulation() }]);
+  assert.match(result.skipped[0]?.reason ?? '', /does not say which payload .* Take a new backup/);
+  assert.equal(writes(graph).length, 0);
+});
+
 test('two target payloads with the backup\'s name hold the simulation', async () => {
   const graph = simulationGraph({ payloads: [targetPayload(), targetPayload({ id: 'other' })], landingPages: [globalLandingPage] });
   const result = await run(graph, [{ ...(await storedSimulation()), verb: 'create' }]);

@@ -7,7 +7,7 @@
         "onedriveSite"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:08.367Z"
+      "at": "2026-11-11T19:17:56.109Z"
     },
     {
       "credential": "collector",
@@ -16,7 +16,7 @@
         "onedriveSite"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:10.461Z"
+      "at": "2026-11-11T19:17:58.229Z"
     },
     {
       "credential": "restorer",
@@ -26,7 +26,7 @@
         "DefaultLinkPermission": 1
       },
       "outcome": "ok",
-      "at": "2026-11-06T20:09:14.034Z"
+      "at": "2026-11-11T19:18:00.330Z"
     },
     {
       "credential": "collector",
@@ -35,7 +35,7 @@
         "onedriveSite"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:17.051Z"
+      "at": "2026-11-11T19:18:03.527Z"
     },
     {
       "credential": "restorer",
@@ -45,7 +45,7 @@
         "DefaultLinkPermission": 2
       },
       "outcome": "ok",
-      "at": "2026-11-06T20:09:18.989Z"
+      "at": "2026-11-11T19:18:05.489Z"
     },
     {
       "credential": "collector",
@@ -54,7 +54,7 @@
         "onedriveSite"
       ],
       "outcome": "ok",
-      "at": "2026-11-06T20:09:21.942Z"
+      "at": "2026-11-11T19:18:08.113Z"
     }
   ],
   "values": {

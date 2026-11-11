@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T20:09:24.074Z",
+  "observedAt": "2026-11-11T19:18:10.152Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -188,7 +188,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-11-06T20:09:24.074Z",
+        "capturedAt": "2026-11-11T19:18:10.152Z",
         "error": null
       }
     ],
@@ -246,16 +246,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "0617fb1ddfe541aa7be9fb02a170dbb6a38c4b983ec35f4535e75a2411d66163"
+    "captureLogSha256": "ca2caa023b83a438033787b35f8ba28d5fe8ceaa4df0f4486967d6938ad21ac3"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-onedrive-site-settings-live-acceptance.capture.json",
-      "sha256": "0617fb1ddfe541aa7be9fb02a170dbb6a38c4b983ec35f4535e75a2411d66163"
+      "sha256": "ca2caa023b83a438033787b35f8ba28d5fe8ceaa4df0f4486967d6938ad21ac3"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "45d6bc0a5b27c2034f1a0b0ebc53e1061139978f0755e0d5a341aa3b1c79bc1f"
+      "signature": "3345d24b3eb7db498d2064e60a3bbc70c0f27756db768dd281ba1df5ba104ca7"
     }
   }
 }

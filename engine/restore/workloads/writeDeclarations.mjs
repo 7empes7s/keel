@@ -104,6 +104,11 @@ export const TRUST_FIELDS = Object.freeze({
   // A lifecycle workflow custom extension: which Logic App it calls (endpointConfiguration)
   // and how Entra signs in to it (authenticationConfiguration, the app and token it trusts).
   lifecycleWorkflowCustomTaskExtension: Object.freeze(['authenticationConfiguration', 'endpointConfiguration']),
+  // Issue #1072: a custom authentication extension's API address (endpointConfiguration),
+  // how Entra signs in to it (authenticationConfiguration, the app ID URI it trusts), how
+  // long sign-in waits on it (clientConfiguration) and what sign-in does when it fails
+  // (behaviorOnError).
+  customAuthenticationExtension: Object.freeze(['authenticationConfiguration', 'endpointConfiguration', 'clientConfiguration', 'behaviorOnError']),
   // The certificate-based authentication method of the authentication methods policy
   // (tenantPolicyOperations.mjs METHOD_CONFIGURATION_FIELDS): which certificate fields
   // decide single- or multi-factor sign-in, and which certificate field names the user.

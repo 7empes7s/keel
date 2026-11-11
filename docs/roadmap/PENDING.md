@@ -70,24 +70,24 @@ until then (a 403 means skip and list it).
 - `AccessReview.ReadWrite.All` (Restorer) for `accessReviewScheduleDefinition.create` (`engine/coverage/qualification.mjs:956`). O1 · S · owner
 - `Agreement.ReadWrite.All` (Restorer, application grant) for `agreement.create/update` (`qualification.mjs:983`). O1 · S · owner
 - `APIConnectors.ReadWrite.All` (Restorer) for `identityApiConnector.create/update` (`qualification.mjs:987`). O1 · S · owner
+- `CustomAuthenticationExtension.ReadWrite.All` and `EventListener.ReadWrite.All` (Restorer) for `customAuthenticationExtension.create/update` and `authenticationEventListener.create/update` (#1072). O1 · S · owner
 - `Synchronization.ReadWrite.All` (Restorer) for `synchronizationJob.create/update` (`qualification.mjs:991`) and `Synchronization.Read.All` (Collector) for the job and schema reads (`docs/roadmap/restorer-least-privilege.md:53`). O1 · S · owner
 - `Ti.Read.All` (Collector, WindowsDefenderATP) for the Defender endpoint indicators read. O1 · S · owner
 
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 18 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; 14 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Entra sign-in extensions: custom authentication extensions (`:205`) and authentication event listeners (`:525`); the endpoint and its credentials stay a manual step. O1 · M · code
-- Entra PIM: custom extensions (`:668`) and PIM managed groups (`:671`). O1 · M · code
-- Entra other: app certificate authority trust (`:653`, the trust list stays manual), sign-in identifiers (`:656`), Verified ID profiles (`:659`), lifecycle policies (`:665`), default cross-tenant sharing settings (`:674`), device templates (`:681`), schema extensions (`:691`), profile card fields (`:714`). O1 · M · code
-- Attack simulation: automations, simulations, payloads, login pages, landing pages, notification emails (`:630`-`:645`). O1 · M · code
+- Entra other: app certificate authority trust (`:657`, the trust list stays manual), sign-in identifiers (`:660`), Verified ID profiles (`:663`), lifecycle policies (`:669`), default cross-tenant sharing settings (`:678`), device templates (`:685`), schema extensions (`:695`), profile card fields (`:718`). O1 · M · code
+- Attack simulation: automations, simulations, payloads, login pages, landing pages, notification emails (`:634`-`:649`). O1 · M · code
 
 ### Not restored by design (stay manual)
 
 - Certificate sign-in settings: the trusted certificate authority list is never written; a restore lists what differs (`qualification.mjs:101`, #994). O1 · — · none
 - Guest invitation domain restrictions: a restore never changes who can be invited (`qualification.mjs:237`, trust-field rule). O1 · — · none
+- PIM custom extensions: KEEL choice, Graph creates one only with its Logic App endpoint and sign-in, which a restore never writes (#1072). PIM managed groups: Microsoft limit, a group comes back under PIM only through its first eligible member, which KEEL does not back up (#1072). O1 · — · none
 - Windows code signing certificates: a restore never uploads a certificate devices trust (#1074, trust-field rule). Remote help partners: only the partner's name and onboarding URL, a sign-in endpoint, are writable (#1074). Managed e-books, Secure Score action states and Teams custom apps are Microsoft limits (#1074: books come from Apple Business Manager, Graph documents no state update, no app package). O1 · — · none
 
 ### Restore guidance still missing

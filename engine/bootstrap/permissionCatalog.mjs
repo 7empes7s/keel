@@ -169,6 +169,8 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('RoleManagement.ReadWrite.Exchange', 'entra', 'Roles', 'Change Exchange admin roles', 'Restore Exchange role scopes and who holds Exchange admin roles'),
   write('IdentityUserFlow.ReadWrite.All', 'entra', 'Policies', 'Change guest sign-up flows', 'Restore guest sign-up flows and their custom attributes'),
   write('APIConnectors.ReadWrite.All', 'entra', 'Policies', 'Change sign-up API connectors', 'Restore sign-up API connectors (their password or certificate is set by hand)'),
+  write('CustomAuthenticationExtension.ReadWrite.All', 'entra', 'Policies', 'Change custom sign-in extensions', 'Restore a sign-in extension\'s name, description and token claims (its endpoint is set by hand)'),
+  write('EventListener.ReadWrite.All', 'entra', 'Policies', 'Change which apps call sign-in extensions', 'Restore which apps call a custom sign-in extension'),
   write('RoleManagement.ReadWrite.Defender', 'entra', 'Roles', 'Change Defender admin roles', 'Restore custom Defender roles and who holds them'),
   write('Application.ReadWrite.All', 'entra', 'Apps', 'Change app registrations', 'Restore apps and enterprise apps'),
   write('Synchronization.ReadWrite.All', 'entra', 'Apps', 'Change app provisioning', 'Restore provisioning mappings and scoping filters, and recreate a missing provisioning job (left stopped)'),

@@ -4,6 +4,7 @@ import { contentEffectsDigest } from "../../../../../../../engine/safety/content
 
 import { guarded } from "@/lib/action";
 import { principalRefs } from "@/lib/portal-data";
+import { mechanismsWithWindows } from "@/lib/recovery-window";
 import { resourceLabel } from "@/lib/presentation";
 import { savedNames } from "@/lib/saved-names";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
@@ -96,7 +97,9 @@ const getDryRunArtifactRoute = guarded(
     ] as { naturalKey?: string }[];
     const names = await savedNames(client, tenantRef, keyed.map((item) => item.naturalKey));
 
-    return Response.json({ artifact: { ...artifact, effectsDigest, contentEffectApprovals, incidentRecoveryView, names } }, { headers: NO_STORE });
+    // Issue #1076: until when each deleted setting can still be recovered, worked out here.
+    const recoveryMechanisms = mechanismsWithWindows(artifact.recoveryMechanisms as { deadline?: string | null }[] | null);
+    return Response.json({ artifact: { ...artifact, recoveryMechanisms, effectsDigest, contentEffectApprovals, incidentRecoveryView, names } }, { headers: NO_STORE });
   },
 );
 

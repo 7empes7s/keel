@@ -196,6 +196,12 @@ test('the retention deadline is enforced at planning and again at execution', as
   const [expired] = (await buildReconciliationPlan(readerFor(graph), [desired()], { now: NOW })).resources;
   assert.equal(expired.recovery.mechanism, 'refused');
   assert.match(expired.recovery.reason, /recovery-point-expired/);
+  // Issue #1076: its old copy is still in deleted items and an app-only token
+  // cannot purge it, so the dry run names the step a person takes in Entra.
+  const expiredRun = await applyWave(graph, governor, [expired], { targetTenant: 't', mode: 'dry-run', now: () => NOW });
+  assert.equal(graph.writes.length, 0);
+  assert.deepEqual(expiredRun.skipped.map((entry) => entry.completion?.map((step) => step.requirement)), [['purgeDeletedPolicy']]);
+  assert.match(expiredRun.skipped[0].completion[0].description, /Entra admin center/);
 
   // A failed deleted-items read is never "not found": nothing is recreated beside the original.
   const failing = { ...readerFor(fakeGraph()), async collect(version, path) {
@@ -210,10 +216,14 @@ test('the retention deadline is enforced at planning and again at execution', as
   graph.deleted.set('ca-1', { path: `${POLICIES}/ca-1`, body: { ...mfaPolicy, id: 'ca-1', deletedDateTime: daysAgo(29) } });
   const [inTime] = (await buildReconciliationPlan(readerFor(graph), [desired()], { now: NOW })).resources;
   assert.equal(inTime.recovery.mechanism, 'soft-delete-restore');
+  const inTimeRun = await applyWave(graph, governor, [inTime], { targetTenant: 't', mode: 'dry-run', now: () => NOW });
+  assert.ok(!inTimeRun.skipped.some((entry) => entry.completion), 'no purge step while the policy can be restored');
+  assert.equal(inTime.recovery.mechanism, 'soft-delete-restore');
   const later = new Date(NOW.getTime() + 2 * DAY);
   const result = await applyWave(graph, governor, [inTime], { targetTenant: 't', mode: 'enforce', now: () => later });
   assert.equal(graph.writes.length, 0);
   assert.match(result.skipped[0].reason, /recovery-point-expired/);
+  assert.equal(result.skipped[0].completion?.[0]?.requirement, 'purgeDeletedPolicy', 'expired between review and promotion: the purge step is still named');
 });
 
 test('a dry run of the soft-delete restore sends nothing', async () => {

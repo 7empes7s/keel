@@ -94,11 +94,6 @@ sign-in endpoint and Logic App fields stay manual steps in any writer built for 
 - PIM custom extensions: KEEL choice, Graph creates one only with its Logic App endpoint and sign-in, which a restore never writes (#1072). PIM managed groups: Microsoft limit, a group comes back under PIM only through its first eligible member, which KEEL does not back up (#1072). O1 · — · none
 - Windows code signing certificates: a restore never uploads a certificate devices trust (#1074, trust-field rule). Remote help partners: only the partner's name and onboarding URL, a sign-in endpoint, are writable (#1074). Managed e-books, Secure Score action states and Teams custom apps are Microsoft limits (#1074: books come from Apple Business Manager, Graph documents no state update, no app package). O1 · — · none
 
-### Restore guidance still missing
-
-- Deleted-item deadline per object on the restore page and the drift list, with a warning at 7 days (old register M2). The backup reads `deletedDateTime` (`engine/reconcile/liveState.mjs:17`) but no portal page shows the deadline. O1 · M · code
-- A follow-up step for purging a deleted Conditional Access policy, which app-only tokens cannot do (old register M1); no restore or follow-up step mentions it today. O1 · S · code
-
 ## O2: admins know which changes matter and act on them
 
 - Audit rows carry no changed field names: both audit readers store `fields: []` (`engine/identity/auditSources.mjs:150`, `:172`), so audit flag rules match on the activity alone (`docs/insights.md:69`). Store the modified property names (never values). O2 · M · code

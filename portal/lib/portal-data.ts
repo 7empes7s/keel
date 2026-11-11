@@ -60,6 +60,7 @@ import type { Contacts } from "@/lib/who-to-ask";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { objectIds, openChangeCount, payloadName } from "@/lib/changes-view";
+import { withRecoveryWindows } from "@/lib/recovery-window";
 import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, unnamedReferences, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
@@ -1137,10 +1138,11 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
       // Only a central reader gets the names of the objects a change points to: an
       // entity-scoped reader may not see those objects, so their ids stay unnamed.
       const named = scope.central ? await withAppNames(client, ref, await withRefNames(client, ref, attributed)) : attributed;
-      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, named, scope)) };
+      const windows = await withRecoveryWindows(client, ref, named);
+      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, windows, scope)) };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
-    const items = await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope);
+    const items = await withRecoveryWindows(client, ref, await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope));
     return { generatedAt: new Date().toISOString(), baseline, ...driftResult(await withDecisionEvidence(client, ref, items, scope)), scope: { central: false, entities: scope.entities } };
   });
 }

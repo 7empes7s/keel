@@ -13,6 +13,8 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { progressWriter } from '../engine/jobs/progress.mjs';
 import { ingestCollectorAudit } from '../engine/identity/auditSources.mjs';
 import { refreshBaselineTemplates } from '../engine/benchmarks/intuneBaselines.mjs';
+import { readDeletedItems } from '../engine/reconcile/deletedItems.mjs';
+import { recordDeletedItems } from '../engine/store/deletedItems.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
 import { parseCliArgs } from './args.mjs';
 import {
@@ -135,6 +137,24 @@ export async function readAuditLogs(client, { tenantRef, reader, logger = consol
   }
 }
 
+/**
+ * Issue #1076: the deleted users, groups, apps and Conditional Access policies,
+ * listed beside the backup so the Changes list can say until when a removed one
+ * can be recovered. A failed listing is logged and never changes the backup.
+ */
+export async function listDeletedItems(client, { tenantRef, reader, snapshotId, coverageDigest, logger = console }) {
+  try {
+    const reads = await readDeletedItems(reader, { coverageDigest });
+    await recordDeletedItems(client, { tenantRef, snapshotId, reads });
+    const failed = reads.filter((read) => read.outcome !== 'complete').map((read) => read.resourceType);
+    if (reads.length) logger.log(`deleted items: ${reads.reduce((sum, read) => sum + read.items.length, 0)} listed${failed.length ? `; not read for ${failed.join(', ')}` : ''}`);
+    return reads;
+  } catch (error) {
+    logger.log(`deleted items not read: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
 // Job page: each type's progress is written onto the running job (engine/jobs/progress.mjs).
 export { progressWriter };
 
@@ -187,6 +207,7 @@ export async function runCollect({
     // portal can name what was not backed up.
     const incomplete = incompleteTypesOf(coverageDigest);
     if (incomplete.length) logger.log(`${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(incomplete)}`);
+    await listDeletedItems(client, { tenantRef, reader, snapshotId, coverageDigest, logger });
     if (readAudit) await readAuditLogs(client, { tenantRef, reader, logger });
     // Intune security baselines: when this backup read the settings catalog policies,
     // read Microsoft's baseline templates too (at most once a day), so every baseline

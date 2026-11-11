@@ -10,7 +10,7 @@ import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
 } from '../coverage/qualification.mjs';
-import { recoveryGate } from './recoveryMechanism.mjs';
+import { oldCopyPurgeStep, recoveryGate } from './recoveryMechanism.mjs';
 import { deletedPolicyRestoreRefusal, REPORT_ONLY } from './conditionalAccessEnforcement.mjs';
 import {
   isPolicyGoverned, policyCreateBody, policyPatchRefusal, policyPostCreateRefusal, policyWriteRefusal,
@@ -656,9 +656,11 @@ export async function applyWave(writer, governor, wave, {
     // refused at execution even after a clean dry run.
     const recoveryRefusal = recoveryGate(resource, { now: now() });
     if (recoveryRefusal) {
+      // Issue #1076: an expired deleted policy's purge is a step for a person.
+      const purge = recoveryRefusal.outcome === 'failed' ? null : oldCopyPurgeStep(resource, { now: now() });
       (recoveryRefusal.outcome === 'failed' ? failed : skipped).push(recoveryRefusal.outcome === 'failed'
         ? { naturalKey: resource.naturalKey, error: recoveryRefusal.reason }
-        : { naturalKey: resource.naturalKey, reason: recoveryRefusal.reason });
+        : { naturalKey: resource.naturalKey, reason: recoveryRefusal.reason, ...(purge ? { completion: [purge] } : {}) });
       return;
     }
 

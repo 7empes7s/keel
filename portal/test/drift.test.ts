@@ -459,3 +459,47 @@ test("a changed script shows as changed without its text", async () => {
   assert.match(String((record.after as Record<string, unknown>).scriptContent), /^Script text hidden \(/);
   assert.notEqual((record.before as Record<string, unknown>).scriptContent, (record.after as Record<string, unknown>).scriptContent);
 });
+
+test("a removed group still in the recycle bin says until when it can be recovered", async () => {
+  // Issue #1076: the deadline is the deleted date + 30 days, worked out on the server.
+  // Dates are relative to the run: the list compares them with now.
+  const DAY = 24 * 60 * 60 * 1000;
+  const removed = async (label: string, id: string) => {
+    const naturalKey = `group:task-1076-${label}-${randomUUID()}`;
+    const observed = await createSnapshot();
+    await client.query(
+      `INSERT INTO drift
+         (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
+          before_hash, after_hash, before_payload, after_payload, blast_radius)
+       VALUES ($1, $2, $3, $4, 'group', 'removed', 'baseline-hash', NULL, $5, NULL, 'access-affecting')`,
+      [currentTenantRef, activeBaselineId, observed, naturalKey, { id, displayName: label }],
+    );
+    return naturalKey;
+  };
+  const fresh = await removed("fresh", "AAAA0000-0000-4000-8000-000000001076");
+  const closing = await removed("closing", "bbbb0000-0000-4000-8000-000000001076");
+  const gone = await removed("gone", "cccc0000-0000-4000-8000-000000001076");
+  const notListed = await removed("not-listed", "dddd0000-0000-4000-8000-000000001076");
+  const listing = await createSnapshot();
+  await client.query(
+    `INSERT INTO deleted_item_read (tenant_ref, resource_type, snapshot_id, read_at) VALUES ($1, 'group', $2, now())`,
+    [currentTenantRef, listing],
+  );
+  const deletedAgo = [["aaaa0000-0000-4000-8000-000000001076", 3], ["bbbb0000-0000-4000-8000-000000001076", 25], ["cccc0000-0000-4000-8000-000000001076", 40]] as const;
+  for (const [id, days] of deletedAgo) {
+    await client.query(
+      `INSERT INTO deleted_item (tenant_ref, resource_type, source_id, deleted_at, last_snapshot_id) VALUES ($1, 'group', $2, $3, $4)`,
+      [currentTenantRef, id, new Date(Date.now() - days * DAY).toISOString(), listing],
+    );
+  }
+
+  const items = new Map((await getDriftData()).items.map((item) => [item.naturalKey, item]));
+  assert.equal(items.get(fresh)?.recovery?.state, "open");
+  assert.equal(items.get(fresh)?.recovery?.daysLeft, 27);
+  assert.equal(items.get(closing)?.recovery?.state, "closing");
+  assert.equal(items.get(closing)?.recovery?.daysLeft, 5);
+  assert.equal(items.get(gone)?.recovery?.state, "expired");
+  assert.equal(items.get(notListed)?.recovery ?? null, null, "not in the recycle bin: no deadline is claimed");
+  const deadline = Date.parse(items.get(fresh)?.recovery?.deadline ?? "");
+  assert.ok(Math.abs(deadline - (Date.now() + 27 * DAY)) < 60_000, "deleted date + 30 days");
+});

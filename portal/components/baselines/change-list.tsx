@@ -15,6 +15,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { ChangeAttributionPanel } from "@/components/change-attribution";
 import { ChangeEvidencePanel } from "@/components/decision-workbook";
 import { DriftDiff } from "@/components/drift-diff";
+import { RecoveryWindowNote } from "@/components/recovery-window";
 import { WorkloadRestore } from "@/components/restore/workload-restore";
 import { type ListSort } from "@/components/list/list-paging";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
@@ -415,6 +416,7 @@ export function ChangeList({
                   <span className="bl-row-name">
                     <Link className="bl-row-link" href={href({ open: item.id })} onClick={(event) => follow(event, { open: item.id })}>{changeName(item)}</Link>
                     <small>{kindLine(item)}</small>
+                    <RecoveryWindowNote window={item.recovery} />
                   </span>
                   <RiskChip tone={toneOf(item)}>{impactWords(item.blastRadius)}</RiskChip>
                   <span className="bl-row-who" data-state={state ?? undefined}>
@@ -474,6 +476,7 @@ export function ChangeList({
           wide
         >
           <ChangeFacts item={openedFacts ?? opened} lookup={lookupState} now={now} />
+          {opened.recovery ? <p className="bl-help"><RecoveryWindowNote window={opened.recovery} /></p> : null}
           {opened.semantic
             ? <SemanticDiff change={opened.semantic} item={opened} key={opened.id} record={<OpenedRecord item={opened} />} />
             : <DriftDiff item={opened} key={opened.id} record={<OpenedRecord item={opened} />} />}

@@ -205,6 +205,8 @@ export const TYPE_GUIDE = Object.freeze({
   customAuthenticationExtension: auto('Custom authentication extensions', {
     keeps: 'Puts back an extension\'s name, description and the claims it adds to tokens, also for one recreated by hand under the same name (tested against a simulated tenant only). A change to the token claims waits for a second approver while restore approvals are on.',
     todo: 'KEEL never writes the address an extension calls or how Entra signs in to it. An extension that is gone is listed for you to create again in the Entra admin center, with the address and app ID URI from the backup; run the restore again afterwards to put back its claims and listeners.',
+
+    words: { create: 'put settings back on one recreated by hand under the same name' },
   }),
   accessPackageResourceRoleScope: auto('Access package resource roles', {
     keeps: 'Adds back the group and app roles an access package grants, for groups and apps that exist in your tenant, and adds them to the catalog first if they are missing there.',

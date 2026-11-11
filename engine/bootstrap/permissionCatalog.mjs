@@ -210,6 +210,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('OrgSettings-Forms.ReadWrite.All', 'other', 'Settings', 'Change Microsoft Forms settings', 'Restore tenant-wide Forms settings'),
   write('OrgSettings-Microsoft365Install.ReadWrite.All', 'other', 'Apps', 'Change Microsoft 365 Apps install options', 'Restore which Office apps people can install themselves'),
   write('OrgSettings-AppsAndServices.ReadWrite.All', 'other', 'Apps', 'Change Office Store and trial settings', 'Restore whether people can start app trials'),
+  write('AttackSimulation.ReadWrite.All', 'purview', 'Settings', 'Change attack simulation training', 'Restore attack simulations as drafts (never launched)'),
   write('TeamMember.ReadWrite.All', 'teams', 'Memberships', 'Change team members', 'Restore team owners and members'),
   write('TeamSettings.ReadWrite.All', 'teams', 'Settings', 'Change team settings', 'Restore each team\'s settings'),
 

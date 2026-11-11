@@ -318,13 +318,17 @@ export const COMPLETENESS = Object.freeze({
   // Restore gaps batch 17: the settings other than sharing (the SharePoint workload writes those).
   itemInsightsSettings: { whole: 'not-written' },
   externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
-  simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
+  // Issue #1073: Graph cannot create or change automations or simulation content.
+  simulationAutomation: { whole: 'read-only', missing: [part('Each run of the automation', 'other-route')] },
   // The payloads, login and landing pages it uses are backed up as their own kinds.
-  attackSimulation: { whole: 'not-written', missing: [part('Its results: who clicked, reported or entered a password', 'read-only')] },
-  attackSimulationPayload: { whole: 'not-written', missing: [part('Built-in payloads from Microsoft', 'microsoft-managed')] },
-  attackSimulationLoginPage: { whole: 'not-written', missing: [part('Built-in login pages from Microsoft', 'microsoft-managed')] },
-  attackSimulationLandingPage: { whole: 'not-written', missing: [part('Built-in landing pages from Microsoft', 'microsoft-managed')] },
-  attackSimulationNotification: { whole: 'not-written', missing: [part('Built-in notifications from Microsoft', 'microsoft-managed')] },
+  attackSimulation: { missing: [
+    part('Its results and history: who clicked, reported or entered a password', 'read-only'),
+    part('Its training, end-user notification and app consent settings', 'not-written'),
+  ] },
+  attackSimulationPayload: { whole: 'read-only', missing: [part('Built-in payloads from Microsoft', 'microsoft-managed')] },
+  attackSimulationLoginPage: { whole: 'read-only', missing: [part('Built-in login pages from Microsoft', 'microsoft-managed')] },
+  attackSimulationLandingPage: { whole: 'read-only', missing: [part('Built-in landing pages from Microsoft', 'microsoft-managed')] },
+  attackSimulationNotification: { whole: 'read-only', missing: [part('Built-in notifications from Microsoft', 'microsoft-managed')] },
   // Remaining kinds, batch 8.
   sharepointSettings: {},
   hardwareConfiguration: { missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always), part('A deleted configuration', 'not-written')] },

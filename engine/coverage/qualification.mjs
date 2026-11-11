@@ -273,12 +273,13 @@ export const TYPE_DECISIONS = Object.freeze({
   sharepointSettings: automated('sharepointsettings', 'restore gaps batch 17: update in place of the settings other than sharing (the SharePoint workload restores those); a restore never turns legacy authentication on, lets unmanaged devices sync or drops the guest account match'),
   itemInsightsSettings: manual('no writer yet'),
   externalConnection: manual('no writer yet; the schema and items are read per connection'),
-  simulationAutomation: manual('no writer yet; automations are created in the Defender portal'),
-  attackSimulation: manual('no writer yet; a simulation is launched again, not restored'),
-  attackSimulationPayload: manual('no writer yet; the tenant\'s own payloads only'),
-  attackSimulationLoginPage: manual('no writer yet; the tenant\'s own login pages only'),
-  attackSimulationLandingPage: manual('no writer yet; the tenant\'s own landing pages only'),
-  attackSimulationNotification: manual('no writer yet; the tenant\'s own notifications only'),
+  // Issue #1073: Graph v1.0 and beta list and get attack simulation content and automations but cannot create or change them.
+  simulationAutomation: manual('Microsoft limit, issue #1073: Graph lists and gets simulation automations but has no create or update in v1.0 or beta (https://learn.microsoft.com/en-us/graph/api/resources/attacksimulationroot?view=graph-rest-1.0)'),
+  attackSimulation: automated('simulation', 'issue #1073: create and update, always as a draft: every body says status draft and no launch date, and one that would launch or schedule is refused, so launching (which sends phishing emails to real people) is a manual step; the payload, login page and landing page are bound by @odata.bind to the target\'s item with the same id, else the tenant\'s own item with the same name, and a missing one holds the simulation; every person it targets must exist in the target, else it is held; Graph changes only drafts, so an update of a launched simulation is a manual step; a simulation an automation made is skipped; training, notification and app consent settings, results and history are never written; delete is not registered'),
+  attackSimulationPayload: manual('Microsoft limit, issue #1073: Graph lists and gets payloads but has no create or update in v1.0 or beta (https://learn.microsoft.com/en-us/graph/api/resources/payload?view=graph-rest-1.0)'),
+  attackSimulationLoginPage: manual('Microsoft limit, issue #1073: Graph lists and gets login pages but has no create or update in v1.0 or beta (https://learn.microsoft.com/en-us/graph/api/resources/loginpage?view=graph-rest-1.0)'),
+  attackSimulationLandingPage: manual('Microsoft limit, issue #1073: Graph lists and gets landing pages but has no create or update in v1.0 or beta (https://learn.microsoft.com/en-us/graph/api/resources/landingpage?view=graph-rest-1.0)'),
+  attackSimulationNotification: manual('Microsoft limit, issue #1073: Graph lists and gets end-user notifications but has no create or update in v1.0 or beta (https://learn.microsoft.com/en-us/graph/api/resources/endusernotification?view=graph-rest-1.0)'),
   // Remaining kinds, batch 8: the last readable kinds, backed up read-only; no writer is built yet.
   hardwareConfiguration: automated('intune-deviceconfig-hardwareconfiguration', 'restore gaps batch 11: update in place of the name, description, scope tags and per-device password setting through Graph beta; per-device BIOS passwords are never turned off; the settings file is not backed up, so a deleted configuration is imported again by hand', { view: 'graph-rest-beta' }),
   certificateBasedApplicationConfiguration: manual('no writer yet; beta only'),
@@ -392,6 +393,8 @@ for (const resourceType of ['accessPackageCatalogResource', 'accessPackageAssign
 }
 // Issue #1007: an access review's queries pointed at the target's users, groups and apps.
 recordRemappingProof('accessReviewScheduleDefinition', 'create', 'engine/restore/accessReviewOperations.test.mjs');
+// Issue #1073: a simulation bound to the target's payload, login page and landing page.
+for (const operation of ['create', 'update']) recordRemappingProof('attackSimulation', operation, 'engine/restore/attackSimulationOperations.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -1247,18 +1250,19 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; no writer yet'),
   externalConnection: byHand('administrative-configuration', 'POST /external/connections', 'ExternalConnection.ReadWrite.OwnedBy',
     'backed up without schema or items; no writer yet'),
-  simulationAutomation: byHand('policy', null, 'AttackSimulation.ReadWrite.All',
-    'backed up; Graph cannot create an automation'),
-  attackSimulation: byHand('policy', 'POST /security/attackSimulation/simulations', 'AttackSimulation.ReadWrite.All',
-    'backed up without results; no writer yet'),
-  attackSimulationPayload: byHand('policy', 'POST /security/attackSimulation/payloads (beta)', 'AttackSimulation.ReadWrite.All',
-    'backed up, the tenant\'s own payloads only; no writer yet'),
-  attackSimulationLoginPage: byHand('policy', 'POST /security/attackSimulation/loginPages', 'AttackSimulation.ReadWrite.All',
-    'backed up, the tenant\'s own login pages only; no writer yet'),
-  attackSimulationLandingPage: byHand('policy', 'POST /security/attackSimulation/landingPages', 'AttackSimulation.ReadWrite.All',
-    'backed up, the tenant\'s own landing pages only; no writer yet'),
-  attackSimulationNotification: byHand('policy', null, 'AttackSimulation.ReadWrite.All',
-    'backed up, the tenant\'s own notifications only; Graph cannot create one'),
+  // Issue #1073: only simulations have a write route.
+  simulationAutomation: byHand('policy', 'none: Graph lists and gets simulation automations but has no create or update', 'AttackSimulation.ReadWrite.All',
+    'backed up; Graph cannot create or change an automation'),
+  attackSimulation: subset('policy', 'POST /security/attackSimulation/simulations; PATCH .../{id}', 'AttackSimulation.ReadWrite.All',
+    'create and update as a draft are fixture-tested, never launched or scheduled; content is bound to the target\'s item and missing content or people hold the simulation; results are never recreated'),
+  attackSimulationPayload: byHand('policy', 'none: Graph lists and gets payloads but has no create or update', 'AttackSimulation.ReadWrite.All',
+    'backed up, the tenant\'s own payloads only; Graph cannot create or change one'),
+  attackSimulationLoginPage: byHand('policy', 'none: Graph lists and gets login pages but has no create or update', 'AttackSimulation.ReadWrite.All',
+    'backed up, the tenant\'s own login pages only; Graph cannot create or change one'),
+  attackSimulationLandingPage: byHand('policy', 'none: Graph lists and gets landing pages but has no create or update', 'AttackSimulation.ReadWrite.All',
+    'backed up, the tenant\'s own landing pages only; Graph cannot create or change one'),
+  attackSimulationNotification: byHand('policy', 'none: Graph lists and gets end-user notifications but has no create or update', 'AttackSimulation.ReadWrite.All',
+    'backed up, the tenant\'s own notifications only; Graph cannot create or change one'),
   // Remaining kinds, batch 8: the last readable kinds, backed up read-only; manual until a writer is built.
   hardwareConfiguration: subset('device-management', 'PATCH /deviceManagement/hardwareConfigurations/{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'update is fixture-tested; the BIOS settings file is not backed up, so create is not written'),

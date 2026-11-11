@@ -1,12 +1,20 @@
 /**
  * Issue #995: the guest sign-up user flow fake for the operations harness
- * (operations.mjs): Graph's routes for a flow and its parts.
+ * (operations.mjs): Graph's routes for a flow and its parts, and (issue #1008)
+ * the create of an API connector a flow calls.
  */
 
 // Issue #995: a guest sign-up user flow keeps its parts on the flow object, each
 // written and read through its own route, as Graph does.
 const USER_FLOW = /^\/identity\/b2xUserFlows\/([^/]+)(?:\/(identityProviders|userAttributeAssignments|languages|apiConnectorConfiguration)(?:\/(.+))?)?$/;
-export function userFlowWrite(objects, path, method, body) {
+export function userFlowWrite(objects, path, method, body, nextId) {
+  // Issue #1008: Graph needs an authentication to create an API connector, and returns its password masked.
+  if (method === 'POST' && path === '/identity/apiConnectors') {
+    if (!body?.authenticationConfiguration) return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'authenticationConfiguration is required' } } };
+    const created = { ...body, id: `fixture-connector-${nextId()}`, authenticationConfiguration: { ...body.authenticationConfiguration, password: '******' } };
+    objects.set(`${path}/${created.id}`, created);
+    return { ok: true, status: 201, body: created };
+  }
   if (method === 'POST' && path === '/identity/b2xUserFlows') {
     const id = `B2X_1_${body.id}`;
     if (objects.has(`${path}/${id}`)) return { ok: false, status: 409, body: { error: { code: 'AADB2C', message: 'a user flow with this name exists' } } };

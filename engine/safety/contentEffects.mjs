@@ -42,9 +42,7 @@ import { selfApprovalAllowed, selfApprovalReasonProblem } from '../govern/approv
 import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { QUERY_PRINCIPAL } from '../cir/queryReferences.mjs';
 import { SCRIPT_BODY_FIELDS, appRuleScriptDetail, appRuleScripts, scriptFingerprint, scriptText } from './scriptBodies.mjs';
-import {
-  SIGN_IN_EFFECT, authenticationContextEffects, authenticationEventListenerEffects, customAuthenticationExtensionEffects, featureRolloutEffects, idleSignOutDefaultEffects,
-} from './signInSettingEffects.mjs';
+import { SIGN_IN_DISCLOSURE, SIGN_IN_EFFECT, authenticationContextEffects, authenticationEventListenerEffects, customAuthenticationExtensionEffects, featureRolloutEffects, idleSignOutDefaultEffects } from './signInSettingEffects.mjs';
 import { PERMANENT_EFFECT, attributeCreateEffects, identitySyncEffects } from './permanentEffects.mjs';
 import { GRANT_HELD_FIELDS, grantAccessReaders } from './entitlementGrantEffects.mjs';
 
@@ -74,13 +72,8 @@ const DISCLOSURES = Object.freeze({
   // and certificates apps may add.
   'access-changing': 'This puts back settings that decide who has admin access, who holds or manages access packages, who may join or register devices, which secrets and certificates apps may add, how guests sign themselves up (a user flow\'s identity providers, questions and API connectors), or which accounts a provisioning job creates, updates or disables in another directory (its next cycle checks every user and group in scope again). '
     + `If the backup was changed after it was taken, that changed access is granted. Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
-  // Issue #994: an authentication context that something uses, or a staged rollout.
-  [SIGN_IN_EFFECT]: 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
-    + 'which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom, '
-    + 'how long everyone can stay idle before being signed out (the organization default idle sign-out policy), '
-    + 'or which apps\' sign-ins call a custom authentication extension and which claims it adds to their tokens. '
-    + 'People may be asked for other sign-in methods, may stop being asked, or may not be able to sign in until it is set right. '
-    + `Check the change with the person who owns sign-in before approving. ${NOT_BACKED_UP}`,
+  // Issues #994, #1008, #1072: what a sign-in setting changes (signInSettingEffects.mjs).
+  [SIGN_IN_EFFECT]: `${SIGN_IN_DISCLOSURE} ${NOT_BACKED_UP}`,
   [PERMANENT_EFFECT]: 'This write cannot be undone: once it is made, neither Keel nor an admin can take it back, so undoing the restore leaves it in place. '
     + `Check the backup still holds what you want for good before approving. ${NOT_BACKED_UP}`,
 });

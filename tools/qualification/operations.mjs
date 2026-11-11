@@ -40,6 +40,7 @@ import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
 import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
+import { SIGN_IN_EXTENSION_LISTED, SIGN_IN_EXTENSION_PAYLOADS, SIGN_IN_EXTENSION_SEEDS } from './signInExtensionFixture.mjs';
 import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
@@ -51,15 +52,6 @@ const STS_DEFINITION = Object.freeze(['{"TokenLifetimePolicy":{"Version":1,"Acce
 // Issue #1007: a stand-in terms of use document (a PDF header and nothing else).
 const FIXTURE_AGREEMENT_PDF = Buffer.from('%PDF-1.4\n% KEEL fixture terms of use\n%%EOF\n');
 const FIXTURE_AGREEMENT_PDF_SHA256 = createHash('sha256').update(FIXTURE_AGREEMENT_PDF).digest('hex');
-
-// Issue #1072: a token issuance extension as Graph v1.0 returns it.
-const FIXTURE_EXTENSION = Object.freeze({
-  '@odata.type': '#microsoft.graph.onTokenIssuanceStartCustomExtension', displayName: 'Fixture extension', description: 'Fixture claims',
-  endpointConfiguration: { '@odata.type': '#microsoft.graph.httpRequestEndpoint', targetUrl: 'https://fixture.example/api/claims' },
-  authenticationConfiguration: { '@odata.type': '#microsoft.graph.azureAdTokenAuthentication', resourceId: 'api://fixture.example/fixture-app' },
-  clientConfiguration: { timeoutInMilliseconds: 2000, maximumRetries: 1 },
-  claimsForTokenConfiguration: [{ claimIdInApiResponse: 'FixtureClaim' }],
-});
 
 export const FIXTURE_PAYLOADS = Object.freeze({
   // Wave 2 ENTRA: directory policies and a delegated consent.
@@ -248,14 +240,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
   },
   synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
-  // Issue #1072: a token issuance extension and its listener as the v1.0 list
-  // reads return them (the listener's handler expands the extension).
-  customAuthenticationExtension: FIXTURE_EXTENSION,
-  authenticationEventListener: {
-    '@odata.type': '#microsoft.graph.onTokenIssuanceStartListener', displayName: 'Fixture listener', priority: 500,
-    conditions: { applications: { includeApplications: [{ appId: 'fixture-app' }] } },
-    handler: { '@odata.type': '#microsoft.graph.onTokenIssuanceStartCustomExtensionHandler', configuration: null, customExtension: { ...FIXTURE_EXTENSION, id: 'fixture-source-extension' } },
-  },
+  ...SIGN_IN_EXTENSION_PAYLOADS, // Issue #1072 (signInExtensionFixture.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -669,10 +654,7 @@ const FIXTURE_SEEDS = Object.freeze({
   },
   // Issue #1071: the catalog a resource is added to.
   accessPackageCatalogResource: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
-  // Issue #1072: an extension is never POSTed, so its create updates the live one with
-  // the backup's name; a listener points at that live extension.
-  customAuthenticationExtension: (graph) => graph.objects.set('/identity/customAuthenticationExtensions/fixture-live-extension', { ...FIXTURE_EXTENSION, id: 'fixture-live-extension', description: 'Drifted' }),
-  authenticationEventListener: (graph) => graph.objects.set('/identity/customAuthenticationExtensions/fixture-live-extension', { ...FIXTURE_EXTENSION, id: 'fixture-live-extension' }),
+  ...SIGN_IN_EXTENSION_SEEDS, // Issue #1072.
   crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
 
@@ -689,8 +671,7 @@ const LISTED_BEFORE_CREATE = new Set([
   // Issue #1007: an access review series is looked for by name and scope before a
   // create, and terms of use by name.
   '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
-  // Issue #1072: an extension is found by name, and a listener create looks for one calling the same extension.
-  '/identity/customAuthenticationExtensions', '/identity/authenticationEventListeners',
+  ...SIGN_IN_EXTENSION_LISTED, // Issue #1072.
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
   // Issue #1071: a catalog role's assignments are listed before a create.
@@ -713,16 +694,9 @@ export function fakeGraph() {
     writes,
     async write(version, path, { method, body }) {
       writes.push({ method, path });
-      const flowWrite = userFlowWrite(objects, path, method, body) ?? syncJobWrite(objects, path, method, body, () => { next += 1; return next; });
+      const nextId = () => { next += 1; return next; };
+      const flowWrite = userFlowWrite(objects, path, method, body, nextId) ?? syncJobWrite(objects, path, method, body, nextId);
       if (flowWrite) return flowWrite;
-      // Issue #1008: Graph needs an authentication to create an API connector, and returns its password masked.
-      if (method === 'POST' && path === '/identity/apiConnectors') {
-        if (!body?.authenticationConfiguration) return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'authenticationConfiguration is required' } } };
-        next += 1;
-        const created = { ...body, id: `fixture-connector-${next}`, authenticationConfiguration: { ...body.authenticationConfiguration, password: '******' } };
-        objects.set(`${path}/${created.id}`, created);
-        return { ok: true, status: 201, body: created };
-      }
       // Roadmap task-152: a Conditional Access policy is restored from its own
       // deleted-items container; the fake keeps one deleted map for both.
       const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path)

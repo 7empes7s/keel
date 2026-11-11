@@ -18,6 +18,14 @@
 
 export const SIGN_IN_EFFECT = 'changes-sign-in';
 
+/** What a 'changes-sign-in' approval says, before the "not backed up" disclosure (contentEffects.mjs). */
+export const SIGN_IN_DISCLOSURE = 'This changes how people sign in: whether Conditional Access can ask for an authentication context, '
+  + 'which sign-in feature (such as cloud authentication instead of federation) is rolled out to whom, '
+  + 'how long everyone can stay idle before being signed out (the organization default idle sign-out policy), '
+  + 'or which apps\' sign-ins call a custom authentication extension and which claims it adds to their tokens. '
+  + 'People may be asked for other sign-in methods, may stop being asked, or may not be able to sign in until it is set right. '
+  + 'Check the change with the person who owns sign-in before approving.';
+
 const present = (resource) => resource?.live?.state === 'present' || resource?.live?.state === 'soft-deleted';
 const normal = (value) => (value === undefined ? null : value);
 const sortedNames = (names) => [...new Set((names ?? []).map(String))].sort((left, right) => left.localeCompare(right));

@@ -4843,6 +4843,22 @@ section.wizard-panel {
   color: var(--text-soft);
 }
 
+/* Issue #1076: until when a deleted setting can be recovered from the recycle bin. */
+.recovery-window {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-soft);
+}
+
+.recovery-window.recovery-window-closing {
+  color: var(--check-soon);
+  font-weight: 600;
+}
+
+.recovery-window.recovery-window-expired {
+  color: var(--urgent);
+}
+
 /* Task-65: recovery completion checklist on an enforced restore job. */
 .completion-panel {
   display: grid;

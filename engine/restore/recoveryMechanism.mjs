@@ -120,7 +120,7 @@ export function oldCopyPurgeStep(resource, { now = new Date() } = {}) {
     kind: 'manual-setting',
     requirement: 'purgeDeletedPolicy',
     fields: [],
-    description: `The old copy of this policy is still in deleted items and its ${SOFT_DELETE_RETENTION_DAYS} days to restore it have passed. Purge it in the Microsoft Entra admin center (Conditional Access, Deleted policies): KEEL signs in with an app-only token, which cannot purge it. Then run this restore again and KEEL recreates the policy.`,
+    description: `The old copy of this policy is still in the recycle bin and its ${SOFT_DELETE_RETENTION_DAYS} days to restore it have passed. Purge it in the Microsoft Entra admin center (Conditional Access, Deleted policies): KEEL signs in with an app-only token, which cannot purge it. Then run this restore again and KEEL recreates the policy.`,
   };
 }
 

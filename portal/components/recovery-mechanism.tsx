@@ -1,3 +1,4 @@
+import { RecoveryWindowNote, type RecoveryWindow } from "@/components/recovery-window";
 import { formatTimestamp } from "@/lib/presentation";
 import { plainLabel, type NameBook } from "@/lib/restore-view";
 
@@ -21,6 +22,8 @@ export interface RecoveryMechanism {
   deadline: string | null;
   credentialMode: string | null;
   reason: string | null;
+  // Issue #1076: the window of `deadline`, worked out on the server when the dry run is read.
+  window?: RecoveryWindow;
 }
 
 const LABELS: Record<RecoveryMechanismName, string> = {
@@ -77,7 +80,7 @@ export function RecoveryMechanismTable({ mechanisms, names }: { mechanisms: Reco
                 {entry.reason ? <small className="mechanism-reason">{entry.reason}</small> : null}
               </td>
               <td data-label="Identity">{ID_LABELS[entry.idOutcome] ?? entry.idOutcome}</td>
-              <td data-label="Possible until">{entry.deadline ? formatTimestamp(entry.deadline) : "—"}</td>
+              <td data-label="Possible until">{entry.window ? <RecoveryWindowNote recreates={false} window={entry.window} /> : entry.deadline ? formatTimestamp(entry.deadline) : "—"}</td>
             </tr>
           ))}
         </tbody>

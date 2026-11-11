@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:26:41.302Z",
+  "observedAt": "2026-11-11T18:23:53.197Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "meetingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 8,
@@ -36,10 +36,10 @@
         "family": "messagingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
-        "objects": 10,
+        "objects": 11,
         "error": null
       },
       {
@@ -47,7 +47,7 @@
         "family": "appSetupPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 3,
@@ -58,7 +58,7 @@
         "family": "appPermissionPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,7 +69,7 @@
         "family": "federationConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -80,7 +80,7 @@
         "family": "clientConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -91,7 +91,7 @@
         "family": "guestMeetingConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -102,7 +102,7 @@
         "family": "guestMessagingConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -113,7 +113,7 @@
         "family": "guestCallingConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:26:41.302Z",
+        "capturedAt": "2026-11-11T18:23:53.197Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -124,7 +124,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "5b6c3d86755bf2f83d52628e65a2b40bb37aa146fa712c3e1086b10a7cc0e071"
+      "signature": "db4e286bfd1147b2e8ecb5c6b2da25294ea328e6647b15505d1a5764035b1c1d"
     }
   }
 }

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:30:03.598Z",
+  "observedAt": "2026-11-11T18:27:52.932Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "tenantSettings",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:30:03.598Z",
+        "capturedAt": "2026-11-11T18:27:52.932Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -36,7 +36,7 @@
         "family": "syncClientRestriction",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:30:03.598Z",
+        "capturedAt": "2026-11-11T18:27:52.932Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -47,7 +47,7 @@
         "family": "browserIdleSignout",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:30:03.598Z",
+        "capturedAt": "2026-11-11T18:27:52.932Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -58,7 +58,7 @@
         "family": "restrictedSearchMode",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:30:03.598Z",
+        "capturedAt": "2026-11-11T18:27:52.932Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,7 +69,7 @@
         "family": "restrictedSearchAllowedSites",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:30:03.598Z",
+        "capturedAt": "2026-11-11T18:27:52.932Z",
         "ok": false,
         "status": "not-licensed",
         "objects": 0,
@@ -80,7 +80,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "a2a66f9e9539bfb8204d959098c6b382ba3d8b0636fe798a6b009315a258f579"
+      "signature": "146798fbc3de6d6a0f95b7006de551b9b4312e2455279c52cf2ebc3b17d82e56"
     }
   }
 }

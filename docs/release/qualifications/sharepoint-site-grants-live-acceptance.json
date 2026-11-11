@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "sharepoint-site-grants-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "sharepoint.site-grants-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-11-06T20:09:54.535Z",
+  "observedAt": "2026-11-11T18:17:53.206Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -45,7 +45,7 @@
       {
         "operationId": "sharepoint.site-discovery",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T20:09:53.857Z",
+        "capturedAt": "2026-11-11T18:17:52.624Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -54,7 +54,7 @@
       {
         "operationId": "sharepoint.site-permissions",
         "version": "v1.0",
-        "capturedAt": "2026-11-06T20:09:53.954Z",
+        "capturedAt": "2026-11-11T18:17:52.714Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -69,7 +69,7 @@
         "role": "read",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T20:09:54.138Z",
+        "capturedAt": "2026-11-11T18:17:52.904Z",
         "grantedName": "KEEL-RT-site-grant-app"
       },
       {
@@ -79,7 +79,7 @@
         "role": "write",
         "ok": true,
         "readBackVerified": true,
-        "capturedAt": "2026-11-06T20:09:54.354Z"
+        "capturedAt": "2026-11-11T18:17:53.116Z"
       }
     ],
     "requests": [
@@ -132,31 +132,31 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-getallsites",
-        "retrievedAt": "2026-11-06T19:31:28.195Z"
+        "retrievedAt": "2026-11-11T18:04:40.335Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-list-permissions",
-        "retrievedAt": "2026-11-06T19:31:28.227Z"
+        "retrievedAt": "2026-11-11T18:04:40.435Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-post-permissions?view=graph-rest-1.0",
-        "retrievedAt": "2026-11-06T19:31:28.356Z"
+        "retrievedAt": "2026-11-11T18:04:40.621Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-update-permission?view=graph-rest-1.0",
-        "retrievedAt": "2026-11-06T19:31:28.540Z"
+        "retrievedAt": "2026-11-11T18:04:40.784Z"
       }
     ],
-    "captureLogSha256": "19d498ae5de77baffb0792fbd132d73a7f42f1bda4d845385d57720e7385f53e"
+    "captureLogSha256": "9f126f364f52aa5477a929b722574705ab13cb3f57948f9f16c686542ac18e98"
   },
   "proof": {
     "artifact": {
       "path": "sharepoint-site-grants-live-acceptance.capture.json",
-      "sha256": "19d498ae5de77baffb0792fbd132d73a7f42f1bda4d845385d57720e7385f53e"
+      "sha256": "9f126f364f52aa5477a929b722574705ab13cb3f57948f9f16c686542ac18e98"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "2428e2cab6fdb81d45559e1f0d0d9fe8e06b58209d0653cc39e837a955d8e71c"
+      "signature": "f40ed850ed3cac630714a93e3c81e3d71acc3fb194cd27b47b5f8aaf37a686b4"
     }
   }
 }

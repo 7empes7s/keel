@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "128b0e3b844fe351f5493925478091f61f589796",
+  "build": "ef793e66bd47e952c3b5ef473915eef8b1ef13cd",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-11-06T19:29:21.412Z",
+  "observedAt": "2026-11-11T18:27:00.163Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,7 @@
         "family": "enhancedEncryptionPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:21.412Z",
+        "capturedAt": "2026-11-11T18:27:00.163Z",
         "ok": true,
         "status": "read",
         "objects": 3,
@@ -36,7 +36,7 @@
         "family": "complianceRecordingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:21.412Z",
+        "capturedAt": "2026-11-11T18:27:00.163Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -47,7 +47,7 @@
         "family": "meetingTemplatePermissionPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:21.412Z",
+        "capturedAt": "2026-11-11T18:27:00.163Z",
         "ok": true,
         "status": "read",
         "objects": 2,
@@ -58,7 +58,7 @@
         "family": "meetingConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-11-06T19:29:21.412Z",
+        "capturedAt": "2026-11-11T18:27:00.163Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,7 +69,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "b74c6305b538436321f2b3819f7fa48c7160113d6d924ca3a7a3d84dbffbb0b4"
+      "signature": "15fdc60d4253af37a62648388be48ed120f6e51f42daf463bc2ae5e2c03a944d"
     }
   }
 }

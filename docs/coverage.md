@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 51 are full, 125 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 122 at least in part and 9 hold nothing to restore; the other 54 are restored by hand from the backup.
+KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 51 are full, 125 incomplete, 9 Microsoft-managed and 0 not readable. KEEL can restore 124 at least in part and 9 hold nothing to restore; the other 52 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -57,11 +57,11 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
-| Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: put settings back on one recreated by hand under the same name; put changed settings back | Tested against a simulated tenant |
 | Access review settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; remove ones added since | Tested against a simulated tenant |
 | Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -71,8 +71,8 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 | App certificate authority trust | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Verified ID profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Entitlement management outside connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
-| PIM custom extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| PIM managed groups | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| PIM custom extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
+| PIM managed groups | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Entitlement management role assignments | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Device templates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Teams custom apps | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -163,16 +163,18 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
 - **Access package resource roles.** Adds back the group and app roles an access package grants, for groups and apps that exist in your tenant, and adds them to the catalog first if they are missing there.
   - *Not brought back:* a role on a SharePoint site that is not in the catalog, or on a group or app that does not exist in the target (in the backup, but KEEL does not write it yet).
   - *You do:* Adding a role changes who can get access, so a restore adds it only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. A role on a SharePoint site that is not in the catalog, or on a group or app that no longer exists, is added by hand.
-- **Custom authentication extensions** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate the extension in the Entra admin center from the backup, then check that its endpoint still answers. Sign-ins and workflows that call it need it back first.
+- **Custom authentication extensions.** Puts back an extension's name, description and the claims it adds to tokens, also for one recreated by hand under the same name (tested against a simulated tenant only). A change to the token claims waits for a second approver while restore approvals are on.
+  - *Not brought back:* the address it calls, how Entra signs in to it, its timeouts and what sign-in does when it fails (in the backup, but KEEL does not write it yet); an extension that is not in the target, which is set up by hand first (in the backup, but KEEL does not write it yet).
+  - *You do:* KEEL never writes the address an extension calls or how Entra signs in to it. An extension that is gone is listed for you to create again in the Entra admin center, with the address and app ID URI from the backup; run the restore again afterwards to put back its claims and listeners.
 - **Access review settings.** Puts back whether group owners can manage access reviews of their groups.
 - **Admin role access review defaults.** Puts back the default settings of access reviews of admin roles.
   - *You do:* Reviews already running keep the settings they started with.
 - **User flow attributes.** Recreates missing custom attributes with their name, description and data type, and puts back their description.
   - *Not brought back:* built-in attributes (set by Microsoft); a data type that differs from the target's, which cannot change after an attribute is made (in the backup, but KEEL does not write it yet).
   - *You do:* The built-in attributes are set by Microsoft. An attribute whose data type differs from the backup is listed for you: a data type cannot change once an attribute is made, and KEEL never deletes one.
-- **Authentication event listeners** (not built yet). KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.
-  - *You do:* Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.
+- **Authentication event listeners.** Recreates or puts back which apps call which custom authentication extension, and in which order, pointing at the extension with the same name in your tenant (tested against a simulated tenant only).
+  - *Not brought back:* a listener that is part of an External ID user flow rather than calling an extension (in the backup, but KEEL does not write it yet).
+  - *You do:* Every change waits for a second approver while restore approvals are on, because it changes how people sign in to those apps. A listener whose extension is gone waits until you create the extension again. A listener that belongs to an External ID user flow is set up again with the flow.
 - **Exchange admin roles** (KEEL choice). KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.
   - *Not brought back:* built-in roles (set by Microsoft).
   - *You do:* For a custom role that still exists but differs from the backup, the restore lists what differs: fix its entries with Exchange Online PowerShell. Then give recreated roles back to their role groups or apps, after a privilege review.
@@ -196,10 +198,10 @@ KEEL tracks 185 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Create the profile again in the Entra admin center, under Verified ID, from the backup.
 - **Entitlement management outside connectors** (KEEL choice). Microsoft creates a connector only together with how it signs in to SAP (its client, token address and Key Vault secret), and KEEL never writes sign-in settings.
   - *You do:* Create the connector again with PowerShell from the backup, and enter its sign-in settings yourself.
-- **PIM custom extensions** (not built yet). KEEL backs up each extension's name and how it signs in, but not the Logic App address it calls, which can hold an access key. It does not restore it yet.
+- **PIM custom extensions** (KEEL choice). An extension is only the call to its Logic App. Microsoft creates one only together with that Logic App's address, which can hold an access key, and how Entra signs in to it, and KEEL never writes sign-in settings.
   - *Not brought back:* the Logic App address it calls (Microsoft never returns it).
   - *You do:* Create the extension again in the Entra admin center, under Privileged Identity Management, and pick the same Logic App.
-- **PIM managed groups** (not built yet). KEEL backs up which groups are managed by Privileged Identity Management. A group comes back under it when it gets its first eligible member.
+- **PIM managed groups** (Microsoft limit). Microsoft offers no way to put a group under Privileged Identity Management directly: a group comes back under it by itself when it gets its first eligible member, and KEEL does not back up those memberships.
   - *You do:* Add an eligible member to each group again in the Entra admin center, under Privileged Identity Management, Groups.
 - **Entitlement management role assignments.** Gives back each catalog owner, catalog reader and access package manager role on its catalog, matched to the people in your tenant.
   - *Not brought back:* roles other than catalog owner, catalog reader and access package manager, such as catalog creator, which are added by hand (in the backup, but KEEL does not write it yet).

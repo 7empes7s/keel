@@ -40,6 +40,7 @@ import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
 import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
+import { SIGN_IN_EXTENSION_LISTED, SIGN_IN_EXTENSION_PAYLOADS, SIGN_IN_EXTENSION_SEEDS } from './signInExtensionFixture.mjs';
 import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
@@ -239,6 +240,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     authenticationConfiguration: { '@odata.type': '#microsoft.graph.basicAuthentication', username: 'fixture-user', password: '******' },
   },
   synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
+  ...SIGN_IN_EXTENSION_PAYLOADS, // Issue #1072 (signInExtensionFixture.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -652,6 +654,7 @@ const FIXTURE_SEEDS = Object.freeze({
   },
   // Issue #1071: the catalog a resource is added to.
   accessPackageCatalogResource: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
+  ...SIGN_IN_EXTENSION_SEEDS, // Issue #1072.
   crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
 
@@ -668,6 +671,7 @@ const LISTED_BEFORE_CREATE = new Set([
   // Issue #1007: an access review series is looked for by name and scope before a
   // create, and terms of use by name.
   '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
+  ...SIGN_IN_EXTENSION_LISTED, // Issue #1072.
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
   // Issue #1071: a catalog role's assignments are listed before a create.
@@ -690,16 +694,9 @@ export function fakeGraph() {
     writes,
     async write(version, path, { method, body }) {
       writes.push({ method, path });
-      const flowWrite = userFlowWrite(objects, path, method, body) ?? syncJobWrite(objects, path, method, body, () => { next += 1; return next; });
+      const nextId = () => { next += 1; return next; };
+      const flowWrite = userFlowWrite(objects, path, method, body, nextId) ?? syncJobWrite(objects, path, method, body, nextId);
       if (flowWrite) return flowWrite;
-      // Issue #1008: Graph needs an authentication to create an API connector, and returns its password masked.
-      if (method === 'POST' && path === '/identity/apiConnectors') {
-        if (!body?.authenticationConfiguration) return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'authenticationConfiguration is required' } } };
-        next += 1;
-        const created = { ...body, id: `fixture-connector-${next}`, authenticationConfiguration: { ...body.authenticationConfiguration, password: '******' } };
-        objects.set(`${path}/${created.id}`, created);
-        return { ok: true, status: 201, body: created };
-      }
       // Roadmap task-152: a Conditional Access policy is restored from its own
       // deleted-items container; the fake keeps one deleted map for both.
       const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path)

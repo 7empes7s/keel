@@ -6,8 +6,9 @@
 // built-in catalogue is the same in every tenant and is not backed up. Microsoft's
 // training modules are skipped too (engine/discovery/notGaps.mjs).
 // v1.0 reads with AttackSimulation.Read.All, which the Collector already holds (the
-// simulations are read with it). No writer is built yet: the backup is a record to
-// rebuild from in the Defender portal. None of these objects holds a secret.
+// simulations are read with it). Graph cannot create or change them (issue #1073), so
+// the backup is a record to rebuild from in the Defender portal; a restored simulation
+// binds the target's item with the same id or name. None of these objects holds a secret.
 const TENANT_ONLY = "$filter=source eq 'tenant'";
 export default [
   // The phishing message: sender, subject, body, technique and the login page it uses.

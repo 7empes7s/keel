@@ -35,5 +35,12 @@ export default [
   { type: 'attackSimulation', path: '/security/attackSimulation/simulations', version: 'v1.0',
     criticality: 'tier3', blastRadius: 'cosmetic',
     select: 'id,attackTechnique,attackType,automationId,completionDateTime,createdBy,createdDateTime,description,displayName,durationInDays,endUserNotificationSetting,excludedAccountTarget,includedAccountTarget,isAutomated,lastModifiedBy,lastModifiedDateTime,launchDateTime,oAuthConsentAppDetail,payloadDeliveryPlatform,status,trainingSetting',
+    // Issue #1073: the payload, login page and landing page are navigation properties
+    // the list does not return; each is read per simulation (id and name) so a restore
+    // can bind the target's item. A simulation without one answers 404 and keeps none.
+    itemReads: ['payload', 'loginPage', 'landingPage'].map((as) => ({
+      as, single: true, fields: ['id', 'displayName'], path: `/security/attackSimulation/simulations/{item}/${as}`,
+    })),
+    liveItemReads: true,
     note: 'A simulation names its payload, landing page and login page by id.' },
 ];

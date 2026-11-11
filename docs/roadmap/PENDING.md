@@ -78,10 +78,9 @@ until then (a 403 means skip and list it).
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 23 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; 15 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Attack simulation: automations, simulations, payloads, login pages, landing pages, notification emails (`:622`-`:637`). O1 · M · code
 - Defender and security: custom detection rules (`:709`), Defender for Identity sensors (`:712`), Secure Score action states (`:715`), exposure management zones (`:675`). O1 · M · code
 - Intune partners and connectors: mobile threat defense (`:424`), device management partners (`:427`), compliance partners (`:430`), remote help partners (`:433`), derived credential issuers (`:568`). O1 · M · code
 - Intune apps: managed e-books (`:587`), Windows code signing certificates (`:602`). O1 · S · code

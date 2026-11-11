@@ -1,6 +1,6 @@
 # O1 live proof at `ef793e66bd` (issue #1083)
 
-**Status: plan approved, batch G1 run (3 of 5 gates recorded; storage and drill held with the manager as owner), G2 waiting for its approval.**
+**Status: plan approved, batch G1 run (3 of 5 gates recorded; storage and drill held with the manager as owner). G2 onward approved; not run yet.**
 Approval is asked once per batch below; each batch starts only after its approval.
 
 ## Approvals
@@ -10,6 +10,8 @@ Approval is asked once per batch below; each batch starts only after its approva
   `portal.env`); master takes records-only PRs during the window; in E2 only `itemInsightsSettings.update` and
   `todoSettings.update` run, the other five tenant-wide settings are held as `owner`; E5 stays held for the second
   Global Administrator.
+- 2026-11-11, the manager via the office CEO (message 2569): batches G2 onward approved; storage and drill stay
+  held. This approval is not yet posted on #1083.
 
 ## Results
 

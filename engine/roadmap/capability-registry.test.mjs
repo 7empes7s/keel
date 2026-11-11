@@ -215,14 +215,24 @@ const REGISTERED = Object.freeze({
   // Issue #1072: a custom authentication extension (a create updates the live one with its name) and its listeners.
   customAuthenticationExtension: ['create', 'update'],
   authenticationEventListener: ['create', 'update'],
+  // Issue #1075: Entra directory settings and objects.
+  signInIdentifier: ['update'],
+  crossTenantM365Capability: ['update'],
+  profileCardProperty: ['create', 'update'],
+  verifiedIdProfile: ['create', 'update'],
+  lifecyclePolicy: ['create', 'update'],
+  deviceTemplate: ['create'],
+  schemaExtension: ['create'],
 });
 
 // Issue #1015: an attribute set is created under the backup's name, an attribute
 // under its set and name, and partner sync settings under the partner's tenant id.
 // Issue #1072: a custom authentication extension is never created; its create updates the live one with its name.
+// Issue #1074: a detection rule and a Copilot connection are created under the backup's own id.
+// Issue #1075: a Verified ID profile create updates the live one with its name, a profile
+// card field is created under its directory field, and a schema extension under its id.
 const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner', 'customAuthenticationExtension',
-  // Issue #1074: a detection rule and a Copilot connection are created under the backup's own id.
-  'defenderDetectionRule', 'externalConnection']);
+  'defenderDetectionRule', 'externalConnection', 'verifiedIdProfile', 'profileCardProperty', 'schemaExtension']);
 
 function governor() {
   return new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });
@@ -334,8 +344,9 @@ test('mutation pin: a real Graph collection path never implies write capability'
     checked += 1;
   }
   // Wave 2 registered more than half the catalogue, so the floor became a third; with
-  // issue #1072 two thirds are registered, so it is now a quarter (still 45+ types).
-  assert.ok(checked > CATALOG.length / 4, 'this pin must exercise a large share of the catalogue, not a token sample');
+  // issue #1072 two thirds are registered, so it became a quarter; with issues #1074 and
+  // #1075 more than three quarters are, so it is now a fifth (still 40+ types).
+  assert.ok(checked > CATALOG.length / 5, 'this pin must exercise a large share of the catalogue, not a token sample');
 });
 
 test('mutation pin: descriptor.remappable never gates a capability claim', () => {

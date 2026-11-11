@@ -60,3 +60,6 @@ export const SERVICE_SETTING_DRIFT = Object.freeze({
   complianceManagementPartner: () => ({ macOsEnrollmentAssignments: [{ target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'fixture-group' } }] }),
   deviceManagementDerivedCredentialSettings: () => ({ renewalThresholdPercentage: 30 }),
 });
+
+// A zone is looked for by name before a create.
+export const SERVICE_SETTING_LISTED = Object.freeze(['/security/zones']);

@@ -862,7 +862,7 @@
       "exports": 1
     },
     "engine/restore/recordWriter.mjs": {
-      "exports": 7
+      "exports": 6
     },
     "engine/restore/recoveryMechanism.mjs": {
       "exports": 1

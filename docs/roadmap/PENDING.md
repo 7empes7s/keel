@@ -71,22 +71,23 @@ until then (a 403 means skip and list it).
 - `Agreement.ReadWrite.All` (Restorer, application grant) for `agreement.create/update` (`qualification.mjs:983`). O1 · S · owner
 - `APIConnectors.ReadWrite.All` (Restorer) for `identityApiConnector.create/update` (`qualification.mjs:987`). O1 · S · owner
 - `CustomAuthenticationExtension.ReadWrite.All` and `EventListener.ReadWrite.All` (Restorer) for `customAuthenticationExtension.create/update` and `authenticationEventListener.create/update` (#1072). O1 · S · owner
+- `SignInIdentifier.ReadWrite.All`, `Policy.ReadWrite.CrossTenantCapability`, `VerifiedId-Profile.ReadWrite.All`, `LifecyclePolicies-AgentId.ReadWrite.All` and `DeviceTemplate.ReadWrite.All` (Restorer) for `signInIdentifier.update`, `crossTenantM365Capability.update`, `verifiedIdProfile.create/update`, `lifecyclePolicy.create/update` and `deviceTemplate.create`; `schemaExtension.create` uses `Application.ReadWrite.All` and `Directory.ReadWrite.All` (#1075). O1 · S · owner
 - `Synchronization.ReadWrite.All` (Restorer) for `synchronizationJob.create/update` (`qualification.mjs:991`) and `Synchronization.Read.All` (Collector) for the job and schema reads (`docs/roadmap/restorer-least-privilege.md:53`). O1 · S · owner
 - `Ti.Read.All` (Collector, WindowsDefenderATP) for the Defender endpoint indicators read. O1 · S · owner
 
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 8 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
-sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
-
-- Entra other: app certificate authority trust (`:658`, the trust list stays manual), sign-in identifiers (`:661`), Verified ID profiles (`:664`), lifecycle policies (`:670`), default cross-tenant sharing settings (`:679`), device templates (`:686`), schema extensions (`:696`), profile card fields (`:719`). O1 · M · code
+`NOT_BUILT` entries, shown as "By hand (not built yet)" in `docs/coverage.md`). None are left: every
+type has a writer or is listed below as manual by design (#1074, #1075). Trust, sign-in endpoint and
+Logic App fields stay manual steps in any writer.
 
 ### Not restored by design (stay manual)
 
 - Certificate sign-in settings: the trusted certificate authority list is never written; a restore lists what differs (`qualification.mjs:101`, #994). O1 · — · none
 - Guest invitation domain restrictions: a restore never changes who can be invited (`qualification.mjs:237`, trust-field rule). O1 · — · none
 - PIM custom extensions: KEEL choice, Graph creates one only with its Logic App endpoint and sign-in, which a restore never writes (#1072). PIM managed groups: Microsoft limit, a group comes back under PIM only through its first eligible member, which KEEL does not back up (#1072). O1 · — · none
+- App certificate authority trust: KEEL choice, a configuration is only the trusted certificate authority list, which a restore never writes (#1075). O1 · — · none
 - Windows code signing certificates: a restore never uploads a certificate devices trust (#1074, trust-field rule). Remote help partners: only the partner's name and onboarding URL, a sign-in endpoint, are writable (#1074). Managed e-books, Secure Score action states and Teams custom apps are Microsoft limits (#1074: books come from Apple Business Manager, Graph documents no state update, no app package). O1 · — · none
 - Attack simulation automations, payloads, login pages, landing pages and notification emails: Microsoft limit, Graph lets tools read them but not create or change them (#1079; simulations themselves are restored as drafts). O1 · — · none
 

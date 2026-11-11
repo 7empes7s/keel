@@ -38,6 +38,8 @@ import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.m
 import { TENANT_POLICY_RECORDS } from '../../engine/restore/tenantPolicyOperations.mjs';
 import { ADMIN_CENTER_GUIDANCE, serviceSettingGuidance } from './settingsGuidance.mjs';
 import { signInGuidance } from './signInGuidance.mjs';
+import { directorySettingGuidance } from './directorySettingGuidance.mjs';
+import { DIRECTORY_SETTING_RECORDS } from '../../engine/restore/directorySettingOperations.mjs';
 
 export const LIVE_GATE_PLAN_VERSION = 1;
 export const LIVE_GATE_ISSUE = 148;
@@ -420,6 +422,7 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   },
   // Issues #995, #1008 and #1072: user flows, API connectors and sign-in extensions (signInGuidance.mjs).
   ...signInGuidance(FIXTURE_PREFIX),
+  ...directorySettingGuidance(FIXTURE_PREFIX), // Issue #1075 (directorySettingGuidance.mjs).
   activityBasedTimeoutPolicy: {
     kind: 'named-object', fixture: `idle sign-out policy ${FIXTURE_PREFIX}-idle (Graph only) with a one-hour default idle timeout, isOrganizationDefault false`,
     select: `${FIXTURE_PREFIX}-idle`, drift: 'change its WebSessionIdleTimeout to 02:00:00; for create, delete it',
@@ -743,7 +746,7 @@ export const evidenceStem = (resourceType, operation) => `${resourceType.replace
  * objects only (the branding profile) is left out: its live proof is a KEEL-RT-
  * fixture, so the option is not needed.
  */
-export const TENANT_WIDE_RECORD_TYPES = Object.freeze(new Set([...Object.values(IDENTITY_RECORDS), ...Object.values(INTUNE_EXTENDED_RECORDS)]
+export const TENANT_WIDE_RECORD_TYPES = Object.freeze(new Set([...Object.values(IDENTITY_RECORDS), ...Object.values(INTUNE_EXTENDED_RECORDS), ...Object.values(DIRECTORY_SETTING_RECORDS)]
   .filter((record) => record.tenantWide === true).map((record) => record.resourceType)));
 
 function setupFor(resourceType, operation, guidance, key) {

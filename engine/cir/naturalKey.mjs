@@ -85,6 +85,8 @@ export const ID_KEY_TYPES = new Set([
   'defenderIdentitySensor', 'secureScoreControlProfile',
 ]);
 
+const NAME_WHEN_NO_ID_TYPES = new Set(['signInIdentifier', 'crossTenantM365Capability']);
+
 // Tenant singletons: exactly one object per tenant, so the type name is the
 // key. Keyed here, not only in canonicalize.mjs's keyFor(), so a live object
 // read by the reconciliation plan (which calls naturalKeyFor directly) gets
@@ -121,6 +123,9 @@ export function naturalKeyFor(type, obj, ctx) {
   // A partner has no id or name: Graph identifies it by the partner's tenantId
   // (see canonicalize.mjs's keyFor()). Its sync settings are the same.
   if (PARTNER_KEY_TYPES.has(type) && typeof obj?.tenantId === 'string') return obj.tenantId;
+  // Issue #1075: Graph names a sign-in identifier and a default cross-tenant
+  // capability by their name (Email, crossTenantMailTipsLimited) and returns no id.
+  if (NAME_WHEN_NO_ID_TYPES.has(type) && (typeof obj?.id !== 'string' || !obj.id) && typeof obj?.name === 'string' && obj.name) return obj.name;
   if (ID_KEY_TYPES.has(type)) {
     if (typeof obj.id !== 'string' || obj.id.length === 0) throw new Error(`missing id for ${type}`);
     return obj.id;

@@ -422,7 +422,9 @@ test('the administrative batch runner drives the subset through applyWave and re
       'formsSettings update passed', 'microsoft365AppsInstallationOptions update passed', 'pronounsSettings update passed',
       // Issue #1074.
       'defenderIdentitySensor update passed', 'externalConnection create passed', 'externalConnection update passed',
-      'itemInsightsSettings update passed', 'securityZone create passed', 'securityZone update passed', 'todoSettings update passed'].sort());
+      'itemInsightsSettings update passed', 'securityZone create passed', 'securityZone update passed', 'todoSettings update passed',
+      // Issue #1075.
+      'profileCardProperty create passed', 'profileCardProperty update passed', 'schemaExtension create passed'].sort());
   assert.ok(report.operations.every((op) => op.synthetic === true));
   assert.ok(report.administrativeLedger.families.some((family) => family.resourceType === 'administrativeUnit'
     && family.unrecoverable.some((item) => item.name === 'members')));

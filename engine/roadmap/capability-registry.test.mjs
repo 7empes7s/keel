@@ -202,12 +202,23 @@ const REGISTERED = Object.freeze({
   // Issue #1072: a custom authentication extension (a create updates the live one with its name) and its listeners.
   customAuthenticationExtension: ['create', 'update'],
   authenticationEventListener: ['create', 'update'],
+  // Issue #1075: Entra directory settings and objects.
+  signInIdentifier: ['update'],
+  crossTenantM365Capability: ['update'],
+  profileCardProperty: ['create', 'update'],
+  verifiedIdProfile: ['create', 'update'],
+  lifecyclePolicy: ['create', 'update'],
+  deviceTemplate: ['create'],
+  schemaExtension: ['create'],
 });
 
 // Issue #1015: an attribute set is created under the backup's name, an attribute
 // under its set and name, and partner sync settings under the partner's tenant id.
 // Issue #1072: a custom authentication extension is never created; its create updates the live one with its name.
-const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner', 'customAuthenticationExtension']);
+// Issue #1075: a Verified ID profile create updates the live one with its name, a profile
+// card field is created under its directory field, and a schema extension under its id.
+const UPSERT_TYPES = new Set(['authenticationContextClassReference', 'attributeSet', 'customSecurityAttributeDefinition', 'crossTenantIdentitySyncPolicyPartner', 'customAuthenticationExtension',
+  'verifiedIdProfile', 'profileCardProperty', 'schemaExtension']);
 
 function governor() {
   return new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });

@@ -49,6 +49,30 @@ const SIGN_IN_EXTENSION_WRITE_PATHS = Object.freeze({
   authenticationEventListener: '/identity/authenticationEventListeners',
 });
 
+/**
+ * Issue #1075: Entra directory settings named by a fixed name (sign-in
+ * identifiers, default cross-tenant capabilities, profile card fields;
+ * engine/restore/directorySettingOperations.mjs) and four directory objects
+ * (Verified ID profiles, lifecycle policies, device templates, schema extensions;
+ * engine/restore/directoryObjectOperations.mjs). A Verified ID profile create
+ * updates the live one with the backup's name; a schema extension is created
+ * under the backup's id; a profile card field under its directory field. Delete
+ * is not registered for any of them.
+ */
+export const DIRECTORY_SETTING_HANDLER = 'engine/restore/directorySettingOperations.mjs#applyDirectorySettingWrite';
+export const DIRECTORY_OBJECT_HANDLER = 'engine/restore/directoryObjectOperations.mjs#applyDirectoryObjectWrite';
+const DIRECTORY_PROOF = 'engine/roadmap/entra-directory-settings.test.mjs';
+const DIRECTORY_WRITES = Object.freeze([
+  ['signInIdentifier', '/identity/signInIdentifiers', ['update'], DIRECTORY_SETTING_HANDLER],
+  ['crossTenantM365Capability', '/policies/crossTenantAccessPolicy/default/m365Capabilities', ['update'], DIRECTORY_SETTING_HANDLER],
+  ['profileCardProperty', '/admin/people/profileCardProperties', ['create', 'update'], DIRECTORY_SETTING_HANDLER],
+  ['verifiedIdProfile', '/identity/verifiedId/profiles', ['create', 'update'], DIRECTORY_OBJECT_HANDLER],
+  ['lifecyclePolicy', '/identityGovernance/lifecycleWorkflows/lifecyclePolicies', ['create', 'update'], DIRECTORY_OBJECT_HANDLER],
+  ['deviceTemplate', '/templates/deviceTemplates', ['create'], DIRECTORY_OBJECT_HANDLER],
+  ['schemaExtension', '/schemaExtensions', ['create'], DIRECTORY_OBJECT_HANDLER],
+]);
+const SERVER_ASSIGNED_CREATES = new Set(['lifecyclePolicy', 'deviceTemplate']);
+
 export default [
   ...Object.entries(ENTRA_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({
     resourceType, operation, path, handler: ENTRA_HANDLER,
@@ -64,5 +88,10 @@ export default [
     resourceType, operation, path, handler: SIGN_IN_EXTENSION_HANDLER,
     idOutcome: operation === 'create' && resourceType === 'authenticationEventListener' ? 'server-assigned' : 'preserved',
     proofRef: SIGN_IN_EXTENSION_PROOF,
+  }))),
+  ...DIRECTORY_WRITES.flatMap(([resourceType, path, operations, handler]) => operations.map((operation) => ({
+    resourceType, operation, path, handler,
+    idOutcome: operation === 'create' && SERVER_ASSIGNED_CREATES.has(resourceType) ? 'server-assigned' : 'preserved',
+    proofRef: DIRECTORY_PROOF,
   }))),
 ];

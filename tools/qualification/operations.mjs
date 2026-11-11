@@ -42,6 +42,7 @@ import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOp
 import { SYNC_JOB_PAYLOAD, syncJobDrift, syncJobRead, syncJobWrite } from './syncJobFixture.mjs';
 import { ATTACK_SIMULATION_PAYLOAD, attackSimulationRead, attackSimulationWrite, seedAttackSimulation } from './attackSimulationFixture.mjs';
 import { SIGN_IN_EXTENSION_LISTED, SIGN_IN_EXTENSION_PAYLOADS, SIGN_IN_EXTENSION_SEEDS } from './signInExtensionFixture.mjs';
+import { DIRECTORY_SETTING_LISTED, DIRECTORY_SETTING_PAYLOADS, DIRECTORY_SETTING_SEEDS, directorySettingWrite } from './directorySettingFixture.mjs';
 import { userFlowRead, userFlowWrite } from './userFlowFixture.mjs';
 
 // Wave 2 ENTRA: collections a directory policy create lists to find an object
@@ -243,6 +244,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   synchronizationJob: SYNC_JOB_PAYLOAD, // Issue #1016 (syncJobFixture.mjs).
   attackSimulation: ATTACK_SIMULATION_PAYLOAD, // Issue #1073 (attackSimulationFixture.mjs).
   ...SIGN_IN_EXTENSION_PAYLOADS, // Issue #1072 (signInExtensionFixture.mjs).
+  ...DIRECTORY_SETTING_PAYLOADS, // Issue #1075 (directorySettingFixture.mjs).
   accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
   // Issue #992: a package in its catalog, and the group role it grants.
   accessPackage: { displayName: 'Fixture package', description: 'Fixture package', isHidden: true, catalog: { id: 'fixture-source-catalog', displayName: 'Fixture catalog' } },
@@ -658,6 +660,7 @@ const FIXTURE_SEEDS = Object.freeze({
   accessPackageCatalogResource: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
   attackSimulation: seedAttackSimulation, // Issue #1073: the payload, pages and person a simulation needs.
   ...SIGN_IN_EXTENSION_SEEDS, // Issue #1072.
+  ...DIRECTORY_SETTING_SEEDS, // Issue #1075.
   crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
 
@@ -674,7 +677,7 @@ const LISTED_BEFORE_CREATE = new Set([
   // Issue #1007: an access review series is looked for by name and scope before a
   // create, and terms of use by name.
   '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
-  ...SIGN_IN_EXTENSION_LISTED, // Issue #1072.
+  ...SIGN_IN_EXTENSION_LISTED, ...DIRECTORY_SETTING_LISTED, // Issues #1072, #1075.
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
   // Issue #1071: a catalog role's assignments are listed before a create.
@@ -698,7 +701,8 @@ export function fakeGraph() {
     async write(version, path, { method, body }) {
       writes.push({ method, path });
       const nextId = () => { next += 1; return next; };
-      const flowWrite = userFlowWrite(objects, path, method, body, nextId) ?? syncJobWrite(objects, path, method, body, nextId) ?? attackSimulationWrite(objects, path, method, body, nextId);
+      const flowWrite = userFlowWrite(objects, path, method, body, nextId) ?? syncJobWrite(objects, path, method, body, nextId) ?? attackSimulationWrite(objects, path, method, body, nextId)
+        ?? directorySettingWrite(objects, path, method, body);
       if (flowWrite) return flowWrite;
       // Roadmap task-152: a Conditional Access policy is restored from its own
       // deleted-items container; the fake keeps one deleted map for both.

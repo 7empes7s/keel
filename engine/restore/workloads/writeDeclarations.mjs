@@ -109,6 +109,12 @@ export const TRUST_FIELDS = Object.freeze({
   // long sign-in waits on it (clientConfiguration) and what sign-in does when it fails
   // (behaviorOnError).
   customAuthenticationExtension: Object.freeze(['authenticationConfiguration', 'endpointConfiguration', 'clientConfiguration', 'behaviorOnError']),
+  // Issue #1075: a Verified ID profile's accepted issuer, claim bindings and credential type
+  // (verifiedIdProfileConfiguration), the verifier's DID and the accepted driver's licence
+  // issuers decide whose credentials Entra trusts. A device template's mutual TLS
+  // configuration decides which certificates its devices sign in with.
+  verifiedIdProfile: Object.freeze(['verifiedIdProfileConfiguration', 'verifierDid', 'mobileDriversLicenseConfiguration']),
+  deviceTemplate: Object.freeze(['mutualTlsOauthConfigurationId', 'mutualTlsOauthConfigurationTenantId']),
   // The certificate-based authentication method of the authentication methods policy
   // (tenantPolicyOperations.mjs METHOD_CONFIGURATION_FIELDS): which certificate fields
   // decide single- or multi-factor sign-in, and which certificate field names the user.

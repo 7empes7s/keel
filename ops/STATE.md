@@ -200,6 +200,10 @@ engine code after the candidate, so the next sign-off needs a new frozen candida
   same name) and `authenticationEventListener` create and update are fixture-tested with no live record yet.
   Capture needs KEEL-RT-1072-claims calling https://keel-rt.invalid/api/claims and its listener on the
   KEEL-RT-148-app (steps in the #1072 PR body); listener writes and token claim changes are approval-held.
+- Entra directory settings (#1075): `signInIdentifier` and `crossTenantM365Capability` update, `profileCardProperty`,
+  `verifiedIdProfile` and `lifecyclePolicy` create and update, `deviceTemplate` and `schemaExtension` create are
+  fixture-tested with no live record yet. Capture uses the KEEL-RT-148- fixtures in the #1075 PR body; the three
+  tenant-wide settings need --allow-tenant-wide-test-writes, and sign-in, sharing and Verified ID changes are approval-held.
 - App provisioning (#1016): `synchronizationJob` schema update and create of a stopped job are fixture-tested
   with no live record yet. The backup now reads each job's schema: check the Collector holds
   `Synchronization.Read.All` (a 403 on the jobs read means it does not) and the Restorer

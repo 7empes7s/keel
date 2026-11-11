@@ -643,18 +643,20 @@ test('a writer\'s follow-up steps become completion items; parts that are only a
 
 test('a type with no writer gets a by-hand step with the backed-up values and its admin center path', () => {
   // Wave 2 IDO gave lifecycle workflows a writer, issue #1007 access reviews and
-  // terms of use, and issue #1071 access package assignments, so a lifecycle policy is the example.
-  const policy = {
-    id: 'lp-1', displayName: 'KEEL-RT policy', createdDateTime: '2026-01-01T00:00:00Z', enforcementAction: 'disable',
+  // terms of use, issue #1071 access package assignments and issue #1075 lifecycle
+  // policies, so an exposure management zone is the example.
+  const zone = {
+    id: 'zone-1', displayName: 'KEEL-RT zone', description: 'Fixture zone', createdDateTime: '2026-01-01T00:00:00Z',
   };
-  const steps = byHandSteps('lifecyclePolicy', policy, TYPE_DECISIONS.lifecyclePolicy);
+  const steps = byHandSteps('securityZone', zone, TYPE_DECISIONS.securityZone);
   assert.equal(steps[0].requirement, 'followUp:recreate-by-hand');
-  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Lifecycle workflows > Lifecycle policies');
-  assert.equal(steps[0].values.displayName, 'KEEL-RT policy');
+  assert.equal(steps[0].portalPath, 'Microsoft Defender portal > Exposure management > Settings > Zones');
+  assert.equal(steps[0].values.displayName, 'KEEL-RT zone');
   assert.ok(!('id' in steps[0].values) && !('createdDateTime' in steps[0].values), 'ids and timestamps are not values to enter');
-  assert.equal(steps[1].part, 'Its rules and past versions', 'the parts the backup does not hold follow');
+  assert.equal(steps[1].part, 'The environments in the zone', 'the parts the backup does not hold follow');
   assert.throws(() => byHandSteps('accessPackageAssignment', {}, TYPE_DECISIONS.accessPackageAssignment), /has a writer/);
   assert.throws(() => byHandSteps('lifecycleWorkflow', {}, TYPE_DECISIONS.lifecycleWorkflow), /has a writer/);
+  assert.throws(() => byHandSteps('lifecyclePolicy', {}, TYPE_DECISIONS.lifecyclePolicy), /has a writer/);
   assert.throws(() => byHandSteps('application', incompleteApp, TYPE_DECISIONS.application), /has a writer/);
 });
 

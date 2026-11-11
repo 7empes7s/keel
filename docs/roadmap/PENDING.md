@@ -71,16 +71,16 @@ until then (a 403 means skip and list it).
 - `Agreement.ReadWrite.All` (Restorer, application grant) for `agreement.create/update` (`qualification.mjs:983`). O1 · S · owner
 - `APIConnectors.ReadWrite.All` (Restorer) for `identityApiConnector.create/update` (`qualification.mjs:987`). O1 · S · owner
 - `CustomAuthenticationExtension.ReadWrite.All` and `EventListener.ReadWrite.All` (Restorer) for `customAuthenticationExtension.create/update` and `authenticationEventListener.create/update` (#1072). O1 · S · owner
+- `SignInIdentifier.ReadWrite.All`, `Policy.ReadWrite.CrossTenantCapability`, `VerifiedId-Profile.ReadWrite.All`, `LifecyclePolicies-AgentId.ReadWrite.All` and `DeviceTemplate.ReadWrite.All` (Restorer) for `signInIdentifier.update`, `crossTenantM365Capability.update`, `verifiedIdProfile.create/update`, `lifecyclePolicy.create/update` and `deviceTemplate.create`; `schemaExtension.create` uses `Application.ReadWrite.All` and `Directory.ReadWrite.All` (#1075). O1 · S · owner
 - `Synchronization.ReadWrite.All` (Restorer) for `synchronizationJob.create/update` (`qualification.mjs:991`) and `Synchronization.Read.All` (Collector) for the job and schema reads (`docs/roadmap/restorer-least-privilege.md:53`). O1 · S · owner
 - `Ti.Read.All` (Collector, WindowsDefenderATP) for the Defender endpoint indicators read. O1 · S · owner
 
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; 23 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; 15 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Entra other: app certificate authority trust (`:645`, the trust list stays manual), sign-in identifiers (`:648`), Verified ID profiles (`:651`), lifecycle policies (`:657`), default cross-tenant sharing settings (`:666`), device templates (`:672`), schema extensions (`:681`), profile card fields (`:703`). O1 · M · code
 - Defender and security: custom detection rules (`:709`), Defender for Identity sensors (`:712`), Secure Score action states (`:715`), exposure management zones (`:675`). O1 · M · code
 - Intune partners and connectors: mobile threat defense (`:424`), device management partners (`:427`), compliance partners (`:430`), remote help partners (`:433`), derived credential issuers (`:568`). O1 · M · code
 - Intune apps: managed e-books (`:587`), Windows code signing certificates (`:602`). O1 · S · code
@@ -91,6 +91,7 @@ sign-in endpoint and Logic App fields stay manual steps in any writer built for 
 - Certificate sign-in settings: the trusted certificate authority list is never written; a restore lists what differs (`qualification.mjs:101`, #994). O1 · — · none
 - Guest invitation domain restrictions: a restore never changes who can be invited (`qualification.mjs:237`, trust-field rule). O1 · — · none
 - PIM custom extensions: KEEL choice, Graph creates one only with its Logic App endpoint and sign-in, which a restore never writes (#1072). PIM managed groups: Microsoft limit, a group comes back under PIM only through its first eligible member, which KEEL does not back up (#1072). O1 · — · none
+- App certificate authority trust: KEEL choice, a configuration is only the trusted certificate authority list, which a restore never writes (#1075). O1 · — · none
 
 ## O2: admins know which changes matter and act on them
 

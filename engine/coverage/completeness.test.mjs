@@ -126,7 +126,7 @@ test('a record cannot claim more than the decision behind it', () => {
 test('the coverage doc shows the four states and nothing "not yet investigated"', () => {
   const doc = renderCoverageDoc();
   assert.ok(!/not yet investigated/i.test(doc));
-  assert.match(doc, /\| Verified ID profiles \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
+  assert.match(doc, /\| Exposure management zones \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
   assert.match(doc, /\| Delegated app consents \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Named locations \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Built-in admin roles \| [^|]+ \| Microsoft-managed \| Nothing to restore \|/);

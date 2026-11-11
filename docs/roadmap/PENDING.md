@@ -77,15 +77,10 @@ until then (a 403 means skip and list it).
 ### Restores not built yet
 
 Backed up in full; restored by hand until a writer exists (`engine/coverage/coverageDoc.mjs`, the
-`NOT_BUILT` entries; shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
+`NOT_BUILT` entries; 8 types, shown as "By hand (not built yet)" in `docs/coverage.md`). Trust,
 sign-in endpoint and Logic App fields stay manual steps in any writer built for these.
 
-- Entra other: app certificate authority trust (the trust list stays manual), sign-in identifiers, Verified ID profiles, lifecycle policies, default cross-tenant sharing settings, device templates, schema extensions, profile card fields. O1 · M · code
-- Attack simulation automations: no writer yet (automations are created in the Defender portal); simulations, payloads, login pages, landing pages and notifications were restored by #1073. O1 · S · code
-- Defender for Identity sensors, Secure Score action states, exposure management zones were restored by #1074; custom detection rules remain. O1 · M · code
-- Intune partners and connectors: mobile threat defense, device management partners, compliance partners, derived credential issuers; remote help partners were restored by #1074. O1 · M · code
-- Intune apps: managed e-books; Windows code signing certificates were reclassified to manual (trust-field rule) by #1074. O1 · S · code
-- Microsoft 365 and Teams: To Do settings, Teams custom apps; item insights setting and Copilot connectors were restored by #1074. O1 · S · code
+- Entra other: app certificate authority trust (`:658`, the trust list stays manual), sign-in identifiers (`:661`), Verified ID profiles (`:664`), lifecycle policies (`:670`), default cross-tenant sharing settings (`:679`), device templates (`:686`), schema extensions (`:696`), profile card fields (`:719`). O1 · M · code
 
 ### Not restored by design (stay manual)
 
@@ -93,6 +88,7 @@ sign-in endpoint and Logic App fields stay manual steps in any writer built for 
 - Guest invitation domain restrictions: a restore never changes who can be invited (`qualification.mjs:237`, trust-field rule). O1 · — · none
 - PIM custom extensions: KEEL choice, Graph creates one only with its Logic App endpoint and sign-in, which a restore never writes (#1072). PIM managed groups: Microsoft limit, a group comes back under PIM only through its first eligible member, which KEEL does not back up (#1072). O1 · — · none
 - Windows code signing certificates: a restore never uploads a certificate devices trust (#1074, trust-field rule). Remote help partners: only the partner's name and onboarding URL, a sign-in endpoint, are writable (#1074). Managed e-books, Secure Score action states and Teams custom apps are Microsoft limits (#1074: books come from Apple Business Manager, Graph documents no state update, no app package). O1 · — · none
+- Attack simulation automations, payloads, login pages, landing pages and notification emails: Microsoft limit, Graph lets tools read them but not create or change them (#1079; simulations themselves are restored as drafts). O1 · — · none
 
 ## O2: admins know which changes matter and act on them
 

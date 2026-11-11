@@ -26,11 +26,11 @@
  *  - each partner tenant's user sync settings (issue #1015,
  *    crossTenantSyncOperations.mjs).
  *
- * Types the backup cannot drive in full (access package assignments, catalog
- * resources on their own) have no record here; IDENTITY_BEST_EFFORT names them
- * and why. Access packages and
+ * Types the backup cannot drive in full would have no record here;
+ * IDENTITY_BEST_EFFORT names them and why (none now). Access packages and
  * their resource roles are in accessPackageOperations.mjs; connected
  * organizations and access package policies in entitlementPolicyOperations.mjs;
+ * catalog resources, assignments and catalog roles in entitlementGrantOperations.mjs;
  * access review series in accessReviewOperations.mjs; terms of use in
  * agreementOperations.mjs; provisioning jobs in synchronizationJobOperations.mjs.
  *
@@ -49,6 +49,7 @@ import { createdOnce, permanentWriteRefusal, sameIdLists, undoOnlyDelete, withAp
 import { USER_FLOW_RECORDS } from './userFlowOperations.mjs';
 import { ACCESS_PACKAGE_RECORD, ROLE_SCOPE_RECORD, accessPackageDispatch } from './accessPackageOperations.mjs';
 import { ASSIGNMENT_POLICY_RECORD, CONNECTED_ORGANIZATION_RECORD, entitlementPolicyDispatch } from './entitlementPolicyOperations.mjs';
+import { ASSIGNMENT_RECORD, CATALOG_RESOURCE_RECORD, ROLE_ASSIGNMENT_RECORD, entitlementGrantDispatch } from './entitlementGrantOperations.mjs';
 import { ACCESS_REVIEW_RECORD, accessReviewDispatch } from './accessReviewOperations.mjs';
 import { AGREEMENT_RECORD, agreementDispatch } from './agreementOperations.mjs';
 import { SYNCHRONIZATION_JOB_RECORD } from './synchronizationJobOperations.mjs';
@@ -848,6 +849,11 @@ export const IDENTITY_RECORDS = Object.freeze({
   // access package policies, behind the restore approval.
   connectedOrganization: CONNECTED_ORGANIZATION_RECORD,
   accessPackageAssignmentPolicy: ASSIGNMENT_POLICY_RECORD,
+  // Issue #1071 (entitlementGrantOperations.mjs): catalog resources, access granted
+  // again through a request, and catalog roles, behind the restore approval.
+  accessPackageCatalogResource: CATALOG_RESOURCE_RECORD,
+  accessPackageAssignment: ASSIGNMENT_RECORD,
+  entitlementManagementRoleAssignment: ROLE_ASSIGNMENT_RECORD,
   // Issue #1007 (accessReviewOperations.mjs): access review series, created
   // behind the restore approval with their principals matched in the target.
   accessReviewScheduleDefinition: ACCESS_REVIEW_RECORD,
@@ -1064,10 +1070,7 @@ export const IDENTITY_RECORDS = Object.freeze({
 });
 
 /** Types read in wave 1 that no record here can write in full, and why. */
-export const IDENTITY_BEST_EFFORT = Object.freeze({
-  accessPackageAssignment: 'an assignment is granted by a request through its policy, never copied',
-  accessPackageCatalogResource: 'a group or app is added to a catalog only by the resource role writer, when a package grants it and it exists in the target; a site is added by hand',
-});
+export const IDENTITY_BEST_EFFORT = Object.freeze({});
 
 // ------------------------------------------------------------------- users
 
@@ -1369,7 +1372,8 @@ export async function applyIdentityEdges(writer, operations, ctx = {}) {
 /** One write of a type this module owns. */
 export async function applyIdentityObjectWrite(writer, resource, verb, ctx = {}) {
   if (resource.resourceType === 'user') return applyUserRecreate(writer, resource, verb, ctx);
-  const routed = accessPackageDispatch(resource, verb, ctx) ?? entitlementPolicyDispatch(resource, verb, ctx) ?? accessReviewDispatch(resource, verb, ctx)
+  const routed = accessPackageDispatch(resource, verb, ctx) ?? entitlementPolicyDispatch(resource, verb, ctx) ?? entitlementGrantDispatch(resource, verb, ctx)
+    ?? accessReviewDispatch(resource, verb, ctx)
     ?? agreementDispatch(resource, verb, ctx) ?? identitySyncDispatch(resource);
   if (routed?.done) return routed.done;
   if (routed) return applyRecordWrite(writer, routed.record, routed.resource, verb, ctx);

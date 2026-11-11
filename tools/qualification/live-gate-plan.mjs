@@ -597,6 +597,19 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the policy id KEEL shows for the fixture', drift: 'change its description; for the weakening check, turn approval off by hand and see the restore hold it; for create, delete the policy (keep the package)',
     note: `The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. The requestor group has no members, so nobody can request the package. Delete the policy before the package and catalog.`,
   },
+  // Issue #1071: a group in a catalog, one assignment through the #993 policy, and a catalog reader.
+  accessPackageCatalogResource: {
+    kind: 'by-reference', fixture: `the security group ${FIXTURE_PREFIX}-group (no members) as a resource of KEEL-RT-992-catalog, used by no access package`,
+    select: 'the catalog resource id KEEL shows for the fixture', drift: 'remove the group from the catalog',
+    note: 'The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. Only the fixture group, never a real group, app or site. Remove it from the catalog at the end.' },
+  accessPackageAssignment: {
+    kind: 'by-reference', fixture: 'the fixture user keel-rt-20260908-carla assigned KEEL-RT-992-package through KEEL-RT-993-policy, ending in 7 days (the package grants only the empty fixture group)',
+    select: 'the assignment id KEEL shows for the fixture', drift: 'remove the assignment by hand (wait until its state is expired or removed)',
+    note: 'The write is approval-held: run the dry run, check it says carla gets KEEL-RT-992-package through KEEL-RT-993-policy, have a second person approve "Changes admin access", then enforce. Check the backup names the policy (assignmentPolicy is not empty): the live read decides whether Graph expands it. Remove the assignment at the end.' },
+  entitlementManagementRoleAssignment: {
+    kind: 'by-reference', fixture: 'the fixture user keel-rt-20260908-carla as Catalog reader on KEEL-RT-992-catalog',
+    select: 'the role assignment id KEEL shows for the fixture', drift: 'remove carla from the catalog\'s readers',
+    note: 'The write is approval-held: run the dry run, have a second person approve "Changes admin access", then enforce. Catalog reader only, never catalog owner, and never on a real catalog. Remove the role at the end.' },
   // Issue #1007: terms of use that no Conditional Access policy requires.
   agreement: {
     kind: 'named-object', fixture: 'terms of use KEEL-RT-1007-terms with one English PDF (a one-page fixture document), viewing required, required by no Conditional Access policy',

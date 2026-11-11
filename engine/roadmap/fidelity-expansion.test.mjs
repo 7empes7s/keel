@@ -128,39 +128,41 @@ test('scopes are derived from registered operations only; no new family is fully
   const certificates = qualificationFor('certificateBasedAuthConfiguration');
   assert.equal(certificates.decision, 'manual');
   assert.deepEqual({ status: certificates.expansion.status, restoreScope: certificates.expansion.restoreScope }, { status: 'manual', restoreScope: 'none' });
-  // Issue #993 gave connected organizations a writer; access package assignments stay by hand.
+  // Issue #993 gave connected organizations a writer, and issue #1071 access package
+  // assignments; outside connectors stay by hand (their sign-in is never written).
   assert.equal(qualificationFor('connectedOrganization').decision, 'automated');
-  assert.equal(restoreScopeFor('accessPackageAssignment'), 'none');
-  const unit = qualificationFor('accessPackageAssignment');
-  // Coverage plan v3: no longer 'unknown'; restored by hand until a writer exists.
+  assert.equal(qualificationFor('accessPackageAssignment').decision, 'automated');
+  assert.equal(restoreScopeFor('externalOriginResourceConnector'), 'none');
+  const unit = qualificationFor('externalOriginResourceConnector');
   assert.equal(unit.decision, 'manual');
-  assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });
+  assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'manual', restoreScope: 'none' });
   assert.equal(qualificationFor('application').expansion.restoreScope, 'partial');
 });
 
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
   // Roadmap task-109 registered administrativeUnit and groupSetting, and
-  // task-151 roleEligibilitySchedule; the research-needed examples are now
-  // accessPackageAssignment (Wave 2 ENTRA registered oauth2PermissionGrant, issue
-  // #991 roleAssignmentSchedule, issue #992 accessPackage and issue #993
-  // accessPackageAssignment and accessPackageAssignment; issue #994 made
-  // certificateBasedAuthConfiguration manual by design).
-  const asQualified = { ...EXPANSION_INVENTORY, accessPackageAssignment: { ...EXPANSION_INVENTORY.accessPackageAssignment, status: 'qualified-subset' } };
-  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /accessPackageAssignment is marked qualified-subset but has no registered write capability/);
+  // task-151 roleEligibilitySchedule; Wave 2 ENTRA registered oauth2PermissionGrant,
+  // issue #991 roleAssignmentSchedule, issue #992 accessPackage, issue #993
+  // accessPackageAssignmentPolicy and issue #1071 accessPackageAssignment, so no
+  // family is research-needed. The examples are by-hand families with no writer:
+  // externalOriginResourceConnector (issue #1071: its sign-in is never written)
+  // and certificateBasedAuthConfiguration (issue #994).
+  const asQualified = { ...EXPANSION_INVENTORY, externalOriginResourceConnector: { ...EXPANSION_INVENTORY.externalOriginResourceConnector, status: 'qualified-subset' } };
+  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /externalOriginResourceConnector is marked qualified-subset but has no registered write capability/);
   const certificatesQualified = { ...EXPANSION_INVENTORY, certificateBasedAuthConfiguration: { ...EXPANSION_INVENTORY.certificateBasedAuthConfiguration, status: 'qualified-subset' } };
   assert.throws(() => buildExpansionInventory({ inventory: certificatesQualified }), /certificateBasedAuthConfiguration is marked qualified-subset but has no registered write capability/);
-  const flagged = { ...EXPANSION_INVENTORY, accessPackageAssignment: { ...EXPANSION_INVENTORY.accessPackageAssignment, fullyRestorable: true } };
+  const flagged = { ...EXPANSION_INVENTORY, externalOriginResourceConnector: { ...EXPANSION_INVENTORY.externalOriginResourceConnector, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
-  const { accessPackageAssignment: _omitted, ...missing } = EXPANSION_INVENTORY;
-  assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: accessPackageAssignment\b/);
+  const { externalOriginResourceConnector: _omitted, ...missing } = EXPANSION_INVENTORY;
+  assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: externalOriginResourceConnector\b/);
   const demoted = { ...EXPANSION_INVENTORY, application: { ...EXPANSION_INVENTORY.application, status: 'research-needed' } };
   assert.throws(() => buildExpansionInventory({ inventory: demoted }), /application has a registered write capability but is marked research-needed/);
-  const noRoute = { ...EXPANSION_INVENTORY, accessPackageAssignment: { ...EXPANSION_INVENTORY.accessPackageAssignment, api: null } };
+  const noRoute = { ...EXPANSION_INVENTORY, externalOriginResourceConnector: { ...EXPANSION_INVENTORY.externalOriginResourceConnector, status: 'research-needed', api: null } };
   assert.throws(() => buildExpansionInventory({ inventory: noRoute }), /must name the API route/);
   assert.throws(() => buildExpansionInventory({ decisions: { ...TYPE_DECISIONS, certificateBasedAuthConfiguration: { decision: 'automated', reason: 'x' } } }),
     /certificateBasedAuthConfiguration is manual in its batch but automated/);
-  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, accessPackageAssignment: { decision: 'automated', reason: 'x' } } }),
-    /accessPackageAssignment is marked automated but has no registered write capability/);
+  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, externalOriginResourceConnector: { decision: 'automated', reason: 'x' } } }),
+    /externalOriginResourceConnector is marked automated but has no registered write capability/);
 });
 
 // ------------------------------------------------- the qualified subset, through applyWave
@@ -357,8 +359,9 @@ test('the identity batch runner drives every qualified operation through applyWa
 
   assert.ok(report.refused.some((entry) => entry.resourceType === 'application' && entry.operation === 'delete' && entry.claim === 'unsupported'));
   const remaining = new Map(report.remaining.map((entry) => [entry.resourceType, entry]));
-  // Issues #991, #992 and #993 qualified roleAssignmentSchedule, access packages, their policies and connected organizations; assignments are still research-needed.
-  for (const type of ['certificateBasedAuthConfiguration', 'accessPackageAssignment']) {
+  // Issues #991, #992, #993 and #1071 qualified roleAssignmentSchedule, access packages, their policies, connected organizations and assignments; outside connectors stay by hand.
+  assert.ok(!remaining.has('accessPackageAssignment'));
+  for (const type of ['certificateBasedAuthConfiguration', 'externalOriginResourceConnector']) {
     assert.ok(remaining.has(type), `${type} stays listed`);
     assert.equal(remaining.get(type).restoreScope, 'none');
     assert.ok(remaining.get(type).permission);

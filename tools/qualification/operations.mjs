@@ -266,6 +266,23 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     },
     accessPackage: { id: 'fixture-source-package' },
   },
+  // Issue #1071: a group in its catalog, one user's assignment through a policy,
+  // and a catalog reader, in the shapes Graph lists them (catalog resources read
+  // per catalog with the parent's id kept as catalogId).
+  accessPackageCatalogResource: {
+    displayName: 'Fixture group', description: 'Fixture group', originId: 'fixture-source-group', originSystem: 'AadGroup',
+    attributes: [], createdDateTime: '2026-01-01T00:00:00Z', catalogId: 'fixture-source-catalog',
+  },
+  accessPackageAssignment: {
+    state: 'delivered', status: 'Delivered', expiredDateTime: null,
+    schedule: { startDateTime: '2026-01-01T00:00:00Z', recurrence: null, expiration: { endDateTime: null, duration: null, type: 'noExpiration' } },
+    target: { id: 'fixture-subject', objectId: 'fixture-source-user', subjectType: 'user', displayName: 'Fixture user', principalName: 'carla@fixture.example', email: 'carla@fixture.example' },
+    accessPackage: { id: 'fixture-source-package', displayName: 'Fixture package' },
+    assignmentPolicy: { id: 'fixture-source-policy', displayName: 'Fixture policy' },
+  },
+  entitlementManagementRoleAssignment: {
+    principalId: 'fixture-source-user', roleDefinitionId: '44272f93-9762-48e8-af59-1b5351b1d6b3', appScopeId: '/AccessPackageCatalog/aaaaaaaa-0000-4000-8000-000000001071',
+  },
   // Issue #1007: terms of use with one English PDF, named by its hash as the
   // backup stores it (engine/collect/agreementFiles.mjs).
   agreement: {
@@ -588,6 +605,10 @@ const FIXTURE_TARGET_IDS = Object.freeze({
   accessPackageResourceRoleScope: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group']],
   // Issue #993: the package, group and approver live in the target under other ids.
   accessPackageAssignmentPolicy: [['accessPackage:fixture-source-package', 'fixture-package'], ['group:fixture-group', 'fixture-group'], ['user:approver@fixture.example', 'fixture-user']],
+  // Issue #1071: the catalog, group, user, package and policy live in the target under other ids.
+  accessPackageCatalogResource: [['accessPackageCatalog:fixture-source-catalog', 'fixture-catalog'], ['group:fixture-group', 'fixture-group']],
+  accessPackageAssignment: [['user:carla@fixture.example', 'fixture-user'], ['accessPackage:fixture-source-package', 'fixture-package'], ['accessPackageAssignmentPolicy:fixture-source-policy', 'fixture-policy']],
+  entitlementManagementRoleAssignment: [['accessPackageCatalog:aaaaaaaa-0000-4000-8000-000000001071', 'bbbbbbbb-0000-4000-8000-000000001071'], ['user:carla@fixture.example', 'fixture-user']],
   // Issue #1007: the reviewed group and the reviewer live in the target under other ids.
   accessReviewScheduleDefinition: [['group:fixture-group', 'bbbbbbbb-0000-4000-8000-000000001007'], ['user:reviewer@fixture.example', 'bbbbbbbb-0000-4000-8000-000000001008']],
 });
@@ -604,6 +625,16 @@ const FIXTURE_REFERENCES = Object.freeze({
     { field: 'specificAllowedTargets[0].groupId', symbol: 'group:fixture-group', required: true },
     { field: 'requestApprovalSettings.stages[0].primaryApprovers[0].userId', symbol: 'user:approver@fixture.example', required: true },
   ],
+  accessPackageCatalogResource: [
+    { field: 'catalogId', symbol: 'accessPackageCatalog:fixture-source-catalog', required: true },
+    { field: 'originId', symbol: 'group:fixture-group', required: true },
+  ],
+  accessPackageAssignment: [
+    { field: 'target.objectId', symbol: 'user:carla@fixture.example', required: true },
+    { field: 'accessPackage.id', symbol: 'accessPackage:fixture-source-package', required: true },
+    { field: 'assignmentPolicy.id', symbol: 'accessPackageAssignmentPolicy:fixture-source-policy', required: true },
+  ],
+  entitlementManagementRoleAssignment: [{ field: 'principalId', symbol: 'user:carla@fixture.example', required: true }],
   accessReviewScheduleDefinition: [
     { field: 'scope.query', symbol: 'group:fixture-group', required: true },
     { field: 'reviewers[0].query', symbol: 'user:reviewer@fixture.example', required: true },
@@ -619,6 +650,8 @@ const FIXTURE_SEEDS = Object.freeze({
     graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [{ id: 'fixture-catalog-group', originId: 'fixture-group', originSystem: 'AadGroup' }] });
     graph.objects.set(`${EM}/accessPackages/fixture-package`, { id: 'fixture-package', catalog: { id: 'fixture-catalog' }, resourceRoleScopes: [] });
   },
+  // Issue #1071: the catalog a resource is added to.
+  accessPackageCatalogResource: (graph) => graph.objects.set(`${EM}/catalogs/fixture-catalog`, { id: 'fixture-catalog', resources: [] }),
   crossTenantIdentitySyncPolicyPartner: (graph) => ['', '/identitySynchronization'].forEach((part) => graph.objects.set(`/policies/crossTenantAccessPolicy/partners/fixture-partner-tenant${part}`, { tenantId: 'fixture-partner-tenant' })),
 });
 
@@ -637,6 +670,8 @@ const LISTED_BEFORE_CREATE = new Set([
   '/identityGovernance/accessReviews/definitions', '/identityGovernance/termsOfUse/agreements',
   // Issue #994: a staged rollout create looks for one with the same name and feature.
   '/policies/featureRolloutPolicies',
+  // Issue #1071: a catalog role's assignments are listed before a create.
+  '/roleManagement/entitlementManagement/roleAssignments',
 ]);
 
 // Issue #994: an authentication context is written under its own id, so the
@@ -834,6 +869,17 @@ export function fakeGraph() {
         objects.set(catalogPath, { ...catalog, resources: [...(catalog.resources ?? []), { id: `fixture-${next}`, ...body.resource }] });
         return { ok: true, status: 201, body: { id: `fixture-request-${next}`, requestState: 'delivered' } };
       }
+      // Issue #1071: an adminAdd assignment request delivers an assignment of the package to the target.
+      if (method === 'POST' && path === '/identityGovernance/entitlementManagement/assignmentRequests') {
+        const { targetId, accessPackageId, assignmentPolicyId } = body?.assignment ?? {};
+        if (body?.requestType !== 'adminAdd' || !targetId || !accessPackageId || !assignmentPolicyId) return { ok: false, status: 400, body: { error: { code: 'BadRequest' } } };
+        next += 1;
+        objects.set(`/identityGovernance/entitlementManagement/assignments/fixture-${next}`, {
+          id: `fixture-${next}`, state: 'delivered', status: 'Delivered', target: { id: `fixture-subject-${next}`, objectId: targetId },
+          accessPackage: { id: accessPackageId }, assignmentPolicy: { id: assignmentPolicyId },
+        });
+        return { ok: true, status: 201, body: { id: `fixture-request-${next}`, requestType: 'adminAdd', state: 'submitted', status: 'Accepted' } };
+      }
       const roleScopes = /^(\/identityGovernance\/entitlementManagement\/accessPackages\/[^/]+)\/resourceRoleScopes$/.exec(path);
       if (roleScopes && method === 'POST') {
         const pkg = objects.get(roleScopes[1]);
@@ -954,6 +1000,15 @@ export function fakeGraph() {
       if (catalogResources && objects.has(catalogResources[1])) {
         const origin = /originId eq '((?:[^']|'')*)'/.exec(decodeURIComponent(requested.split('?')[1] ?? ''))?.[1]?.replace(/''/g, "'");
         const value = (objects.get(catalogResources[1]).resources ?? []).filter((resource) => !origin || resource.originId === origin);
+        return { ok: true, status: 200, body: { value } };
+      }
+      // Issue #1071: assignments filtered by package and target, as the writer asks.
+      if (path === '/identityGovernance/entitlementManagement/assignments') {
+        const filter = decodeURIComponent(requested.split('?')[1] ?? '');
+        const pkg = /accessPackage\/id eq '([^']*)'/.exec(filter)?.[1];
+        const target = /target\/objectId eq '([^']*)'/i.exec(filter)?.[1];
+        const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`)).map(([, object]) => object)
+          .filter((object) => (!pkg || object.accessPackage.id === pkg) && (!target || object.target.objectId === target));
         return { ok: true, status: 200, body: { value } };
       }
       // Roadmap task-151: the eligibility collection answers a filter of

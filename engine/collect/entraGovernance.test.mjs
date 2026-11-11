@@ -22,7 +22,7 @@ const CASES = [
   ['customSecurityAttributeDefinition', '/directory/customSecurityAttributeDefinitions?$expand=allowedValues', false],
   ['accessPackageCatalog', '/identityGovernance/entitlementManagement/catalogs', false],
   ['accessPackageAssignmentPolicy', '/identityGovernance/entitlementManagement/assignmentPolicies?$expand=accessPackage', false],
-  ['accessPackageAssignment', '/identityGovernance/entitlementManagement/assignments?$expand=target,accessPackage', false],
+  ['accessPackageAssignment', '/identityGovernance/entitlementManagement/assignments?$expand=target,accessPackage,assignmentPolicy', false],
   ['entitlementManagementSettings', '/identityGovernance/entitlementManagement/settings', true],
   ['agreement', '/identityGovernance/termsOfUse/agreements', false],
   ['appManagementPolicy', '/policies/appManagementPolicies', false],

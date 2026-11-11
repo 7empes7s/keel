@@ -24,8 +24,16 @@ const value = (field, side) => {
   // Batch 2: an Intune assignment names its role, and an Exchange one its principal by path.
   if (field === 'roleDefinition') return { id: `role-${side}` };
   if (field === 'principalId') return `/Users/${side === 'before' ? 'b' : 'a'}0000000-0000-0000-0000-000000000000`;
+  // Issue #1071: a catalog resource of a kind a restore adds, an assignment named
+  // by its parts, and a catalog role KEEL gives back on one catalog.
+  if (field === 'originSystem') return side === 'before' ? 'AadGroup' : 'AadApplication';
+  if (['target', 'accessPackage', 'assignmentPolicy'].includes(field)) return { id: side, objectId: side, displayName: side, principalName: side };
+  if (field === 'roleDefinitionId') return side === 'before' ? 'ae79f266-94d4-4dab-b730-feca7e132178' : '44272f93-9762-48e8-af59-1b5351b1d6b3';
+  if (field === 'appScopeId') return `/AccessPackageCatalog/${side === 'before' ? 'b' : 'a'}0000000-0000-0000-0000-000000000000`;
   return { kept: side };
 };
+// An assignment carries an effect only while it is in effect.
+const BASE = Object.freeze({ accessPackageAssignment: { state: 'delivered' } });
 const before = (field) => ({ [field]: value(field, 'before') });
 const after = (field) => ({ [field]: value(field, 'after') });
 // An update drifts the fields an update sends; one set only on create (an Intune
@@ -35,15 +43,15 @@ const changed = (resourceType) => {
   const same = APPROVAL_HELD_FIELDS[resourceType].filter((field) => !updatedFields(resourceType).includes(field));
   return {
     naturalKey: `${resourceType}:fixture`, resourceType, references: [],
-    payload: Object.assign({ isBuiltIn: false }, ...same.map(after), ...updatedFields(resourceType).map(after)),
-    live: { state: 'present', payload: Object.assign({ isBuiltIn: false }, ...same.map(after), ...updatedFields(resourceType).map(before)) },
+    payload: Object.assign({ isBuiltIn: false }, BASE[resourceType], ...same.map(after), ...updatedFields(resourceType).map(after)),
+    live: { state: 'present', payload: Object.assign({ isBuiltIn: false }, BASE[resourceType], ...same.map(after), ...updatedFields(resourceType).map(before)) },
   };
 };
 
-test('approval-held kinds: the kinds of batches 1 and 2, access package resource roles and policies, connected organizations (#993), guest sign-up user flows (#995), access review series and terms of use (#1007), API connectors (#1008) and provisioning jobs (#1016), each in a service the restore approval setting knows', () => {
+test('approval-held kinds: the kinds of batches 1 and 2, access package resource roles and policies, connected organizations (#993), guest sign-up user flows (#995), access review series and terms of use (#1007), API connectors (#1008), provisioning jobs (#1016), and catalog resources, access package assignments and catalog roles (#1071), each in a service the restore approval setting knows', () => {
   assert.deepEqual([...APPROVAL_HELD_KINDS].sort(), [
-    'accessPackageAssignmentPolicy', 'accessPackageResourceRoleScope', 'accessReviewScheduleDefinition', 'agreement', 'b2xIdentityUserFlow', 'connectedOrganization', 'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
-    'exchangeRoleAssignment', 'identityApiConnector', 'synchronizationJob', 'tenantAppManagementPolicy',
+    'accessPackageAssignment', 'accessPackageAssignmentPolicy', 'accessPackageCatalogResource', 'accessPackageResourceRoleScope', 'accessReviewScheduleDefinition', 'agreement', 'b2xIdentityUserFlow', 'connectedOrganization', 'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
+    'entitlementManagementRoleAssignment', 'exchangeRoleAssignment', 'identityApiConnector', 'synchronizationJob', 'tenantAppManagementPolicy',
   ]);
   assert.ok(CONTENT_EFFECTS.includes('access-changing'));
   for (const kind of APPROVAL_HELD_KINDS) assert.ok(SERVICES.includes(typeInfo(kind).service), kind);

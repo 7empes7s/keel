@@ -22,14 +22,14 @@ export default [
   { type: 'accessPackageCatalogResource', path: '/identityGovernance/entitlementManagement/catalogs/{parent}/resources', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     parent: { path: '/identityGovernance/entitlementManagement/catalogs', select: 'id', key: 'id', as: 'catalogId' },
     query: '$expand=roles,scopes',
-    note: 'Added to a catalog again by the resource role restore, for groups and apps that exist.' },
+    note: 'Added to its catalog again (adminAdd), for groups and apps that exist and for sites.' },
   // A policy names its access package only when expanded.
   { type: 'accessPackageAssignmentPolicy', path: '/identityGovernance/entitlementManagement/assignmentPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     query: '$expand=accessPackage' },
-  // Who holds which access package. The target and package are listed only
-  // when expanded.
+  // Who holds which access package. The target, package and policy are listed
+  // only when expanded (issue #1071: a restore grants it again through the policy).
   { type: 'accessPackageAssignment', path: '/identityGovernance/entitlementManagement/assignments', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
-    query: '$expand=target,accessPackage',
+    query: '$expand=target,accessPackage,assignmentPolicy',
     note: 'Restored by request through the assignment policy, never copied.' },
   { type: 'entitlementManagementSettings', path: '/identityGovernance/entitlementManagement/settings', version: 'v1.0', singleton: true, criticality: 'tier3', blastRadius: 'cosmetic' },
   // Terms of use. Needs Entra ID P1. Issue #1007: each agreement is read with its

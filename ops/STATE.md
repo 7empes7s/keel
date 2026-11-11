@@ -180,6 +180,11 @@ engine code after the candidate, so the next sign-off needs a new frozen candida
   KEEL-RT-148-group in KEEL-RT-992-catalog, carla assigned KEEL-RT-992-package through KEEL-RT-993-policy and
   carla as Catalog reader (steps in the #1071 PR body); all three are approval-held. First check a new backup
   names each assignment's policy (`$expand=assignmentPolicy`). Outside connectors stay by hand (their sign-in).
+- Attack simulations (#1073): `attackSimulation` create and update, always as a draft, are fixture-tested with
+  no live record yet. The backup now reads each simulation's payload, login page and landing page; check a new
+  backup names them and that the Restorer holds `AttackSimulation.ReadWrite.All`. Capture needs the draft
+  KEEL-RT-1073-simulation on KEEL-RT-1073-payload targeting only carla (steps in the #1073 PR body); never
+  launch it. Payloads, pages, notifications and automations stay by hand (Graph cannot write them).
 - Access review series (#1007): `accessReviewScheduleDefinition` create is fixture-tested with no live record
   yet. Capture needs KEEL-RT-1007-review of the empty KEEL-RT-148-group reviewed by carla, auto-apply off
   (steps in the #1007 PR body); the write is approval-held and needs `AccessReview.ReadWrite.All` granted.

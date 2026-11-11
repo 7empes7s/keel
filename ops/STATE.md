@@ -196,6 +196,10 @@ engine code after the candidate, so the next sign-off needs a new frozen candida
   create and update are fixture-tested with no live record yet. Capture needs KEEL-RT-idle (never the
   organization default) and KEEL-RT-connector on no user flow (steps in the #1008 PR body); the connector
   write and any write into the live organization default idle sign-out policy are approval-held.
+- Sign-in extensions (#1072): `customAuthenticationExtension` update (a create updates the live one with the
+  same name) and `authenticationEventListener` create and update are fixture-tested with no live record yet.
+  Capture needs KEEL-RT-1072-claims calling https://keel-rt.invalid/api/claims and its listener on the
+  KEEL-RT-148-app (steps in the #1072 PR body); listener writes and token claim changes are approval-held.
 - App provisioning (#1016): `synchronizationJob` schema update and create of a stopped job are fixture-tested
   with no live record yet. The backup now reads each job's schema: check the Collector holds
   `Synchronization.Read.All` (a 403 on the jobs read means it does not) and the Restorer

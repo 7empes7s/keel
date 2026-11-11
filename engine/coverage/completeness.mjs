@@ -257,7 +257,11 @@ export const COMPLETENESS = Object.freeze({
   onPremisesConditionalAccessSettings: {},
   mobileAppCategory: { missing: [part('Built-in categories', 'microsoft-managed'), part('Which apps are in the category', 'other-route')] },
   intuneBrandingProfile: { missing: [part('Logo images', 'other-route')] },
-  customAuthenticationExtension: { whole: 'not-written' },
+  // Issue #1072: only the name, description and token claims are written.
+  customAuthenticationExtension: { missing: [
+    part('The address it calls, how Entra signs in to it, its timeouts and what sign-in does when it fails', 'not-written', always),
+    part('An extension that is not in the target, which is set up by hand first', 'not-written'),
+  ] },
   // Remaining kinds, batch 3.
   // Restore gaps batch 15: assignments read per policy and written through /assign.
   deviceManagementCompliancePolicy: {},
@@ -284,7 +288,8 @@ export const COMPLETENESS = Object.freeze({
   multiTenantOrganizationIdentitySyncPolicyTemplate: {},
   multiTenantOrganizationPartnerConfigurationTemplate: { missing: [part('Its cross-tenant access settings (trust in partner sign-ins, automatic consent, who may cross)', 'not-written')] },
   identityUserFlowAttribute: { missing: [part('Built-in attributes', 'microsoft-managed'), part('A data type that differs from the target\'s, which cannot change after an attribute is made', 'not-written')] },
-  authenticationEventListener: { whole: 'not-written' },
+  // Issue #1072: written once its extension is back.
+  authenticationEventListener: { missing: [part('A listener that is part of an External ID user flow rather than calling an extension', 'not-written')] },
   externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },

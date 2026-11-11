@@ -1,6 +1,7 @@
 /** Writer fragment: ENTRA (Wave 2). See ./registry.mjs for the entry shape. */
-import { ENTRA_HANDLER, ENTRA_WRITE_OPERATIONS, SIGN_IN_HANDLER } from '../../coverage/capabilities.d/entra.mjs';
+import { ENTRA_HANDLER, ENTRA_WRITE_OPERATIONS, SIGN_IN_EXTENSION_HANDLER, SIGN_IN_HANDLER } from '../../coverage/capabilities.d/entra.mjs';
 import { DIRECTORY_POLICY_RECORDS, applyDirectoryPolicyWrite } from '../directoryPolicyOperations.mjs';
+import { SIGN_IN_EXTENSION_RECORDS, applySignInExtensionWrite } from '../signInExtensionOperations.mjs';
 import { SIGN_IN_SETTING_RECORDS, applySignInSettingWrite } from '../signInSettingsOperations.mjs';
 
 export default [
@@ -11,5 +12,9 @@ export default [
   // Issue #994: authentication contexts and staged rollout (signInSettingsOperations.mjs).
   ...Object.values(SIGN_IN_SETTING_RECORDS).map((entry) => ({
     resourceType: entry.resourceType, verbs: [...entry.operations], handler: SIGN_IN_HANDLER, apply: applySignInSettingWrite,
+  })),
+  // Issue #1072: custom authentication extensions and their listeners (signInExtensionOperations.mjs).
+  ...Object.values(SIGN_IN_EXTENSION_RECORDS).map((entry) => ({
+    resourceType: entry.resourceType, verbs: [...entry.operations], handler: SIGN_IN_EXTENSION_HANDLER, apply: applySignInExtensionWrite,
   })),
 ];
